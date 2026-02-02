@@ -1,5 +1,8 @@
+use crate::flow::StepStatus;
+use crate::frame::Line;
 use crate::layout::Layout;
 use crate::node::{Node, RenderMode};
+use crate::span::{Span, Wrap};
 use crate::step::Step;
 use crate::terminal::Terminal;
 use crate::theme::Theme;
@@ -15,6 +18,7 @@ struct RenderLine {
 pub struct Renderer {
     start_row: Option<u16>,
     num_lines: usize,
+    decoration_enabled: bool,
 }
 
 impl Renderer {
@@ -22,7 +26,17 @@ impl Renderer {
         Self {
             start_row: None,
             num_lines: 0,
+            decoration_enabled: false,
         }
+    }
+
+    pub fn reset_block(&mut self) {
+        self.start_row = None;
+        self.num_lines = 0;
+    }
+
+    pub fn set_decoration_enabled(&mut self, enabled: bool) {
+        self.decoration_enabled = enabled;
     }
 
     pub fn render(
@@ -32,21 +46,34 @@ impl Renderer {
         theme: &Theme,
         terminal: &mut Terminal,
     ) -> io::Result<()> {
+        self.render_with_status(step, view_state, theme, terminal, StepStatus::Active, false)
+    }
+
+    pub fn render_with_status(
+        &mut self,
+        step: &Step,
+        view_state: &ViewState,
+        theme: &Theme,
+        terminal: &mut Terminal,
+        status: StepStatus,
+        connect_to_next: bool,
+    ) -> io::Result<()> {
         let _ = terminal.refresh_size()?;
         let width = terminal.size().width;
         let render_lines = self.build_render_lines(step, view_state, theme);
         let frame =
             Layout::new().compose_spans(render_lines.iter().map(|line| line.spans.clone()), width);
-        let lines = frame.lines();
+        let lines = self.decorate_lines(frame.lines(), theme, status, connect_to_next);
         let start = self.ensure_start_row(terminal, lines.len())?;
         terminal.queue_hide_cursor()?;
-        self.draw_lines(terminal, start, lines)?;
+        self.draw_lines(terminal, start, &lines)?;
         self.clear_extra_lines(terminal, start, lines.len())?;
         self.num_lines = lines.len();
         terminal.flush()?;
 
         let cursor_pos = self.find_cursor_position(&render_lines);
         if let Some((col, line_idx)) = cursor_pos {
+            let col = col + self.decoration_width();
             let cursor_row = start + line_idx as u16;
             terminal.queue_move_cursor(col as u16, cursor_row)?;
         }
@@ -71,12 +98,97 @@ impl Renderer {
         None
     }
 
+    fn decoration_width(&self) -> usize {
+        if self.decoration_enabled { 3 } else { 0 }
+    }
+
+    fn decorate_lines(
+        &self,
+        lines: &[Line],
+        theme: &Theme,
+        status: StepStatus,
+        connect_to_next: bool,
+    ) -> Vec<Line> {
+        if !self.decoration_enabled {
+            return lines.to_vec();
+        }
+
+        let (status_glyph, status_style) = match status {
+            StepStatus::Active => ("○", theme.decor_active.clone()),
+            StepStatus::Done => ("●", theme.decor_done.clone()),
+            StepStatus::Cancelled => ("■", theme.decor_cancelled.clone()),
+            StepStatus::Pending => ("○", theme.decor_done.clone()),
+        };
+
+        let decorated: Vec<Line> = lines
+            .iter()
+            .enumerate()
+            .map(|(idx, line)| {
+                let is_last = idx + 1 == lines.len();
+                let prefix = if idx == 0 {
+                    format!("{}  ", status_glyph)
+                } else if is_last && !connect_to_next {
+                    "└  ".to_string()
+                } else {
+                    "│  ".to_string()
+                };
+                let mut new_line = Line::new();
+                new_line.push(
+                    Span::new(prefix)
+                        .with_style(status_style.clone())
+                        .with_wrap(Wrap::No),
+                );
+                for span in line.spans() {
+                    new_line.push(span.clone());
+                }
+                new_line
+            })
+            .collect();
+
+        decorated
+    }
+
     pub fn move_to_end(&self, terminal: &mut Terminal) -> io::Result<()> {
         if let Some(start) = self.start_row {
             let end_row = start + self.num_lines as u16;
             terminal.queue_move_cursor(0, end_row)?;
             terminal.flush()?;
         }
+        Ok(())
+    }
+
+    pub fn write_connector_lines(
+        &self,
+        terminal: &mut Terminal,
+        theme: &Theme,
+        status: StepStatus,
+        count: usize,
+    ) -> io::Result<()> {
+        if count == 0 {
+            return Ok(());
+        }
+
+        let status_style = match status {
+            StepStatus::Active => theme.decor_active.clone(),
+            StepStatus::Done => theme.decor_done.clone(),
+            StepStatus::Cancelled => theme.decor_cancelled.clone(),
+            StepStatus::Pending => theme.decor_done.clone(),
+        };
+
+        for _ in 0..count {
+            if self.decoration_enabled {
+                let mut line = Line::new();
+                line.push(
+                    Span::new("│  ")
+                        .with_style(status_style.clone())
+                        .with_wrap(Wrap::No),
+                );
+                terminal.render_line(&line)?;
+            }
+            let out = terminal.writer_mut();
+            writeln!(out)?;
+        }
+        terminal.flush()?;
         Ok(())
     }
 
@@ -151,12 +263,12 @@ impl Renderer {
             lines.push(line);
         }
 
-        if !(inline_prompt_input.is_some() && !step.prompt.is_empty()) {
-            lines.extend(self.render_nodes(step, view_state, theme));
-        }
-
         if let Some(line) = self.render_hint_line(step, theme) {
             lines.push(line);
+        }
+
+        if !(inline_prompt_input.is_some() && !step.prompt.is_empty()) {
+            lines.extend(self.render_nodes(step, view_state, theme));
         }
 
         lines

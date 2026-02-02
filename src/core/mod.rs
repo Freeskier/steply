@@ -2,6 +2,7 @@ pub mod action_bindings;
 pub mod app;
 pub mod event;
 pub mod event_queue;
+pub mod flow;
 pub mod form_engine;
 pub mod reducer;
 pub mod state;

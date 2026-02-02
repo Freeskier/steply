@@ -36,9 +36,6 @@ fn event_loop(terminal: &mut Terminal) -> io::Result<()> {
                 TerminalEvent::Key(key_event) => {
                     app.handle_key(key_event);
                     render_requested = true;
-                    if app.should_exit() {
-                        break;
-                    }
                 }
                 TerminalEvent::Resize { .. } => {
                     render_requested = true;
@@ -50,13 +47,13 @@ fn event_loop(terminal: &mut Terminal) -> io::Result<()> {
             render_requested = true;
         }
 
-        if app.should_exit() {
-            break;
-        }
-
         if render_requested {
             app.render(terminal)?;
             render_requested = false;
+        }
+
+        if app.should_exit() {
+            break;
         }
     }
 

@@ -179,6 +179,9 @@ impl Terminal {
             if span.style().bold() {
                 write!(self.stdout, "{}", SetAttribute(Attribute::Bold))?;
             }
+            if span.style().dim() {
+                write!(self.stdout, "{}", SetAttribute(Attribute::Dim))?;
+            }
             if span.style().italic() {
                 write!(self.stdout, "{}", SetAttribute(Attribute::Italic))?;
             }
@@ -237,6 +240,7 @@ fn map_key_code(code: crossterm::event::KeyCode) -> KeyCode {
         crossterm::event::KeyCode::Char(ch) => KeyCode::Char(ch),
         crossterm::event::KeyCode::Backspace => KeyCode::Backspace,
         crossterm::event::KeyCode::Enter => KeyCode::Enter,
+        crossterm::event::KeyCode::Esc => KeyCode::Esc,
         crossterm::event::KeyCode::Left => KeyCode::Left,
         crossterm::event::KeyCode::Right => KeyCode::Right,
         crossterm::event::KeyCode::Up => KeyCode::Up,

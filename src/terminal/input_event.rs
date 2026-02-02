@@ -5,6 +5,7 @@ pub enum KeyCode {
     Char(char),
     Backspace,
     Enter,
+    Esc,
     Left,
     Right,
     Up,

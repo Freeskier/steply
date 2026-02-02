@@ -43,7 +43,8 @@ impl ActionBindings {
     }
 
     fn setup_default_bindings(&mut self) {
-        self.bind(KeyBinding::ctrl(KeyCode::Char('c')), Action::Exit);
+        self.bind(KeyBinding::ctrl(KeyCode::Char('c')), Action::Cancel);
+        self.bind(KeyBinding::key(KeyCode::Esc), Action::Cancel);
 
         self.bind(KeyBinding::key(KeyCode::Tab), Action::NextInput);
         self.bind(

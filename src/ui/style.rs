@@ -16,6 +16,7 @@ pub struct Style {
     color: Option<Color>,
     background: Option<Color>,
     bold: bool,
+    dim: bool,
     italic: bool,
     underline: bool,
 }
@@ -39,6 +40,10 @@ impl Style {
 
     pub fn italic(&self) -> bool {
         self.italic
+    }
+
+    pub fn dim(&self) -> bool {
+        self.dim
     }
 
     pub fn underline(&self) -> bool {
@@ -71,6 +76,11 @@ impl Style {
         self
     }
 
+    pub fn with_dim(mut self) -> Self {
+        self.dim = true;
+        self
+    }
+
     pub fn with_underline(mut self) -> Self {
         self.underline = true;
         self
@@ -85,6 +95,9 @@ impl Style {
         }
         if other.bold {
             self.bold = true;
+        }
+        if other.dim {
+            self.dim = true;
         }
         if other.italic {
             self.italic = true;

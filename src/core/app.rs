@@ -2,6 +2,7 @@ use crate::action_bindings::ActionBindings;
 use crate::date_input::DateTimeInput;
 use crate::event::Action;
 use crate::event_queue::{AppEvent, EventQueue};
+use crate::flow::Flow;
 use crate::node::Node;
 use crate::reducer::{Effect, Reducer};
 use crate::renderer::Renderer;
@@ -16,6 +17,7 @@ use std::io;
 use std::time::{Duration, Instant};
 
 const ERROR_TIMEOUT: Duration = Duration::from_secs(2);
+const ENABLE_DECORATION: bool = true;
 
 pub struct App {
     pub state: AppState,
@@ -23,18 +25,22 @@ pub struct App {
     action_bindings: ActionBindings,
     event_queue: EventQueue,
     theme: Theme,
+    last_rendered_step: usize,
 }
 
 impl App {
     pub fn new() -> Self {
-        let app = Self {
-            state: AppState::new(build_step()),
+        let flow = Flow::new(build_steps());
+        let mut app = Self {
+            state: AppState::new(flow),
             renderer: Renderer::new(),
             action_bindings: ActionBindings::new(),
             event_queue: EventQueue::new(),
             theme: Theme::default_theme(),
+            last_rendered_step: 0,
         };
 
+        app.renderer.set_decoration_enabled(ENABLE_DECORATION);
         app
     }
 
@@ -52,11 +58,37 @@ impl App {
     }
 
     pub fn render(&mut self, terminal: &mut Terminal) -> io::Result<()> {
-        self.renderer.render(
-            &self.state.engine.step,
+        let current_step = self.state.flow.current_index();
+        if current_step != self.last_rendered_step {
+            if let Some(step) = self.state.flow.step_at(self.last_rendered_step) {
+                let done_view = crate::view_state::ViewState::new();
+                self.renderer.render_with_status(
+                    step,
+                    &done_view,
+                    &self.theme,
+                    terminal,
+                    crate::flow::StepStatus::Done,
+                    true,
+                )?;
+            }
+            self.renderer.move_to_end(terminal)?;
+            self.renderer.write_connector_lines(
+                terminal,
+                &self.theme,
+                crate::flow::StepStatus::Done,
+                1,
+            )?;
+            self.renderer.reset_block();
+            self.last_rendered_step = current_step;
+        }
+
+        self.renderer.render_with_status(
+            self.state.flow.current_step(),
             &self.state.view,
             &self.theme,
             terminal,
+            self.state.flow.current_status(),
+            false,
         )
     }
 
@@ -74,7 +106,7 @@ impl App {
                 let captured = self
                     .state
                     .engine
-                    .focused_input_caps()
+                    .focused_input_caps(self.state.flow.current_step())
                     .map(|caps| caps.captures_key(key_event.code, key_event.modifiers))
                     .unwrap_or(false);
 
@@ -125,6 +157,16 @@ fn build_step() -> Step {
                     .with_validator(validators::required())
                     .with_validator(validators::email()),
             ),
+        ],
+        form_validators: Vec::new(),
+    }
+}
+
+fn build_step_two() -> Step {
+    Step {
+        prompt: "Almost there:".to_string(),
+        hint: None,
+        nodes: vec![
             Node::input(
                 TextInput::new("password", "Password")
                     .with_validator(validators::required())
@@ -135,4 +177,8 @@ fn build_step() -> Step {
         ],
         form_validators: Vec::new(),
     }
+}
+
+fn build_steps() -> Vec<Step> {
+    vec![build_step(), build_step_two()]
 }

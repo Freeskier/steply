@@ -7,6 +7,7 @@ pub use core::action_bindings;
 pub use core::app;
 pub use core::event;
 pub use core::event_queue;
+pub use core::flow;
 pub use core::form_engine;
 pub use core::reducer;
 pub use core::state;

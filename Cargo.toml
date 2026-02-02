@@ -1,0 +1,9 @@
+[package]
+name = "steply"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+crossterm = "0.29"
+unicode-width = "0.1"
+regex = "1"

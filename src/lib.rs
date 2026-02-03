@@ -20,6 +20,7 @@ pub use inputs::checkbox_input;
 pub use inputs::choice_input;
 pub use inputs::color_input;
 pub use inputs::password_input;
+pub use inputs::path_input;
 pub use inputs::segmented_input;
 pub use inputs::select_input;
 pub use inputs::slider_input;

@@ -8,6 +8,7 @@ use crate::event_queue::{AppEvent, EventQueue};
 use crate::flow::Flow;
 use crate::node::Node;
 use crate::password_input::{PasswordInput, PasswordRender};
+use crate::path_input::PathInput;
 use crate::reducer::{Effect, Reducer};
 use crate::renderer::Renderer;
 use crate::segmented_input::SegmentedInput;
@@ -26,6 +27,7 @@ use std::time::{Duration, Instant};
 const ERROR_TIMEOUT: Duration = Duration::from_secs(2);
 const ENABLE_DECORATION: bool = true;
 const APP_TITLE: &str = "Steply main";
+const TAB_ADVANCE_DELAY: Duration = Duration::from_millis(300);
 
 pub struct App {
     pub state: AppState,
@@ -34,6 +36,8 @@ pub struct App {
     event_queue: EventQueue,
     theme: Theme,
     last_rendered_step: usize,
+    pending_tab_advance_at: Option<Instant>,
+    pending_tab_input_id: Option<String>,
 }
 
 impl App {
@@ -46,6 +50,8 @@ impl App {
             event_queue: EventQueue::new(),
             theme: Theme::default_theme(),
             last_rendered_step: 0,
+            pending_tab_advance_at: None,
+            pending_tab_input_id: None,
         };
 
         app.renderer.set_decoration_enabled(ENABLE_DECORATION);
@@ -55,6 +61,7 @@ impl App {
 
     pub fn tick(&mut self) -> bool {
         let mut processed_any = false;
+        self.maybe_fire_pending_tab_advance();
         loop {
             let now = Instant::now();
             let Some(event) = self.event_queue.next_ready(now) else {
@@ -114,6 +121,19 @@ impl App {
     fn dispatch_event(&mut self, event: AppEvent) {
         match event {
             AppEvent::Key(key_event) => {
+                if !matches!(key_event.code, crate::terminal::KeyCode::Tab)
+                    || key_event.modifiers != crate::terminal::KeyModifiers::NONE
+                {
+                    self.clear_pending_tab();
+                }
+
+                if matches!(key_event.code, crate::terminal::KeyCode::Tab)
+                    && key_event.modifiers == crate::terminal::KeyModifiers::NONE
+                    && self.handle_tab_completion(key_event)
+                {
+                    return;
+                }
+
                 let captured = self
                     .state
                     .engine
@@ -151,6 +171,58 @@ impl App {
             }
         }
     }
+
+    fn handle_tab_completion(&mut self, key_event: crate::terminal::KeyEvent) -> bool {
+        let step = self.state.flow.current_step();
+        let Some(input) = self.state.engine.focused_input(step) else {
+            return false;
+        };
+        if !input.supports_tab_completion() {
+            return false;
+        }
+
+        let now = Instant::now();
+        let focused_id = self.state.engine.focused_input_id(step);
+
+        if let Some(due) = self.pending_tab_advance_at {
+            if now <= due && focused_id == self.pending_tab_input_id {
+                self.clear_pending_tab();
+                let effects =
+                    Reducer::reduce(&mut self.state, Action::InputKey(key_event), ERROR_TIMEOUT);
+                self.apply_effects(effects);
+                return true;
+            }
+        }
+
+        self.pending_tab_advance_at = Some(now + TAB_ADVANCE_DELAY);
+        self.pending_tab_input_id = focused_id;
+        true
+    }
+
+    fn maybe_fire_pending_tab_advance(&mut self) {
+        let Some(due) = self.pending_tab_advance_at else {
+            return;
+        };
+        if Instant::now() < due {
+            return;
+        }
+
+        let step = self.state.flow.current_step();
+        let focused_id = self.state.engine.focused_input_id(step);
+        if focused_id != self.pending_tab_input_id {
+            self.clear_pending_tab();
+            return;
+        }
+
+        self.clear_pending_tab();
+        let effects = Reducer::reduce(&mut self.state, Action::NextInput, ERROR_TIMEOUT);
+        self.apply_effects(effects);
+    }
+
+    fn clear_pending_tab(&mut self) {
+        self.pending_tab_advance_at = None;
+        self.pending_tab_input_id = None;
+    }
 }
 
 fn build_step() -> Step {
@@ -179,6 +251,7 @@ fn build_step() -> Step {
                 .with_bullets(true),
             ),
             Node::input(ArrayInput::new("tags", "Tags")),
+            Node::input(PathInput::new("path", "Path")),
             Node::input(SelectInput::new(
                 "color",
                 "Color",

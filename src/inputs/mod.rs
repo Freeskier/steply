@@ -4,6 +4,7 @@ pub mod choice_input;
 pub mod color_input;
 pub mod input;
 pub mod password_input;
+pub mod path_input;
 pub mod segmented_input;
 pub mod select_input;
 pub mod slider_input;

@@ -91,6 +91,12 @@ impl FormEngine {
             .map(|input| input.capabilities())
     }
 
+    pub fn focused_input<'a>(&self, step: &'a Step) -> Option<&'a dyn Input> {
+        self.focused_index
+            .and_then(|index| step.nodes.get(self.input_node_indices[index]))
+            .and_then(|node| node.as_input())
+    }
+
     pub fn focused_input_mut<'a>(
         &mut self,
         step: &'a mut Step,

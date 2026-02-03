@@ -95,6 +95,10 @@ pub trait Input: Send {
         &self.base().validators
     }
 
+    fn supports_tab_completion(&self) -> bool {
+        false
+    }
+
     fn render_brackets(&self) -> bool {
         true
     }

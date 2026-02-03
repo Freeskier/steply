@@ -71,7 +71,7 @@ impl TextInput {
     }
 
     fn is_separator(ch: char) -> bool {
-        ch.is_whitespace() || matches!(ch, '.' | '/' | ',' | '-' | '@')
+        ch.is_whitespace() || matches!(ch, '.' | '/' | ',' | '-' | '@' | '_' | ':')
     }
 
     fn move_word_left(&mut self) -> bool {
@@ -236,8 +236,20 @@ impl Input for TextInput {
                 KeyResult::Handled
             }
             KeyCode::Backspace => {
-                self.handle_backspace();
+                if modifiers.contains(KeyModifiers::CONTROL) {
+                    self.delete_word_impl();
+                } else {
+                    self.handle_backspace();
+                }
                 KeyResult::Handled
+            }
+            KeyCode::Delete => {
+                if modifiers.contains(KeyModifiers::CONTROL) {
+                    self.delete_word_forward_impl();
+                    KeyResult::Handled
+                } else {
+                    KeyResult::NotHandled
+                }
             }
             KeyCode::Left => {
                 if modifiers.contains(KeyModifiers::CONTROL) {

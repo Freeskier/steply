@@ -1,11 +1,14 @@
 use crate::action_bindings::ActionBindings;
-use crate::date_input::DateTimeInput;
 use crate::event::Action;
 use crate::event_queue::{AppEvent, EventQueue};
 use crate::flow::Flow;
 use crate::node::Node;
+use crate::password_input::{PasswordInput, PasswordRender};
 use crate::reducer::{Effect, Reducer};
 use crate::renderer::Renderer;
+use crate::segmented_input::SegmentedInput;
+use crate::select_input::SelectInput;
+use crate::slider_input::SliderInput;
 use crate::state::AppState;
 use crate::step::Step;
 use crate::terminal::KeyEvent;
@@ -161,6 +164,13 @@ fn build_step() -> Step {
                     .with_validator(validators::required())
                     .with_validator(validators::email()),
             ),
+            Node::input(
+                SelectInput::new(
+                    "color",
+                    "Color",
+                    vec!["Red".to_string(), "Green".to_string(), "Blue".to_string()],
+                )
+            )
         ],
         form_validators: Vec::new(),
     }
@@ -176,13 +186,35 @@ fn build_step_two() -> Step {
                     .with_validator(validators::required())
                     .with_validator(validators::min_length(8)),
             ),
-            Node::input(DateTimeInput::new("birthdate", "Birth Date", "DD/MM/YYYY")),
-            Node::input(DateTimeInput::new("meeting_time", "Meeting Time", "HH:mm")),
+        ],
+        form_validators: Vec::new(),
+    }
+}
+
+fn build_step_three() -> Step {
+    Step {
+        prompt: "Final step:".to_string(),
+        hint: Some("Try arrows left/right in select, and masked input".to_string()),
+        nodes: vec![
+            Node::input(
+                PasswordInput::new("new_password", "New Password")
+                    .with_render_mode(PasswordRender::Stars)
+                    .with_validator(validators::required())
+                    .with_validator(validators::min_length(8)),
+            ),
+            Node::input(
+                SliderInput::new("email", "Email", 1, 20)
+
+            ),
+            Node::input(SegmentedInput::ipv4("ip_address", "IP Address")),
+            Node::input(SegmentedInput::phone_us("phone", "Phone")),
+            Node::input(SegmentedInput::number("num", "num")),
+            Node::input(SegmentedInput::date_dd_mm_yyyy("birthdate_masked", "Birth Date")),
         ],
         form_validators: Vec::new(),
     }
 }
 
 fn build_steps() -> Vec<Step> {
-    vec![build_step(), build_step_two()]
+    vec![build_step_three()]
 }

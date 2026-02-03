@@ -16,6 +16,10 @@ pub use core::validation;
 pub use core::view_state;
 
 pub use input::date_input;
+pub use input::password_input;
+pub use input::segmented_input;
+pub use input::select_input;
+pub use input::slider_input;
 pub use input::text_input;
 pub use input::validators;
 

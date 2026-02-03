@@ -1,6 +1,6 @@
 use crate::core::validation;
 use crate::event_queue::AppEvent;
-use crate::input::{Input, InputCaps, KeyResult};
+use crate::inputs::{Input, InputCaps, KeyResult};
 use crate::node::Node;
 use crate::step::Step;
 use crate::terminal::KeyEvent;

@@ -1,5 +1,5 @@
 use crate::core::step::Step;
-use crate::input::{Input, NodeId};
+use crate::inputs::{Input, NodeId};
 use std::collections::HashMap;
 
 pub type FormValidator = Box<dyn Fn(&ValidationContext) -> Vec<(NodeId, String)> + Send>;

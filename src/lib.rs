@@ -1,5 +1,5 @@
 pub mod core;
-pub mod input;
+pub mod inputs;
 pub mod terminal;
 pub mod ui;
 
@@ -15,13 +15,16 @@ pub use core::step;
 pub use core::validation;
 pub use core::view_state;
 
-pub use input::date_input;
-pub use input::password_input;
-pub use input::segmented_input;
-pub use input::select_input;
-pub use input::slider_input;
-pub use input::text_input;
-pub use input::validators;
+pub use inputs::array_input;
+pub use inputs::checkbox_input;
+pub use inputs::choice_input;
+pub use inputs::color_input;
+pub use inputs::password_input;
+pub use inputs::segmented_input;
+pub use inputs::select_input;
+pub use inputs::slider_input;
+pub use inputs::text_input;
+pub use inputs::validators;
 
 pub use terminal::input_event;
 pub use terminal::terminal_event;

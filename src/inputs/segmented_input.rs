@@ -1,8 +1,7 @@
-use crate::input::{Input, InputBase, KeyResult, NodeId};
+use crate::inputs::{Input, InputBase, KeyResult};
 use crate::span::Span;
 use crate::style::Style;
 use crate::terminal::{KeyCode, KeyModifiers};
-use crate::theme;
 use crate::validators::Validator;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -64,12 +63,21 @@ impl SegmentedInput {
         self
     }
 
+    pub fn with_placeholder(mut self, placeholder: impl Into<String>) -> Self {
+        self.base = self.base.with_placeholder(placeholder);
+        self
+    }
+
     pub fn ipv4(id: impl Into<String>, label: impl Into<String>) -> Self {
-        Self::new(id, label, "#{1,3:0-255}.#{1,3:0-255}.#{1,3:0-255}.#{1,3:0-255}")
+        Self::new(
+            id,
+            label,
+            "#{1,3:0-255}.#{1,3:0-255}.#{1,3:0-255}.#{1,3:0-255}",
+        )
     }
 
     pub fn phone_us(id: impl Into<String>, label: impl Into<String>) -> Self {
-        Self::new(id, label, "#{3} YYYY upamm-#{3}-#{4}")
+        Self::new(id, label, "(#{3}) #{3}-#{4}")
     }
 
     pub fn zip_us(id: impl Into<String>, label: impl Into<String>) -> Self {
@@ -150,7 +158,10 @@ impl SegmentedInput {
     fn date_token(token: &str) -> Option<(SegmentKind, usize, Option<usize>, SegmentRole)> {
         match token {
             "YYYY" => Some((
-                SegmentKind::NumericRange { min: 1900, max: 2100 },
+                SegmentKind::NumericRange {
+                    min: 1900,
+                    max: 2100,
+                },
                 4,
                 Some(4),
                 SegmentRole::Year,
@@ -189,7 +200,10 @@ impl SegmentedInput {
         }
     }
 
-    fn parse_quantifier(chars: &[char], mut idx: usize) -> (usize, Option<usize>, Option<(i64, i64)>, usize) {
+    fn parse_quantifier(
+        chars: &[char],
+        mut idx: usize,
+    ) -> (usize, Option<usize>, Option<(i64, i64)>, usize) {
         if idx >= chars.len() || chars[idx] != '{' {
             return (1, Some(1), None, idx);
         }
@@ -220,7 +234,10 @@ impl SegmentedInput {
 
         let (min_len, max_len) = if len_part.contains(',') {
             let parts: Vec<&str> = len_part.split(',').collect();
-            let min = parts.get(0).and_then(|v| v.parse::<usize>().ok()).unwrap_or(0);
+            let min = parts
+                .get(0)
+                .and_then(|v| v.parse::<usize>().ok())
+                .unwrap_or(0);
             let max = parts.get(1).and_then(|v| v.parse::<usize>().ok());
             (min, max)
         } else {
@@ -232,7 +249,9 @@ impl SegmentedInput {
     }
 
     fn first_segment_pos(tokens: &[SegmentToken]) -> Option<usize> {
-        tokens.iter().position(|t| matches!(t, SegmentToken::Segment { .. }))
+        tokens
+            .iter()
+            .position(|t| matches!(t, SegmentToken::Segment { .. }))
     }
 
     fn next_segment_pos(tokens: &[SegmentToken], from: usize) -> Option<usize> {
@@ -268,8 +287,13 @@ impl SegmentedInput {
         let token_idx = self.cursor_token;
         let cursor_offset = self.cursor_offset;
         let next_segment = Self::next_segment_pos(&self.tokens, token_idx);
-        let Some(SegmentToken::Segment { kind, min_len: _, max_len, value, .. }) =
-            self.tokens.get_mut(token_idx)
+        let Some(SegmentToken::Segment {
+            kind,
+            min_len: _,
+            max_len,
+            value,
+            ..
+        }) = self.tokens.get_mut(token_idx)
         else {
             return false;
         };
@@ -387,8 +411,13 @@ impl SegmentedInput {
     }
 
     fn increment_current(&mut self, delta: i64) -> bool {
-        let Some(SegmentToken::Segment { kind, min_len, max_len: _, value, .. }) =
-            self.tokens.get_mut(self.cursor_token)
+        let Some(SegmentToken::Segment {
+            kind,
+            min_len,
+            max_len: _,
+            value,
+            ..
+        }) = self.tokens.get_mut(self.cursor_token)
         else {
             return false;
         };
@@ -419,7 +448,12 @@ impl SegmentedInput {
         for token in &self.tokens {
             match token {
                 SegmentToken::Literal(ch) => out.push(*ch),
-                SegmentToken::Segment { value, max_len, min_len, .. } => {
+                SegmentToken::Segment {
+                    value,
+                    max_len,
+                    min_len,
+                    ..
+                } => {
                     if value.is_empty() {
                         if let Some(ph) = placeholder {
                             if let Some(max) = max_len {
@@ -458,7 +492,13 @@ impl SegmentedInput {
 
         let ok = self.tokens.iter().all(|token| match token {
             SegmentToken::Literal(_) => true,
-            SegmentToken::Segment { kind, min_len, value, role, .. } => {
+            SegmentToken::Segment {
+                kind,
+                min_len,
+                value,
+                role,
+                ..
+            } => {
                 if value.chars().count() < *min_len {
                     return false;
                 }
@@ -528,7 +568,13 @@ impl SegmentedInput {
     fn segment_display_len(token: &SegmentToken) -> usize {
         match token {
             SegmentToken::Literal(_) => 1,
-            SegmentToken::Segment { value, max_len, min_len, role, .. } => {
+            SegmentToken::Segment {
+                value,
+                max_len,
+                min_len,
+                role,
+                ..
+            } => {
                 if role.is_some() {
                     (*max_len).unwrap_or(value.chars().count().max(1))
                 } else if let Some(max) = max_len {
@@ -550,12 +596,12 @@ impl SegmentedInput {
 }
 
 impl Input for SegmentedInput {
-    fn id(&self) -> &NodeId {
-        &self.base.id
+    fn base(&self) -> &InputBase {
+        &self.base
     }
 
-    fn label(&self) -> &str {
-        &self.base.label
+    fn base_mut(&mut self) -> &mut InputBase {
+        &mut self.base
     }
 
     fn value(&self) -> String {
@@ -579,7 +625,12 @@ impl Input for SegmentedInput {
                     }
                     idx += 1;
                 }
-                SegmentToken::Segment { kind, max_len, value: buf, .. } => {
+                SegmentToken::Segment {
+                    kind,
+                    max_len,
+                    value: buf,
+                    ..
+                } => {
                     buf.clear();
                     let next_literal = next_literals[token_idx];
                     while idx < value.len() {
@@ -621,35 +672,8 @@ impl Input for SegmentedInput {
         self.is_complete_internal()
     }
 
-    fn is_focused(&self) -> bool {
-        self.base.focused
-    }
-
-    fn set_focused(&mut self, focused: bool) {
-        self.base.focused = focused;
-        if !focused {
-            self.base.error = None;
-        }
-    }
-
-    fn error(&self) -> Option<&str> {
-        self.base.error.as_deref()
-    }
-
-    fn set_error(&mut self, error: Option<String>) {
-        self.base.error = error;
-    }
-
     fn cursor_pos(&self) -> usize {
         self.cursor_token
-    }
-
-    fn min_width(&self) -> usize {
-        self.base.min_width
-    }
-
-    fn validators(&self) -> &[Validator] {
-        &self.base.validators
     }
 
     fn handle_key(&mut self, code: KeyCode, _modifiers: KeyModifiers) -> KeyResult {
@@ -702,15 +726,20 @@ impl Input for SegmentedInput {
         }
     }
 
-    fn render_content(&self) -> Vec<Span> {
-        let theme = theme::Theme::default_theme();
+    fn render_content(&self, theme: &crate::theme::Theme) -> Vec<Span> {
         let mut spans = Vec::new();
         for token in &self.tokens {
             match token {
                 SegmentToken::Literal(ch) => {
                     spans.push(Span::new(ch.to_string()));
                 }
-                SegmentToken::Segment { value, max_len, min_len, role, .. } => {
+                SegmentToken::Segment {
+                    value,
+                    max_len,
+                    min_len,
+                    role,
+                    ..
+                } => {
                     if let Some(role) = role {
                         let placeholder = Self::role_placeholder(*role);
                         let max = max_len.unwrap_or(placeholder.chars().count());
@@ -782,11 +811,9 @@ impl Input for SegmentedInput {
 impl SegmentedInput {
     fn next_literal_char(&self, current_token: usize) -> Option<char> {
         let start = current_token + 1;
-        self.tokens[start..]
-            .iter()
-            .find_map(|token| match token {
-                SegmentToken::Literal(ch) => Some(*ch),
-                _ => None,
-            })
+        self.tokens[start..].iter().find_map(|token| match token {
+            SegmentToken::Literal(ch) => Some(*ch),
+            _ => None,
+        })
     }
 }

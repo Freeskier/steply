@@ -1,4 +1,4 @@
-use crate::input::{Input, InputBase, KeyResult, NodeId};
+use crate::inputs::{Input, InputBase, KeyResult};
 use crate::span::Span;
 use crate::terminal::{KeyCode, KeyModifiers};
 use crate::validators::Validator;
@@ -10,11 +10,7 @@ pub struct SelectInput {
 }
 
 impl SelectInput {
-    pub fn new(
-        id: impl Into<String>,
-        label: impl Into<String>,
-        options: Vec<String>,
-    ) -> Self {
+    pub fn new(id: impl Into<String>, label: impl Into<String>, options: Vec<String>) -> Self {
         Self {
             base: InputBase::new(id, label),
             options,
@@ -29,6 +25,11 @@ impl SelectInput {
 
     pub fn with_validator(mut self, validator: Validator) -> Self {
         self.base = self.base.with_validator(validator);
+        self
+    }
+
+    pub fn with_placeholder(mut self, placeholder: impl Into<String>) -> Self {
+        self.base = self.base.with_placeholder(placeholder);
         self
     }
 
@@ -54,12 +55,12 @@ impl SelectInput {
 }
 
 impl Input for SelectInput {
-    fn id(&self) -> &NodeId {
-        &self.base.id
+    fn base(&self) -> &InputBase {
+        &self.base
     }
 
-    fn label(&self) -> &str {
-        &self.base.label
+    fn base_mut(&mut self) -> &mut InputBase {
+        &mut self.base
     }
 
     fn value(&self) -> String {
@@ -80,35 +81,8 @@ impl Input for SelectInput {
         !self.options.is_empty()
     }
 
-    fn is_focused(&self) -> bool {
-        self.base.focused
-    }
-
-    fn set_focused(&mut self, focused: bool) {
-        self.base.focused = focused;
-        if !focused {
-            self.base.error = None;
-        }
-    }
-
-    fn error(&self) -> Option<&str> {
-        self.base.error.as_deref()
-    }
-
-    fn set_error(&mut self, error: Option<String>) {
-        self.base.error = error;
-    }
-
     fn cursor_pos(&self) -> usize {
         0
-    }
-
-    fn min_width(&self) -> usize {
-        self.base.min_width
-    }
-
-    fn validators(&self) -> &[Validator] {
-        &self.base.validators
     }
 
     fn handle_key(&mut self, code: KeyCode, _modifiers: KeyModifiers) -> KeyResult {
@@ -126,10 +100,10 @@ impl Input for SelectInput {
         }
     }
 
-    fn render_content(&self) -> Vec<Span> {
+    fn render_content(&self, _theme: &crate::theme::Theme) -> Vec<Span> {
         let option = self.current_option().unwrap_or("");
         let text = if self.base.focused {
-            format!("<{}>", option)
+            format!("‹{}›", option)
         } else {
             option.to_string()
         };

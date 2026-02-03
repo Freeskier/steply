@@ -118,8 +118,12 @@ impl Renderer {
         let _ = terminal.refresh_size()?;
         let width = terminal.size().width;
         let render_lines = self.build_render_lines(step, view_state, theme);
-        let frame =
-            Layout::new().compose_spans(render_lines.iter().map(|line| line.spans.clone()), width);
+        let (frame, cursor_pos) = Layout::new().compose_spans_with_cursor(
+            render_lines
+                .iter()
+                .map(|line| (line.spans.clone(), line.cursor_offset)),
+            width,
+        );
         let lines = self.decorate_lines(frame.lines(), theme, status, connect_to_next);
         let start = self.ensure_start_row(terminal, lines.len())?;
         terminal.queue_hide_cursor()?;
@@ -128,7 +132,6 @@ impl Renderer {
         self.num_lines = lines.len();
         terminal.flush()?;
 
-        let cursor_pos = self.find_cursor_position(&render_lines);
         if let Some((col, line_idx)) = cursor_pos {
             let col = col + self.decoration_width();
             let cursor_row = start + line_idx as u16;
@@ -138,21 +141,6 @@ impl Renderer {
         terminal.flush()?;
 
         Ok(())
-    }
-
-    fn find_cursor_position(&self, render_lines: &[RenderLine]) -> Option<(usize, usize)> {
-        let mut line_idx = 0;
-
-        for line in render_lines {
-            if let Some(offset) = line.cursor_offset {
-                return Some((offset, line_idx));
-            }
-
-            let newlines = line.spans.iter().filter(|s| s.text() == "\n").count();
-            line_idx += 1 + newlines;
-        }
-
-        None
     }
 
     fn decoration_width(&self) -> usize {
@@ -261,6 +249,19 @@ impl Renderer {
 
     fn ensure_start_row(&mut self, terminal: &mut Terminal, line_count: usize) -> io::Result<u16> {
         if let Some(start) = self.start_row {
+            if line_count > self.num_lines {
+                let extra = line_count - self.num_lines;
+                let end_row = start + self.num_lines as u16;
+                terminal.queue_move_cursor(0, end_row)?;
+                {
+                    let out = terminal.writer_mut();
+                    for _ in 0..extra {
+                        writeln!(out)?;
+                    }
+                }
+                terminal.flush()?;
+                self.num_lines = line_count;
+            }
             return Ok(start);
         }
 

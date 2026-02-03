@@ -225,6 +225,7 @@ fn map_color(color: Color) -> crossterm::style::Color {
         Color::Magenta => crossterm::style::Color::Magenta,
         Color::Cyan => crossterm::style::Color::Cyan,
         Color::White => crossterm::style::Color::White,
+        Color::Rgb(r, g, b) => crossterm::style::Color::Rgb { r, g, b },
     }
 }
 

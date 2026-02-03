@@ -9,6 +9,7 @@ pub enum Color {
     Magenta,
     Cyan,
     White,
+    Rgb(u8, u8, u8),
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]

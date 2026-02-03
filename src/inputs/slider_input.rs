@@ -1,8 +1,7 @@
-use crate::input::{Input, InputBase, KeyResult, NodeId};
+use crate::inputs::{Input, InputBase, KeyResult};
 use crate::span::Span;
 use crate::style::{Color, Style};
 use crate::terminal::{KeyCode, KeyModifiers};
-use crate::theme;
 use crate::validators::Validator;
 
 pub struct SliderInput {
@@ -37,6 +36,11 @@ impl SliderInput {
 
     pub fn with_validator(mut self, validator: Validator) -> Self {
         self.base = self.base.with_validator(validator);
+        self
+    }
+
+    pub fn with_placeholder(mut self, placeholder: impl Into<String>) -> Self {
+        self.base = self.base.with_placeholder(placeholder);
         self
     }
 
@@ -81,12 +85,12 @@ impl SliderInput {
 }
 
 impl Input for SliderInput {
-    fn id(&self) -> &NodeId {
-        &self.base.id
+    fn base(&self) -> &InputBase {
+        &self.base
     }
 
-    fn label(&self) -> &str {
-        &self.base.label
+    fn base_mut(&mut self) -> &mut InputBase {
+        &mut self.base
     }
 
     fn value(&self) -> String {
@@ -108,35 +112,8 @@ impl Input for SliderInput {
         true
     }
 
-    fn is_focused(&self) -> bool {
-        self.base.focused
-    }
-
-    fn set_focused(&mut self, focused: bool) {
-        self.base.focused = focused;
-        if !focused {
-            self.base.error = None;
-        }
-    }
-
-    fn error(&self) -> Option<&str> {
-        self.base.error.as_deref()
-    }
-
-    fn set_error(&mut self, error: Option<String>) {
-        self.base.error = error;
-    }
-
     fn cursor_pos(&self) -> usize {
         0
-    }
-
-    fn min_width(&self) -> usize {
-        self.base.min_width
-    }
-
-    fn validators(&self) -> &[Validator] {
-        &self.base.validators
     }
 
     fn handle_key(&mut self, code: KeyCode, _modifiers: KeyModifiers) -> KeyResult {
@@ -162,8 +139,7 @@ impl Input for SliderInput {
         }
     }
 
-    fn render_content(&self) -> Vec<Span> {
-        let theme = theme::Theme::default_theme();
+    fn render_content(&self, theme: &crate::theme::Theme) -> Vec<Span> {
         let value = self.value.to_string();
         let pos = self.slider_position();
         let left = '‹';

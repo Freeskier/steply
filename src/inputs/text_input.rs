@@ -1,4 +1,4 @@
-use crate::input::{Input, InputBase, InputCaps, KeyResult, NodeId};
+use crate::inputs::{Input, InputBase, InputCaps, KeyResult};
 use crate::span::Span;
 use crate::terminal::{KeyCode, KeyModifiers};
 use crate::validators::Validator;
@@ -27,6 +27,19 @@ impl TextInput {
     pub fn with_validator(mut self, validator: Validator) -> Self {
         self.base = self.base.with_validator(validator);
         self
+    }
+
+    pub fn with_placeholder(mut self, placeholder: impl Into<String>) -> Self {
+        self.base = self.base.with_placeholder(placeholder);
+        self
+    }
+
+    pub(crate) fn base_ref(&self) -> &InputBase {
+        &self.base
+    }
+
+    pub(crate) fn base_mut_ref(&mut self) -> &mut InputBase {
+        &mut self.base
     }
 
     fn handle_char(&mut self, ch: char) {
@@ -163,12 +176,12 @@ impl TextInput {
 }
 
 impl Input for TextInput {
-    fn id(&self) -> &NodeId {
-        &self.base.id
+    fn base(&self) -> &InputBase {
+        &self.base
     }
 
-    fn label(&self) -> &str {
-        &self.base.label
+    fn base_mut(&mut self) -> &mut InputBase {
+        &mut self.base
     }
 
     fn value(&self) -> String {
@@ -188,35 +201,8 @@ impl Input for TextInput {
         true
     }
 
-    fn is_focused(&self) -> bool {
-        self.base.focused
-    }
-
-    fn set_focused(&mut self, focused: bool) {
-        self.base.focused = focused;
-        if !focused {
-            self.base.error = None;
-        }
-    }
-
-    fn error(&self) -> Option<&str> {
-        self.base.error.as_deref()
-    }
-
-    fn set_error(&mut self, error: Option<String>) {
-        self.base.error = error;
-    }
-
     fn cursor_pos(&self) -> usize {
         self.cursor_pos
-    }
-
-    fn min_width(&self) -> usize {
-        self.base.min_width
-    }
-
-    fn validators(&self) -> &[Validator] {
-        &self.base.validators
     }
 
     fn capabilities(&self) -> InputCaps {
@@ -280,7 +266,7 @@ impl Input for TextInput {
         }
     }
 
-    fn render_content(&self) -> Vec<Span> {
+    fn render_content(&self, _theme: &crate::theme::Theme) -> Vec<Span> {
         vec![Span::new(&self.value)]
     }
 

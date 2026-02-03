@@ -1,4 +1,4 @@
-use crate::input::{Input, InputCaps, KeyResult, NodeId};
+use crate::inputs::{Input, InputBase, InputCaps, KeyResult};
 use crate::span::Span;
 use crate::terminal::{KeyCode, KeyModifiers};
 use crate::text_input::TextInput;
@@ -39,18 +39,23 @@ impl PasswordInput {
         self
     }
 
+    pub fn with_placeholder(mut self, placeholder: impl Into<String>) -> Self {
+        self.inner = self.inner.with_placeholder(placeholder);
+        self
+    }
+
     fn raw_len(&self) -> usize {
         self.inner.raw_value().chars().count()
     }
 }
 
 impl Input for PasswordInput {
-    fn id(&self) -> &NodeId {
-        self.inner.id()
+    fn base(&self) -> &InputBase {
+        self.inner.base_ref()
     }
 
-    fn label(&self) -> &str {
-        self.inner.label()
+    fn base_mut(&mut self) -> &mut InputBase {
+        self.inner.base_mut_ref()
     }
 
     fn value(&self) -> String {
@@ -65,36 +70,8 @@ impl Input for PasswordInput {
         self.inner.raw_value()
     }
 
-    fn is_complete(&self) -> bool {
-        self.inner.is_complete()
-    }
-
-    fn is_focused(&self) -> bool {
-        self.inner.is_focused()
-    }
-
-    fn set_focused(&mut self, focused: bool) {
-        self.inner.set_focused(focused);
-    }
-
-    fn error(&self) -> Option<&str> {
-        self.inner.error()
-    }
-
-    fn set_error(&mut self, error: Option<String>) {
-        self.inner.set_error(error);
-    }
-
     fn cursor_pos(&self) -> usize {
         self.inner.cursor_pos()
-    }
-
-    fn min_width(&self) -> usize {
-        self.inner.min_width()
-    }
-
-    fn validators(&self) -> &[Validator] {
-        self.inner.validators()
     }
 
     fn capabilities(&self) -> InputCaps {
@@ -105,7 +82,7 @@ impl Input for PasswordInput {
         self.inner.handle_key(code, modifiers)
     }
 
-    fn render_content(&self) -> Vec<Span> {
+    fn render_content(&self, _theme: &crate::theme::Theme) -> Vec<Span> {
         let text = match self.render_mode {
             PasswordRender::Stars => "*".repeat(self.raw_len()),
             PasswordRender::Hidden => " ".repeat(self.raw_len()),

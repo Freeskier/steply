@@ -1,0 +1,366 @@
+use crate::inputs::{Input, InputBase, InputCaps, KeyResult};
+use crate::span::Span;
+use crate::style::Style;
+use crate::terminal::{KeyCode, KeyModifiers};
+use crate::validators::Validator;
+use unicode_width::UnicodeWidthStr;
+
+pub struct ArrayInput {
+    base: InputBase,
+    items: Vec<String>,
+    active: usize,
+    cursor: usize,
+}
+
+impl ArrayInput {
+    pub fn new(id: impl Into<String>, label: impl Into<String>) -> Self {
+        Self {
+            base: InputBase::new(id, label),
+            items: vec![String::new()],
+            active: 0,
+            cursor: 0,
+        }
+    }
+
+    pub fn with_min_width(mut self, width: usize) -> Self {
+        self.base = self.base.with_min_width(width);
+        self
+    }
+
+    pub fn with_validator(mut self, validator: Validator) -> Self {
+        self.base = self.base.with_validator(validator);
+        self
+    }
+
+    pub fn with_placeholder(mut self, placeholder: impl Into<String>) -> Self {
+        self.base = self.base.with_placeholder(placeholder);
+        self
+    }
+
+    pub fn with_items(mut self, items: Vec<String>) -> Self {
+        let cleaned: Vec<String> = items
+            .into_iter()
+            .map(|item| item.trim().to_string())
+            .filter(|item| !item.is_empty())
+            .collect();
+        if cleaned.is_empty() {
+            self.items = vec![String::new()];
+            self.active = 0;
+            self.cursor = 0;
+        } else {
+            self.items = cleaned;
+            self.active = 0;
+            self.cursor = self.items[0].chars().count();
+        }
+        self
+    }
+
+    fn active_item(&self) -> &str {
+        self.items
+            .get(self.active)
+            .map(String::as_str)
+            .unwrap_or("")
+    }
+
+    fn active_item_mut(&mut self) -> &mut String {
+        if self.items.is_empty() {
+            self.items.push(String::new());
+            self.active = 0;
+        }
+        self.items.get_mut(self.active).unwrap()
+    }
+
+    fn normalize_items(&mut self) {
+        for item in &mut self.items {
+            *item = item.trim().to_string();
+        }
+
+        if self.items.is_empty() {
+            self.items.push(String::new());
+            self.active = 0;
+            self.cursor = 0;
+        } else if self.active >= self.items.len() {
+            self.active = self.items.len() - 1;
+            self.cursor = self.items[self.active].chars().count();
+        }
+    }
+
+    fn split_active(&mut self) {
+        let current = self.active_item().to_string();
+        let cursor = self.cursor.min(current.chars().count());
+        let mut left = String::new();
+        let mut right = String::new();
+        for (idx, ch) in current.chars().enumerate() {
+            if idx < cursor {
+                left.push(ch);
+            } else {
+                right.push(ch);
+            }
+        }
+        left = left.trim().to_string();
+        right = right.trim().to_string();
+
+        if left.is_empty() && right.is_empty() {
+            self.active_item_mut().clear();
+        } else {
+            self.active_item_mut().clear();
+            self.active_item_mut().push_str(&left);
+        }
+
+        let insert_at = self.active + 1;
+        self.items.insert(insert_at, right);
+        self.active = insert_at;
+        self.cursor = self.items[self.active].chars().count();
+        self.normalize_items();
+    }
+
+    fn insert_char(&mut self, ch: char) {
+        let idx = self.active;
+        let cursor = self.cursor;
+        if let Some(item) = self.items.get_mut(idx) {
+            let mut buf: Vec<char> = item.chars().collect();
+            let pos = cursor.min(buf.len());
+            buf.insert(pos, ch);
+            *item = buf.into_iter().collect();
+            self.cursor = pos + 1;
+        }
+    }
+
+    fn backspace(&mut self) -> bool {
+        let idx = self.active;
+        let cursor = self.cursor;
+        if let Some(item) = self.items.get_mut(idx) {
+            if cursor > 0 {
+                let mut buf: Vec<char> = item.chars().collect();
+                let pos = cursor.min(buf.len());
+                if pos > 0 {
+                    buf.remove(pos - 1);
+                    *item = buf.into_iter().collect();
+                    self.cursor = pos - 1;
+                    return true;
+                }
+            }
+        }
+
+        if idx > 0 {
+            let prev = idx - 1;
+            let current = self.items.remove(idx);
+            self.active = prev;
+            let prev_len = self.items[prev].chars().count();
+            self.cursor = prev_len;
+            if !current.trim().is_empty() {
+                if let Some(item) = self.items.get_mut(prev) {
+                    item.push_str(&current);
+                    self.cursor = item.chars().count();
+                }
+            }
+            return true;
+        }
+
+        false
+    }
+
+    fn delete_forward(&mut self) -> bool {
+        let idx = self.active;
+        let cursor = self.cursor;
+        if let Some(item) = self.items.get_mut(idx) {
+            let mut buf: Vec<char> = item.chars().collect();
+            let pos = cursor.min(buf.len());
+            if pos < buf.len() {
+                buf.remove(pos);
+                *item = buf.into_iter().collect();
+                return true;
+            }
+        }
+
+        if idx + 1 < self.items.len() {
+            let next = self.items.remove(idx + 1);
+            if !next.trim().is_empty() {
+                if let Some(item) = self.items.get_mut(idx) {
+                    item.push_str(&next);
+                }
+            }
+            return true;
+        }
+
+        false
+    }
+
+    fn move_left(&mut self) {
+        if self.cursor > 0 {
+            self.cursor -= 1;
+            return;
+        }
+        if self.active > 0 {
+            self.active -= 1;
+            self.cursor = self.items[self.active].chars().count();
+        }
+    }
+
+    fn move_right(&mut self) {
+        let len = self.active_item().chars().count();
+        if self.cursor < len {
+            self.cursor += 1;
+            return;
+        }
+        if self.active + 1 < self.items.len() {
+            self.active += 1;
+            self.cursor = 0;
+        }
+    }
+
+    fn build_spans(&self, theme: &crate::theme::Theme) -> (Vec<Span>, usize) {
+        let mut spans = Vec::new();
+        let mut offset = 0usize;
+        let mut cursor_offset = 0usize;
+        let underline = Style::new().with_underline();
+
+        let show_brackets = self.base.focused;
+        for (idx, item) in self.items.iter().enumerate() {
+            if idx > 0 {
+                spans.push(Span::new(", "));
+                offset += 2;
+            }
+
+            let is_active = idx == self.active;
+            if is_active && show_brackets {
+                spans.push(Span::new("["));
+                offset += 1;
+            }
+
+            let mut content = item.clone();
+            if content.is_empty() {
+                content = " ".to_string();
+            }
+
+            let mut span = Span::new(content.clone()).with_style(underline.clone());
+            if is_active && self.base.focused {
+                span = span.with_style(underline.clone().merge(&theme.focused));
+            }
+            spans.push(span);
+
+            if is_active && self.base.focused {
+                cursor_offset = offset + self.cursor.min(content.chars().count());
+            }
+
+            offset += content.width();
+            if is_active && show_brackets {
+                spans.push(Span::new("]"));
+                offset += 1;
+            }
+        }
+
+        (spans, cursor_offset)
+    }
+}
+
+impl Input for ArrayInput {
+    fn base(&self) -> &InputBase {
+        &self.base
+    }
+
+    fn base_mut(&mut self) -> &mut InputBase {
+        &mut self.base
+    }
+
+    fn value(&self) -> String {
+        self.items
+            .iter()
+            .map(|item| item.trim())
+            .filter(|item| !item.is_empty())
+            .collect::<Vec<_>>()
+            .join(",")
+    }
+
+    fn set_value(&mut self, value: String) {
+        let parts: Vec<String> = value
+            .split(',')
+            .map(|part| part.trim().to_string())
+            .filter(|part| !part.is_empty())
+            .collect();
+        if parts.is_empty() {
+            self.items = vec![String::new()];
+            self.active = 0;
+            self.cursor = 0;
+        } else {
+            self.items = parts;
+            self.active = 0;
+            self.cursor = self.items[0].chars().count();
+        }
+    }
+
+    fn raw_value(&self) -> String {
+        self.value()
+    }
+
+    fn is_complete(&self) -> bool {
+        true
+    }
+
+    fn cursor_pos(&self) -> usize {
+        self.active
+    }
+
+    fn render_brackets(&self) -> bool {
+        false
+    }
+
+    fn capabilities(&self) -> InputCaps {
+        InputCaps {
+            capture_ctrl_left: true,
+            capture_ctrl_right: true,
+            ..InputCaps::default()
+        }
+    }
+
+    fn handle_key(&mut self, code: KeyCode, _modifiers: KeyModifiers) -> KeyResult {
+        match code {
+            KeyCode::Char(',') => {
+                self.split_active();
+                KeyResult::Handled
+            }
+            KeyCode::Backspace => {
+                if self.backspace() {
+                    KeyResult::Handled
+                } else {
+                    KeyResult::NotHandled
+                }
+            }
+            KeyCode::Delete => {
+                if self.delete_forward() {
+                    KeyResult::Handled
+                } else {
+                    KeyResult::NotHandled
+                }
+            }
+            KeyCode::Left => {
+                self.move_left();
+                KeyResult::Handled
+            }
+            KeyCode::Right => {
+                self.move_right();
+                KeyResult::Handled
+            }
+            KeyCode::Char(ch) => {
+                if ch.is_control() {
+                    KeyResult::NotHandled
+                } else {
+                    self.insert_char(ch);
+                    KeyResult::Handled
+                }
+            }
+            KeyCode::Enter => KeyResult::Submit,
+            _ => KeyResult::NotHandled,
+        }
+    }
+
+    fn render_content(&self, theme: &crate::theme::Theme) -> Vec<Span> {
+        let (spans, _) = self.build_spans(theme);
+        spans
+    }
+
+    fn cursor_offset_in_content(&self) -> usize {
+        let (_, offset) = self.build_spans(&crate::theme::Theme::default_theme());
+        offset
+    }
+}

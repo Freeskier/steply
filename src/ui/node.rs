@@ -1,4 +1,4 @@
-use crate::input::Input;
+use crate::inputs::Input;
 use crate::span::Span;
 use crate::theme::Theme;
 use unicode_width::UnicodeWidthStr;
@@ -71,7 +71,7 @@ impl Node {
 
         let content_spans = Self::content_spans(input, inline_error_message, theme);
         let content_width: usize = content_spans.iter().map(|s| s.text().width()).sum();
-        let use_brackets = always_brackets || input.is_focused();
+        let use_brackets = input.render_brackets() && (always_brackets || input.is_focused());
 
         if use_brackets {
             spans.push(Span::new("["));
@@ -103,7 +103,15 @@ impl Node {
             }
         }
 
-        let mut spans = input.render_content();
+        let mut spans = input.render_content(theme);
+        if input.error().is_none() && input.value().is_empty() {
+            let is_empty = spans.iter().all(|span| span.text().is_empty());
+            if is_empty {
+                if let Some(placeholder) = input.placeholder() {
+                    spans = vec![Span::new(placeholder).with_style(theme.placeholder.clone())];
+                }
+            }
+        }
         if input.error().is_some() {
             spans = spans
                 .into_iter()
@@ -120,7 +128,7 @@ impl Node {
         match self {
             Node::Input(input) if input.is_focused() => {
                 let label_len = input.label().width() + 2;
-                let bracket_len = 1;
+                let bracket_len = if input.render_brackets() { 1 } else { 0 };
                 let content_offset = input.cursor_offset_in_content();
                 Some(label_len + bracket_len + content_offset)
             }
@@ -131,7 +139,7 @@ impl Node {
     pub fn cursor_offset_in_field(&self) -> Option<usize> {
         match self {
             Node::Input(input) if input.is_focused() => {
-                let bracket_len = 1;
+                let bracket_len = if input.render_brackets() { 1 } else { 0 };
                 let content_offset = input.cursor_offset_in_content();
                 Some(bracket_len + content_offset)
             }

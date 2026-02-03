@@ -1,5 +1,6 @@
 use crate::span::Span;
 use crate::terminal::{KeyCode, KeyModifiers};
+use crate::theme::Theme;
 use crate::validators::Validator;
 
 pub type NodeId = String;
@@ -42,8 +43,17 @@ impl InputCaps {
 }
 
 pub trait Input: Send {
-    fn id(&self) -> &NodeId;
-    fn label(&self) -> &str;
+    fn base(&self) -> &InputBase;
+    fn base_mut(&mut self) -> &mut InputBase;
+
+    fn id(&self) -> &NodeId {
+        &self.base().id
+    }
+
+    fn label(&self) -> &str {
+        &self.base().label
+    }
+
     fn value(&self) -> String;
     fn set_value(&mut self, value: String);
     fn raw_value(&self) -> String {
@@ -56,16 +66,42 @@ pub trait Input: Send {
         InputCaps::default()
     }
 
-    fn is_focused(&self) -> bool;
-    fn set_focused(&mut self, focused: bool);
+    fn is_focused(&self) -> bool {
+        self.base().focused
+    }
 
-    fn error(&self) -> Option<&str>;
-    fn set_error(&mut self, error: Option<String>);
+    fn set_focused(&mut self, focused: bool) {
+        let base = self.base_mut();
+        base.focused = focused;
+        if !focused {
+            base.error = None;
+        }
+    }
+
+    fn error(&self) -> Option<&str> {
+        self.base().error.as_deref()
+    }
+
+    fn set_error(&mut self, error: Option<String>) {
+        self.base_mut().error = error;
+    }
 
     fn cursor_pos(&self) -> usize;
-    fn min_width(&self) -> usize;
+    fn min_width(&self) -> usize {
+        self.base().min_width
+    }
 
-    fn validators(&self) -> &[Validator];
+    fn validators(&self) -> &[Validator] {
+        &self.base().validators
+    }
+
+    fn render_brackets(&self) -> bool {
+        true
+    }
+
+    fn placeholder(&self) -> Option<&str> {
+        self.base().placeholder.as_deref()
+    }
 
     fn validate(&self) -> Result<(), String> {
         for validator in self.validators() {
@@ -80,7 +116,7 @@ pub trait Input: Send {
 
     fn handle_key(&mut self, code: KeyCode, modifiers: KeyModifiers) -> KeyResult;
 
-    fn render_content(&self) -> Vec<Span>;
+    fn render_content(&self, theme: &Theme) -> Vec<Span>;
 
     fn cursor_offset_in_content(&self) -> usize;
 
@@ -95,6 +131,7 @@ pub struct InputBase {
     pub error: Option<String>,
     pub validators: Vec<Validator>,
     pub min_width: usize,
+    pub placeholder: Option<String>,
 }
 
 impl InputBase {
@@ -106,6 +143,7 @@ impl InputBase {
             error: None,
             validators: Vec::new(),
             min_width: 1,
+            placeholder: None,
         }
     }
 
@@ -116,6 +154,11 @@ impl InputBase {
 
     pub fn with_validator(mut self, validator: Validator) -> Self {
         self.validators.push(validator);
+        self
+    }
+
+    pub fn with_placeholder(mut self, placeholder: impl Into<String>) -> Self {
+        self.placeholder = Some(placeholder.into());
         self
     }
 }

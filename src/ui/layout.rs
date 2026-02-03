@@ -1,5 +1,4 @@
 use crate::frame::Frame;
-use crate::node::{Node, RenderMode};
 use crate::span::{Span, Wrap};
 
 #[derive(Clone, Debug, Default)]
@@ -17,40 +16,32 @@ impl Layout {
         self
     }
 
-    pub fn compose(&self, nodes: &[Node], width: u16) -> Frame {
-        self.compose_with(nodes, width, |node| {
-            node.render(
-                RenderMode::Full,
-                false,
-                &crate::theme::Theme::default_theme(),
-            )
-        })
-    }
-
-    pub fn compose_with<F>(&self, nodes: &[Node], width: u16, render: F) -> Frame
+    pub fn compose_spans_with_cursor<I>(
+        &self,
+        spans_list: I,
+        width: u16,
+    ) -> (Frame, Option<(usize, usize)>)
     where
-        F: Fn(&Node) -> Vec<Span>,
+        I: IntoIterator<Item = (Vec<Span>, Option<usize>)>,
     {
         let mut ctx = LayoutContext::new(width as usize, self.margin);
+        let mut cursor: Option<(usize, usize)> = None;
+        let mut line_idx = 0usize;
 
-        for node in nodes {
-            ctx.place_spans(render(node));
-        }
+        for (spans, cursor_offset) in spans_list {
+            if let Some(offset) = cursor_offset {
+                if cursor.is_none() {
+                    let (row_offset, col) =
+                        cursor_position_in_spans(&spans, width as usize, offset);
+                    cursor = Some((col, line_idx + row_offset));
+                }
+            }
 
-        ctx.finish()
-    }
-
-    pub fn compose_spans<I>(&self, spans_list: I, width: u16) -> Frame
-    where
-        I: IntoIterator<Item = Vec<Span>>,
-    {
-        let mut ctx = LayoutContext::new(width as usize, self.margin);
-
-        for spans in spans_list {
+            line_idx += wrapped_line_count(&spans, width as usize);
             ctx.place_spans(spans);
         }
 
-        ctx.finish()
+        (ctx.finish(), cursor)
     }
 }
 
@@ -153,4 +144,140 @@ impl LayoutContext {
         self.frame.trim_trailing_empty();
         self.frame
     }
+}
+
+fn wrapped_line_count(spans: &[Span], width: usize) -> usize {
+    if width == 0 {
+        return 1;
+    }
+
+    let mut lines = 1usize;
+    let mut current_width = 0usize;
+
+    for span in spans {
+        if span.text() == "\n" {
+            lines += 1;
+            current_width = 0;
+            continue;
+        }
+
+        let span_width = span.width();
+        if span_width == 0 {
+            continue;
+        }
+
+        match span.wrap() {
+            Wrap::No => {
+                let available = width.saturating_sub(current_width);
+                if current_width > 0 && span_width > available {
+                    lines += 1;
+                    current_width = 0;
+                }
+                let head_width = span_width.min(width);
+                current_width += head_width;
+            }
+            Wrap::Yes => {
+                let mut remaining = span_width;
+                while remaining > 0 {
+                    if current_width >= width {
+                        lines += 1;
+                        current_width = 0;
+                    }
+                    let available = width - current_width;
+                    if remaining <= available {
+                        current_width += remaining;
+                        remaining = 0;
+                    } else {
+                        remaining -= available;
+                        lines += 1;
+                        current_width = 0;
+                    }
+                }
+            }
+        }
+    }
+
+    lines.max(1)
+}
+
+fn cursor_position_in_spans(spans: &[Span], width: usize, cursor_offset: usize) -> (usize, usize) {
+    if width == 0 {
+        return (0, 0);
+    }
+
+    let mut row = 0usize;
+    let mut current_width = 0usize;
+    let mut remaining = cursor_offset;
+
+    for span in spans {
+        if remaining == 0 {
+            return (row, current_width);
+        }
+
+        if span.text() == "\n" {
+            row += 1;
+            current_width = 0;
+            continue;
+        }
+
+        let span_width = span.width();
+        if span_width == 0 {
+            continue;
+        }
+
+        match span.wrap() {
+            Wrap::No => {
+                let available = width.saturating_sub(current_width);
+                if current_width > 0 && span_width > available {
+                    row += 1;
+                    current_width = 0;
+                }
+
+                let head_width = span_width.min(width);
+                if remaining <= head_width {
+                    return (row, current_width + remaining);
+                }
+                remaining -= head_width;
+                current_width += head_width;
+            }
+            Wrap::Yes => {
+                let mut part = span.clone();
+                loop {
+                    if current_width >= width {
+                        row += 1;
+                        current_width = 0;
+                    }
+                    let available = width - current_width;
+                    if part.width() <= available {
+                        let part_width = part.width();
+                        if remaining <= part_width {
+                            return (row, current_width + remaining);
+                        }
+                        remaining -= part_width;
+                        current_width += part_width;
+                        break;
+                    }
+
+                    let (head, tail) = part.split_at_width(available);
+                    let head_width = head.width();
+                    if head_width > 0 {
+                        if remaining <= head_width {
+                            return (row, current_width + remaining);
+                        }
+                        remaining -= head_width;
+                    }
+                    row += 1;
+                    current_width = 0;
+
+                    if let Some(rest) = tail {
+                        part = rest;
+                    } else {
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    (row, current_width)
 }

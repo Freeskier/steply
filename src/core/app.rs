@@ -1,4 +1,8 @@
 use crate::action_bindings::ActionBindings;
+use crate::array_input::ArrayInput;
+use crate::checkbox_input::CheckboxInput;
+use crate::choice_input::ChoiceInput;
+use crate::color_input::ColorInput;
 use crate::event::Action;
 use crate::event_queue::{AppEvent, EventQueue};
 use crate::flow::Flow;
@@ -164,13 +168,22 @@ fn build_step() -> Step {
                     .with_validator(validators::required())
                     .with_validator(validators::email()),
             ),
+            Node::input(ColorInput::new("accent_color", "Accent Color").with_rgb(64, 120, 200)),
+            Node::input(CheckboxInput::new("tos", "Accept Terms").with_checked(true)),
             Node::input(
-                SelectInput::new(
-                    "color",
-                    "Color",
-                    vec!["Red".to_string(), "Green".to_string(), "Blue".to_string()],
+                ChoiceInput::new(
+                    "plan",
+                    "Plan",
+                    vec!["Free".to_string(), "Pro".to_string(), "Team".to_string()],
                 )
-            )
+                .with_bullets(true),
+            ),
+            Node::input(ArrayInput::new("tags", "Tags")),
+            Node::input(SelectInput::new(
+                "color",
+                "Color",
+                vec!["Red".to_string(), "Green".to_string(), "Blue".to_string()],
+            )),
         ],
         form_validators: Vec::new(),
     }
@@ -180,13 +193,11 @@ fn build_step_two() -> Step {
     Step {
         prompt: "Almost there:".to_string(),
         hint: None,
-        nodes: vec![
-            Node::input(
-                TextInput::new("password", "Password")
-                    .with_validator(validators::required())
-                    .with_validator(validators::min_length(8)),
-            ),
-        ],
+        nodes: vec![Node::input(
+            TextInput::new("password", "Password")
+                .with_validator(validators::required())
+                .with_validator(validators::min_length(8)),
+        )],
         form_validators: Vec::new(),
     }
 }
@@ -202,19 +213,19 @@ fn build_step_three() -> Step {
                     .with_validator(validators::required())
                     .with_validator(validators::min_length(8)),
             ),
-            Node::input(
-                SliderInput::new("email", "Email", 1, 20)
-
-            ),
+            Node::input(SliderInput::new("email", "Email", 1, 20)),
             Node::input(SegmentedInput::ipv4("ip_address", "IP Address")),
             Node::input(SegmentedInput::phone_us("phone", "Phone")),
             Node::input(SegmentedInput::number("num", "num")),
-            Node::input(SegmentedInput::date_dd_mm_yyyy("birthdate_masked", "Birth Date")),
+            Node::input(SegmentedInput::date_dd_mm_yyyy(
+                "birthdate_masked",
+                "Birth Date",
+            )),
         ],
         form_validators: Vec::new(),
     }
 }
 
 fn build_steps() -> Vec<Step> {
-    vec![build_step_three()]
+    vec![build_step(), build_step_two(), build_step_three()]
 }

@@ -19,6 +19,8 @@ pub struct Renderer {
     start_row: Option<u16>,
     num_lines: usize,
     decoration_enabled: bool,
+    title: Option<String>,
+    title_rendered: bool,
 }
 
 impl Renderer {
@@ -27,6 +29,8 @@ impl Renderer {
             start_row: None,
             num_lines: 0,
             decoration_enabled: false,
+            title: None,
+            title_rendered: false,
         }
     }
 
@@ -37,6 +41,59 @@ impl Renderer {
 
     pub fn set_decoration_enabled(&mut self, enabled: bool) {
         self.decoration_enabled = enabled;
+    }
+
+    pub fn set_title(&mut self, title: impl Into<String>) {
+        self.title = Some(title.into());
+    }
+
+    pub fn render_title_once(&mut self, terminal: &mut Terminal, theme: &Theme) -> io::Result<()> {
+        if self.title_rendered || !self.decoration_enabled {
+            return Ok(());
+        }
+        let Some(title) = &self.title else {
+            return Ok(());
+        };
+
+        terminal.refresh_cursor_position()?;
+        let mut pos = terminal.cursor_position();
+
+        terminal.queue_move_cursor(0, pos.y)?;
+        terminal.queue_clear_line()?;
+        let empty = Line::new();
+        terminal.render_line(&empty)?;
+        writeln!(terminal.writer_mut())?;
+        terminal.refresh_cursor_position()?;
+        pos = terminal.cursor_position();
+
+        let mut title_line = Line::new();
+        title_line.push(
+            Span::new("┌  ")
+                .with_style(theme.decor_done.clone())
+                .with_wrap(Wrap::No),
+        );
+        title_line.push(Span::new(title.clone()).with_style(theme.prompt.clone()));
+        terminal.queue_move_cursor(0, pos.y)?;
+        terminal.queue_clear_line()?;
+        terminal.render_line(&title_line)?;
+        writeln!(terminal.writer_mut())?;
+        terminal.refresh_cursor_position()?;
+        pos = terminal.cursor_position();
+
+        let mut connector_line = Line::new();
+        connector_line.push(
+            Span::new("│  ")
+                .with_style(theme.decor_done.clone())
+                .with_wrap(Wrap::No),
+        );
+        terminal.queue_move_cursor(0, pos.y)?;
+        terminal.queue_clear_line()?;
+        terminal.render_line(&connector_line)?;
+        writeln!(terminal.writer_mut())?;
+
+        terminal.flush()?;
+        self.title_rendered = true;
+        Ok(())
     }
 
     pub fn render(
@@ -114,13 +171,13 @@ impl Renderer {
         }
 
         let (status_glyph, status_style) = match status {
-            StepStatus::Active => ("○", theme.decor_active.clone()),
-            StepStatus::Done => ("●", theme.decor_done.clone()),
-            StepStatus::Cancelled => ("■", theme.decor_cancelled.clone()),
-            StepStatus::Pending => ("○", theme.decor_done.clone()),
+            StepStatus::Active => ("◇", theme.decor_active.clone()),
+            StepStatus::Done => ("◈", theme.decor_done.clone()),
+            StepStatus::Cancelled => ("◆", theme.decor_cancelled.clone()),
+            StepStatus::Pending => ("◇", theme.decor_done.clone()),
         };
 
-        let decorated: Vec<Line> = lines
+        let mut decorated: Vec<Line> = lines
             .iter()
             .enumerate()
             .map(|(idx, line)| {
@@ -128,7 +185,7 @@ impl Renderer {
                 let prefix = if idx == 0 {
                     format!("{}  ", status_glyph)
                 } else if is_last && !connect_to_next {
-                    "└  ".to_string()
+                    "│  ".to_string()
                 } else {
                     "│  ".to_string()
                 };
@@ -144,6 +201,16 @@ impl Renderer {
                 new_line
             })
             .collect();
+
+        if !connect_to_next {
+            let mut corner_line = Line::new();
+            corner_line.push(
+                Span::new("└  ")
+                    .with_style(status_style.clone())
+                    .with_wrap(Wrap::No),
+            );
+            decorated.push(corner_line);
+        }
 
         decorated
     }

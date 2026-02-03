@@ -286,6 +286,23 @@ impl DateTimeInput {
             false
         }
     }
+
+    fn is_leap_year(year: u32) -> bool {
+        (year % 4 == 0 && year % 100 != 0) || (year % 400 == 0)
+    }
+
+    fn days_in_month(year: Option<u32>, month: u32) -> u32 {
+        match month {
+            1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
+            4 | 6 | 9 | 11 => 30,
+            2 => match year {
+                Some(y) if Self::is_leap_year(y) => 29,
+                Some(_) => 28,
+                None => 29,
+            },
+            _ => 0,
+        }
+    }
 }
 
 impl Input for DateTimeInput {
@@ -394,6 +411,9 @@ impl Input for DateTimeInput {
             KeyCode::Char(ch) if ch.is_ascii_digit() => {
                 if let Some(segment) = self.segments.get_mut(self.focused_segment) {
                     segment.insert_digit(ch);
+                    if segment.is_complete() {
+                        self.move_next();
+                    }
                     KeyResult::Handled
                 } else {
                     KeyResult::NotHandled
@@ -445,6 +465,49 @@ impl Input for DateTimeInput {
             }
             _ => KeyResult::NotHandled,
         }
+    }
+
+    fn validate_internal(&self) -> Result<(), String> {
+        let mut year: Option<u32> = None;
+        let mut month: Option<u32> = None;
+        let mut day: Option<u32> = None;
+
+        for segment in &self.segments {
+            let value = segment.numeric_value();
+            match segment.segment_type {
+                SegmentType::Year => year = Some(value),
+                SegmentType::Month => month = Some(value),
+                SegmentType::Day => day = Some(value),
+                _ => {}
+            }
+        }
+
+        if let Some(m) = month {
+            if m < SegmentType::Month.min_value() || m > SegmentType::Month.max_value() {
+                return Err("Invalid month".to_string());
+            }
+        }
+
+        if let Some(d) = day {
+            if d < SegmentType::Day.min_value() {
+                return Err("Invalid day".to_string());
+            }
+        }
+
+        if let (Some(m), Some(d)) = (month, day) {
+            let max_day = Self::days_in_month(year, m);
+            if max_day == 0 || d > max_day {
+                return Err("Invalid day for month".to_string());
+            }
+        }
+
+        if let Some(y) = year {
+            if y < SegmentType::Year.min_value() || y > SegmentType::Year.max_value() {
+                return Err("Invalid year".to_string());
+            }
+        }
+
+        Ok(())
     }
 
     fn render_content(&self) -> Vec<Span> {

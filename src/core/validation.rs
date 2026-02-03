@@ -47,6 +47,7 @@ pub fn validate_input(input: &dyn Input) -> Result<(), String> {
     if !input.is_complete() {
         return Err("Incomplete value".to_string());
     }
+    input.validate_internal()?;
     run_validators(input, &raw)
 }
 

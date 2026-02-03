@@ -17,6 +17,8 @@ pub struct InputCaps {
     pub capture_backtab: bool,
     pub capture_ctrl_backspace: bool,
     pub capture_ctrl_delete: bool,
+    pub capture_ctrl_left: bool,
+    pub capture_ctrl_right: bool,
 }
 
 impl InputCaps {
@@ -29,6 +31,10 @@ impl InputCaps {
             }
             (KeyCode::Delete, mods) if mods.contains(KeyModifiers::CONTROL) => {
                 self.capture_ctrl_delete
+            }
+            (KeyCode::Left, mods) if mods.contains(KeyModifiers::CONTROL) => self.capture_ctrl_left,
+            (KeyCode::Right, mods) if mods.contains(KeyModifiers::CONTROL) => {
+                self.capture_ctrl_right
             }
             _ => false,
         }
@@ -65,6 +71,10 @@ pub trait Input: Send {
         for validator in self.validators() {
             validator(&self.value())?;
         }
+        Ok(())
+    }
+
+    fn validate_internal(&self) -> Result<(), String> {
         Ok(())
     }
 

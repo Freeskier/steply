@@ -18,6 +18,7 @@ use std::time::{Duration, Instant};
 
 const ERROR_TIMEOUT: Duration = Duration::from_secs(2);
 const ENABLE_DECORATION: bool = true;
+const APP_TITLE: &str = "Steply main";
 
 pub struct App {
     pub state: AppState,
@@ -41,6 +42,7 @@ impl App {
         };
 
         app.renderer.set_decoration_enabled(ENABLE_DECORATION);
+        app.renderer.set_title(APP_TITLE);
         app
     }
 
@@ -58,6 +60,8 @@ impl App {
     }
 
     pub fn render(&mut self, terminal: &mut Terminal) -> io::Result<()> {
+        self.renderer.render_title_once(terminal, &self.theme)?;
+
         let current_step = self.state.flow.current_index();
         if current_step != self.last_rendered_step {
             if let Some(step) = self.state.flow.step_at(self.last_rendered_step) {

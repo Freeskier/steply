@@ -1,4 +1,4 @@
-use crate::input::{Input, InputBase, KeyResult, NodeId};
+use crate::input::{Input, InputBase, InputCaps, KeyResult, NodeId};
 use crate::span::Span;
 use crate::terminal::{KeyCode, KeyModifiers};
 use crate::validators::Validator;
@@ -70,6 +70,50 @@ impl TextInput {
         }
     }
 
+    fn is_separator(ch: char) -> bool {
+        ch.is_whitespace() || matches!(ch, '.' | '/' | ',' | '-' | '@')
+    }
+
+    fn move_word_left(&mut self) -> bool {
+        if self.cursor_pos == 0 {
+            return false;
+        }
+
+        let chars: Vec<char> = self.value.chars().collect();
+        let mut pos = self.cursor_pos;
+
+        while pos > 0 && chars.get(pos - 1).is_some_and(|c| Self::is_separator(*c)) {
+            pos -= 1;
+        }
+
+        while pos > 0 && chars.get(pos - 1).is_some_and(|c| !Self::is_separator(*c)) {
+            pos -= 1;
+        }
+
+        self.cursor_pos = pos;
+        true
+    }
+
+    fn move_word_right(&mut self) -> bool {
+        let chars: Vec<char> = self.value.chars().collect();
+        let mut pos = self.cursor_pos;
+
+        while pos < chars.len() && chars.get(pos).is_some_and(|c| Self::is_separator(*c)) {
+            pos += 1;
+        }
+
+        while pos < chars.len() && chars.get(pos).is_some_and(|c| !Self::is_separator(*c)) {
+            pos += 1;
+        }
+
+        if pos == self.cursor_pos {
+            false
+        } else {
+            self.cursor_pos = pos;
+            true
+        }
+    }
+
     fn move_home(&mut self) {
         self.cursor_pos = 0;
     }
@@ -86,12 +130,12 @@ impl TextInput {
         let mut chars: Vec<char> = self.value.chars().collect();
         let mut pos = self.cursor_pos;
 
-        while pos > 0 && chars.get(pos - 1).is_some_and(|c| c.is_whitespace()) {
+        while pos > 0 && chars.get(pos - 1).is_some_and(|c| Self::is_separator(*c)) {
             chars.remove(pos - 1);
             pos -= 1;
         }
 
-        while pos > 0 && chars.get(pos - 1).is_some_and(|c| !c.is_whitespace()) {
+        while pos > 0 && chars.get(pos - 1).is_some_and(|c| !Self::is_separator(*c)) {
             chars.remove(pos - 1);
             pos -= 1;
         }
@@ -105,11 +149,11 @@ impl TextInput {
         let mut chars: Vec<char> = self.value.chars().collect();
         let pos = self.cursor_pos;
 
-        while pos < chars.len() && chars.get(pos).is_some_and(|c| c.is_whitespace()) {
+        while pos < chars.len() && chars.get(pos).is_some_and(|c| Self::is_separator(*c)) {
             chars.remove(pos);
         }
 
-        while pos < chars.len() && chars.get(pos).is_some_and(|c| !c.is_whitespace()) {
+        while pos < chars.len() && chars.get(pos).is_some_and(|c| !Self::is_separator(*c)) {
             chars.remove(pos);
         }
 
@@ -175,7 +219,17 @@ impl Input for TextInput {
         &self.base.validators
     }
 
-    fn handle_key(&mut self, code: KeyCode, _modifiers: KeyModifiers) -> KeyResult {
+    fn capabilities(&self) -> InputCaps {
+        InputCaps {
+            capture_ctrl_backspace: true,
+            capture_ctrl_delete: true,
+            capture_ctrl_left: true,
+            capture_ctrl_right: true,
+            ..InputCaps::default()
+        }
+    }
+
+    fn handle_key(&mut self, code: KeyCode, modifiers: KeyModifiers) -> KeyResult {
         match code {
             KeyCode::Char(ch) => {
                 self.handle_char(ch);
@@ -186,11 +240,19 @@ impl Input for TextInput {
                 KeyResult::Handled
             }
             KeyCode::Left => {
-                self.move_left();
+                if modifiers.contains(KeyModifiers::CONTROL) {
+                    self.move_word_left();
+                } else {
+                    self.move_left();
+                }
                 KeyResult::Handled
             }
             KeyCode::Right => {
-                self.move_right();
+                if modifiers.contains(KeyModifiers::CONTROL) {
+                    self.move_word_right();
+                } else {
+                    self.move_right();
+                }
                 KeyResult::Handled
             }
             KeyCode::Home => {

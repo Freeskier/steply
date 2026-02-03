@@ -32,19 +32,20 @@ pub fn max_length(max: usize) -> Validator {
     })
 }
 
-pub fn regex(pattern: &str) -> Validator {
+pub fn regex(pattern: &str, message: &str) -> Validator {
     let re = Regex::new(pattern).expect("Invalid regex pattern");
+    let msg = message.to_string();
     Box::new(move |value: &str| {
         if re.is_match(value) {
             Ok(())
         } else {
-            Err(format!("Value must match pattern: {}", re.as_str()))
+            Err(msg.clone())
         }
     })
 }
 
 pub fn email() -> Validator {
-    regex(r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$")
+  regex(r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$", "Invalid email format")
 }
 
 pub fn alphanumeric() -> Validator {

@@ -131,6 +131,7 @@ impl Renderer {
             status,
             connect_to_next,
             true,
+            None,
         )?;
         if let Some((col, row)) = cursor {
             terminal.queue_move_cursor(col, row)?;
@@ -157,6 +158,7 @@ impl Renderer {
             status,
             connect_to_next,
             false,
+            None,
         )?;
         Ok(())
     }
@@ -178,6 +180,29 @@ impl Renderer {
             status,
             connect_to_next,
             false,
+            None,
+        )
+    }
+
+    pub fn render_with_status_plan_skip(
+        &mut self,
+        step: &Step,
+        view_state: &ViewState,
+        theme: &Theme,
+        terminal: &mut Terminal,
+        status: StepStatus,
+        connect_to_next: bool,
+        skip_rows: Option<(u16, usize)>,
+    ) -> io::Result<Option<(u16, u16)>> {
+        self.render_with_status_internal(
+            step,
+            view_state,
+            theme,
+            terminal,
+            status,
+            connect_to_next,
+            false,
+            skip_rows,
         )
     }
 
@@ -190,6 +215,7 @@ impl Renderer {
         status: StepStatus,
         connect_to_next: bool,
         show_cursor: bool,
+        skip_rows: Option<(u16, usize)>,
     ) -> io::Result<Option<(u16, u16)>> {
         let _ = terminal.refresh_size()?;
         let width = terminal.size().width;
@@ -205,8 +231,8 @@ impl Renderer {
         if show_cursor {
             terminal.queue_hide_cursor()?;
         }
-        self.draw_lines(terminal, start, &lines)?;
-        self.clear_extra_lines(terminal, start, lines.len())?;
+        self.draw_lines(terminal, start, &lines, skip_rows)?;
+        self.clear_extra_lines(terminal, start, lines.len(), skip_rows)?;
         self.num_lines = lines.len();
         terminal.flush()?;
 
@@ -307,16 +333,16 @@ impl Renderer {
         lines: &[Line],
         prev_lines: usize,
         cursor: Option<(usize, usize)>,
-        separators: (Line, Line),
+        separator: &Line,
     ) -> io::Result<(usize, Option<(u16, u16)>)> {
         let available = width.saturating_sub(start_col) as usize;
 
         terminal.queue_move_cursor(0, start_row)?;
-        terminal.render_line(&separators.0)?;
-        if width as usize > separators.0.width() {
+        terminal.render_line(separator)?;
+        if width as usize > separator.width() {
             terminal
                 .writer_mut()
-                .write_all(&vec![b' '; width as usize - separators.0.width()])?;
+                .write_all(&vec![b' '; width as usize - separator.width()])?;
         }
 
         for (idx, line) in lines.iter().enumerate() {
@@ -333,11 +359,11 @@ impl Renderer {
 
         let bottom_row = start_row + lines.len() as u16 + 1;
         terminal.queue_move_cursor(0, bottom_row)?;
-        terminal.render_line(&separators.1)?;
-        if width as usize > separators.1.width() {
+        terminal.render_line(separator)?;
+        if width as usize > separator.width() {
             terminal
                 .writer_mut()
-                .write_all(&vec![b' '; width as usize - separators.1.width()])?;
+                .write_all(&vec![b' '; width as usize - separator.width()])?;
         }
 
         let total_lines = lines.len() + 2;
@@ -434,9 +460,13 @@ impl Renderer {
         terminal: &mut Terminal,
         start: u16,
         lines: &[crate::frame::Line],
+        skip_rows: Option<(u16, usize)>,
     ) -> io::Result<()> {
         for (idx, line) in lines.iter().enumerate() {
             let line_row = start + idx as u16;
+            if Self::skip_row(line_row, skip_rows) {
+                continue;
+            }
             terminal.queue_move_cursor(0, line_row)?;
             terminal.queue_clear_line()?;
             terminal.render_line(line)?;
@@ -449,6 +479,7 @@ impl Renderer {
         terminal: &mut Terminal,
         start: u16,
         current_len: usize,
+        skip_rows: Option<(u16, usize)>,
     ) -> io::Result<()> {
         if current_len >= self.num_lines {
             return Ok(());
@@ -456,10 +487,24 @@ impl Renderer {
 
         for idx in current_len..self.num_lines {
             let line_row = start + idx as u16;
+            if Self::skip_row(line_row, skip_rows) {
+                continue;
+            }
             terminal.queue_move_cursor(0, line_row)?;
             terminal.queue_clear_line()?;
         }
         Ok(())
+    }
+
+    fn skip_row(line_row: u16, skip_rows: Option<(u16, usize)>) -> bool {
+        let Some((skip_start, skip_len)) = skip_rows else {
+            return false;
+        };
+        if skip_len == 0 {
+            return false;
+        }
+        let skip_end = skip_start.saturating_add(skip_len as u16);
+        line_row >= skip_start && line_row < skip_end
     }
 
     fn build_render_lines(

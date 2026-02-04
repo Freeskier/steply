@@ -117,13 +117,20 @@ impl App {
         }
 
         self.clear_overlay_region(terminal)?;
-        let step_cursor = self.renderer.render_with_status_plan(
+        let skip_rows = if self.overlay.is_some() {
+            self.overlay_render_start
+                .map(|start| (start, self.overlay_render_lines))
+        } else {
+            None
+        };
+        let step_cursor = self.renderer.render_with_status_plan_skip(
             self.state.flow.current_step(),
             &self.state.view,
             &self.theme,
             terminal,
             self.state.flow.current_status(),
             false,
+            skip_rows,
         )?;
         if step_cursor.is_some() {
             self.last_step_cursor = step_cursor;
@@ -335,7 +342,7 @@ impl App {
             return;
         };
         let step = self.state.flow.current_step();
-        let positions = self.overlay_input_positions(step, overlay);
+        let (_, positions) = self.overlay_nodes_and_positions(step, overlay);
         if positions.is_empty() {
             return;
         }
@@ -370,14 +377,6 @@ impl App {
         }
     }
 
-    fn overlay_input_positions(&self, step: &Step, overlay: &OverlayState) -> Vec<usize> {
-        overlay
-            .input_ids
-            .iter()
-            .filter_map(|id| self.state.engine.find_input_pos_by_id(step, id))
-            .collect()
-    }
-
     fn build_overlay_render_lines(
         &self,
         step: &Step,
@@ -401,7 +400,8 @@ impl App {
             }
         }
 
-        for node in self.overlay_nodes(step, overlay) {
+        let (nodes, _) = self.overlay_nodes_and_positions(step, overlay);
+        for node in nodes {
             let inline_error = match node.as_input() {
                 Some(input) => matches!(
                     self.state.view.error_display(input.id()),
@@ -417,20 +417,32 @@ impl App {
         lines
     }
 
-    fn overlay_nodes<'a>(&self, step: &'a Step, overlay: &OverlayState) -> Vec<&'a Node> {
-        overlay
-            .input_ids
-            .iter()
-            .filter_map(|id| {
-                step.nodes.iter().find(|node| {
-                    node.as_input()
-                        .is_some_and(|input| input.id() == id.as_str())
-                })
-            })
-            .collect()
+    fn overlay_nodes_and_positions<'a>(
+        &self,
+        step: &'a Step,
+        overlay: &OverlayState,
+    ) -> (Vec<&'a Node>, Vec<usize>) {
+        let mut nodes = Vec::new();
+        let mut positions = Vec::new();
+        for node in step.nodes.iter() {
+            let Some(input) = node.as_input() else {
+                continue;
+            };
+            if !overlay.input_ids.iter().any(|id| id == input.id()) {
+                continue;
+            }
+            nodes.push(node);
+            if let Some(pos) = self.state.engine.find_input_pos_by_id(step, input.id()) {
+                positions.push(pos);
+            }
+            if positions.len() == overlay.input_ids.len() {
+                break;
+            }
+        }
+        (nodes, positions)
     }
 
-    fn overlay_separator_lines(&self, width: u16) -> (Line, Line) {
+    fn overlay_separator_line(&self, width: u16) -> Line {
         let mut line = Line::new();
         let glyph = Span::new("›")
             .with_style(self.theme.decor_accent.clone())
@@ -444,7 +456,7 @@ impl App {
                     .with_wrap(Wrap::No),
             );
         }
-        (line.clone(), line)
+        line
     }
 
     fn render_overlay(
@@ -467,7 +479,7 @@ impl App {
             let (frame, cursor) =
                 Layout::new().compose_spans_with_cursor(render_lines.into_iter(), available);
             let lines = frame.lines();
-            let separators = self.overlay_separator_lines(width);
+            let separator = self.overlay_separator_line(width);
             let (count, cursor) = self.renderer.render_overlay(
                 terminal,
                 start,
@@ -476,7 +488,7 @@ impl App {
                 lines,
                 self.overlay_render_lines,
                 cursor,
-                separators,
+                &separator,
             )?;
             self.overlay_render_start = Some(start);
             self.overlay_render_lines = count;

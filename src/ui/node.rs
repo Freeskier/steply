@@ -6,6 +6,7 @@ use unicode_width::UnicodeWidthStr;
 pub enum Node {
     Text(String),
     Input(Box<dyn Input>),
+    OverlayInput(Box<dyn Input>),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -23,9 +24,14 @@ impl Node {
         Node::Input(Box::new(input))
     }
 
+    pub fn overlay_input(input: impl Input + 'static) -> Self {
+        Node::OverlayInput(Box::new(input))
+    }
+
     pub fn as_input(&self) -> Option<&dyn Input> {
         match self {
             Node::Input(input) => Some(input.as_ref()),
+            Node::OverlayInput(input) => Some(input.as_ref()),
             _ => None,
         }
     }
@@ -33,14 +39,19 @@ impl Node {
     pub fn as_input_mut(&mut self) -> Option<&mut dyn Input> {
         match self {
             Node::Input(input) => Some(input.as_mut()),
+            Node::OverlayInput(input) => Some(input.as_mut()),
             _ => None,
         }
+    }
+
+    pub fn is_overlay(&self) -> bool {
+        matches!(self, Node::OverlayInput(_))
     }
 
     pub fn render(&self, mode: RenderMode, inline_error_message: bool, theme: &Theme) -> Vec<Span> {
         match self {
             Node::Text(text) => vec![Span::new(text.clone())],
-            Node::Input(input) => {
+            Node::Input(input) | Node::OverlayInput(input) => {
                 let (show_label, always_brackets) = match mode {
                     RenderMode::Full => (true, false),
                     RenderMode::Field => (false, true),
@@ -126,7 +137,7 @@ impl Node {
 
     pub fn cursor_offset(&self) -> Option<usize> {
         match self {
-            Node::Input(input) if input.is_focused() => {
+            Node::Input(input) | Node::OverlayInput(input) if input.is_focused() => {
                 let label_len = input.label().width() + 2;
                 let bracket_len = if input.render_brackets() { 1 } else { 0 };
                 let content_offset = input.cursor_offset_in_content();
@@ -138,7 +149,7 @@ impl Node {
 
     pub fn cursor_offset_in_field(&self) -> Option<usize> {
         match self {
-            Node::Input(input) if input.is_focused() => {
+            Node::Input(input) | Node::OverlayInput(input) if input.is_focused() => {
                 let bracket_len = if input.render_brackets() { 1 } else { 0 };
                 let content_offset = input.cursor_offset_in_content();
                 Some(bracket_len + content_offset)

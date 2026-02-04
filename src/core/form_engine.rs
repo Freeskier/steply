@@ -1,7 +1,6 @@
 use crate::core::validation;
 use crate::event_queue::AppEvent;
 use crate::inputs::{Input, InputCaps, KeyResult};
-use crate::node::Node;
 use crate::step::Step;
 use crate::terminal::KeyEvent;
 use crate::view_state::{ErrorDisplay, ViewState};
@@ -24,13 +23,7 @@ impl FormEngine {
             .nodes
             .iter()
             .enumerate()
-            .filter_map(|(i, node)| {
-                if matches!(node, Node::Input(_)) {
-                    Some(i)
-                } else {
-                    None
-                }
-            })
+            .filter_map(|(i, node)| node.as_input().map(|_| i))
             .collect();
 
         let mut engine = Self {
@@ -50,13 +43,7 @@ impl FormEngine {
             .nodes
             .iter()
             .enumerate()
-            .filter_map(|(i, node)| {
-                if matches!(node, Node::Input(_)) {
-                    Some(i)
-                } else {
-                    None
-                }
-            })
+            .filter_map(|(i, node)| node.as_input().map(|_| i))
             .collect();
         self.focused_index = None;
 
@@ -67,9 +54,10 @@ impl FormEngine {
 
     pub fn clear_focus(&mut self, step: &mut Step) {
         if let Some(old_index) = self.focused_index {
-            if let Some(Node::Input(input)) = step.nodes.get_mut(self.input_node_indices[old_index])
-            {
-                input.set_focused(false);
+            if let Some(input) = step.nodes.get_mut(self.input_node_indices[old_index]) {
+                if let Some(input) = input.as_input_mut() {
+                    input.set_focused(false);
+                }
             }
         }
         self.focused_index = None;
@@ -119,7 +107,10 @@ impl FormEngine {
             return result;
         };
 
-        let Some(Node::Input(input)) = step.nodes.get_mut(self.input_node_indices[current_index])
+        let Some(input) = step
+            .nodes
+            .get_mut(self.input_node_indices[current_index])
+            .and_then(|node| node.as_input_mut())
         else {
             return result;
         };
@@ -128,7 +119,7 @@ impl FormEngine {
         let key_result = input.handle_key(key_event.code, key_event.modifiers);
         let after = input.value();
         let id = input.id().clone();
-        let validation_result = validation::validate_input(input.as_ref());
+        let validation_result = validation::validate_input(input);
 
         if before != after {
             result.events.push(AppEvent::InputChanged {
@@ -160,7 +151,10 @@ impl FormEngine {
             return result;
         };
 
-        let Some(Node::Input(input)) = step.nodes.get_mut(self.input_node_indices[current_index])
+        let Some(input) = step
+            .nodes
+            .get_mut(self.input_node_indices[current_index])
+            .and_then(|node| node.as_input_mut())
         else {
             return result;
         };
@@ -173,7 +167,7 @@ impl FormEngine {
         }
         let after = input.value();
         let id = input.id().clone();
-        let validation_result = validation::validate_input(input.as_ref());
+        let validation_result = validation::validate_input(input);
 
         if before != after {
             result.events.push(AppEvent::InputChanged {
@@ -202,11 +196,13 @@ impl FormEngine {
         }
 
         if let Some(current_index) = self.focused_index {
-            if let Some(Node::Input(input)) =
-                step.nodes.get_mut(self.input_node_indices[current_index])
+            if let Some(input) = step
+                .nodes
+                .get_mut(self.input_node_indices[current_index])
+                .and_then(|node| node.as_input_mut())
             {
                 let id = input.id().clone();
-                let validation_result = validation::validate_input(input.as_ref());
+                let validation_result = validation::validate_input(input);
                 self.apply_validation_result(step, view_state, &id, validation_result);
             }
         }
@@ -226,7 +222,11 @@ impl FormEngine {
         view_state: &mut ViewState,
     ) {
         if let Some(pos) = self.find_input_pos_by_id(step, id) {
-            if let Some(Node::Input(input)) = step.nodes.get_mut(self.input_node_indices[pos]) {
+            if let Some(input) = step
+                .nodes
+                .get_mut(self.input_node_indices[pos])
+                .and_then(|node| node.as_input_mut())
+            {
                 view_state.clear_error_display(input.id());
             }
         }
@@ -240,7 +240,11 @@ impl FormEngine {
     ) -> Vec<String> {
         let mut scheduled = Vec::new();
         for idx in &self.input_node_indices {
-            if let Some(Node::Input(input)) = step.nodes.get_mut(*idx) {
+            if let Some(input) = step
+                .nodes
+                .get_mut(*idx)
+                .and_then(|node| node.as_input_mut())
+            {
                 if let Some((_, error)) = errors.iter().find(|(id, _)| id == input.id()) {
                     let id = input.id().clone();
                     input.set_error(Some(error.clone()));
@@ -293,14 +297,21 @@ impl FormEngine {
         let to_id = new_pos.and_then(|index| self.input_id_at(step, index));
 
         if let Some(old_index) = self.focused_index {
-            if let Some(Node::Input(input)) = step.nodes.get_mut(self.input_node_indices[old_index])
+            if let Some(input) = step
+                .nodes
+                .get_mut(self.input_node_indices[old_index])
+                .and_then(|node| node.as_input_mut())
             {
                 input.set_focused(false);
             }
         }
 
         if let Some(index) = new_pos {
-            if let Some(Node::Input(input)) = step.nodes.get_mut(self.input_node_indices[index]) {
+            if let Some(input) = step
+                .nodes
+                .get_mut(self.input_node_indices[index])
+                .and_then(|node| node.as_input_mut())
+            {
                 input.set_focused(true);
             }
         }
@@ -324,8 +335,10 @@ impl FormEngine {
         match result {
             Ok(()) => {
                 if let Some(pos) = self.find_input_pos_by_id(step, id) {
-                    if let Some(Node::Input(input_mut)) =
-                        step.nodes.get_mut(self.input_node_indices[pos])
+                    if let Some(input_mut) = step
+                        .nodes
+                        .get_mut(self.input_node_indices[pos])
+                        .and_then(|node| node.as_input_mut())
                     {
                         input_mut.set_error(None);
                     }
@@ -334,8 +347,10 @@ impl FormEngine {
             }
             Err(err) => {
                 if let Some(pos) = self.find_input_pos_by_id(step, id) {
-                    if let Some(Node::Input(input_mut)) =
-                        step.nodes.get_mut(self.input_node_indices[pos])
+                    if let Some(input_mut) = step
+                        .nodes
+                        .get_mut(self.input_node_indices[pos])
+                        .and_then(|node| node.as_input_mut())
                     {
                         input_mut.set_error(Some(err.clone()));
                     }
@@ -351,14 +366,21 @@ impl FormEngine {
 
     fn set_focus_without_events(&mut self, step: &mut Step, new_pos: Option<usize>) {
         if let Some(old_index) = self.focused_index {
-            if let Some(Node::Input(input)) = step.nodes.get_mut(self.input_node_indices[old_index])
+            if let Some(input) = step
+                .nodes
+                .get_mut(self.input_node_indices[old_index])
+                .and_then(|node| node.as_input_mut())
             {
                 input.set_focused(false);
             }
         }
 
         if let Some(index) = new_pos {
-            if let Some(Node::Input(input)) = step.nodes.get_mut(self.input_node_indices[index]) {
+            if let Some(input) = step
+                .nodes
+                .get_mut(self.input_node_indices[index])
+                .and_then(|node| node.as_input_mut())
+            {
                 input.set_focused(true);
             }
         }

@@ -103,7 +103,15 @@ impl Renderer {
         theme: &Theme,
         terminal: &mut Terminal,
     ) -> io::Result<()> {
-        self.render_with_status(step, view_state, theme, terminal, StepStatus::Active, false)
+        let _ = self.render_with_status_plan(
+            step,
+            view_state,
+            theme,
+            terminal,
+            StepStatus::Active,
+            false,
+        )?;
+        Ok(())
     }
 
     pub fn render_with_status(
@@ -115,6 +123,74 @@ impl Renderer {
         status: StepStatus,
         connect_to_next: bool,
     ) -> io::Result<()> {
+        let cursor = self.render_with_status_internal(
+            step,
+            view_state,
+            theme,
+            terminal,
+            status,
+            connect_to_next,
+            true,
+        )?;
+        if let Some((col, row)) = cursor {
+            terminal.queue_move_cursor(col, row)?;
+            terminal.queue_show_cursor()?;
+            terminal.flush()?;
+        }
+        Ok(())
+    }
+
+    pub fn render_with_status_without_cursor(
+        &mut self,
+        step: &Step,
+        view_state: &ViewState,
+        theme: &Theme,
+        terminal: &mut Terminal,
+        status: StepStatus,
+        connect_to_next: bool,
+    ) -> io::Result<()> {
+        let _ = self.render_with_status_internal(
+            step,
+            view_state,
+            theme,
+            terminal,
+            status,
+            connect_to_next,
+            false,
+        )?;
+        Ok(())
+    }
+
+    pub fn render_with_status_plan(
+        &mut self,
+        step: &Step,
+        view_state: &ViewState,
+        theme: &Theme,
+        terminal: &mut Terminal,
+        status: StepStatus,
+        connect_to_next: bool,
+    ) -> io::Result<Option<(u16, u16)>> {
+        self.render_with_status_internal(
+            step,
+            view_state,
+            theme,
+            terminal,
+            status,
+            connect_to_next,
+            false,
+        )
+    }
+
+    fn render_with_status_internal(
+        &mut self,
+        step: &Step,
+        view_state: &ViewState,
+        theme: &Theme,
+        terminal: &mut Terminal,
+        status: StepStatus,
+        connect_to_next: bool,
+        show_cursor: bool,
+    ) -> io::Result<Option<(u16, u16)>> {
         let _ = terminal.refresh_size()?;
         let width = terminal.size().width;
         let render_lines = self.build_render_lines(step, view_state, theme);
@@ -126,25 +202,35 @@ impl Renderer {
         );
         let lines = self.decorate_lines(frame.lines(), theme, status, connect_to_next);
         let start = self.ensure_start_row(terminal, lines.len())?;
-        terminal.queue_hide_cursor()?;
+        if show_cursor {
+            terminal.queue_hide_cursor()?;
+        }
         self.draw_lines(terminal, start, &lines)?;
         self.clear_extra_lines(terminal, start, lines.len())?;
         self.num_lines = lines.len();
         terminal.flush()?;
 
-        if let Some((col, line_idx)) = cursor_pos {
-            let col = col + self.decoration_width();
-            let cursor_row = start + line_idx as u16;
-            terminal.queue_move_cursor(col as u16, cursor_row)?;
-        }
-        terminal.queue_show_cursor()?;
-        terminal.flush()?;
+        let cursor = cursor_pos.map(|(col, line_idx)| {
+            let col = (col + self.decoration_width()) as u16;
+            let row = start + line_idx as u16;
+            (col, row)
+        });
 
-        Ok(())
+        if show_cursor {
+            if let Some((col, row)) = cursor {
+                terminal.queue_move_cursor(col, row)?;
+            }
+        }
+
+        Ok(cursor)
     }
 
     fn decoration_width(&self) -> usize {
         if self.decoration_enabled { 3 } else { 0 }
+    }
+
+    pub fn overlay_padding(&self) -> usize {
+        self.decoration_width()
     }
 
     fn decorate_lines(
@@ -210,6 +296,41 @@ impl Renderer {
             terminal.flush()?;
         }
         Ok(())
+    }
+
+    pub fn render_overlay(
+        &self,
+        terminal: &mut Terminal,
+        start_row: u16,
+        start_col: u16,
+        width: u16,
+        lines: &[Line],
+        prev_lines: usize,
+        cursor: Option<(usize, usize)>,
+    ) -> io::Result<(usize, Option<(u16, u16)>)> {
+        for (idx, line) in lines.iter().enumerate() {
+            let line_row = start_row + idx as u16;
+            terminal.queue_move_cursor(start_col, line_row)?;
+            terminal.render_line(line)?;
+            let available = width.saturating_sub(start_col);
+            let used = line.width().min(available as usize);
+            if used < available as usize {
+                terminal
+                    .writer_mut()
+                    .write_all(&vec![b' '; available as usize - used])?;
+            }
+        }
+        if prev_lines > lines.len() {
+            for idx in lines.len()..prev_lines {
+                let line_row = start_row + idx as u16;
+                terminal.queue_move_cursor(start_col, line_row)?;
+                let available = width.saturating_sub(start_col) as usize;
+                terminal.writer_mut().write_all(&vec![b' '; available])?;
+            }
+        }
+        terminal.flush()?;
+        let cursor_abs = cursor.map(|(col, row)| (start_col + col as u16, start_row + row as u16));
+        Ok((lines.len(), cursor_abs))
     }
 
     pub fn write_connector_lines(
@@ -343,12 +464,13 @@ impl Renderer {
     }
 
     fn inline_prompt_input<'a>(&self, step: &'a Step) -> Option<&'a Node> {
-        if step.nodes.len() == 1 {
-            if let Some(node) = step.nodes.first() {
-                if matches!(node, crate::node::Node::Input(_)) {
-                    return Some(node);
-                }
-            }
+        let mut iter = step.nodes.iter().filter(|node| !node.is_overlay());
+        let first = iter.next()?;
+        if iter.next().is_some() {
+            return None;
+        }
+        if matches!(first, crate::node::Node::Input(_)) {
+            return Some(first);
         }
         None
     }
@@ -397,6 +519,7 @@ impl Renderer {
     fn render_nodes(&self, step: &Step, view_state: &ViewState, theme: &Theme) -> Vec<RenderLine> {
         step.nodes
             .iter()
+            .filter(|node| !node.is_overlay())
             .map(|node| {
                 let inline_error = match node.as_input() {
                     Some(input) => matches!(

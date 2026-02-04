@@ -9,6 +9,7 @@ pub use core::event;
 pub use core::event_queue;
 pub use core::flow;
 pub use core::form_engine;
+pub use core::overlay;
 pub use core::reducer;
 pub use core::state;
 pub use core::step;

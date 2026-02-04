@@ -7,6 +7,7 @@ use std::time::{Duration, Instant};
 pub enum AppEvent {
     Key(KeyEvent),
     Action(Action),
+    RequestRerender,
     InputChanged {
         id: String,
         value: String,

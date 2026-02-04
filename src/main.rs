@@ -35,10 +35,9 @@ fn event_loop(terminal: &mut Terminal) -> io::Result<()> {
             match terminal.read_event()? {
                 TerminalEvent::Key(key_event) => {
                     app.handle_key(key_event);
-                    render_requested = true;
                 }
                 TerminalEvent::Resize { .. } => {
-                    render_requested = true;
+                    app.request_rerender();
                 }
             }
         }

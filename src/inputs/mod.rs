@@ -1,4 +1,5 @@
 pub mod array_input;
+pub mod button_input;
 pub mod checkbox_input;
 pub mod choice_input;
 pub mod color_input;

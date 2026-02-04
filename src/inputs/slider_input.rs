@@ -104,6 +104,21 @@ impl Input for SliderInput {
         }
     }
 
+    fn value_typed(&self) -> crate::value::Value {
+        crate::value::Value::Number(self.value)
+    }
+
+    fn set_value_typed(&mut self, value: crate::value::Value) {
+        match value {
+            crate::value::Value::Number(num) => {
+                self.value = num;
+                self.clamp_value();
+            }
+            crate::value::Value::Text(text) => self.set_value(text),
+            _ => {}
+        }
+    }
+
     fn raw_value(&self) -> String {
         self.value.to_string()
     }

@@ -114,6 +114,37 @@ impl ArrayInput {
         self.normalize_items();
     }
 
+    fn remove_active(&mut self) -> bool {
+        if self.items.is_empty() {
+            return false;
+        }
+
+        self.items.remove(self.active);
+        if self.items.is_empty() {
+            self.items.push(String::new());
+            self.active = 0;
+            self.cursor = 0;
+            return true;
+        }
+
+        if self.active >= self.items.len() {
+            self.active = self.items.len() - 1;
+        }
+        self.cursor = self.items[self.active].chars().count();
+        true
+    }
+
+    fn remove_next(&mut self) -> bool {
+        if self.items.len() <= 1 {
+            return false;
+        }
+        if self.active + 1 < self.items.len() {
+            self.items.remove(self.active + 1);
+            return true;
+        }
+        false
+    }
+
     fn insert_char(&mut self, ch: char) {
         let idx = self.active;
         let cursor = self.cursor;
@@ -213,9 +244,10 @@ impl ArrayInput {
         let mut spans = Vec::new();
         let mut offset = 0usize;
         let mut cursor_offset = 0usize;
-        let underline = Style::new().with_underline();
 
-        let show_brackets = self.base.focused;
+        let show_active_brackets = self.base.focused;
+        spans.push(Span::new("("));
+        offset += 1;
         for (idx, item) in self.items.iter().enumerate() {
             if idx > 0 {
                 spans.push(Span::new(", "));
@@ -223,7 +255,7 @@ impl ArrayInput {
             }
 
             let is_active = idx == self.active;
-            if is_active && show_brackets {
+            if is_active && show_active_brackets {
                 spans.push(Span::new("["));
                 offset += 1;
             }
@@ -233,9 +265,9 @@ impl ArrayInput {
                 content = " ".to_string();
             }
 
-            let mut span = Span::new(content.clone()).with_style(underline.clone());
+            let mut span = Span::new(content.clone());
             if is_active && self.base.focused {
-                span = span.with_style(underline.clone().merge(&theme.focused));
+                span = span.with_style(theme.focused.clone());
             }
             spans.push(span);
 
@@ -244,11 +276,12 @@ impl ArrayInput {
             }
 
             offset += content.width();
-            if is_active && show_brackets {
+            if is_active && show_active_brackets {
                 spans.push(Span::new("]"));
                 offset += 1;
             }
         }
+        spans.push(Span::new(")"));
 
         (spans, cursor_offset)
     }
@@ -274,7 +307,7 @@ impl Input for ArrayInput {
 
     fn set_value(&mut self, value: String) {
         let parts: Vec<String> = value
-            .split(',')
+            .split(&[',', ';'][..])
             .map(|part| part.trim().to_string())
             .filter(|part| !part.is_empty())
             .collect();
@@ -286,6 +319,46 @@ impl Input for ArrayInput {
             self.items = parts;
             self.active = 0;
             self.cursor = self.items[0].chars().count();
+        }
+    }
+
+    fn value_typed(&self) -> crate::value::Value {
+        crate::value::Value::List(
+            self.items
+                .iter()
+                .map(|item| item.trim().to_string())
+                .filter(|item| !item.is_empty())
+                .collect(),
+        )
+    }
+
+    fn set_value_typed(&mut self, value: crate::value::Value) {
+        match value {
+            crate::value::Value::List(items) => {
+                let cleaned: Vec<String> = items
+                    .into_iter()
+                    .map(|item| item.trim().to_string())
+                    .filter(|item| !item.is_empty())
+                    .collect();
+                if cleaned.is_empty() {
+                    self.items = vec![String::new()];
+                    self.active = 0;
+                    self.cursor = 0;
+                } else {
+                    self.items = cleaned;
+                    self.active = 0;
+                    self.cursor = self.items[0].chars().count();
+                }
+            }
+            crate::value::Value::Text(text) => {
+                self.set_value(text);
+            }
+            crate::value::Value::None => {
+                self.items = vec![String::new()];
+                self.active = 0;
+                self.cursor = 0;
+            }
+            _ => {}
         }
     }
 
@@ -315,7 +388,7 @@ impl Input for ArrayInput {
 
     fn handle_key(&mut self, code: KeyCode, _modifiers: KeyModifiers) -> KeyResult {
         match code {
-            KeyCode::Char(',') => {
+            KeyCode::Char(',') | KeyCode::Char(';') => {
                 self.split_active();
                 KeyResult::Handled
             }
@@ -362,5 +435,30 @@ impl Input for ArrayInput {
     fn cursor_offset_in_content(&self) -> usize {
         let (_, offset) = self.build_spans(&crate::theme::Theme::default());
         offset
+    }
+
+    fn delete_word(&mut self) {
+        if self.remove_active() {
+            self.normalize_items();
+        }
+    }
+
+    fn delete_word_forward(&mut self) {
+        if self.remove_next() {
+            self.normalize_items();
+        }
+    }
+
+    fn validate_internal(&self) -> Result<(), String> {
+        for item in &self.items {
+            let trimmed = item.trim();
+            if trimmed.is_empty() {
+                continue;
+            }
+            for validator in self.validators() {
+                validator(trimmed)?;
+            }
+        }
+        Ok(())
     }
 }

@@ -3,6 +3,7 @@ use crate::core::node::Node;
 use crate::core::node_registry::NodeRegistry;
 use crate::core::step::Step;
 use crate::ui::span::Span;
+use crate::ui::style::{Color, Style};
 use crate::ui::theme::Theme;
 use unicode_width::UnicodeWidthStr;
 
@@ -53,14 +54,15 @@ impl<'a> StepRenderer<'a> {
 
         let id = step.node_ids.first()?;
         let node = registry.get(id)?;
-        if node.is_input() {
-            Some(node)
-        } else {
-            None
-        }
+        if node.is_input() { Some(node) } else { None }
     }
 
-    fn build_prompt(&self, step: &Step, _registry: &NodeRegistry, inline_input: Option<&Node>) -> Option<RenderLine> {
+    fn build_prompt(
+        &self,
+        step: &Step,
+        _registry: &NodeRegistry,
+        inline_input: Option<&Node>,
+    ) -> Option<RenderLine> {
         if step.prompt.is_empty() {
             return None;
         }
@@ -79,7 +81,10 @@ impl<'a> StepRenderer<'a> {
             let prompt_width = step.prompt.width();
             let cursor_offset = field_cursor.map(|offset| offset + prompt_width + 1);
 
-            Some(RenderLine { spans, cursor_offset })
+            Some(RenderLine {
+                spans,
+                cursor_offset,
+            })
         } else {
             Some(RenderLine {
                 spans: vec![Span::new(&step.prompt).with_style(prompt_style)],
@@ -123,7 +128,10 @@ impl<'a> StepRenderer<'a> {
             Node::Component(component) => self.render_component_lines(component.as_ref(), registry),
             _ => {
                 let (spans, cursor_offset) = self.render_node_full(node);
-                vec![RenderLine { spans, cursor_offset }]
+                vec![RenderLine {
+                    spans,
+                    cursor_offset,
+                }]
             }
         }
     }
@@ -141,7 +149,10 @@ impl<'a> StepRenderer<'a> {
                 (spans, cursor_offset)
             }
             Node::Text(text) => (vec![Span::new(text)], None),
-            Node::Separator => (vec![Span::new("─".repeat(20)).with_style(self.theme.hint.clone())], None),
+            Node::Separator => (
+                vec![Span::new("─".repeat(20)).with_style(self.theme.hint.clone())],
+                None,
+            ),
             Node::Component(_) => (vec![], None),
         }
     }
@@ -174,7 +185,10 @@ impl<'a> StepRenderer<'a> {
                 ComponentItem::Node(id) => {
                     if let Some(node) = registry.get(&id) {
                         let (spans, cursor_offset) = self.render_node_full(node);
-                        lines.push(RenderLine { spans, cursor_offset });
+                        lines.push(RenderLine {
+                            spans,
+                            cursor_offset,
+                        });
                     }
                 }
                 ComponentItem::Text(text) => {
@@ -189,13 +203,48 @@ impl<'a> StepRenderer<'a> {
                         cursor_offset: None,
                     });
                 }
-                ComponentItem::Option { text, active } => {
-                    let mut span = Span::new(text);
-                    if !active {
-                        span = span.with_style(self.theme.hint.clone());
+                ComponentItem::Option {
+                    cursor,
+                    marker_left,
+                    marker,
+                    marker_right,
+                    text,
+                    active,
+                    selected,
+                } => {
+                    let inactive_style = self.theme.hint.clone();
+                    let marker_style = Style::new().with_color(Color::Green);
+                    let cursor_style = Style::new().with_color(Color::Yellow);
+
+                    let mut spans = Vec::new();
+                    if active {
+                        spans.push(Span::new(cursor).with_style(cursor_style));
+                        spans.push(Span::new(" "));
+                        spans.push(Span::new(marker_left));
+                        if selected {
+                            spans.push(Span::new(marker).with_style(marker_style));
+                        } else {
+                            spans.push(Span::new(marker));
+                        }
+                        spans.push(Span::new(marker_right));
+                        spans.push(Span::new(" "));
+                        spans.push(Span::new(text));
+                    } else {
+                        spans.push(Span::new(cursor).with_style(inactive_style.clone()));
+                        spans.push(Span::new(" ").with_style(inactive_style.clone()));
+                        spans.push(Span::new(marker_left).with_style(inactive_style.clone()));
+                        if selected {
+                            spans.push(Span::new(marker).with_style(marker_style));
+                        } else {
+                            spans.push(Span::new(marker).with_style(inactive_style.clone()));
+                        }
+                        spans.push(Span::new(marker_right).with_style(inactive_style.clone()));
+                        spans.push(Span::new(" ").with_style(inactive_style.clone()));
+                        spans.push(Span::new(text).with_style(inactive_style));
                     }
+
                     lines.push(RenderLine {
-                        spans: vec![span],
+                        spans,
                         cursor_offset: None,
                     });
                 }
@@ -215,11 +264,20 @@ impl<'a> StepRenderer<'a> {
         spans
     }
 
-    fn render_input_field(&self, input: &dyn crate::inputs::Input, inline_error: bool) -> Vec<Span> {
+    fn render_input_field(
+        &self,
+        input: &dyn crate::inputs::Input,
+        inline_error: bool,
+    ) -> Vec<Span> {
         self.render_input_content(input, inline_error, true)
     }
 
-    fn render_input_content(&self, input: &dyn crate::inputs::Input, inline_error: bool, with_brackets: bool) -> Vec<Span> {
+    fn render_input_content(
+        &self,
+        input: &dyn crate::inputs::Input,
+        inline_error: bool,
+        with_brackets: bool,
+    ) -> Vec<Span> {
         let mut spans = Vec::new();
         let use_brackets = input.render_brackets() && with_brackets;
 

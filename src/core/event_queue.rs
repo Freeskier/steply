@@ -1,5 +1,7 @@
+use crate::binding::{BindTarget, ValueSource};
 use crate::event::Action;
 use crate::terminal::KeyEvent;
+use crate::value::Value;
 use std::collections::VecDeque;
 use std::time::{Duration, Instant};
 
@@ -7,10 +9,14 @@ use std::time::{Duration, Instant};
 pub enum AppEvent {
     Key(KeyEvent),
     Action(Action),
-    LayerResult {
-        layer_id: String,
-        value: String,
-        target_id: Option<String>,
+    ValueRequested {
+        source: ValueSource,
+        target: BindTarget,
+    },
+    ValueProduced {
+        source: ValueSource,
+        target: BindTarget,
+        value: Value,
     },
     RequestRerender,
     InputChanged {

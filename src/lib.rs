@@ -1,11 +1,12 @@
-pub mod core;
 pub mod components;
+pub mod core;
 pub mod inputs;
 pub mod terminal;
 pub mod ui;
 
 pub use core::action_bindings;
 pub use core::app;
+pub use core::binding;
 pub use core::component;
 pub use core::event;
 pub use core::event_queue;
@@ -22,8 +23,10 @@ pub use core::state;
 pub use core::step;
 pub use core::step_builder;
 pub use core::validation;
+pub use core::value;
 
 pub use inputs::array_input;
+pub use inputs::button_input;
 pub use inputs::checkbox_input;
 pub use inputs::choice_input;
 pub use inputs::color_input;

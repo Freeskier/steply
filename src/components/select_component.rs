@@ -1,6 +1,9 @@
-use crate::core::component::{Component, ComponentItem};
+use crate::core::binding::BindTarget;
+use crate::core::component::{Component, ComponentItem, ComponentResponse};
 use crate::core::node::{Node, NodeId};
 use crate::core::node_registry::NodeRegistry;
+use crate::core::value::Value;
+use std::collections::HashSet;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SelectMode {
@@ -16,6 +19,8 @@ pub struct SelectComponent {
     mode: SelectMode,
     selected: Vec<usize>,
     active_index: usize,
+    focused: bool,
+    bound_target: Option<BindTarget>,
 }
 
 impl SelectComponent {
@@ -27,6 +32,8 @@ impl SelectComponent {
             mode: SelectMode::Single,
             selected: Vec::new(),
             active_index: 0,
+            focused: false,
+            bound_target: None,
         }
     }
 
@@ -48,11 +55,21 @@ impl SelectComponent {
         self
     }
 
+    pub fn with_bind_target(mut self, target: BindTarget) -> Self {
+        self.bound_target = Some(target);
+        self
+    }
+
+    pub fn bind_to_input(mut self, id: impl Into<String>) -> Self {
+        self.bound_target = Some(BindTarget::Input(id.into()));
+        self
+    }
+
     pub fn selected(&self) -> &[usize] {
         &self.selected
     }
 
-    pub fn value(&self) -> Vec<String> {
+    pub fn selected_values(&self) -> Vec<String> {
         let mut values = Vec::new();
         for idx in &self.selected {
             if let Some(value) = self.options.get(*idx) {
@@ -92,14 +109,22 @@ impl SelectComponent {
         }
     }
 
-    fn marker(&self, index: usize) -> &'static str {
+    fn marker_parts(&self, index: usize) -> (&'static str, &'static str, &'static str) {
         let is_selected = self.selected.iter().any(|i| *i == index);
         match self.mode {
             SelectMode::Multi | SelectMode::Single => {
-                if is_selected { "◼" } else { "◻" }
+                if is_selected {
+                    ("[", "✔", "]")
+                } else {
+                    ("[", " ", "]")
+                }
             }
             SelectMode::Radio => {
-                if is_selected { "●" } else { "◌" }
+                if is_selected {
+                    ("(", "●", ")")
+                } else {
+                    ("(", " ", ")")
+                }
             }
         }
     }
@@ -131,6 +156,50 @@ impl SelectComponent {
         self.toggle(self.active_index);
         self.selected != before
     }
+
+    fn parse_bound_value(value: String) -> Vec<String> {
+        value
+            .split(',')
+            .map(|part| part.trim().to_string())
+            .filter(|part| !part.is_empty())
+            .collect()
+    }
+
+    fn apply_options(&mut self, new_options: Vec<String>) {
+        if new_options == self.options {
+            return;
+        }
+
+        let selected_values: HashSet<String> = self
+            .selected
+            .iter()
+            .filter_map(|idx| self.options.get(*idx).cloned())
+            .collect();
+
+        self.options = new_options;
+        self.selected = self
+            .options
+            .iter()
+            .enumerate()
+            .filter_map(|(idx, value)| {
+                if selected_values.contains(value) {
+                    Some(idx)
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        if self.mode == SelectMode::Radio && self.selected.is_empty() && !self.options.is_empty() {
+            self.selected.push(0);
+        }
+
+        if self.options.is_empty() {
+            self.active_index = 0;
+        } else if self.active_index >= self.options.len() {
+            self.active_index = self.options.len() - 1;
+        }
+    }
 }
 
 impl Component for SelectComponent {
@@ -154,28 +223,89 @@ impl Component for SelectComponent {
         }
 
         for (idx, option) in self.options.iter().enumerate() {
-            let cursor = if idx == self.active_index { "➤" } else { " " };
-            let line = format!("{} {} {}", cursor, self.marker(idx), option);
             let active = idx == self.active_index;
-            items.push(ComponentItem::Option { text: line, active });
+            let selected = self.selected.iter().any(|i| *i == idx);
+            let cursor = if self.focused && active { "❯" } else { " " };
+            let (marker_left, marker, marker_right) = self.marker_parts(idx);
+            items.push(ComponentItem::Option {
+                cursor: cursor.to_string(),
+                marker_left: marker_left.to_string(),
+                marker: marker.to_string(),
+                marker_right: marker_right.to_string(),
+                text: option.clone(),
+                active,
+                selected,
+            });
         }
 
         items
     }
 
-    fn handle_key(&mut self, code: crate::terminal::KeyCode, modifiers: crate::terminal::KeyModifiers) -> bool {
-        if modifiers != crate::terminal::KeyModifiers::NONE {
-            return false;
+    fn is_focused(&self) -> bool {
+        self.focused
+    }
+
+    fn set_focused(&mut self, focused: bool) {
+        self.focused = focused;
+    }
+
+    fn bind_target(&self) -> Option<BindTarget> {
+        self.bound_target.clone()
+    }
+
+    fn value(&self) -> Option<Value> {
+        if self.options.is_empty() {
+            return None;
         }
 
-        match code {
+        match self.mode {
+            SelectMode::Multi => Some(Value::List(self.selected_values())),
+            SelectMode::Single | SelectMode::Radio => self
+                .selected
+                .first()
+                .and_then(|idx| self.options.get(*idx))
+                .cloned()
+                .map(Value::Text),
+        }
+    }
+
+    fn set_value(&mut self, value: Value) {
+        match value {
+            Value::List(items) => self.apply_options(items),
+            Value::Text(text) => self.apply_options(Self::parse_bound_value(text)),
+            _ => {}
+        }
+    }
+
+    fn handle_key(
+        &mut self,
+        code: crate::terminal::KeyCode,
+        modifiers: crate::terminal::KeyModifiers,
+    ) -> ComponentResponse {
+        if modifiers != crate::terminal::KeyModifiers::NONE {
+            return ComponentResponse::not_handled();
+        }
+
+        let handled = match code {
             crate::terminal::KeyCode::Up => self.move_active(-1),
             crate::terminal::KeyCode::Down => self.move_active(1),
             crate::terminal::KeyCode::Char(' ') => {
                 let _ = self.activate_current();
                 !self.options.is_empty()
             }
+            crate::terminal::KeyCode::Enter => {
+                if let Some(value) = Component::value(self) {
+                    return ComponentResponse::produced(value);
+                }
+                true
+            }
             _ => false,
+        };
+
+        if handled {
+            ComponentResponse::handled()
+        } else {
+            ComponentResponse::not_handled()
         }
     }
 }

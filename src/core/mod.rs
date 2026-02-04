@@ -1,5 +1,6 @@
 pub mod action_bindings;
 pub mod app;
+pub mod binding;
 pub mod component;
 pub mod event;
 pub mod event_queue;
@@ -16,3 +17,4 @@ pub mod state;
 pub mod step;
 pub mod step_builder;
 pub mod validation;
+pub mod value;

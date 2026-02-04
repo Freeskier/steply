@@ -1,4 +1,6 @@
+use crate::core::binding::BindTarget;
 use crate::core::node::{Node, NodeId};
+use crate::core::value::Value;
 use crate::inputs::Input;
 use indexmap::IndexMap;
 use std::collections::HashSet;
@@ -54,7 +56,9 @@ impl NodeRegistry {
         &'a self,
         node_ids: &'a [NodeId],
     ) -> impl Iterator<Item = (&'a NodeId, &'a Node)> {
-        node_ids.iter().filter_map(|id| self.get(id).map(|n| (id, n)))
+        node_ids
+            .iter()
+            .filter_map(|id| self.get(id).map(|n| (id, n)))
     }
 
     pub fn nodes_for_step_mut<'a>(
@@ -68,13 +72,45 @@ impl NodeRegistry {
             .collect()
     }
 
-
     pub fn get_input(&self, id: &str) -> Option<&dyn Input> {
         self.get(id).and_then(|n| n.as_input())
     }
 
     pub fn get_input_mut(&mut self, id: &str) -> Option<&mut dyn Input> {
         self.get_mut(id).and_then(|n| n.as_input_mut())
+    }
+
+    pub fn get_component(&self, id: &str) -> Option<&dyn crate::core::component::Component> {
+        self.get(id).and_then(|n| n.as_component())
+    }
+
+    pub fn get_component_mut(
+        &mut self,
+        id: &str,
+    ) -> Option<&mut dyn crate::core::component::Component> {
+        self.get_mut(id).and_then(|n| n.as_component_mut())
+    }
+
+    pub fn get_value(&self, target: &BindTarget) -> Option<Value> {
+        match target {
+            BindTarget::Input(id) => self.get_input(id).map(|input| input.value_typed()),
+            BindTarget::Component(id) => self.get_component(id).and_then(|c| c.value()),
+        }
+    }
+
+    pub fn set_value(&mut self, target: &BindTarget, value: Value) {
+        match target {
+            BindTarget::Input(id) => {
+                if let Some(input) = self.get_input_mut(id) {
+                    input.set_value_typed(value);
+                }
+            }
+            BindTarget::Component(id) => {
+                if let Some(component) = self.get_component_mut(id) {
+                    component.set_value(value);
+                }
+            }
+        }
     }
 
     pub fn input_ids_for_step<'a>(&'a self, node_ids: &'a [NodeId]) -> Vec<&'a NodeId> {

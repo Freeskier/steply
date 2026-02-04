@@ -1,4 +1,11 @@
+use crate::array_input::ArrayInput;
+use crate::button_input::ButtonInput;
+use crate::checkbox_input::CheckboxInput;
+use crate::choice_input::ChoiceInput;
+use crate::color_input::ColorInput;
+use crate::components::select_component::{SelectComponent, SelectMode};
 use crate::core::action_bindings::ActionBindings;
+use crate::core::binding::{BindTarget, ValueSource};
 use crate::core::event::Action;
 use crate::core::event_queue::{AppEvent, EventQueue};
 use crate::core::flow::{Flow, StepStatus};
@@ -8,18 +15,14 @@ use crate::core::overlay::OverlayState;
 use crate::core::reducer::{Effect, Reducer};
 use crate::core::state::AppState;
 use crate::core::step_builder::StepBuilder;
-use crate::array_input::ArrayInput;
-use crate::checkbox_input::CheckboxInput;
-use crate::choice_input::ChoiceInput;
-use crate::color_input::ColorInput;
-use crate::components::select_component::{SelectComponent, SelectMode};
+use crate::core::value::Value;
 use crate::password_input::{PasswordInput, PasswordRender};
 use crate::path_input::PathInput;
 use crate::segmented_input::SegmentedInput;
 use crate::select_input::SelectInput;
 use crate::slider_input::SliderInput;
-use crate::text_input::TextInput;
 use crate::terminal::{KeyCode, KeyEvent, KeyModifiers, Terminal};
+use crate::text_input::TextInput;
 use crate::ui::render::{RenderOptions, RenderPipeline};
 use crate::ui::theme::Theme;
 use crate::validators;
@@ -76,6 +79,8 @@ impl App {
     }
 
     pub fn render(&mut self, terminal: &mut Terminal) -> io::Result<()> {
+        self.sync_step_bindings();
+
         self.pipeline.render_title(terminal, &self.theme)?;
         terminal.queue_hide_cursor()?;
 
@@ -94,36 +99,26 @@ impl App {
         let registry = self.state.flow.registry();
         let options = RenderOptions::active();
 
-        let step_cursor = self.pipeline.render_step(
-            terminal,
-            step,
-            registry,
-            &self.theme,
-            options,
-        )?;
+        let step_cursor =
+            self.pipeline
+                .render_step(terminal, step, registry, &self.theme, options)?;
 
         let cursor = if let Some(overlay) = self.layer_manager.active() {
             let registry = self.state.flow.registry();
-            self.pipeline.render_layer(
-                terminal,
-                overlay,
-                registry,
-                &self.theme,
-                step_cursor,
-            )?
+            self.pipeline
+                .render_layer(terminal, overlay, registry, &self.theme, step_cursor)?
         } else {
             step_cursor
         };
 
-        if cursor.is_some() {
-            self.last_cursor = cursor;
-        }
-
-        if let Some((col, row)) = cursor.or(self.last_cursor) {
+        if let Some((col, row)) = cursor {
+            self.last_cursor = Some((col, row));
             terminal.queue_move_cursor(col, row)?;
+            terminal.queue_show_cursor()?;
+        } else {
+            self.last_cursor = None;
+            terminal.queue_hide_cursor()?;
         }
-
-        terminal.queue_show_cursor()?;
         terminal.flush()
     }
 
@@ -143,13 +138,15 @@ impl App {
         self.pipeline.move_to_end(terminal)
     }
 
-
     fn dispatch(&mut self, event: AppEvent) {
         match event {
             AppEvent::Key(key) => self.handle_key_event(key),
             AppEvent::Action(action) => self.handle_action(action),
-            AppEvent::LayerResult { value, target_id, .. } => {
-                self.apply_layer_result(value, target_id)
+            AppEvent::ValueRequested { source, target } => {
+                self.handle_value_requested(source, target);
+            }
+            AppEvent::ValueProduced { target, value, .. } => {
+                self.handle_value_produced(target, value);
             }
             AppEvent::RequestRerender
             | AppEvent::InputChanged { .. }
@@ -180,7 +177,7 @@ impl App {
 
         if key.code == KeyCode::Enter
             && key.modifiers == KeyModifiers::NONE
-            && self.state.engine.focused_id().is_none()
+            && self.state.engine.focused_target().is_none()
         {
             self.handle_action(Action::Submit);
             return;
@@ -224,36 +221,58 @@ impl App {
         }
     }
 
-    fn current_step_input_ids(&self) -> Vec<NodeId> {
+    fn current_step_node_ids(&self) -> Vec<NodeId> {
         let step = self.state.flow.current_step();
-        self.state
-            .flow
-            .registry()
-            .input_ids_for_step_owned(&step.node_ids)
+        step.node_ids.clone()
     }
 
     fn try_handle_component_key(&mut self, key: KeyEvent) -> bool {
-        if self.state.engine.focused_id().is_some() {
+        let Some(component_id) = self.state.engine.focused_component_id().cloned() else {
             return false;
-        }
+        };
 
-        let node_ids = self.state.flow.current_step().node_ids.clone();
         let registry = self.state.flow.registry_mut();
-        for id in &node_ids {
-            let Some(node) = registry.get_mut(id) else {
-                continue;
-            };
+        let Some(node) = registry.get_mut(&component_id) else {
+            return false;
+        };
 
-            if let Node::Component(component) = node {
-                if component.handle_key(key.code, key.modifiers) {
-                    return true;
+        if let Node::Component(component) = node {
+            let response = component.handle_key(key.code, key.modifiers);
+            if let Some(value) = response.produced {
+                if let Some(target) = component.bind_target() {
+                    self.events.emit(AppEvent::ValueProduced {
+                        source: ValueSource::Component(component_id.clone()),
+                        target,
+                        value,
+                    });
                 }
             }
+            return response.handled;
         }
 
         false
     }
 
+    fn sync_step_bindings(&mut self) {
+        let node_ids = self.current_step_node_ids();
+        let mut requests = Vec::new();
+        {
+            let registry = self.state.flow.registry();
+            for id in &node_ids {
+                if let Some(node) = registry.get(id) {
+                    if let Node::Component(component) = node {
+                        if let Some(target) = component.bind_target() {
+                            requests.push((id.clone(), target));
+                        }
+                    }
+                }
+            }
+        }
+
+        for (component_id, target) in requests {
+            self.handle_value_requested(ValueSource::Component(component_id), target);
+        }
+    }
 
     fn toggle_overlay(&mut self) {
         if self.layer_manager.is_active() {
@@ -268,39 +287,62 @@ impl App {
         let engine = &mut self.state.engine;
         self.layer_manager
             .open(Box::new(OverlayState::demo()), registry, engine);
+
+        if let Some(active) = self.layer_manager.active() {
+            if let Some(target) = active.layer.bind_target() {
+                self.events.emit(AppEvent::ValueRequested {
+                    source: ValueSource::Layer(active.layer.id().to_string()),
+                    target,
+                });
+            }
+        }
     }
 
     fn close_overlay(&mut self) {
-        let step_input_ids = self.current_step_input_ids();
+        let step_node_ids = self.current_step_node_ids();
         let registry = self.state.flow.registry_mut();
         let engine = &mut self.state.engine;
-        if self.layer_manager.close(
-            registry,
-            engine,
-            step_input_ids,
-            &mut |event| self.events.emit(event),
-        )
+        if self
+            .layer_manager
+            .close(registry, engine, step_node_ids, &mut |event| {
+                self.events.emit(event)
+            })
         {
             self.pending_layer_clear = true;
         }
     }
 
-    fn apply_layer_result(&mut self, value: String, target_id: Option<String>) {
-        let registry = self.state.flow.registry_mut();
-        if let Some(id) = target_id {
-            if let Some(input) = registry.get_input_mut(&id) {
-                input.set_value(value);
-                input.clear_error();
-            }
-            return;
-        }
+    fn handle_value_requested(&mut self, source: ValueSource, target: BindTarget) {
+        let value = {
+            let registry = self.state.flow.registry();
+            registry.get_value(&target)
+        };
 
-        let Some(input) = self.state.engine.focused_input_mut(registry) else {
+        let Some(value) = value else {
             return;
         };
 
-        input.set_value(value);
-        input.clear_error();
+        match source {
+            ValueSource::Component(id) => {
+                let registry = self.state.flow.registry_mut();
+                if let Some(component) = registry.get_component_mut(&id) {
+                    component.set_value(value);
+                }
+            }
+            ValueSource::Layer(id) => {
+                let registry = self.state.flow.registry_mut();
+                if let Some(active) = self.layer_manager.active_mut() {
+                    if active.layer.id() == id {
+                        active.layer.set_value(registry, value);
+                    }
+                }
+            }
+        }
+    }
+
+    fn handle_value_produced(&mut self, target: BindTarget, value: Value) {
+        let registry = self.state.flow.registry_mut();
+        registry.set_value(&target, value);
     }
 
     fn render_completed_step(&mut self, terminal: &mut Terminal) -> io::Result<()> {
@@ -312,9 +354,11 @@ impl App {
         let registry = self.state.flow.registry();
         let options = RenderOptions::done();
 
-        self.pipeline.render_step(terminal, step, registry, &self.theme, options)?;
+        self.pipeline
+            .render_step(terminal, step, registry, &self.theme, options)?;
         self.pipeline.move_to_end(terminal)?;
-        self.pipeline.write_connector(terminal, &self.theme, StepStatus::Done, 1)?;
+        self.pipeline
+            .write_connector(terminal, &self.theme, StepStatus::Done, 1)?;
         self.pipeline.reset_region();
 
         Ok(())
@@ -326,7 +370,6 @@ impl Default for App {
         Self::new()
     }
 }
-
 
 fn build_demo_steps() -> Vec<(crate::core::step::Step, Vec<(NodeId, Node)>)> {
     vec![
@@ -340,21 +383,31 @@ fn build_demo_steps() -> Vec<(crate::core::step::Step, Vec<(NodeId, Node)>)> {
 fn build_step_zero() -> (crate::core::step::Step, Vec<(NodeId, Node)>) {
     let component = SelectComponent::new(
         "plan_select",
-        vec![
-            "Free".to_string(),
-            "Pro".to_string(),
-            "Team".to_string(),
-        ],
+        vec!["Free".to_string(), "Pro".to_string(), "Team".to_string()],
     )
     .with_label("Select plan:")
-    .with_mode(SelectMode::Single);
+    .with_mode(SelectMode::Multi);
+
+    let tags_component = SelectComponent::new("tags_select", Vec::new())
+        .with_label("Tags (from input):")
+        .with_mode(SelectMode::Multi)
+        .bind_to_input("tags");
 
     StepBuilder::new("Component demo:")
+        .input(ArrayInput::new("tags", "Tags"))
+        .input(ButtonInput::new("cta", "Continue").with_text("Continue"))
+        .component(tags_component)
+        .input(TextInput::new("username", "Username"))
         .component(component)
         .build()
 }
 
 fn build_step_one() -> (crate::core::step::Step, Vec<(NodeId, Node)>) {
+    let tags_component = SelectComponent::new("tags_select", Vec::new())
+        .with_label("Tags (from input):")
+        .with_mode(SelectMode::Multi)
+        .bind_to_input("tags");
+
     StepBuilder::new("Please fill the form:")
         .hint("Press Tab/Shift+Tab to navigate, Enter to submit, Esc to exit")
         .input(
@@ -378,6 +431,7 @@ fn build_step_one() -> (crate::core::step::Step, Vec<(NodeId, Node)>) {
             .with_bullets(true),
         )
         .input(ArrayInput::new("tags", "Tags"))
+        .component(tags_component)
         .input(PathInput::new("path", "Path"))
         .input(SelectInput::new(
             "color",

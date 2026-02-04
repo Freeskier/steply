@@ -48,7 +48,25 @@ impl Node {
         }
     }
 
+    pub fn as_component(&self) -> Option<&dyn Component> {
+        match self {
+            Node::Component(component) => Some(component.as_ref()),
+            _ => None,
+        }
+    }
+
+    pub fn as_component_mut(&mut self) -> Option<&mut dyn Component> {
+        match self {
+            Node::Component(component) => Some(component.as_mut()),
+            _ => None,
+        }
+    }
+
     pub fn is_input(&self) -> bool {
         matches!(self, Node::Input(_))
+    }
+
+    pub fn is_component(&self) -> bool {
+        matches!(self, Node::Component(_))
     }
 }

@@ -657,6 +657,76 @@ impl Input for SegmentedInput {
         }
     }
 
+    fn value_typed(&self) -> crate::value::Value {
+        let mut items = Vec::new();
+        let mut seg_idx = 1usize;
+        let mut any_non_empty = false;
+
+        for token in &self.tokens {
+            if let SegmentToken::Segment { value, .. } = token {
+                if !value.is_empty() {
+                    any_non_empty = true;
+                }
+                items.push((format!("segment_{}", seg_idx), value.clone()));
+                seg_idx += 1;
+            }
+        }
+
+        if !any_non_empty {
+            crate::value::Value::None
+        } else {
+            crate::value::Value::Map(items)
+        }
+    }
+
+    fn set_value_typed(&mut self, value: crate::value::Value) {
+        match value {
+            crate::value::Value::Map(items) => {
+                let mut map = std::collections::HashMap::new();
+                for (k, v) in items {
+                    map.insert(k, v);
+                }
+
+                let mut seg_idx = 1usize;
+                for token in &mut self.tokens {
+                    if let SegmentToken::Segment {
+                        kind,
+                        max_len,
+                        value: buf,
+                        ..
+                    } = token
+                    {
+                        let key = format!("segment_{}", seg_idx);
+                        let raw = map.get(&key).cloned().unwrap_or_default();
+                        buf.clear();
+                        for ch in raw.chars() {
+                            if let Some(max) = max_len {
+                                if buf.chars().count() >= *max {
+                                    break;
+                                }
+                            }
+                            if Self::token_accepts(*kind, ch) {
+                                buf.push(ch);
+                            }
+                        }
+                        seg_idx += 1;
+                    }
+                }
+            }
+            crate::value::Value::Text(text) => {
+                self.set_value(text);
+            }
+            crate::value::Value::None => {
+                for token in &mut self.tokens {
+                    if let SegmentToken::Segment { value: buf, .. } = token {
+                        buf.clear();
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
     fn raw_value(&self) -> String {
         if self.tokens.iter().all(|token| {
             matches!(token, SegmentToken::Segment { value, .. } if value.is_empty())

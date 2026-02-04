@@ -2,6 +2,7 @@ use crate::span::Span;
 use crate::terminal::{KeyCode, KeyModifiers};
 use crate::theme::Theme;
 use crate::validators::Validator;
+use crate::value::Value;
 
 pub type NodeId = String;
 
@@ -89,6 +90,26 @@ pub trait Input: Send {
 
     fn value(&self) -> String;
     fn set_value(&mut self, value: String);
+    fn value_typed(&self) -> Value {
+        Value::Text(self.value())
+    }
+    fn set_value_typed(&mut self, value: Value) {
+        match value {
+            Value::Text(text) => self.set_value(text),
+            Value::Bool(val) => self.set_value(if val { "true" } else { "false" }.to_string()),
+            Value::Number(num) => self.set_value(num.to_string()),
+            Value::List(items) => self.set_value(items.join(",")),
+            Value::Map(items) => {
+                let joined = items
+                    .into_iter()
+                    .map(|(k, v)| format!("{}={}", k, v))
+                    .collect::<Vec<_>>()
+                    .join(",");
+                self.set_value(joined);
+            }
+            Value::None => self.set_value(String::new()),
+        }
+    }
     fn raw_value(&self) -> String {
         self.value()
     }

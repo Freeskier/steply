@@ -1,3 +1,4 @@
+use crate::core::binding::BindTarget;
 use crate::core::event_queue::AppEvent;
 use crate::core::form_engine::FormEngine;
 use crate::core::layer::{ActiveLayer, Layer};
@@ -10,9 +11,7 @@ pub struct LayerManager {
 
 impl LayerManager {
     pub fn new() -> Self {
-        Self {
-            active: None,
-        }
+        Self { active: None }
     }
 
     pub fn is_active(&self) -> bool {
@@ -21,6 +20,10 @@ impl LayerManager {
 
     pub fn active(&self) -> Option<&ActiveLayer> {
         self.active.as_ref()
+    }
+
+    pub fn active_mut(&mut self) -> Option<&mut ActiveLayer> {
+        self.active.as_mut()
     }
 
     pub fn open(
@@ -33,15 +36,22 @@ impl LayerManager {
             return;
         }
 
-        let saved_focus_id = engine.focused_id().cloned();
+        let saved_focus_id = engine.focused_node_id().cloned();
+        if layer.bind_target().is_none() {
+            let target = saved_focus_id
+                .as_ref()
+                .and_then(|id| bind_target_from_id(registry, id));
+            if let Some(target) = target {
+                layer.set_bind_target(Some(target));
+            }
+        }
 
         for (id, node) in layer.nodes() {
             registry.insert(id, node);
         }
 
-        let input_ids: Vec<NodeId> = registry.input_ids_for_step_owned(layer.node_ids());
-
-        engine.reset_with_ids(input_ids, registry);
+        let node_ids: Vec<NodeId> = layer.node_ids().to_vec();
+        engine.reset_with_nodes(node_ids, registry);
 
         self.active = Some(ActiveLayer::new(layer, saved_focus_id));
     }
@@ -50,43 +60,23 @@ impl LayerManager {
         &mut self,
         registry: &mut NodeRegistry,
         engine: &mut FormEngine,
-        step_input_ids: Vec<NodeId>,
+        step_node_ids: Vec<NodeId>,
         emit: &mut dyn FnMut(AppEvent),
     ) -> bool {
         let Some(mut active) = self.active.take() else {
             return false;
         };
 
-        let target_id = active.saved_focus_id.clone();
-        let mut emit_with_target = |event: AppEvent| {
-            if let AppEvent::LayerResult {
-                layer_id,
-                value,
-                target_id: _,
-            } = event
-            {
-                emit(AppEvent::LayerResult {
-                    layer_id,
-                    value,
-                    target_id: target_id.clone(),
-                });
-            } else {
-                emit(event);
-            }
-        };
-
-        active
-            .layer
-            .emit_close_events(registry, &mut emit_with_target);
+        active.layer.emit_close_events(registry, emit);
 
         for id in active.layer.node_ids() {
             registry.remove(id);
         }
 
-        engine.reset_with_ids(step_input_ids.clone(), registry);
+        engine.reset_with_nodes(step_node_ids.clone(), registry);
 
         if let Some(saved_id) = active.saved_focus_id {
-            if let Some(index) = step_input_ids.iter().position(|id| id == &saved_id) {
+            if let Some(index) = engine.find_index_by_id(&saved_id) {
                 let mut events = Vec::new();
                 engine.set_focus(registry, Some(index), &mut events);
             }
@@ -100,15 +90,25 @@ impl LayerManager {
         layer_fn: impl FnOnce() -> Box<dyn Layer>,
         registry: &mut NodeRegistry,
         engine: &mut FormEngine,
-        step_input_ids: Vec<NodeId>,
+        step_node_ids: Vec<NodeId>,
     ) {
         if self.active.is_some() {
             let mut emit = |_| {};
-            self.close(registry, engine, step_input_ids, &mut emit);
+            self.close(registry, engine, step_node_ids, &mut emit);
         } else {
             self.open(layer_fn(), registry, engine);
         }
     }
+}
+
+fn bind_target_from_id(registry: &NodeRegistry, id: &str) -> Option<BindTarget> {
+    if registry.get_input(id).is_some() {
+        return Some(BindTarget::Input(id.to_string()));
+    }
+    if registry.get_component(id).is_some() {
+        return Some(BindTarget::Component(id.to_string()));
+    }
+    None
 }
 
 impl Default for LayerManager {

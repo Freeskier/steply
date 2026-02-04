@@ -1,6 +1,8 @@
+use crate::core::binding::BindTarget;
 use crate::core::event_queue::AppEvent;
 use crate::core::node::{Node, NodeId};
 use crate::core::node_registry::NodeRegistry;
+use crate::core::value::Value;
 
 pub trait Layer {
     fn id(&self) -> &str;
@@ -12,6 +14,14 @@ pub trait Layer {
     fn node_ids(&self) -> &[NodeId];
 
     fn nodes(&mut self) -> Vec<(NodeId, Node)>;
+
+    fn bind_target(&self) -> Option<BindTarget> {
+        None
+    }
+
+    fn set_bind_target(&mut self, _target: Option<BindTarget>) {}
+
+    fn set_value(&mut self, _registry: &mut NodeRegistry, _value: Value) {}
 
     fn emit_close_events(&mut self, _registry: &NodeRegistry, _emit: &mut dyn FnMut(AppEvent)) {}
 }

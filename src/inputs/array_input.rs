@@ -360,7 +360,7 @@ impl Input for ArrayInput {
     }
 
     fn cursor_offset_in_content(&self) -> usize {
-        let (_, offset) = self.build_spans(&crate::theme::Theme::default_theme());
+        let (_, offset) = self.build_spans(&crate::theme::Theme::default());
         offset
     }
 }

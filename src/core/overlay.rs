@@ -1,22 +1,62 @@
-use crate::node::Node;
+use crate::core::layer::Layer;
+use crate::core::node::{Node, NodeId};
 use crate::text_input::TextInput;
+use std::mem;
 
-#[derive(Clone, Debug)]
 pub struct OverlayState {
-    pub label: String,
-    pub hint: Option<String>,
-    pub input_ids: Vec<String>,
+    id: String,
+    label: String,
+    hint: Option<String>,
+    node_ids: Vec<NodeId>,
+    nodes: Vec<(NodeId, Node)>,
 }
 
 impl OverlayState {
-    pub fn demo() -> (Self, Vec<Node>) {
-        let input_id = "overlay_query".to_string();
-        let nodes = vec![Node::overlay_input(TextInput::new(&input_id, "Search"))];
-        let overlay = Self {
-            label: "Overlay demo: type, Esc to close".to_string(),
+    pub fn new(
+        id: impl Into<String>,
+        label: impl Into<String>,
+        nodes: Vec<(NodeId, Node)>,
+    ) -> Self {
+        let node_ids = nodes.iter().map(|(id, _)| id.clone()).collect();
+        Self {
+            id: id.into(),
+            label: label.into(),
             hint: None,
-            input_ids: vec![input_id],
-        };
-        (overlay, nodes)
+            node_ids,
+            nodes,
+        }
+    }
+
+    pub fn with_hint(mut self, hint: impl Into<String>) -> Self {
+        self.hint = Some(hint.into());
+        self
+    }
+
+    pub fn demo() -> Self {
+        let input_id = "overlay_query".to_string();
+        let nodes = vec![(input_id.clone(), Node::input(TextInput::new(&input_id, "Search")))];
+        Self::new("overlay_demo", "Overlay demo: type, Esc to close", nodes)
+    }
+}
+
+impl Layer for OverlayState {
+    fn id(&self) -> &str {
+        &self.id
+    }
+
+    fn label(&self) -> &str {
+        &self.label
+    }
+
+    fn hint(&self) -> Option<&str> {
+        self.hint.as_deref()
+    }
+
+    fn node_ids(&self) -> &[NodeId] {
+        &self.node_ids
+    }
+
+    fn nodes(&mut self) -> Vec<(NodeId, Node)> {
+        mem::take(&mut self.nodes)
     }
 }

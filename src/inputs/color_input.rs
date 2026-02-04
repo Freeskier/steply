@@ -404,7 +404,7 @@ impl Input for ColorInput {
     }
 
     fn cursor_offset_in_content(&self) -> usize {
-        let (_, offset) = self.render_with_cursor(&crate::theme::Theme::default_theme());
+        let (_, offset) = self.render_with_cursor(&crate::theme::Theme::default());
         offset
     }
 }

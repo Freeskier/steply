@@ -1,597 +1,333 @@
-use crate::action_bindings::ActionBindings;
+use crate::core::action_bindings::ActionBindings;
+use crate::core::event::Action;
+use crate::core::event_queue::{AppEvent, EventQueue};
+use crate::core::flow::{Flow, StepStatus};
+use crate::core::layer_manager::LayerManager;
+use crate::core::node::{Node, NodeId};
+use crate::core::overlay::OverlayState;
+use crate::core::reducer::{Effect, Reducer};
+use crate::core::state::AppState;
+use crate::core::step_builder::StepBuilder;
 use crate::array_input::ArrayInput;
 use crate::checkbox_input::CheckboxInput;
 use crate::choice_input::ChoiceInput;
 use crate::color_input::ColorInput;
-use crate::event::Action;
-use crate::event_queue::{AppEvent, EventQueue};
-use crate::flow::Flow;
-use crate::frame::Line;
-use crate::layout::Layout;
-use crate::node::{Node, RenderMode};
-use crate::overlay::OverlayState;
 use crate::password_input::{PasswordInput, PasswordRender};
 use crate::path_input::PathInput;
-use crate::reducer::{Effect, Reducer};
-use crate::renderer::Renderer;
 use crate::segmented_input::SegmentedInput;
 use crate::select_input::SelectInput;
 use crate::slider_input::SliderInput;
-use crate::span::{Span, Wrap};
-use crate::state::AppState;
-use crate::step::Step;
-use crate::terminal::KeyEvent;
-use crate::terminal::Terminal;
 use crate::text_input::TextInput;
-use crate::theme::Theme;
+use crate::terminal::{KeyCode, KeyEvent, KeyModifiers, Terminal};
+use crate::ui::render::{RenderOptions, RenderPipeline};
+use crate::ui::theme::Theme;
 use crate::validators;
-use crate::view_state::ErrorDisplay;
 use std::io;
 use std::time::{Duration, Instant};
 
 const ERROR_TIMEOUT: Duration = Duration::from_secs(2);
-const ENABLE_DECORATION: bool = true;
-const APP_TITLE: &str = "Steply main";
-const TAB_ADVANCE_DELAY: Duration = Duration::from_millis(300);
-
 pub struct App {
-    pub state: AppState,
-    pub renderer: Renderer,
-    action_bindings: ActionBindings,
-    event_queue: EventQueue,
+    state: AppState,
+    pipeline: RenderPipeline,
+    bindings: ActionBindings,
+    events: EventQueue,
     theme: Theme,
+
     last_rendered_step: usize,
-    pending_tab_advance_at: Option<Instant>,
-    pending_tab_input_id: Option<String>,
-    overlay_render_start: Option<u16>,
-    overlay_render_lines: usize,
-    overlay_focus_id: Option<String>,
-    overlay: Option<OverlayState>,
-    last_step_cursor: Option<(u16, u16)>,
+    last_cursor: Option<(u16, u16)>,
+
+    layer_manager: LayerManager,
+    pending_layer_clear: bool,
 }
 
 impl App {
     pub fn new() -> Self {
-        let flow = Flow::new(build_steps());
-        let mut app = Self {
-            state: AppState::new(flow),
-            renderer: Renderer::new(),
-            action_bindings: ActionBindings::new(),
-            event_queue: EventQueue::new(),
-            theme: Theme::default_theme(),
-            last_rendered_step: 0,
-            pending_tab_advance_at: None,
-            pending_tab_input_id: None,
-            overlay_render_start: None,
-            overlay_render_lines: 0,
-            overlay_focus_id: None,
-            overlay: None,
-            last_step_cursor: None,
-        };
+        let flow = Flow::new(build_demo_steps());
+        let state = AppState::new(flow);
 
-        app.renderer.set_decoration_enabled(ENABLE_DECORATION);
-        app.renderer.set_title(APP_TITLE);
-        app
+        let mut pipeline = RenderPipeline::new();
+        pipeline.set_decoration(true);
+        pipeline.set_title("Steply");
+
+        Self {
+            state,
+            pipeline,
+            bindings: ActionBindings::new(),
+            events: EventQueue::new(),
+            theme: Theme::default(),
+            last_rendered_step: 0,
+            last_cursor: None,
+            layer_manager: LayerManager::new(),
+            pending_layer_clear: false,
+        }
     }
 
     pub fn tick(&mut self) -> bool {
-        let mut processed_any = false;
-        self.maybe_fire_pending_tab_advance();
-        loop {
-            let now = Instant::now();
-            let Some(event) = self.event_queue.next_ready(now) else {
-                break;
-            };
-            self.dispatch_event(event);
-            processed_any = true;
+        let mut processed = false;
+        let now = Instant::now();
+
+        while let Some(event) = self.events.next_ready(now) {
+            self.dispatch(event);
+            processed = true;
         }
-        processed_any
+
+        processed
     }
 
     pub fn render(&mut self, terminal: &mut Terminal) -> io::Result<()> {
-        self.renderer.render_title_once(terminal, &self.theme)?;
+        self.pipeline.render_title(terminal, &self.theme)?;
         terminal.queue_hide_cursor()?;
 
-        let current_step = self.state.flow.current_index();
-        if current_step != self.last_rendered_step {
-            if let Some(step) = self.state.flow.step_at(self.last_rendered_step) {
-                let done_view = crate::view_state::ViewState::new();
-                self.renderer.render_with_status_without_cursor(
-                    step,
-                    &done_view,
-                    &self.theme,
-                    terminal,
-                    crate::flow::StepStatus::Done,
-                    true,
-                )?;
-            }
-            self.renderer.move_to_end(terminal)?;
-            self.renderer.write_connector_lines(
-                terminal,
-                &self.theme,
-                crate::flow::StepStatus::Done,
-                1,
-            )?;
-            self.renderer.reset_block();
-            self.last_rendered_step = current_step;
+        let current = self.state.flow.current_index();
+        if current != self.last_rendered_step {
+            self.render_completed_step(terminal)?;
+            self.last_rendered_step = current;
         }
 
-        self.clear_overlay_region(terminal)?;
-        let skip_rows = if self.overlay.is_some() {
-            self.overlay_render_start
-                .map(|start| (start, self.overlay_render_lines))
-        } else {
-            None
-        };
-        let step_cursor = self.renderer.render_with_status_plan_skip(
-            self.state.flow.current_step(),
-            &self.state.view,
-            &self.theme,
+        if self.pending_layer_clear {
+            self.pipeline.clear_layer(terminal)?;
+            self.pending_layer_clear = false;
+        }
+
+        let step = self.state.flow.current_step();
+        let registry = self.state.flow.registry();
+        let options = RenderOptions::active();
+
+        let step_cursor = self.pipeline.render_step(
             terminal,
-            self.state.flow.current_status(),
-            false,
-            skip_rows,
+            step,
+            registry,
+            &self.theme,
+            options,
         )?;
-        if step_cursor.is_some() {
-            self.last_step_cursor = step_cursor;
+
+        let cursor = if let Some(overlay) = self.layer_manager.active() {
+            let registry = self.state.flow.registry();
+            self.pipeline.render_layer(
+                terminal,
+                overlay,
+                registry,
+                &self.theme,
+                step_cursor,
+            )?
+        } else {
+            step_cursor
+        };
+
+        if cursor.is_some() {
+            self.last_cursor = cursor;
         }
 
-        let overlay_cursor = self.render_overlay(terminal, step_cursor)?;
-        let final_cursor = overlay_cursor.or(step_cursor);
-        if let Some((col, row)) = final_cursor {
+        if let Some((col, row)) = cursor.or(self.last_cursor) {
             terminal.queue_move_cursor(col, row)?;
         }
-        terminal.queue_show_cursor()?;
-        terminal.flush()?;
 
-        Ok(())
+        terminal.queue_show_cursor()?;
+        terminal.flush()
     }
 
-    pub fn handle_key(&mut self, key_event: KeyEvent) {
-        self.event_queue.emit(AppEvent::Key(key_event));
+    pub fn handle_key(&mut self, key: KeyEvent) {
+        self.events.emit(AppEvent::Key(key));
     }
 
     pub fn should_exit(&self) -> bool {
         self.state.should_exit
     }
 
-    fn dispatch_event(&mut self, event: AppEvent) {
+    pub fn request_rerender(&mut self) {
+        self.events.emit(AppEvent::RequestRerender);
+    }
+
+    pub fn move_to_end(&self, terminal: &mut Terminal) -> io::Result<()> {
+        self.pipeline.move_to_end(terminal)
+    }
+
+
+    fn dispatch(&mut self, event: AppEvent) {
         match event {
-            AppEvent::Key(key_event) => {
-                if self.overlay.is_some() {
-                    if matches!(
-                        key_event.code,
-                        crate::terminal::KeyCode::Esc | crate::terminal::KeyCode::Enter
-                    ) {
-                        self.close_overlay();
-                        return;
-                    }
-                }
+            AppEvent::Key(key) => self.handle_key_event(key),
+            AppEvent::Action(action) => self.handle_action(action),
+            AppEvent::RequestRerender
+            | AppEvent::InputChanged { .. }
+            | AppEvent::FocusChanged { .. }
+            | AppEvent::Submitted => {}
+        }
+    }
 
-                if key_event.code == crate::terminal::KeyCode::Char('o')
-                    && key_event.modifiers == crate::terminal::KeyModifiers::CONTROL
-                    && self.overlay.is_none()
-                {
-                    self.open_overlay();
-                    return;
-                }
+    fn handle_key_event(&mut self, key: KeyEvent) {
+        if key.code == KeyCode::Char('o') && key.modifiers == KeyModifiers::CONTROL {
+            self.toggle_overlay();
+            return;
+        }
 
-                if !matches!(key_event.code, crate::terminal::KeyCode::Tab)
-                    || key_event.modifiers != crate::terminal::KeyModifiers::NONE
-                {
-                    self.clear_pending_tab();
-                }
+        if key.code == KeyCode::Esc && self.layer_manager.is_active() {
+            self.close_overlay();
+            return;
+        }
 
-                if matches!(key_event.code, crate::terminal::KeyCode::Tab)
-                    && key_event.modifiers == crate::terminal::KeyModifiers::NONE
-                    && self.handle_tab_completion(key_event)
-                {
-                    return;
-                }
-
-                let captured = self
-                    .state
-                    .engine
-                    .focused_input_caps(self.state.flow.current_step())
-                    .map(|caps| caps.captures_key(key_event.code, key_event.modifiers))
-                    .unwrap_or(false);
-
-                if !captured {
-                    if let Some(action) = self.action_bindings.handle_key(&key_event) {
-                        if self.overlay.is_some()
-                            && matches!(action, Action::NextInput | Action::PrevInput)
-                        {
-                            let direction = match action {
-                                Action::NextInput => 1,
-                                Action::PrevInput => -1,
-                                _ => 0,
-                            };
-                            self.move_overlay_focus(direction);
-                            return;
-                        }
-                        let effects = Reducer::reduce(&mut self.state, action, ERROR_TIMEOUT);
-                        self.apply_effects(effects);
-                        return;
-                    }
-                }
-
-                let effects =
-                    Reducer::reduce(&mut self.state, Action::InputKey(key_event), ERROR_TIMEOUT);
-                self.apply_effects(effects);
+        if key.code == KeyCode::Tab && key.modifiers == KeyModifiers::NONE {
+            let registry = self.state.flow.registry_mut();
+            if self.state.engine.handle_tab_completion(registry) {
+                return;
             }
-            AppEvent::Action(action) => {
-                if self.overlay.is_some() && matches!(action, Action::NextInput | Action::PrevInput)
-                {
-                    let direction = match action {
-                        Action::NextInput => 1,
-                        Action::PrevInput => -1,
-                        _ => 0,
-                    };
-                    self.move_overlay_focus(direction);
-                    return;
-                }
-                let effects = Reducer::reduce(&mut self.state, action, ERROR_TIMEOUT);
-                self.apply_effects(effects);
-            }
-            AppEvent::RequestRerender => {}
-            AppEvent::InputChanged { .. } | AppEvent::FocusChanged { .. } | AppEvent::Submitted => {
+            self.handle_action(Action::NextInput);
+            return;
+        }
+
+        let registry = self.state.flow.registry();
+        let captured = self
+            .state
+            .engine
+            .focused_caps(registry)
+            .map(|caps| caps.captures_key(key.code, key.modifiers))
+            .unwrap_or(false);
+
+        if !captured {
+            if let Some(action) = self.bindings.handle_key(&key) {
+                self.handle_action(action);
+                return;
             }
         }
+
+        self.handle_action(Action::InputKey(key));
+    }
+
+    fn handle_action(&mut self, action: Action) {
+        let effects = Reducer::reduce(&mut self.state, action, ERROR_TIMEOUT);
+        self.apply_effects(effects);
     }
 
     fn apply_effects(&mut self, effects: Vec<Effect>) {
         for effect in effects {
             match effect {
-                Effect::Emit(event) => self.event_queue.emit(event),
-                Effect::EmitAfter(event, delay) => self.event_queue.emit_after(event, delay),
-                Effect::CancelClearError(id) => self.event_queue.cancel_clear_error_message(&id),
+                Effect::Emit(event) => self.events.emit(event),
+                Effect::EmitAfter(event, delay) => self.events.emit_after(event, delay),
+                Effect::CancelClearError(id) => self.events.cancel_clear_error_message(&id),
             }
         }
     }
 
-    fn handle_tab_completion(&mut self, key_event: crate::terminal::KeyEvent) -> bool {
+    fn current_step_input_ids(&self) -> Vec<NodeId> {
         let step = self.state.flow.current_step();
-        let Some(input) = self.state.engine.focused_input(step) else {
-            return false;
-        };
-        if !input.supports_tab_completion() {
-            return false;
-        }
-
-        let now = Instant::now();
-        let focused_id = self.state.engine.focused_input_id(step);
-
-        if let Some(due) = self.pending_tab_advance_at {
-            if now <= due && focused_id == self.pending_tab_input_id {
-                self.clear_pending_tab();
-                let effects =
-                    Reducer::reduce(&mut self.state, Action::InputKey(key_event), ERROR_TIMEOUT);
-                self.apply_effects(effects);
-                return true;
-            }
-        }
-
-        self.pending_tab_advance_at = Some(now + TAB_ADVANCE_DELAY);
-        self.pending_tab_input_id = focused_id;
-        true
+        self.state
+            .flow
+            .registry()
+            .input_ids_for_step_owned(&step.node_ids)
     }
 
-    fn maybe_fire_pending_tab_advance(&mut self) {
-        let Some(due) = self.pending_tab_advance_at else {
-            return;
-        };
-        if Instant::now() < due {
-            return;
+
+    fn toggle_overlay(&mut self) {
+        if self.layer_manager.is_active() {
+            self.close_overlay();
+        } else {
+            self.open_overlay();
         }
-
-        let step = self.state.flow.current_step();
-        let focused_id = self.state.engine.focused_input_id(step);
-        if focused_id != self.pending_tab_input_id {
-            self.clear_pending_tab();
-            return;
-        }
-
-        self.clear_pending_tab();
-        let effects = Reducer::reduce(&mut self.state, Action::NextInput, ERROR_TIMEOUT);
-        self.apply_effects(effects);
-    }
-
-    fn clear_pending_tab(&mut self) {
-        self.pending_tab_advance_at = None;
-        self.pending_tab_input_id = None;
-    }
-
-    pub fn request_rerender(&mut self) {
-        self.event_queue.emit(AppEvent::RequestRerender);
     }
 
     fn open_overlay(&mut self) {
-        let (overlay, nodes) = OverlayState::demo();
-        let step = self.state.flow.current_step_mut();
-        self.overlay_focus_id = self.state.engine.focused_input_id(step);
-        step.nodes.extend(nodes);
-        self.state.engine.reset(step);
-
-        if let Some(first_id) = overlay.input_ids.first() {
-            if let Some(pos) = self.state.engine.find_input_pos_by_id(step, first_id) {
-                let mut events = Vec::new();
-                self.state.engine.update_focus(step, Some(pos), &mut events);
-                for event in events {
-                    self.event_queue.emit(event);
-                }
-            }
-        }
-
-        self.overlay = Some(overlay);
-        self.event_queue.emit(AppEvent::RequestRerender);
+        let registry = self.state.flow.registry_mut();
+        let engine = &mut self.state.engine;
+        self.layer_manager
+            .open(Box::new(OverlayState::demo()), registry, engine);
     }
 
     fn close_overlay(&mut self) {
-        if self.overlay.take().is_none() {
-            return;
-        }
-        let step = self.state.flow.current_step_mut();
-        step.nodes.retain(|node| !node.is_overlay());
-        self.state.engine.reset(step);
-        self.restore_overlay_focus();
-        self.event_queue.emit(AppEvent::RequestRerender);
-    }
-
-    fn move_overlay_focus(&mut self, direction: isize) {
-        let Some(overlay) = self.overlay.as_ref() else {
-            return;
-        };
-        let step = self.state.flow.current_step();
-        let (_, positions) = self.overlay_nodes_and_positions(step, overlay);
-        if positions.is_empty() {
-            return;
-        }
-        let current_pos = self.state.engine.focused_index();
-        let current_idx = current_pos
-            .and_then(|pos| positions.iter().position(|candidate| *candidate == pos))
-            .unwrap_or(0);
-        let len = positions.len() as isize;
-        let next_idx = (current_idx as isize + direction + len) % len;
-        let next_pos = positions[next_idx as usize];
-        let step = self.state.flow.current_step_mut();
-        let mut events = Vec::new();
-        self.state
-            .engine
-            .update_focus(step, Some(next_pos), &mut events);
-        for event in events {
-            self.event_queue.emit(event);
+        let step_input_ids = self.current_step_input_ids();
+        let registry = self.state.flow.registry_mut();
+        let engine = &mut self.state.engine;
+        if self
+            .layer_manager
+            .close(registry, engine, step_input_ids)
+        {
+            self.pending_layer_clear = true;
         }
     }
 
-    fn restore_overlay_focus(&mut self) {
-        let Some(id) = self.overlay_focus_id.take() else {
-            return;
-        };
-        let step = self.state.flow.current_step_mut();
-        if let Some(pos) = self.state.engine.find_input_pos_by_id(step, &id) {
-            let mut events = Vec::new();
-            self.state.engine.update_focus(step, Some(pos), &mut events);
-            for event in events {
-                self.event_queue.emit(event);
-            }
-        }
-    }
-
-    fn build_overlay_render_lines(
-        &self,
-        step: &Step,
-        overlay: &OverlayState,
-    ) -> Vec<(Vec<Span>, Option<usize>)> {
-        let mut lines = Vec::new();
-
-        if !overlay.label.is_empty() {
-            lines.push((
-                vec![Span::new(overlay.label.clone()).with_style(self.theme.prompt.clone())],
-                None,
-            ));
-        }
-
-        if let Some(hint) = overlay.hint.as_ref() {
-            if !hint.is_empty() {
-                lines.push((
-                    vec![Span::new(hint.clone()).with_style(self.theme.hint.clone())],
-                    None,
-                ));
-            }
-        }
-
-        let (nodes, _) = self.overlay_nodes_and_positions(step, overlay);
-        for node in nodes {
-            let inline_error = match node.as_input() {
-                Some(input) => matches!(
-                    self.state.view.error_display(input.id()),
-                    ErrorDisplay::InlineMessage
-                ),
-                None => false,
-            };
-            let spans = node.render(RenderMode::Full, inline_error, &self.theme);
-            let cursor_offset = node.cursor_offset();
-            lines.push((spans, cursor_offset));
-        }
-
-        lines
-    }
-
-    fn overlay_nodes_and_positions<'a>(
-        &self,
-        step: &'a Step,
-        overlay: &OverlayState,
-    ) -> (Vec<&'a Node>, Vec<usize>) {
-        let mut nodes = Vec::new();
-        let mut positions = Vec::new();
-        for node in step.nodes.iter() {
-            let Some(input) = node.as_input() else {
-                continue;
-            };
-            if !overlay.input_ids.iter().any(|id| id == input.id()) {
-                continue;
-            }
-            nodes.push(node);
-            if let Some(pos) = self.state.engine.find_input_pos_by_id(step, input.id()) {
-                positions.push(pos);
-            }
-            if positions.len() == overlay.input_ids.len() {
-                break;
-            }
-        }
-        (nodes, positions)
-    }
-
-    fn overlay_separator_line(&self, width: u16) -> Line {
-        let mut line = Line::new();
-        let glyph = Span::new("›")
-            .with_style(self.theme.decor_accent.clone())
-            .with_wrap(Wrap::No);
-        line.push(glyph);
-        let dash_count = width.saturating_sub(1) as usize;
-        if dash_count > 0 {
-            line.push(
-                Span::new("─".repeat(dash_count))
-                    .with_style(self.theme.decor_done.clone())
-                    .with_wrap(Wrap::No),
-            );
-        }
-        line
-    }
-
-    fn render_overlay(
-        &mut self,
-        terminal: &mut Terminal,
-        step_cursor: Option<(u16, u16)>,
-    ) -> io::Result<Option<(u16, u16)>> {
-        if let Some(overlay) = self.overlay.as_ref() {
-            let step = self.state.flow.current_step();
-            let anchor_cursor = step_cursor.or(self.last_step_cursor);
-            let start = anchor_cursor.map(|(_, row)| row + 1).unwrap_or_else(|| {
-                let _ = self.renderer.move_to_end(terminal);
-                let _ = terminal.refresh_cursor_position();
-                terminal.cursor_position().y
-            });
-            let width = terminal.size().width;
-            let start_col = self.renderer.overlay_padding() as u16;
-            let available = width.saturating_sub(start_col);
-            let render_lines = self.build_overlay_render_lines(step, overlay);
-            let (frame, cursor) =
-                Layout::new().compose_spans_with_cursor(render_lines.into_iter(), available);
-            let lines = frame.lines();
-            let separator = self.overlay_separator_line(width);
-            let (count, cursor) = self.renderer.render_overlay(
-                terminal,
-                start,
-                start_col,
-                width,
-                lines,
-                self.overlay_render_lines,
-                cursor,
-                &separator,
-            )?;
-            self.overlay_render_start = Some(start);
-            self.overlay_render_lines = count;
-            return Ok(cursor);
-        }
-
-        Ok(None)
-    }
-
-    fn clear_overlay_region(&mut self, terminal: &mut Terminal) -> io::Result<()> {
-        if self.overlay.is_some() {
-            return Ok(());
-        }
-        let Some(start) = self.overlay_render_start.take() else {
+    fn render_completed_step(&mut self, terminal: &mut Terminal) -> io::Result<()> {
+        let prev_index = self.last_rendered_step;
+        let Some(step) = self.state.flow.step_at(prev_index) else {
             return Ok(());
         };
-        if self.overlay_render_lines > 0 {
-            for idx in 0..self.overlay_render_lines {
-                let line_row = start + idx as u16;
-                terminal.queue_move_cursor(0, line_row)?;
-                terminal.queue_clear_line()?;
-            }
-            terminal.flush()?;
-        }
-        self.overlay_render_lines = 0;
+
+        let registry = self.state.flow.registry();
+        let options = RenderOptions::done();
+
+        self.pipeline.render_step(terminal, step, registry, &self.theme, options)?;
+        self.pipeline.move_to_end(terminal)?;
+        self.pipeline.write_connector(terminal, &self.theme, StepStatus::Done, 1)?;
+        self.pipeline.reset_region();
+
         Ok(())
     }
 }
 
-fn build_step() -> Step {
-    Step {
-        prompt: "Please fill the form:".to_string(),
-        hint: Some("Press Tab/Shift+Tab to navigate, Enter to submit, Esc to exit".to_string()),
-        nodes: vec![
-            Node::input(
-                TextInput::new("username", "Username")
-                    .with_validator(validators::required())
-                    .with_validator(validators::min_length(3)),
-            ),
-            Node::input(
-                TextInput::new("email", "Email")
-                    .with_validator(validators::required())
-                    .with_validator(validators::email()),
-            ),
-            Node::input(ColorInput::new("accent_color", "Accent Color").with_rgb(64, 120, 200)),
-            Node::input(CheckboxInput::new("tos", "Accept Terms").with_checked(true)),
-            Node::input(
-                ChoiceInput::new(
-                    "plan",
-                    "Plan",
-                    vec!["Free".to_string(), "Pro".to_string(), "Team".to_string()],
-                )
-                .with_bullets(true),
-            ),
-            Node::input(ArrayInput::new("tags", "Tags")),
-            Node::input(PathInput::new("path", "Path")),
-            Node::input(SelectInput::new(
-                "color",
-                "Color",
-                vec!["Red".to_string(), "Green".to_string(), "Blue".to_string()],
-            )),
-        ],
-        form_validators: Vec::new(),
+impl Default for App {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
-fn build_step_two() -> Step {
-    Step {
-        prompt: "Almost there:".to_string(),
-        hint: None,
-        nodes: vec![Node::input(
+
+fn build_demo_steps() -> Vec<(crate::core::step::Step, Vec<(NodeId, Node)>)> {
+    vec![build_step_one(), build_step_two(), build_step_three()]
+}
+
+fn build_step_one() -> (crate::core::step::Step, Vec<(NodeId, Node)>) {
+    StepBuilder::new("Please fill the form:")
+        .hint("Press Tab/Shift+Tab to navigate, Enter to submit, Esc to exit")
+        .input(
+            TextInput::new("username", "Username")
+                .with_validator(validators::required())
+                .with_validator(validators::min_length(3)),
+        )
+        .input(
+            TextInput::new("email", "Email")
+                .with_validator(validators::required())
+                .with_validator(validators::email()),
+        )
+        .input(ColorInput::new("accent_color", "Accent Color").with_rgb(64, 120, 200))
+        .input(CheckboxInput::new("tos", "Accept Terms").with_checked(true))
+        .input(
+            ChoiceInput::new(
+                "plan",
+                "Plan",
+                vec!["Free".to_string(), "Pro".to_string(), "Team".to_string()],
+            )
+            .with_bullets(true),
+        )
+        .input(ArrayInput::new("tags", "Tags"))
+        .input(PathInput::new("path", "Path"))
+        .input(SelectInput::new(
+            "color",
+            "Color",
+            vec!["Red".to_string(), "Green".to_string(), "Blue".to_string()],
+        ))
+        .build()
+}
+
+fn build_step_two() -> (crate::core::step::Step, Vec<(NodeId, Node)>) {
+    StepBuilder::new("Almost there:")
+        .input(
             TextInput::new("password", "Password")
                 .with_validator(validators::required())
                 .with_validator(validators::min_length(8)),
-        )],
-        form_validators: Vec::new(),
-    }
+        )
+        .build()
 }
 
-fn build_step_three() -> Step {
-    Step {
-        prompt: "Final step:".to_string(),
-        hint: Some("Try arrows left/right in select, and masked input".to_string()),
-        nodes: vec![
-            Node::input(
-                PasswordInput::new("new_password", "New Password")
-                    .with_render_mode(PasswordRender::Stars)
-                    .with_validator(validators::required())
-                    .with_validator(validators::min_length(8)),
-            ),
-            Node::input(SliderInput::new("email", "Email", 1, 20)),
-            Node::input(SegmentedInput::ipv4("ip_address", "IP Address")),
-            Node::input(SegmentedInput::phone_us("phone", "Phone")),
-            Node::input(SegmentedInput::number("num", "num")),
-            Node::input(SegmentedInput::date_dd_mm_yyyy(
-                "birthdate_masked",
-                "Birth Date",
-            )),
-        ],
-        form_validators: Vec::new(),
-    }
-}
-
-fn build_steps() -> Vec<Step> {
-    vec![build_step(), build_step_two(), build_step_three()]
+fn build_step_three() -> (crate::core::step::Step, Vec<(NodeId, Node)>) {
+    StepBuilder::new("Final step:")
+        .hint("Try arrows left/right in select, and masked input")
+        .input(
+            PasswordInput::new("new_password", "New Password")
+                .with_render_mode(PasswordRender::Stars)
+                .with_validator(validators::required())
+                .with_validator(validators::min_length(8)),
+        )
+        .input(SliderInput::new("volume", "Volume", 1, 20))
+        .input(SegmentedInput::ipv4("ip_address", "IP Address"))
+        .input(SegmentedInput::phone_us("phone", "Phone"))
+        .input(SegmentedInput::number("num", "Number"))
+        .input(SegmentedInput::date_dd_mm_yyyy("birthdate", "Birth Date"))
+        .build()
 }

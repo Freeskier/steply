@@ -1,9 +1,9 @@
+use crate::core::node::NodeId;
 use crate::core::validation::FormValidator;
-use crate::node::Node;
 
 pub struct Step {
     pub prompt: String,
     pub hint: Option<String>,
-    pub nodes: Vec<Node>,
+    pub node_ids: Vec<NodeId>,
     pub form_validators: Vec<FormValidator>,
 }

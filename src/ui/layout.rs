@@ -29,15 +29,15 @@ impl Layout {
         let mut line_idx = 0usize;
 
         for (spans, cursor_offset) in spans_list {
-            if let Some(offset) = cursor_offset {
-                if cursor.is_none() {
-                    let (row_offset, col) =
-                        cursor_position_in_spans(&spans, width as usize, offset);
+            let (line_count, cursor_pos) = scan_spans(&spans, width as usize, cursor_offset);
+
+            if cursor.is_none() {
+                if let Some((row_offset, col)) = cursor_pos {
                     cursor = Some((col, line_idx + row_offset));
                 }
             }
 
-            line_idx += wrapped_line_count(&spans, width as usize);
+            line_idx += line_count;
             ctx.place_spans(spans);
         }
 
@@ -146,75 +146,29 @@ impl LayoutContext {
     }
 }
 
-fn wrapped_line_count(spans: &[Span], width: usize) -> usize {
+fn scan_spans(
+    spans: &[Span],
+    width: usize,
+    cursor_offset: Option<usize>,
+) -> (usize, Option<(usize, usize)>) {
     if width == 0 {
-        return 1;
+        return (1, cursor_offset.map(|_| (0, 0)));
     }
 
-    let mut lines = 1usize;
-    let mut current_width = 0usize;
-
-    for span in spans {
-        if span.text() == "\n" {
-            lines += 1;
-            current_width = 0;
-            continue;
-        }
-
-        let span_width = span.width();
-        if span_width == 0 {
-            continue;
-        }
-
-        match span.wrap() {
-            Wrap::No => {
-                let available = width.saturating_sub(current_width);
-                if current_width > 0 && span_width > available {
-                    lines += 1;
-                    current_width = 0;
-                }
-                let head_width = span_width.min(width);
-                current_width += head_width;
-            }
-            Wrap::Yes => {
-                let mut remaining = span_width;
-                while remaining > 0 {
-                    if current_width >= width {
-                        lines += 1;
-                        current_width = 0;
-                    }
-                    let available = width - current_width;
-                    if remaining <= available {
-                        current_width += remaining;
-                        remaining = 0;
-                    } else {
-                        remaining -= available;
-                        lines += 1;
-                        current_width = 0;
-                    }
-                }
-            }
-        }
-    }
-
-    lines.max(1)
-}
-
-fn cursor_position_in_spans(spans: &[Span], width: usize, cursor_offset: usize) -> (usize, usize) {
-    if width == 0 {
-        return (0, 0);
-    }
-
+    let mut line_count = 1usize;
     let mut row = 0usize;
     let mut current_width = 0usize;
-    let mut remaining = cursor_offset;
+    let mut remaining_cursor = cursor_offset;
+    let mut cursor_pos: Option<(usize, usize)> = None;
 
     for span in spans {
-        if remaining == 0 {
-            return (row, current_width);
+        if remaining_cursor == Some(0) && cursor_pos.is_none() {
+            cursor_pos = Some((row, current_width));
+            remaining_cursor = None;
         }
 
         if span.text() == "\n" {
+            line_count += 1;
             row += 1;
             current_width = 0;
             continue;
@@ -229,55 +183,69 @@ fn cursor_position_in_spans(spans: &[Span], width: usize, cursor_offset: usize) 
             Wrap::No => {
                 let available = width.saturating_sub(current_width);
                 if current_width > 0 && span_width > available {
+                    line_count += 1;
                     row += 1;
                     current_width = 0;
                 }
 
                 let head_width = span_width.min(width);
-                if remaining <= head_width {
-                    return (row, current_width + remaining);
+
+                if let Some(remaining) = remaining_cursor {
+                    if remaining <= head_width {
+                        cursor_pos = Some((row, current_width + remaining));
+                        remaining_cursor = None;
+                    } else {
+                        remaining_cursor = Some(remaining - head_width);
+                    }
                 }
-                remaining -= head_width;
+
                 current_width += head_width;
             }
             Wrap::Yes => {
-                let mut part = span.clone();
-                loop {
+                let mut remaining = span_width;
+                while remaining > 0 {
                     if current_width >= width {
+                        line_count += 1;
                         row += 1;
                         current_width = 0;
                     }
+
                     let available = width - current_width;
-                    if part.width() <= available {
-                        let part_width = part.width();
-                        if remaining <= part_width {
-                            return (row, current_width + remaining);
+                    if remaining <= available {
+                        if let Some(rem) = remaining_cursor {
+                            if rem <= remaining {
+                                cursor_pos = Some((row, current_width + rem));
+                                remaining_cursor = None;
+                            } else {
+                                remaining_cursor = Some(rem - remaining);
+                            }
                         }
-                        remaining -= part_width;
-                        current_width += part_width;
-                        break;
-                    }
 
-                    let (head, tail) = part.split_at_width(available);
-                    let head_width = head.width();
-                    if head_width > 0 {
-                        if remaining <= head_width {
-                            return (row, current_width + remaining);
-                        }
-                        remaining -= head_width;
-                    }
-                    row += 1;
-                    current_width = 0;
-
-                    if let Some(rest) = tail {
-                        part = rest;
+                        current_width += remaining;
+                        remaining = 0;
                     } else {
-                        break;
+                        if let Some(rem) = remaining_cursor {
+                            if rem <= available {
+                                cursor_pos = Some((row, current_width + rem));
+                                remaining_cursor = None;
+                            } else {
+                                remaining_cursor = Some(rem - available);
+                            }
+                        }
+
+                        remaining -= available;
+                        line_count += 1;
+                        row += 1;
+                        current_width = 0;
                     }
                 }
             }
         }
     }
 
-    (row, current_width)
+    if cursor_pos.is_none() && cursor_offset.is_some() {
+        cursor_pos = Some((row, current_width));
+    }
+
+    (line_count.max(1), cursor_pos)
 }

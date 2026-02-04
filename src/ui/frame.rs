@@ -14,6 +14,10 @@ impl Line {
         &self.spans
     }
 
+    pub fn take_spans(&mut self) -> Vec<Span> {
+        std::mem::take(&mut self.spans)
+    }
+
     pub fn push(&mut self, span: Span) {
         if !span.text().is_empty() {
             self.spans.push(span);

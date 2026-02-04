@@ -1,8 +1,9 @@
 use crate::core::event::Action;
 use crate::core::event_queue::AppEvent;
+use crate::core::form_event::FormEvent;
+use crate::core::node::NodeId;
 use crate::core::state::AppState;
 use crate::core::validation;
-use crate::view_state::ErrorDisplay;
 use std::time::Duration;
 
 #[derive(Debug, Clone)]
@@ -27,157 +28,162 @@ impl Reducer {
                 vec![]
             }
             Action::NextInput => {
-                let step = state.flow.current_step_mut();
-                let result = state.engine.move_focus(step, 1, &mut state.view);
-                let (effects, _) = Self::effects_from_form_result(result);
-                effects
+                let registry = state.flow.registry_mut();
+                let events = state.engine.move_focus(registry, 1);
+                Self::form_events_to_effects(events)
             }
             Action::PrevInput => {
-                let step = state.flow.current_step_mut();
-                let result = state.engine.move_focus(step, -1, &mut state.view);
-                let (effects, _) = Self::effects_from_form_result(result);
-                effects
+                let registry = state.flow.registry_mut();
+                let events = state.engine.move_focus(registry, -1);
+                Self::form_events_to_effects(events)
             }
             Action::Submit => Self::handle_submit(state, error_timeout),
             Action::DeleteWord => {
-                let step = state.flow.current_step_mut();
-                let result = state
-                    .engine
-                    .handle_delete_word(step, false, &mut state.view);
-                let (effects, _) = Self::effects_from_form_result(result);
-                effects
+                let registry = state.flow.registry_mut();
+                let events = state.engine.handle_delete_word(registry, false);
+                Self::form_events_to_effects(events)
             }
             Action::DeleteWordForward => {
-                let step = state.flow.current_step_mut();
-                let result = state.engine.handle_delete_word(step, true, &mut state.view);
-                let (effects, _) = Self::effects_from_form_result(result);
-                effects
+                let registry = state.flow.registry_mut();
+                let events = state.engine.handle_delete_word(registry, true);
+                Self::form_events_to_effects(events)
             }
             Action::InputKey(key_event) => {
-                let step = state.flow.current_step_mut();
-                let result = state
-                    .engine
-                    .handle_input_key(step, key_event, &mut state.view);
-                let (mut effects, submit_requested) = Self::effects_from_form_result(result);
-                if submit_requested {
+                let registry = state.flow.registry_mut();
+                let events = state.engine.handle_key(registry, key_event);
+
+                let has_submit = events.iter().any(|e| matches!(e, FormEvent::SubmitRequested));
+                let mut effects = Self::form_events_to_effects(events);
+
+                if has_submit {
                     effects.extend(Self::handle_submit(state, error_timeout));
                 }
+
                 effects
             }
             Action::ClearErrorMessage(id) => {
-                let step = state.flow.current_step_mut();
-                state
-                    .engine
-                    .handle_clear_error_message(step, &id, &mut state.view);
+                let registry = state.flow.registry_mut();
+                state.engine.clear_error(registry, &id);
                 vec![]
             }
         }
     }
 
-    fn effects_from_form_result(
-        result: crate::core::form_engine::FormResult,
-    ) -> (Vec<Effect>, bool) {
-        let mut effects: Vec<Effect> = result.events.into_iter().map(Effect::Emit).collect();
+    fn form_events_to_effects(events: Vec<FormEvent>) -> Vec<Effect> {
+        let mut effects = Vec::new();
 
-        if let Some(id) = result.cancel_clear_error_for {
-            effects.push(Effect::CancelClearError(id));
+        for event in events {
+            match event {
+                FormEvent::InputChanged { id, value } => {
+                    effects.push(Effect::Emit(AppEvent::InputChanged { id, value }));
+                }
+                FormEvent::FocusChanged { from, to } => {
+                    effects.push(Effect::Emit(AppEvent::FocusChanged { from, to }));
+                }
+                FormEvent::ErrorCancelled { id } => {
+                    effects.push(Effect::CancelClearError(id));
+                }
+                FormEvent::ErrorScheduled { id } => {
+                    effects.push(Effect::CancelClearError(id));
+                }
+                FormEvent::SubmitRequested => {
+                }
+            }
         }
 
-        (effects, result.submit_requested)
+        effects
     }
 
     fn handle_submit(state: &mut AppState, error_timeout: Duration) -> Vec<Effect> {
         let mut effects = Vec::new();
 
-        let Some(current_index) = state.engine.focused_index() else {
+        if Self::validate_focused(state, error_timeout, &mut effects) {
             return effects;
-        };
-
-        {
-            let step = state.flow.current_step_mut();
-            if let Some(input) = state.engine.focused_input_mut(step, current_index) {
-                if let Err(err) = validation::validate_input(input) {
-                    let id = input.id().clone();
-                    input.set_error(Some(err.clone()));
-                    state
-                        .view
-                        .set_error_display(id.clone(), ErrorDisplay::InlineMessage);
-
-                    effects.push(Effect::CancelClearError(id.clone()));
-                    effects.push(Effect::EmitAfter(
-                        AppEvent::Action(Action::ClearErrorMessage(id.clone())),
-                        error_timeout,
-                    ));
-                    return effects;
-                }
-
-                input.set_error(None);
-                state.view.clear_error_display(input.id());
-                effects.push(Effect::CancelClearError(input.id().clone()));
-
-                let mut focus_events = Vec::new();
-                if state
-                    .engine
-                    .advance_focus_after_submit(step, &mut focus_events)
-                {
-                    effects.extend(focus_events.into_iter().map(Effect::Emit));
-                    return effects;
-                }
-            } else {
-                return effects;
-            }
         }
 
-        let errors = {
-            let step = state.flow.current_step();
-            validation::validate_all(step)
-        };
+        if Self::advance_focus(state, &mut effects) {
+            return effects;
+        }
 
+        let errors = Self::validate_current_step(state);
         if errors.is_empty() {
-            if state.flow.has_next() {
-                {
-                    let step = state.flow.current_step_mut();
-                    state.engine.clear_focus(step);
-                }
-                state.flow.advance();
-                state.view = Default::default();
-                {
-                    let step = state.flow.current_step_mut();
-                    state.engine.reset(step);
-                }
-                return effects;
-            }
+            return Self::handle_successful_submit(state, effects);
+        }
 
-            effects.push(Effect::Emit(AppEvent::Submitted));
-            state.should_exit = true;
+        Self::apply_errors_and_focus(state, &errors, error_timeout, &mut effects);
+        effects
+    }
+
+    fn validate_focused(
+        state: &mut AppState,
+        error_timeout: Duration,
+        effects: &mut Vec<Effect>,
+    ) -> bool {
+        let registry = state.flow.registry_mut();
+        if let Err((id, _err)) = state.engine.validate_focused(registry) {
+            effects.push(Effect::CancelClearError(id.clone()));
+            effects.push(Effect::EmitAfter(
+                AppEvent::Action(Action::ClearErrorMessage(id)),
+                error_timeout,
+            ));
+            return true;
+        }
+        false
+    }
+
+    fn advance_focus(state: &mut AppState, effects: &mut Vec<Effect>) -> bool {
+        let registry = state.flow.registry_mut();
+        let mut focus_events = Vec::new();
+        if state.engine.advance_focus(registry, &mut focus_events) {
+            effects.extend(Self::form_events_to_effects(focus_events));
+            return true;
+        }
+        false
+    }
+
+    fn validate_current_step(state: &AppState) -> Vec<(NodeId, String)> {
+        let step = state.flow.current_step();
+        let registry = state.flow.registry();
+        validation::validate_all_inputs(step, registry)
+    }
+
+    fn handle_successful_submit(state: &mut AppState, mut effects: Vec<Effect>) -> Vec<Effect> {
+        if state.flow.has_next() {
+            let registry = state.flow.registry_mut();
+            state.engine.clear_focus(registry);
+            state.flow.advance();
+            state.reset_engine_for_current_step();
             return effects;
         }
 
-        let scheduled_ids = {
-            let step = state.flow.current_step_mut();
-            state
-                .engine
-                .apply_validation_errors(step, &errors, &mut state.view)
-        };
+        effects.push(Effect::Emit(AppEvent::Submitted));
+        state.should_exit = true;
+        effects
+    }
+
+    fn apply_errors_and_focus(
+        state: &mut AppState,
+        errors: &[(NodeId, String)],
+        error_timeout: Duration,
+        effects: &mut Vec<Effect>,
+    ) {
+        let registry = state.flow.registry_mut();
+        let scheduled_ids = state.engine.apply_errors(registry, errors);
+
         for id in scheduled_ids {
             effects.push(Effect::EmitAfter(
-                AppEvent::Action(Action::ClearErrorMessage(id.clone())),
+                AppEvent::Action(Action::ClearErrorMessage(id)),
                 error_timeout,
             ));
         }
 
-        if let Some(first_id) = errors.first().map(|(id, _)| id.clone()) {
-            let step = state.flow.current_step();
-            if let Some(pos) = state.engine.find_input_pos_by_id(step, &first_id) {
+        if let Some((first_id, _)) = errors.first() {
+            if let Some(idx) = state.engine.find_index_by_id(first_id) {
+                let registry = state.flow.registry_mut();
                 let mut focus_events = Vec::new();
-                let step = state.flow.current_step_mut();
-                state
-                    .engine
-                    .update_focus(step, Some(pos), &mut focus_events);
-                effects.extend(focus_events.into_iter().map(Effect::Emit));
+                state.engine.set_focus(registry, Some(idx), &mut focus_events);
+                effects.extend(Self::form_events_to_effects(focus_events));
             }
         }
-
-        effects
     }
 }

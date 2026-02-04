@@ -172,7 +172,6 @@ impl Input for SliderInput {
 
     fn cursor_offset_in_content(&self) -> usize {
         let pos = self.slider_position();
-        // left chevron + position inside the track
         1 + pos
     }
 }

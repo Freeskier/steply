@@ -1,5 +1,7 @@
+use crate::core::node::NodeId;
+use crate::core::node_registry::NodeRegistry;
 use crate::core::step::Step;
-use crate::inputs::{Input, NodeId};
+use crate::inputs::Input;
 use std::collections::HashMap;
 
 pub type FormValidator = Box<dyn Fn(&ValidationContext) -> Vec<(NodeId, String)> + Send>;
@@ -11,13 +13,15 @@ pub struct ValidationContext {
 }
 
 impl ValidationContext {
-    pub fn from_step(step: &Step) -> Self {
+    pub fn from_step(step: &Step, registry: &NodeRegistry) -> Self {
         let mut values = HashMap::new();
         let mut completeness = HashMap::new();
 
-        for input in step.nodes.iter().filter_map(|node| node.as_input()) {
-            values.insert(input.id().clone(), input.raw_value());
-            completeness.insert(input.id().clone(), input.is_complete());
+        for id in &step.node_ids {
+            if let Some(input) = registry.get_input(id) {
+                values.insert(id.clone(), input.raw_value());
+                completeness.insert(id.clone(), input.is_complete());
+            }
         }
 
         Self {
@@ -51,19 +55,19 @@ pub fn validate_input(input: &dyn Input) -> Result<(), String> {
     run_validators(input, &raw)
 }
 
-pub fn validate_all(step: &Step) -> Vec<(NodeId, String)> {
+pub fn validate_all_inputs(step: &Step, registry: &NodeRegistry) -> Vec<(NodeId, String)> {
     let mut errors: Vec<(NodeId, String)> = step
-        .nodes
+        .node_ids
         .iter()
-        .filter_map(|node| node.as_input())
-        .filter_map(|input| {
+        .filter_map(|id| registry.get_input(id).map(|input| (id, input)))
+        .filter_map(|(id, input)| {
             validate_input(input)
                 .err()
-                .map(|err| (input.id().clone(), err))
+                .map(|err| (id.clone(), err))
         })
         .collect();
 
-    let ctx = ValidationContext::from_step(step);
+    let ctx = ValidationContext::from_step(step, registry);
     for validator in &step.form_validators {
         errors.extend(validator(&ctx));
     }

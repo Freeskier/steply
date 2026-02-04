@@ -56,7 +56,7 @@ fn event_loop(terminal: &mut Terminal) -> io::Result<()> {
         }
     }
 
-    app.renderer.move_to_end(terminal)?;
+    app.move_to_end(terminal)?;
     terminal.clear_from_cursor_down()?;
 
     Ok(())

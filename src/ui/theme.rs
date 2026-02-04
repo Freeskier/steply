@@ -13,8 +13,8 @@ pub struct Theme {
     pub decor_cancelled: Style,
 }
 
-impl Theme {
-    pub fn default_theme() -> Self {
+impl Default for Theme {
+    fn default() -> Self {
         Self {
             prompt: Style::new().with_bold(),
             hint: Style::new().with_color(Color::DarkGrey),

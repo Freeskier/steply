@@ -1,3 +1,5 @@
+use crate::core::node::{Node, NodeId};
+use crate::core::node_registry::NodeRegistry;
 use crate::core::step::Step;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -10,21 +12,40 @@ pub enum StepStatus {
 
 pub struct Flow {
     steps: Vec<Step>,
+    registry: NodeRegistry,
     current: usize,
     statuses: Vec<StepStatus>,
 }
 
 impl Flow {
-    pub fn new(steps: Vec<Step>) -> Self {
+    pub fn new(steps_with_nodes: Vec<(Step, Vec<(NodeId, Node)>)>) -> Self {
+        let mut registry = NodeRegistry::new();
+        let mut steps = Vec::with_capacity(steps_with_nodes.len());
+
+        for (step, nodes) in steps_with_nodes {
+            registry.extend(nodes);
+            steps.push(step);
+        }
+
         let mut statuses = vec![StepStatus::Pending; steps.len()];
         if !statuses.is_empty() {
             statuses[0] = StepStatus::Active;
         }
+
         Self {
             steps,
+            registry,
             current: 0,
             statuses,
         }
+    }
+
+    pub fn registry(&self) -> &NodeRegistry {
+        &self.registry
+    }
+
+    pub fn registry_mut(&mut self) -> &mut NodeRegistry {
+        &mut self.registry
     }
 
     pub fn current_index(&self) -> usize {
@@ -33,6 +54,10 @@ impl Flow {
 
     pub fn len(&self) -> usize {
         self.steps.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.steps.is_empty()
     }
 
     pub fn current_step(&self) -> &Step {

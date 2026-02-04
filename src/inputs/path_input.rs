@@ -73,7 +73,15 @@ impl PathInput {
         self
     }
 
-    fn autocomplete(&mut self) {
+    fn should_attempt_completion(&self) -> bool {
+        let value = self.inner.value();
+        if value.is_empty() {
+            return false;
+        }
+        matches!(value.chars().last(), Some('/') | Some('.') | Some('~'))
+    }
+
+    fn autocomplete(&mut self) -> bool {
         let value = self.inner.value();
         let (mut dir_part, mut prefix) = split_dir_prefix(&value);
         let mut dir_path = if dir_part.is_empty() {
@@ -101,7 +109,7 @@ impl PathInput {
 
         let dir = Path::new(&dir_path);
         let Ok(entries) = fs::read_dir(dir) else {
-            return;
+            return false;
         };
 
         let mut matches: Vec<(String, bool)> = entries
@@ -121,7 +129,7 @@ impl PathInput {
 
         if matches.is_empty() {
             self.reset_completion();
-            return;
+            return false;
         }
 
         matches.sort_by(|a, b| a.0.cmp(&b.0));
@@ -129,7 +137,7 @@ impl PathInput {
         let mut effective_prefix = prefix.clone();
         if matches.len() == 1 && matches[0].0 == prefix {
             let Ok(entries) = fs::read_dir(Path::new(&dir_path)) else {
-                return;
+                return false;
             };
             let mut all_matches: Vec<(String, bool)> = entries
                 .flatten()
@@ -168,6 +176,7 @@ impl PathInput {
             new_value.push('/');
         }
         self.inner.set_value(new_value);
+        true
     }
 
     fn reset_completion(&mut self) {
@@ -244,11 +253,27 @@ impl Input for PathInput {
         true
     }
 
+    fn handle_tab_completion(&mut self) -> bool {
+        if !self.should_attempt_completion() {
+            return false;
+        }
+
+        let before = self.inner.value();
+        if !self.autocomplete() {
+            return false;
+        }
+        let after = self.inner.value();
+        before != after
+    }
+
     fn handle_key(&mut self, code: KeyCode, modifiers: KeyModifiers) -> KeyResult {
         match code {
             KeyCode::Tab if modifiers == KeyModifiers::NONE => {
-                self.autocomplete();
-                KeyResult::Handled
+                if self.handle_tab_completion() {
+                    KeyResult::Handled
+                } else {
+                    KeyResult::NotHandled
+                }
             }
             _ => {
                 self.reset_completion();

@@ -5,6 +5,39 @@ use crate::validators::Validator;
 
 pub type NodeId = String;
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct InputError {
+    pub message: String,
+    pub display: ErrorDisplay,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ErrorDisplay {
+    #[default]
+    Inline,
+    Hidden,
+}
+
+impl InputError {
+    pub fn inline(message: impl Into<String>) -> Self {
+        Self {
+            message: message.into(),
+            display: ErrorDisplay::Inline,
+        }
+    }
+
+    pub fn hidden(message: impl Into<String>) -> Self {
+        Self {
+            message: message.into(),
+            display: ErrorDisplay::Hidden,
+        }
+    }
+
+    pub fn is_visible(&self) -> bool {
+        self.display == ErrorDisplay::Inline
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum KeyResult {
     Handled,
@@ -78,12 +111,20 @@ pub trait Input: Send {
         }
     }
 
-    fn error(&self) -> Option<&str> {
-        self.base().error.as_deref()
+    fn error(&self) -> Option<&InputError> {
+        self.base().error.as_ref()
     }
 
-    fn set_error(&mut self, error: Option<String>) {
+    fn set_error(&mut self, error: Option<InputError>) {
         self.base_mut().error = error;
+    }
+
+    fn clear_error(&mut self) {
+        self.base_mut().error = None;
+    }
+
+    fn has_visible_error(&self) -> bool {
+        self.error().map(|e| e.is_visible()).unwrap_or(false)
     }
 
     fn cursor_pos(&self) -> usize;
@@ -96,6 +137,10 @@ pub trait Input: Send {
     }
 
     fn supports_tab_completion(&self) -> bool {
+        false
+    }
+
+    fn handle_tab_completion(&mut self) -> bool {
         false
     }
 
@@ -132,7 +177,7 @@ pub struct InputBase {
     pub id: NodeId,
     pub label: String,
     pub focused: bool,
-    pub error: Option<String>,
+    pub error: Option<InputError>,
     pub validators: Vec<Validator>,
     pub min_width: usize,
     pub placeholder: Option<String>,

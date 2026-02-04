@@ -11,4 +11,4 @@ pub mod slider_input;
 pub mod text_input;
 pub mod validators;
 
-pub use input::{Input, InputBase, InputCaps, KeyResult, NodeId};
+pub use input::{ErrorDisplay, Input, InputBase, InputCaps, InputError, KeyResult, NodeId};

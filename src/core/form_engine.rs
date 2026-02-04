@@ -1,398 +1,285 @@
+use crate::core::form_event::FormEvent;
+use crate::core::node::NodeId;
+use crate::core::node_registry::NodeRegistry;
+use crate::core::step::Step;
 use crate::core::validation;
-use crate::event_queue::AppEvent;
-use crate::inputs::{Input, InputCaps, KeyResult};
-use crate::step::Step;
+use crate::inputs::{Input, InputCaps, InputError, KeyResult};
 use crate::terminal::KeyEvent;
-use crate::view_state::{ErrorDisplay, ViewState};
-
-#[derive(Default)]
-pub struct FormResult {
-    pub events: Vec<AppEvent>,
-    pub cancel_clear_error_for: Option<String>,
-    pub submit_requested: bool,
-}
 
 pub struct FormEngine {
-    input_node_indices: Vec<usize>,
-    focused_index: Option<usize>,
+    input_ids: Vec<NodeId>,
+    focus_index: Option<usize>,
 }
 
 impl FormEngine {
-    pub fn new(step: &mut Step) -> Self {
-        let input_node_indices: Vec<usize> = step
-            .nodes
-            .iter()
-            .enumerate()
-            .filter_map(|(i, node)| node.as_input().map(|_| i))
-            .collect();
+    pub fn new(step: &Step, registry: &mut NodeRegistry) -> Self {
+        let input_ids = registry.input_ids_for_step_owned(&step.node_ids);
+        Self::from_input_ids(input_ids, registry)
+    }
 
+    pub fn from_input_ids(input_ids: Vec<NodeId>, registry: &mut NodeRegistry) -> Self {
         let mut engine = Self {
-            input_node_indices,
-            focused_index: None,
+            input_ids,
+            focus_index: None,
         };
 
-        if !engine.input_node_indices.is_empty() {
-            engine.set_focus_without_events(step, Some(0));
+        if !engine.input_ids.is_empty() {
+            engine.set_focus_internal(registry, Some(0));
         }
 
         engine
     }
 
-    pub fn reset(&mut self, step: &mut Step) {
-        self.input_node_indices = step
-            .nodes
-            .iter()
-            .enumerate()
-            .filter_map(|(i, node)| node.as_input().map(|_| i))
-            .collect();
-        self.focused_index = None;
+    pub fn reset(&mut self, step: &Step, registry: &mut NodeRegistry) {
+        let input_ids = registry.input_ids_for_step_owned(&step.node_ids);
+        self.reset_with_ids(input_ids, registry);
+    }
 
-        if !self.input_node_indices.is_empty() {
-            self.set_focus_without_events(step, Some(0));
+    pub fn reset_with_ids(&mut self, input_ids: Vec<NodeId>, registry: &mut NodeRegistry) {
+        self.input_ids = input_ids;
+        self.focus_index = None;
+
+        if !self.input_ids.is_empty() {
+            self.set_focus_internal(registry, Some(0));
         }
     }
 
-    pub fn clear_focus(&mut self, step: &mut Step) {
-        if let Some(old_index) = self.focused_index {
-            if let Some(input) = step.nodes.get_mut(self.input_node_indices[old_index]) {
-                if let Some(input) = input.as_input_mut() {
-                    input.set_focused(false);
-                }
-            }
-        }
-        self.focused_index = None;
+    // Focus management
+
+    pub fn focus_index(&self) -> Option<usize> {
+        self.focus_index
     }
 
-    pub fn focused_input_id(&self, step: &Step) -> Option<String> {
-        self.focused_index
-            .and_then(|index| self.input_id_at(step, index))
+    pub fn focused_id(&self) -> Option<&NodeId> {
+        self.focus_index.and_then(|i| self.input_ids.get(i))
     }
 
-    pub fn focused_index(&self) -> Option<usize> {
-        self.focused_index
+    pub fn focused_input<'a>(&self, registry: &'a NodeRegistry) -> Option<&'a dyn Input> {
+        self.focused_id().and_then(|id| registry.get_input(id))
     }
 
-    pub fn focused_input_caps(&self, step: &Step) -> Option<InputCaps> {
-        self.focused_index
-            .and_then(|index| step.nodes.get(self.input_node_indices[index]))
-            .and_then(|node| node.as_input())
-            .map(|input| input.capabilities())
+    pub fn focused_input_mut<'a>(&self, registry: &'a mut NodeRegistry) -> Option<&'a mut dyn Input> {
+        let id = self.focused_id()?.clone();
+        registry.get_input_mut(&id)
     }
 
-    pub fn focused_input<'a>(&self, step: &'a Step) -> Option<&'a dyn Input> {
-        self.focused_index
-            .and_then(|index| step.nodes.get(self.input_node_indices[index]))
-            .and_then(|node| node.as_input())
-    }
-
-    pub fn focused_input_mut<'a>(
-        &mut self,
-        step: &'a mut Step,
-        pos: usize,
-    ) -> Option<&'a mut dyn Input> {
-        step.nodes
-            .get_mut(self.input_node_indices[pos])
-            .and_then(|node| node.as_input_mut())
-    }
-
-    pub fn handle_input_key(
-        &mut self,
-        step: &mut Step,
-        key_event: KeyEvent,
-        view_state: &mut ViewState,
-    ) -> FormResult {
-        let mut result = FormResult::default();
-
-        let Some(current_index) = self.focused_index else {
-            return result;
+    pub fn handle_tab_completion(&mut self, registry: &mut NodeRegistry) -> bool {
+        let Some(input) = self.focused_input_mut(registry) else {
+            return false;
         };
 
-        let Some(input) = step
-            .nodes
-            .get_mut(self.input_node_indices[current_index])
-            .and_then(|node| node.as_input_mut())
-        else {
-            return result;
-        };
-
-        let before = input.value();
-        let key_result = input.handle_key(key_event.code, key_event.modifiers);
-        let after = input.value();
-        let id = input.id().clone();
-        let validation_result = validation::validate_input(input);
-
-        if before != after {
-            result.events.push(AppEvent::InputChanged {
-                id: id.clone(),
-                value: after,
-            });
-            result.cancel_clear_error_for = Some(id.clone());
+        if !input.supports_tab_completion() {
+            return false;
         }
 
-        if matches!(key_result, KeyResult::Submit) {
-            result.submit_requested = true;
-        }
-
-        self.clear_error_message(view_state, &id);
-        self.apply_validation_result(step, view_state, &id, validation_result);
-
-        result
+        input.handle_tab_completion()
     }
 
-    pub fn handle_delete_word(
-        &mut self,
-        step: &mut Step,
-        forward: bool,
-        view_state: &mut ViewState,
-    ) -> FormResult {
-        let mut result = FormResult::default();
-
-        let Some(current_index) = self.focused_index else {
-            return result;
-        };
-
-        let Some(input) = step
-            .nodes
-            .get_mut(self.input_node_indices[current_index])
-            .and_then(|node| node.as_input_mut())
-        else {
-            return result;
-        };
-
-        let before = input.value();
-        if forward {
-            input.delete_word_forward();
-        } else {
-            input.delete_word();
-        }
-        let after = input.value();
-        let id = input.id().clone();
-        let validation_result = validation::validate_input(input);
-
-        if before != after {
-            result.events.push(AppEvent::InputChanged {
-                id: id.clone(),
-                value: after,
-            });
-            result.cancel_clear_error_for = Some(id.clone());
-        }
-
-        self.clear_error_message(view_state, &id);
-        self.apply_validation_result(step, view_state, &id, validation_result);
-
-        result
+    pub fn focused_caps(&self, registry: &NodeRegistry) -> Option<InputCaps> {
+        self.focused_input(registry).map(|i| i.capabilities())
     }
 
-    pub fn move_focus(
-        &mut self,
-        step: &mut Step,
-        direction: isize,
-        view_state: &mut ViewState,
-    ) -> FormResult {
-        let mut result = FormResult::default();
-
-        if self.input_node_indices.is_empty() {
-            return result;
+    pub fn move_focus(&mut self, registry: &mut NodeRegistry, direction: isize) -> Vec<FormEvent> {
+        if self.input_ids.is_empty() {
+            return vec![];
         }
 
-        if let Some(current_index) = self.focused_index {
-            if let Some(input) = step
-                .nodes
-                .get_mut(self.input_node_indices[current_index])
-                .and_then(|node| node.as_input_mut())
-            {
-                let id = input.id().clone();
-                let validation_result = validation::validate_input(input);
-                self.apply_validation_result(step, view_state, &id, validation_result);
+        // Validate current before moving
+        let mut events = Vec::new();
+        if let Some(input) = self.focused_input_mut(registry) {
+            if let Err(err) = validation::validate_input(input) {
+                input.set_error(Some(InputError::hidden(err)));
+            } else {
+                input.clear_error();
             }
         }
 
-        let current_index = self.focused_index.unwrap_or(0);
-        let len = self.input_node_indices.len() as isize;
-        let next_index = (current_index as isize + direction + len) % len;
-        self.update_focus(step, Some(next_index as usize), &mut result.events);
+        let current = self.focus_index.unwrap_or(0);
+        let len = self.input_ids.len() as isize;
+        let next = ((current as isize + direction + len) % len) as usize;
 
-        result
+        self.set_focus(registry, Some(next), &mut events);
+        events
     }
 
-    pub fn handle_clear_error_message(
-        &mut self,
-        step: &mut Step,
-        id: &str,
-        view_state: &mut ViewState,
-    ) {
-        if let Some(pos) = self.find_input_pos_by_id(step, id) {
-            if let Some(input) = step
-                .nodes
-                .get_mut(self.input_node_indices[pos])
-                .and_then(|node| node.as_input_mut())
-            {
-                view_state.clear_error_display(input.id());
+    pub fn set_focus(&mut self, registry: &mut NodeRegistry, new_index: Option<usize>, events: &mut Vec<FormEvent>) {
+        let from_id = self.focused_id().cloned();
+        let to_id = new_index.and_then(|i| self.input_ids.get(i)).cloned();
+
+        if from_id == to_id {
+            return;
+        }
+
+        // Unfocus old
+        if let Some(id) = &from_id {
+            if let Some(input) = registry.get_input_mut(id) {
+                input.set_focused(false);
+            }
+        }
+
+        // Focus new
+        if let Some(id) = &to_id {
+            if let Some(input) = registry.get_input_mut(id) {
+                input.set_focused(true);
+            }
+        }
+
+        self.focus_index = new_index;
+        events.push(FormEvent::FocusChanged { from: from_id, to: to_id });
+    }
+
+    pub fn clear_focus(&mut self, registry: &mut NodeRegistry) {
+        if let Some(id) = self.focused_id() {
+            if let Some(input) = registry.get_input_mut(id) {
+                input.set_focused(false);
+            }
+        }
+        self.focus_index = None;
+    }
+
+    pub fn find_index_by_id(&self, id: &str) -> Option<usize> {
+        self.input_ids.iter().position(|i| i == id)
+    }
+
+    // Input handling
+
+    pub fn handle_key(&mut self, registry: &mut NodeRegistry, key: KeyEvent) -> Vec<FormEvent> {
+        self.update_focused_input(registry, |input| {
+            Some(input.handle_key(key.code, key.modifiers))
+        })
+    }
+
+    pub fn handle_delete_word(&mut self, registry: &mut NodeRegistry, forward: bool) -> Vec<FormEvent> {
+        self.update_focused_input(registry, |input| {
+            if forward {
+                input.delete_word_forward();
+            } else {
+                input.delete_word();
+            }
+            None
+        })
+    }
+
+    // Validation
+
+    pub fn validate_focused(&self, registry: &mut NodeRegistry) -> Result<(), (NodeId, String)> {
+        let Some(id) = self.focused_id().cloned() else {
+            return Ok(());
+        };
+
+        let Some(input) = registry.get_input_mut(&id) else {
+            return Ok(());
+        };
+
+        match validation::validate_input(input) {
+            Ok(()) => {
+                input.clear_error();
+                Ok(())
+            }
+            Err(err) => {
+                input.set_error(Some(InputError::inline(&err)));
+                Err((id, err))
             }
         }
     }
 
-    pub fn apply_validation_errors(
-        &mut self,
-        step: &mut Step,
-        errors: &[(String, String)],
-        view_state: &mut ViewState,
-    ) -> Vec<String> {
+    pub fn apply_errors(&mut self, registry: &mut NodeRegistry, errors: &[(NodeId, String)]) -> Vec<NodeId> {
         let mut scheduled = Vec::new();
-        for idx in &self.input_node_indices {
-            if let Some(input) = step
-                .nodes
-                .get_mut(*idx)
-                .and_then(|node| node.as_input_mut())
-            {
-                if let Some((_, error)) = errors.iter().find(|(id, _)| id == input.id()) {
-                    let id = input.id().clone();
-                    input.set_error(Some(error.clone()));
-                    view_state.set_error_display(id.clone(), ErrorDisplay::InlineMessage);
-                    scheduled.push(id);
-                } else {
-                    input.set_error(None);
-                    view_state.clear_error_display(input.id());
-                }
+
+        for id in &self.input_ids {
+            let Some(input) = registry.get_input_mut(id) else {
+                continue;
+            };
+
+            if let Some((_, err)) = errors.iter().find(|(eid, _)| eid == id) {
+                input.set_error(Some(InputError::inline(err)));
+                scheduled.push(id.clone());
+            } else {
+                input.clear_error();
             }
         }
+
         scheduled
     }
 
-    pub fn advance_focus_after_submit(
-        &mut self,
-        step: &mut Step,
-        events: &mut Vec<AppEvent>,
-    ) -> bool {
-        let Some(current_index) = self.focused_index else {
+    pub fn clear_error(&self, registry: &mut NodeRegistry, id: &str) {
+        if let Some(input) = registry.get_input_mut(id) {
+            input.clear_error();
+        }
+    }
+
+    // Submit helpers
+
+    pub fn advance_focus(&mut self, registry: &mut NodeRegistry, events: &mut Vec<FormEvent>) -> bool {
+        let Some(current) = self.focus_index else {
             return false;
         };
-        let next_index = current_index + 1;
-        if next_index < self.input_node_indices.len() {
-            self.update_focus(step, Some(next_index), events);
+
+        let next = current + 1;
+        if next < self.input_ids.len() {
+            self.set_focus(registry, Some(next), events);
             true
         } else {
             false
         }
     }
 
-    pub fn find_input_pos_by_id(&self, step: &Step, id: &str) -> Option<usize> {
-        self.input_node_indices.iter().position(|idx| {
-            step.nodes
-                .get(*idx)
-                .and_then(|node| node.as_input())
-                .is_some_and(|input| input.id() == id)
-        })
+    pub fn input_ids(&self) -> &[NodeId] {
+        &self.input_ids
     }
 
-    pub fn update_focus(
-        &mut self,
-        step: &mut Step,
-        new_pos: Option<usize>,
-        events: &mut Vec<AppEvent>,
-    ) {
-        let from_id = self
-            .focused_index
-            .and_then(|index| self.input_id_at(step, index));
-        let to_id = new_pos.and_then(|index| self.input_id_at(step, index));
+    // Internal
 
-        if let Some(old_index) = self.focused_index {
-            if let Some(input) = step
-                .nodes
-                .get_mut(self.input_node_indices[old_index])
-                .and_then(|node| node.as_input_mut())
-            {
+    fn set_focus_internal(&mut self, registry: &mut NodeRegistry, new_index: Option<usize>) {
+        if let Some(id) = self.focused_id() {
+            if let Some(input) = registry.get_input_mut(id) {
                 input.set_focused(false);
             }
         }
 
-        if let Some(index) = new_pos {
-            if let Some(input) = step
-                .nodes
-                .get_mut(self.input_node_indices[index])
-                .and_then(|node| node.as_input_mut())
-            {
-                input.set_focused(true);
-            }
-        }
-
-        self.focused_index = new_pos;
-        if from_id != to_id {
-            events.push(AppEvent::FocusChanged {
-                from: from_id,
-                to: to_id,
-            });
-        }
-    }
-
-    fn apply_validation_result(
-        &mut self,
-        step: &mut Step,
-        view_state: &mut ViewState,
-        id: &str,
-        result: Result<(), String>,
-    ) {
-        match result {
-            Ok(()) => {
-                if let Some(pos) = self.find_input_pos_by_id(step, id) {
-                    if let Some(input_mut) = step
-                        .nodes
-                        .get_mut(self.input_node_indices[pos])
-                        .and_then(|node| node.as_input_mut())
-                    {
-                        input_mut.set_error(None);
-                    }
+        if let Some(idx) = new_index {
+            if let Some(id) = self.input_ids.get(idx) {
+                if let Some(input) = registry.get_input_mut(id) {
+                    input.set_focused(true);
                 }
-                view_state.clear_error_display(id);
-            }
-            Err(err) => {
-                if let Some(pos) = self.find_input_pos_by_id(step, id) {
-                    if let Some(input_mut) = step
-                        .nodes
-                        .get_mut(self.input_node_indices[pos])
-                        .and_then(|node| node.as_input_mut())
-                    {
-                        input_mut.set_error(Some(err.clone()));
-                    }
-                }
-                view_state.clear_error_display(id);
-            }
-        }
-    }
-
-    fn clear_error_message(&mut self, view_state: &mut ViewState, id: &str) {
-        view_state.clear_error_display(id);
-    }
-
-    fn set_focus_without_events(&mut self, step: &mut Step, new_pos: Option<usize>) {
-        if let Some(old_index) = self.focused_index {
-            if let Some(input) = step
-                .nodes
-                .get_mut(self.input_node_indices[old_index])
-                .and_then(|node| node.as_input_mut())
-            {
-                input.set_focused(false);
             }
         }
 
-        if let Some(index) = new_pos {
-            if let Some(input) = step
-                .nodes
-                .get_mut(self.input_node_indices[index])
-                .and_then(|node| node.as_input_mut())
-            {
-                input.set_focused(true);
-            }
-        }
-
-        self.focused_index = new_pos;
+        self.focus_index = new_index;
     }
 
-    fn input_id_at(&self, step: &Step, index: usize) -> Option<String> {
-        self.input_node_indices
-            .get(index)
-            .and_then(|idx| step.nodes.get(*idx))
-            .and_then(|node| node.as_input())
-            .map(|input| input.id().clone())
+    fn update_focused_input<F>(&mut self, registry: &mut NodeRegistry, update: F) -> Vec<FormEvent>
+    where
+        F: FnOnce(&mut dyn Input) -> Option<KeyResult>,
+    {
+        let Some(id) = self.focused_id().cloned() else {
+            return vec![];
+        };
+
+        let Some(input) = registry.get_input_mut(&id) else {
+            return vec![];
+        };
+
+        let before = input.value();
+        let result = update(input);
+        let after = input.value();
+
+        let mut events = Vec::new();
+
+        if before != after {
+            events.push(FormEvent::InputChanged { id: id.clone(), value: after });
+            events.push(FormEvent::ErrorCancelled { id: id.clone() });
+            input.clear_error();
+        }
+
+        if let Err(err) = validation::validate_input(input) {
+            input.set_error(Some(InputError::hidden(err)));
+        }
+
+        if matches!(result, Some(KeyResult::Submit)) {
+            events.push(FormEvent::SubmitRequested);
+        }
+
+        events
     }
 }

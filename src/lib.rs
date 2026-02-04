@@ -1,10 +1,12 @@
 pub mod core;
+pub mod components;
 pub mod inputs;
 pub mod terminal;
 pub mod ui;
 
 pub use core::action_bindings;
 pub use core::app;
+pub use core::component;
 pub use core::event;
 pub use core::event_queue;
 pub use core::flow;

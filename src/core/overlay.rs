@@ -1,5 +1,7 @@
+use crate::core::event_queue::AppEvent;
 use crate::core::layer::Layer;
 use crate::core::node::{Node, NodeId};
+use crate::core::node_registry::NodeRegistry;
 use crate::text_input::TextInput;
 use std::mem;
 
@@ -58,5 +60,26 @@ impl Layer for OverlayState {
 
     fn nodes(&mut self) -> Vec<(NodeId, Node)> {
         mem::take(&mut self.nodes)
+    }
+
+    fn emit_close_events(&mut self, registry: &NodeRegistry, emit: &mut dyn FnMut(AppEvent)) {
+        let Some(id) = self.node_ids.first() else {
+            return;
+        };
+
+        let Some(input) = registry.get_input(id) else {
+            return;
+        };
+
+        let value = input.value();
+        if value.is_empty() {
+            return;
+        }
+
+        emit(AppEvent::LayerResult {
+            layer_id: self.id.clone(),
+            value,
+            target_id: None,
+        });
     }
 }

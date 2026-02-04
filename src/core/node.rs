@@ -1,3 +1,4 @@
+use crate::core::component::Component;
 use crate::inputs::Input;
 
 pub type NodeId = String;
@@ -6,6 +7,7 @@ pub enum Node {
     Input(Box<dyn Input>),
     Text(String),
     Separator,
+    Component(Box<dyn Component>),
 }
 
 impl Node {
@@ -19,6 +21,10 @@ impl Node {
 
     pub fn separator() -> Self {
         Node::Separator
+    }
+
+    pub fn component(component: impl Component + 'static) -> Self {
+        Node::Component(Box::new(component))
     }
 
     pub fn id(&self) -> Option<&str> {

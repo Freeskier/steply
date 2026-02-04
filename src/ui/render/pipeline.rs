@@ -288,8 +288,7 @@ impl RenderPipeline {
 
         for id in layer.node_ids() {
             if let Some(node) = registry.get(id) {
-                let (spans, cursor_offset) = renderer.render_node(node);
-                lines.push(RenderLine { spans, cursor_offset });
+                lines.extend(renderer.render_node_lines(node, registry));
             }
         }
 

@@ -1,4 +1,6 @@
+use crate::core::event_queue::AppEvent;
 use crate::core::node::{Node, NodeId};
+use crate::core::node_registry::NodeRegistry;
 
 pub trait Layer {
     fn id(&self) -> &str;
@@ -10,6 +12,8 @@ pub trait Layer {
     fn node_ids(&self) -> &[NodeId];
 
     fn nodes(&mut self) -> Vec<(NodeId, Node)>;
+
+    fn emit_close_events(&mut self, _registry: &NodeRegistry, _emit: &mut dyn FnMut(AppEvent)) {}
 }
 
 pub struct ActiveLayer {

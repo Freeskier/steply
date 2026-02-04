@@ -1,5 +1,6 @@
 pub mod action_bindings;
 pub mod app;
+pub mod component;
 pub mod event;
 pub mod event_queue;
 pub mod flow;

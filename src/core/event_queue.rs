@@ -7,6 +7,11 @@ use std::time::{Duration, Instant};
 pub enum AppEvent {
     Key(KeyEvent),
     Action(Action),
+    LayerResult {
+        layer_id: String,
+        value: String,
+        target_id: Option<String>,
+    },
     RequestRerender,
     InputChanged {
         id: String,

@@ -12,6 +12,7 @@ use crate::array_input::ArrayInput;
 use crate::checkbox_input::CheckboxInput;
 use crate::choice_input::ChoiceInput;
 use crate::color_input::ColorInput;
+use crate::components::select_component::{SelectComponent, SelectMode};
 use crate::password_input::{PasswordInput, PasswordRender};
 use crate::path_input::PathInput;
 use crate::segmented_input::SegmentedInput;
@@ -147,6 +148,9 @@ impl App {
         match event {
             AppEvent::Key(key) => self.handle_key_event(key),
             AppEvent::Action(action) => self.handle_action(action),
+            AppEvent::LayerResult { value, target_id, .. } => {
+                self.apply_layer_result(value, target_id)
+            }
             AppEvent::RequestRerender
             | AppEvent::InputChanged { .. }
             | AppEvent::FocusChanged { .. }
@@ -171,6 +175,19 @@ impl App {
                 return;
             }
             self.handle_action(Action::NextInput);
+            return;
+        }
+
+        if key.code == KeyCode::Enter
+            && key.modifiers == KeyModifiers::NONE
+            && self.state.engine.focused_id().is_none()
+        {
+            self.handle_action(Action::Submit);
+            return;
+        }
+
+        if self.try_handle_component_key(key) {
+            self.events.emit(AppEvent::RequestRerender);
             return;
         }
 
@@ -215,6 +232,28 @@ impl App {
             .input_ids_for_step_owned(&step.node_ids)
     }
 
+    fn try_handle_component_key(&mut self, key: KeyEvent) -> bool {
+        if self.state.engine.focused_id().is_some() {
+            return false;
+        }
+
+        let node_ids = self.state.flow.current_step().node_ids.clone();
+        let registry = self.state.flow.registry_mut();
+        for id in &node_ids {
+            let Some(node) = registry.get_mut(id) else {
+                continue;
+            };
+
+            if let Node::Component(component) = node {
+                if component.handle_key(key.code, key.modifiers) {
+                    return true;
+                }
+            }
+        }
+
+        false
+    }
+
 
     fn toggle_overlay(&mut self) {
         if self.layer_manager.is_active() {
@@ -235,12 +274,33 @@ impl App {
         let step_input_ids = self.current_step_input_ids();
         let registry = self.state.flow.registry_mut();
         let engine = &mut self.state.engine;
-        if self
-            .layer_manager
-            .close(registry, engine, step_input_ids)
+        if self.layer_manager.close(
+            registry,
+            engine,
+            step_input_ids,
+            &mut |event| self.events.emit(event),
+        )
         {
             self.pending_layer_clear = true;
         }
+    }
+
+    fn apply_layer_result(&mut self, value: String, target_id: Option<String>) {
+        let registry = self.state.flow.registry_mut();
+        if let Some(id) = target_id {
+            if let Some(input) = registry.get_input_mut(&id) {
+                input.set_value(value);
+                input.clear_error();
+            }
+            return;
+        }
+
+        let Some(input) = self.state.engine.focused_input_mut(registry) else {
+            return;
+        };
+
+        input.set_value(value);
+        input.clear_error();
     }
 
     fn render_completed_step(&mut self, terminal: &mut Terminal) -> io::Result<()> {
@@ -269,7 +329,29 @@ impl Default for App {
 
 
 fn build_demo_steps() -> Vec<(crate::core::step::Step, Vec<(NodeId, Node)>)> {
-    vec![build_step_one(), build_step_two(), build_step_three()]
+    vec![
+        build_step_zero(),
+        build_step_one(),
+        build_step_two(),
+        build_step_three(),
+    ]
+}
+
+fn build_step_zero() -> (crate::core::step::Step, Vec<(NodeId, Node)>) {
+    let component = SelectComponent::new(
+        "plan_select",
+        vec![
+            "Free".to_string(),
+            "Pro".to_string(),
+            "Team".to_string(),
+        ],
+    )
+    .with_label("Select plan:")
+    .with_mode(SelectMode::Single);
+
+    StepBuilder::new("Component demo:")
+        .component(component)
+        .build()
 }
 
 fn build_step_one() -> (crate::core::step::Step, Vec<(NodeId, Node)>) {

@@ -1,3 +1,4 @@
+use crate::core::event_queue::AppEvent;
 use crate::core::form_engine::FormEngine;
 use crate::core::layer::{ActiveLayer, Layer};
 use crate::core::node::NodeId;
@@ -50,10 +51,33 @@ impl LayerManager {
         registry: &mut NodeRegistry,
         engine: &mut FormEngine,
         step_input_ids: Vec<NodeId>,
+        emit: &mut dyn FnMut(AppEvent),
     ) -> bool {
-        let Some(active) = self.active.take() else {
+        let Some(mut active) = self.active.take() else {
             return false;
         };
+
+        let target_id = active.saved_focus_id.clone();
+        let mut emit_with_target = |event: AppEvent| {
+            if let AppEvent::LayerResult {
+                layer_id,
+                value,
+                target_id: _,
+            } = event
+            {
+                emit(AppEvent::LayerResult {
+                    layer_id,
+                    value,
+                    target_id: target_id.clone(),
+                });
+            } else {
+                emit(event);
+            }
+        };
+
+        active
+            .layer
+            .emit_close_events(registry, &mut emit_with_target);
 
         for id in active.layer.node_ids() {
             registry.remove(id);
@@ -79,7 +103,8 @@ impl LayerManager {
         step_input_ids: Vec<NodeId>,
     ) {
         if self.active.is_some() {
-            self.close(registry, engine, step_input_ids);
+            let mut emit = |_| {};
+            self.close(registry, engine, step_input_ids, &mut emit);
         } else {
             self.open(layer_fn(), registry, engine);
         }

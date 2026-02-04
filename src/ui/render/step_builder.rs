@@ -1,3 +1,4 @@
+use crate::core::component::ComponentItem;
 use crate::core::node::Node;
 use crate::core::node_registry::NodeRegistry;
 use crate::core::step::Step;
@@ -100,17 +101,31 @@ impl<'a> StepRenderer<'a> {
     }
 
     fn build_nodes(&self, step: &Step, registry: &NodeRegistry) -> Vec<RenderLine> {
-        step.node_ids.iter()
-            .filter_map(|id| registry.get(id))
-            .map(|node| {
-                let (spans, cursor_offset) = self.render_node_full(node);
-                RenderLine { spans, cursor_offset }
-            })
-            .collect()
+        let mut lines = Vec::new();
+
+        for id in &step.node_ids {
+            let Some(node) = registry.get(id) else {
+                continue;
+            };
+
+            lines.extend(self.render_node_lines(node, registry));
+        }
+
+        lines
     }
 
     pub fn render_node(&self, node: &Node) -> (Vec<Span>, Option<usize>) {
         self.render_node_full(node)
+    }
+
+    pub fn render_node_lines(&self, node: &Node, registry: &NodeRegistry) -> Vec<RenderLine> {
+        match node {
+            Node::Component(component) => self.render_component_lines(component.as_ref(), registry),
+            _ => {
+                let (spans, cursor_offset) = self.render_node_full(node);
+                vec![RenderLine { spans, cursor_offset }]
+            }
+        }
     }
 
     fn render_node_full(&self, node: &Node) -> (Vec<Span>, Option<usize>) {
@@ -127,6 +142,7 @@ impl<'a> StepRenderer<'a> {
             }
             Node::Text(text) => (vec![Span::new(text)], None),
             Node::Separator => (vec![Span::new("─".repeat(20)).with_style(self.theme.hint.clone())], None),
+            Node::Component(_) => (vec![], None),
         }
     }
 
@@ -144,6 +160,49 @@ impl<'a> StepRenderer<'a> {
             }
             _ => (vec![], None),
         }
+    }
+
+    fn render_component_lines(
+        &self,
+        component: &dyn crate::core::component::Component,
+        registry: &NodeRegistry,
+    ) -> Vec<RenderLine> {
+        let mut lines = Vec::new();
+
+        for item in component.items(registry) {
+            match item {
+                ComponentItem::Node(id) => {
+                    if let Some(node) = registry.get(&id) {
+                        let (spans, cursor_offset) = self.render_node_full(node);
+                        lines.push(RenderLine { spans, cursor_offset });
+                    }
+                }
+                ComponentItem::Text(text) => {
+                    lines.push(RenderLine {
+                        spans: vec![Span::new(text)],
+                        cursor_offset: None,
+                    });
+                }
+                ComponentItem::Separator => {
+                    lines.push(RenderLine {
+                        spans: vec![Span::new("─".repeat(20)).with_style(self.theme.hint.clone())],
+                        cursor_offset: None,
+                    });
+                }
+                ComponentItem::Option { text, active } => {
+                    let mut span = Span::new(text);
+                    if !active {
+                        span = span.with_style(self.theme.hint.clone());
+                    }
+                    lines.push(RenderLine {
+                        spans: vec![span],
+                        cursor_offset: None,
+                    });
+                }
+            }
+        }
+
+        lines
     }
 
     fn render_input_full(&self, input: &dyn crate::inputs::Input, inline_error: bool) -> Vec<Span> {

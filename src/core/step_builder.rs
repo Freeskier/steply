@@ -1,3 +1,4 @@
+use crate::core::component::Component;
 use crate::core::node::{Node, NodeId};
 use crate::core::step::Step;
 use crate::core::validation::FormValidator;
@@ -42,6 +43,14 @@ impl StepBuilder {
     pub fn separator(mut self) -> Self {
         let id = self.next_auto_id("sep");
         self.nodes.push((id, Node::separator()));
+        self
+    }
+
+    pub fn component(mut self, mut component: impl Component + 'static) -> Self {
+        let id = component.id().to_string();
+        let nodes = component.nodes();
+        self.nodes.push((id, Node::component(component)));
+        self.nodes.extend(nodes);
         self
     }
 

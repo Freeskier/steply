@@ -8,6 +8,7 @@ pub struct Theme {
     pub placeholder: Style,
     pub focused: Style,
     pub decor_active: Style,
+    pub decor_accent: Style,
     pub decor_done: Style,
     pub decor_cancelled: Style,
 }
@@ -21,6 +22,7 @@ impl Theme {
             placeholder: Style::new().with_color(Color::DarkGrey),
             focused: Style::new().with_bold(),
             decor_active: Style::new().with_color(Color::Green),
+            decor_accent: Style::new().with_color(Color::Yellow),
             decor_done: Style::new().with_color(Color::DarkGrey),
             decor_cancelled: Style::new().with_color(Color::Red),
         }

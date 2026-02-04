@@ -6,6 +6,7 @@ use crate::color_input::ColorInput;
 use crate::event::Action;
 use crate::event_queue::{AppEvent, EventQueue};
 use crate::flow::Flow;
+use crate::frame::Line;
 use crate::layout::Layout;
 use crate::node::{Node, RenderMode};
 use crate::overlay::OverlayState;
@@ -16,7 +17,7 @@ use crate::renderer::Renderer;
 use crate::segmented_input::SegmentedInput;
 use crate::select_input::SelectInput;
 use crate::slider_input::SliderInput;
-use crate::span::Span;
+use crate::span::{Span, Wrap};
 use crate::state::AppState;
 use crate::step::Step;
 use crate::terminal::KeyEvent;
@@ -46,6 +47,7 @@ pub struct App {
     overlay_render_lines: usize,
     overlay_focus_id: Option<String>,
     overlay: Option<OverlayState>,
+    last_step_cursor: Option<(u16, u16)>,
 }
 
 impl App {
@@ -64,6 +66,7 @@ impl App {
             overlay_render_lines: 0,
             overlay_focus_id: None,
             overlay: None,
+            last_step_cursor: None,
         };
 
         app.renderer.set_decoration_enabled(ENABLE_DECORATION);
@@ -122,6 +125,9 @@ impl App {
             self.state.flow.current_status(),
             false,
         )?;
+        if step_cursor.is_some() {
+            self.last_step_cursor = step_cursor;
+        }
 
         let overlay_cursor = self.render_overlay(terminal, step_cursor)?;
         let final_cursor = overlay_cursor.or(step_cursor);
@@ -424,6 +430,23 @@ impl App {
             .collect()
     }
 
+    fn overlay_separator_lines(&self, width: u16) -> (Line, Line) {
+        let mut line = Line::new();
+        let glyph = Span::new("›")
+            .with_style(self.theme.decor_accent.clone())
+            .with_wrap(Wrap::No);
+        line.push(glyph);
+        let dash_count = width.saturating_sub(1) as usize;
+        if dash_count > 0 {
+            line.push(
+                Span::new("─".repeat(dash_count))
+                    .with_style(self.theme.decor_done.clone())
+                    .with_wrap(Wrap::No),
+            );
+        }
+        (line.clone(), line)
+    }
+
     fn render_overlay(
         &mut self,
         terminal: &mut Terminal,
@@ -431,7 +454,8 @@ impl App {
     ) -> io::Result<Option<(u16, u16)>> {
         if let Some(overlay) = self.overlay.as_ref() {
             let step = self.state.flow.current_step();
-            let start = step_cursor.map(|(_, row)| row + 1).unwrap_or_else(|| {
+            let anchor_cursor = step_cursor.or(self.last_step_cursor);
+            let start = anchor_cursor.map(|(_, row)| row + 1).unwrap_or_else(|| {
                 let _ = self.renderer.move_to_end(terminal);
                 let _ = terminal.refresh_cursor_position();
                 terminal.cursor_position().y
@@ -443,6 +467,7 @@ impl App {
             let (frame, cursor) =
                 Layout::new().compose_spans_with_cursor(render_lines.into_iter(), available);
             let lines = frame.lines();
+            let separators = self.overlay_separator_lines(width);
             let (count, cursor) = self.renderer.render_overlay(
                 terminal,
                 start,
@@ -451,6 +476,7 @@ impl App {
                 lines,
                 self.overlay_render_lines,
                 cursor,
+                separators,
             )?;
             self.overlay_render_start = Some(start);
             self.overlay_render_lines = count;

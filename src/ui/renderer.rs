@@ -307,30 +307,54 @@ impl Renderer {
         lines: &[Line],
         prev_lines: usize,
         cursor: Option<(usize, usize)>,
+        separators: (Line, Line),
     ) -> io::Result<(usize, Option<(u16, u16)>)> {
+        let available = width.saturating_sub(start_col) as usize;
+
+        terminal.queue_move_cursor(0, start_row)?;
+        terminal.render_line(&separators.0)?;
+        if width as usize > separators.0.width() {
+            terminal
+                .writer_mut()
+                .write_all(&vec![b' '; width as usize - separators.0.width()])?;
+        }
+
         for (idx, line) in lines.iter().enumerate() {
-            let line_row = start_row + idx as u16;
+            let line_row = start_row + idx as u16 + 1;
             terminal.queue_move_cursor(start_col, line_row)?;
             terminal.render_line(line)?;
-            let available = width.saturating_sub(start_col);
-            let used = line.width().min(available as usize);
-            if used < available as usize {
+            let used = line.width().min(available);
+            if used < available {
                 terminal
                     .writer_mut()
-                    .write_all(&vec![b' '; available as usize - used])?;
+                    .write_all(&vec![b' '; available - used])?;
             }
         }
-        if prev_lines > lines.len() {
-            for idx in lines.len()..prev_lines {
+
+        let bottom_row = start_row + lines.len() as u16 + 1;
+        terminal.queue_move_cursor(0, bottom_row)?;
+        terminal.render_line(&separators.1)?;
+        if width as usize > separators.1.width() {
+            terminal
+                .writer_mut()
+                .write_all(&vec![b' '; width as usize - separators.1.width()])?;
+        }
+
+        let total_lines = lines.len() + 2;
+        if prev_lines > total_lines {
+            for idx in total_lines..prev_lines {
                 let line_row = start_row + idx as u16;
-                terminal.queue_move_cursor(start_col, line_row)?;
-                let available = width.saturating_sub(start_col) as usize;
-                terminal.writer_mut().write_all(&vec![b' '; available])?;
+                terminal.queue_move_cursor(0, line_row)?;
+                terminal
+                    .writer_mut()
+                    .write_all(&vec![b' '; width as usize])?;
             }
         }
         terminal.flush()?;
-        let cursor_abs = cursor.map(|(col, row)| (start_col + col as u16, start_row + row as u16));
-        Ok((lines.len(), cursor_abs))
+
+        let cursor_abs =
+            cursor.map(|(col, row)| (start_col + col as u16, start_row + 1 + row as u16));
+        Ok((total_lines, cursor_abs))
     }
 
     pub fn write_connector_lines(

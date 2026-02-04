@@ -1,8 +1,12 @@
 use crate::core::binding::BindTarget;
-use crate::core::component::{Component, ComponentItem, ComponentResponse};
+use crate::core::component::{Component, ComponentBase, ComponentResponse};
 use crate::core::node::{Node, NodeId};
 use crate::core::node_registry::NodeRegistry;
 use crate::core::value::Value;
+use crate::ui::render::RenderLine;
+use crate::ui::span::Span;
+use crate::ui::style::{Color, Style};
+use crate::ui::theme::Theme;
 use std::collections::HashSet;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -10,29 +14,28 @@ pub enum SelectMode {
     Single,
     Multi,
     Radio,
+    List,
 }
 
 pub struct SelectComponent {
-    id: String,
+    base: ComponentBase,
     label: Option<String>,
     options: Vec<String>,
     mode: SelectMode,
     selected: Vec<usize>,
     active_index: usize,
-    focused: bool,
     bound_target: Option<BindTarget>,
 }
 
 impl SelectComponent {
     pub fn new(id: impl Into<String>, options: Vec<String>) -> Self {
         Self {
-            id: id.into(),
+            base: ComponentBase::new(id),
             label: None,
             options,
             mode: SelectMode::Single,
             selected: Vec::new(),
             active_index: 0,
-            focused: false,
             bound_target: None,
         }
     }
@@ -106,26 +109,31 @@ impl SelectComponent {
                     self.selected.push(index);
                 }
             }
+            SelectMode::List => {
+                self.selected.clear();
+                self.selected.push(index);
+            }
         }
     }
 
-    fn marker_parts(&self, index: usize) -> (&'static str, &'static str, &'static str) {
+    fn marker_symbol(&self, index: usize) -> &'static str {
         let is_selected = self.selected.iter().any(|i| *i == index);
         match self.mode {
             SelectMode::Multi | SelectMode::Single => {
                 if is_selected {
-                    ("[", "✔", "]")
+                    "■"
                 } else {
-                    ("[", " ", "]")
+                    "□"
                 }
             }
             SelectMode::Radio => {
                 if is_selected {
-                    ("(", "●", ")")
+                    "●"
                 } else {
-                    ("(", " ", ")")
+                    "○"
                 }
             }
+            SelectMode::List => "",
         }
     }
 
@@ -203,8 +211,12 @@ impl SelectComponent {
 }
 
 impl Component for SelectComponent {
-    fn id(&self) -> &str {
-        &self.id
+    fn base(&self) -> &ComponentBase {
+        &self.base
+    }
+
+    fn base_mut(&mut self) -> &mut ComponentBase {
+        &mut self.base
     }
 
     fn node_ids(&self) -> &[NodeId] {
@@ -215,38 +227,80 @@ impl Component for SelectComponent {
         Vec::new()
     }
 
-    fn items(&self, _registry: &NodeRegistry) -> Vec<ComponentItem> {
-        let mut items = Vec::new();
+    fn render(&self, _registry: &NodeRegistry, theme: &Theme) -> Vec<RenderLine> {
+        let mut lines = Vec::new();
 
         if let Some(label) = &self.label {
-            items.push(ComponentItem::Text(label.clone()));
+            lines.push(RenderLine {
+                spans: vec![Span::new(label.clone())],
+                cursor_offset: None,
+            });
         }
+
+        let inactive_style = theme.hint.clone();
+        let marker_style = Style::new().with_color(Color::Green);
+        let cursor_style = Style::new().with_color(Color::Yellow);
 
         for (idx, option) in self.options.iter().enumerate() {
             let active = idx == self.active_index;
             let selected = self.selected.iter().any(|i| *i == idx);
-            let cursor = if self.focused && active { "❯" } else { " " };
-            let (marker_left, marker, marker_right) = self.marker_parts(idx);
-            items.push(ComponentItem::Option {
-                cursor: cursor.to_string(),
-                marker_left: marker_left.to_string(),
-                marker: marker.to_string(),
-                marker_right: marker_right.to_string(),
-                text: option.clone(),
-                active,
-                selected,
+            let cursor = if self.base.focused && active {
+                "❯"
+            } else {
+                " "
+            };
+            if self.mode == SelectMode::List {
+                let mut spans = Vec::new();
+                spans.push(Span::new(cursor).with_style(cursor_style.clone()));
+                spans.push(Span::new(" "));
+
+                let mut text_span = Span::new(option.clone());
+                if self.base.focused && active {
+                    text_span = text_span.with_style(theme.focused.clone());
+                } else if selected {
+                    text_span = text_span.with_style(marker_style.clone());
+                } else {
+                    text_span = text_span.with_style(inactive_style.clone());
+                }
+                spans.push(text_span);
+
+                lines.push(RenderLine {
+                    spans,
+                    cursor_offset: None,
+                });
+                continue;
+            }
+            let marker = self.marker_symbol(idx);
+            let marker_span = if selected {
+                Span::new(marker).with_style(marker_style.clone())
+            } else if active {
+                Span::new(marker)
+            } else {
+                Span::new(marker).with_style(inactive_style.clone())
+            };
+
+            let mut spans = Vec::new();
+            if active {
+                spans.push(Span::new(cursor).with_style(cursor_style.clone()));
+                spans.push(Span::new(" "));
+                spans.push(marker_span);
+                spans.push(Span::new(" "));
+                spans.push(Span::new(option.clone()));
+            } else {
+                spans.push(Span::new(cursor).with_style(inactive_style.clone()));
+                spans.push(Span::new(" ").with_style(inactive_style.clone()));
+                spans.push(marker_span);
+                spans.push(Span::new(" ").with_style(inactive_style.clone()));
+                spans.push(Span::new(option.clone()).with_style(inactive_style.clone()));
+            }
+
+            lines.push(RenderLine {
+                spans,
+                cursor_offset: None,
             });
         }
 
-        items
-    }
-
-    fn is_focused(&self) -> bool {
-        self.focused
-    }
-
-    fn set_focused(&mut self, focused: bool) {
-        self.focused = focused;
+        lines
     }
 
     fn bind_target(&self) -> Option<BindTarget> {
@@ -260,7 +314,7 @@ impl Component for SelectComponent {
 
         match self.mode {
             SelectMode::Multi => Some(Value::List(self.selected_values())),
-            SelectMode::Single | SelectMode::Radio => self
+            SelectMode::Single | SelectMode::Radio | SelectMode::List => self
                 .selected
                 .first()
                 .and_then(|idx| self.options.get(*idx))
@@ -290,10 +344,16 @@ impl Component for SelectComponent {
             crate::terminal::KeyCode::Up => self.move_active(-1),
             crate::terminal::KeyCode::Down => self.move_active(1),
             crate::terminal::KeyCode::Char(' ') => {
+                if self.mode == SelectMode::List {
+                    return ComponentResponse::not_handled();
+                }
                 let _ = self.activate_current();
                 !self.options.is_empty()
             }
             crate::terminal::KeyCode::Enter => {
+                if self.mode == SelectMode::List {
+                    let _ = self.activate_current();
+                }
                 if let Some(value) = Component::value(self) {
                     return ComponentResponse::produced(value);
                 }

@@ -1,16 +1,9 @@
-use crate::core::component::ComponentItem;
 use crate::core::node::Node;
 use crate::core::node_registry::NodeRegistry;
 use crate::core::step::Step;
-use crate::ui::span::Span;
-use crate::ui::style::{Color, Style};
 use crate::ui::theme::Theme;
+use crate::ui::{render::RenderLine, span::Span};
 use unicode_width::UnicodeWidthStr;
-
-pub struct RenderLine {
-    pub spans: Vec<Span>,
-    pub cursor_offset: Option<usize>,
-}
 
 pub struct StepRenderer<'a> {
     theme: &'a Theme,
@@ -178,80 +171,7 @@ impl<'a> StepRenderer<'a> {
         component: &dyn crate::core::component::Component,
         registry: &NodeRegistry,
     ) -> Vec<RenderLine> {
-        let mut lines = Vec::new();
-
-        for item in component.items(registry) {
-            match item {
-                ComponentItem::Node(id) => {
-                    if let Some(node) = registry.get(&id) {
-                        let (spans, cursor_offset) = self.render_node_full(node);
-                        lines.push(RenderLine {
-                            spans,
-                            cursor_offset,
-                        });
-                    }
-                }
-                ComponentItem::Text(text) => {
-                    lines.push(RenderLine {
-                        spans: vec![Span::new(text)],
-                        cursor_offset: None,
-                    });
-                }
-                ComponentItem::Separator => {
-                    lines.push(RenderLine {
-                        spans: vec![Span::new("─".repeat(20)).with_style(self.theme.hint.clone())],
-                        cursor_offset: None,
-                    });
-                }
-                ComponentItem::Option {
-                    cursor,
-                    marker_left,
-                    marker,
-                    marker_right,
-                    text,
-                    active,
-                    selected,
-                } => {
-                    let inactive_style = self.theme.hint.clone();
-                    let marker_style = Style::new().with_color(Color::Green);
-                    let cursor_style = Style::new().with_color(Color::Yellow);
-
-                    let mut spans = Vec::new();
-                    if active {
-                        spans.push(Span::new(cursor).with_style(cursor_style));
-                        spans.push(Span::new(" "));
-                        spans.push(Span::new(marker_left));
-                        if selected {
-                            spans.push(Span::new(marker).with_style(marker_style));
-                        } else {
-                            spans.push(Span::new(marker));
-                        }
-                        spans.push(Span::new(marker_right));
-                        spans.push(Span::new(" "));
-                        spans.push(Span::new(text));
-                    } else {
-                        spans.push(Span::new(cursor).with_style(inactive_style.clone()));
-                        spans.push(Span::new(" ").with_style(inactive_style.clone()));
-                        spans.push(Span::new(marker_left).with_style(inactive_style.clone()));
-                        if selected {
-                            spans.push(Span::new(marker).with_style(marker_style));
-                        } else {
-                            spans.push(Span::new(marker).with_style(inactive_style.clone()));
-                        }
-                        spans.push(Span::new(marker_right).with_style(inactive_style.clone()));
-                        spans.push(Span::new(" ").with_style(inactive_style.clone()));
-                        spans.push(Span::new(text).with_style(inactive_style));
-                    }
-
-                    lines.push(RenderLine {
-                        spans,
-                        cursor_offset: None,
-                    });
-                }
-            }
-        }
-
-        lines
+        component.render(registry, self.theme)
     }
 
     fn render_input_full(&self, input: &dyn crate::inputs::Input, inline_error: bool) -> Vec<Span> {

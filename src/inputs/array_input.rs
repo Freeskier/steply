@@ -1,6 +1,5 @@
 use crate::inputs::{Input, InputBase, InputCaps, KeyResult};
 use crate::span::Span;
-use crate::style::Style;
 use crate::terminal::{KeyCode, KeyModifiers};
 use crate::validators::Validator;
 use unicode_width::UnicodeWidthStr;

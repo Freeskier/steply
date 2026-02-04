@@ -386,7 +386,7 @@ fn build_step_zero() -> (crate::core::step::Step, Vec<(NodeId, Node)>) {
         vec!["Free".to_string(), "Pro".to_string(), "Team".to_string()],
     )
     .with_label("Select plan:")
-    .with_mode(SelectMode::Multi);
+    .with_mode(SelectMode::List);
 
     let tags_component = SelectComponent::new("tags_select", Vec::new())
         .with_label("Tags (from input):")

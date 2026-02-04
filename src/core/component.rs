@@ -3,36 +3,44 @@ use crate::core::node::{Node, NodeId};
 use crate::core::node_registry::NodeRegistry;
 use crate::core::value::Value;
 use crate::terminal::{KeyCode, KeyModifiers};
+use crate::ui::render::RenderLine;
+use crate::ui::theme::Theme;
 
-pub enum ComponentItem {
-    Node(NodeId),
-    Text(String),
-    Separator,
-    Option {
-        cursor: String,
-        marker_left: String,
-        marker: String,
-        marker_right: String,
-        text: String,
-        active: bool,
-        selected: bool,
-    },
+pub struct ComponentBase {
+    pub id: NodeId,
+    pub focused: bool,
+}
+
+impl ComponentBase {
+    pub fn new(id: impl Into<NodeId>) -> Self {
+        Self {
+            id: id.into(),
+            focused: false,
+        }
+    }
 }
 
 pub trait Component: Send {
-    fn id(&self) -> &str;
+    fn base(&self) -> &ComponentBase;
+    fn base_mut(&mut self) -> &mut ComponentBase;
+
+    fn id(&self) -> &str {
+        &self.base().id
+    }
 
     fn node_ids(&self) -> &[NodeId];
 
     fn nodes(&mut self) -> Vec<(NodeId, Node)>;
 
-    fn items(&self, registry: &NodeRegistry) -> Vec<ComponentItem>;
+    fn render(&self, registry: &NodeRegistry, theme: &Theme) -> Vec<RenderLine>;
 
     fn is_focused(&self) -> bool {
-        false
+        self.base().focused
     }
 
-    fn set_focused(&mut self, _focused: bool) {}
+    fn set_focused(&mut self, focused: bool) {
+        self.base_mut().focused = focused;
+    }
 
     fn bind_target(&self) -> Option<BindTarget> {
         None

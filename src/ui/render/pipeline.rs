@@ -2,13 +2,13 @@ use crate::core::flow::StepStatus;
 use crate::core::layer::ActiveLayer;
 use crate::core::node_registry::NodeRegistry;
 use crate::core::step::Step;
+use crate::terminal::Terminal;
 use crate::ui::frame::Line;
 use crate::ui::layout::Layout;
 use crate::ui::render::decorator::Decorator;
 use crate::ui::render::options::RenderOptions;
-use crate::ui::render::step_builder::{RenderLine, StepRenderer};
+use crate::ui::render::{RenderLine, StepRenderer};
 use crate::ui::span::{Span, Wrap};
-use crate::terminal::Terminal;
 use crate::ui::theme::Theme;
 use std::io::{self, Write};
 
@@ -57,7 +57,6 @@ impl RenderPipeline {
         if self.decoration_enabled { 3 } else { 0 }
     }
 
-
     pub fn render_title(&mut self, terminal: &mut Terminal, theme: &Theme) -> io::Result<()> {
         if self.title_rendered || !self.decoration_enabled {
             return Ok(());
@@ -78,7 +77,11 @@ impl RenderPipeline {
         pos = terminal.cursor_position();
 
         let mut title_line = Line::new();
-        title_line.push(Span::new("┌  ").with_style(theme.decor_done.clone()).with_wrap(Wrap::No));
+        title_line.push(
+            Span::new("┌  ")
+                .with_style(theme.decor_done.clone())
+                .with_wrap(Wrap::No),
+        );
         title_line.push(Span::new(title).with_style(theme.prompt.clone()));
         terminal.queue_move_cursor(0, pos.y)?;
         terminal.queue_clear_line()?;
@@ -88,7 +91,11 @@ impl RenderPipeline {
         pos = terminal.cursor_position();
 
         let mut connector = Line::new();
-        connector.push(Span::new("│  ").with_style(theme.decor_done.clone()).with_wrap(Wrap::No));
+        connector.push(
+            Span::new("│  ")
+                .with_style(theme.decor_done.clone())
+                .with_wrap(Wrap::No),
+        );
         terminal.queue_move_cursor(0, pos.y)?;
         terminal.queue_clear_line()?;
         terminal.render_line(&connector)?;
@@ -98,7 +105,6 @@ impl RenderPipeline {
         self.title_rendered = true;
         Ok(())
     }
-
 
     pub fn render_step(
         &mut self,
@@ -115,7 +121,9 @@ impl RenderPipeline {
         let render_lines = builder.build(step, registry);
 
         let (frame, cursor_pos) = Layout::new().compose_spans_with_cursor(
-            render_lines.iter().map(|l| (l.spans.clone(), l.cursor_offset)),
+            render_lines
+                .iter()
+                .map(|l| (l.spans.clone(), l.cursor_offset)),
             width,
         );
 
@@ -154,7 +162,13 @@ impl RenderPipeline {
         Ok(())
     }
 
-    pub fn write_connector(&self, terminal: &mut Terminal, theme: &Theme, status: StepStatus, count: usize) -> io::Result<()> {
+    pub fn write_connector(
+        &self,
+        terminal: &mut Terminal,
+        theme: &Theme,
+        status: StepStatus,
+        count: usize,
+    ) -> io::Result<()> {
         if count == 0 || !self.decoration_enabled {
             return Ok(());
         }
@@ -168,7 +182,11 @@ impl RenderPipeline {
 
         for _ in 0..count {
             let mut line = Line::new();
-            line.push(Span::new("│  ").with_style(style.clone()).with_wrap(Wrap::No));
+            line.push(
+                Span::new("│  ")
+                    .with_style(style.clone())
+                    .with_wrap(Wrap::No),
+            );
             terminal.render_line(&line)?;
             writeln!(terminal.writer_mut())?;
         }
@@ -176,7 +194,6 @@ impl RenderPipeline {
         terminal.flush()?;
         Ok(())
     }
-
 
     pub fn render_layer(
         &mut self,
@@ -193,13 +210,19 @@ impl RenderPipeline {
 
         let start_row = anchor_cursor
             .map(|(_, row)| row + 1)
-            .or_else(|| self.region.as_ref().map(|r| r.start_row + r.line_count as u16))
+            .or_else(|| {
+                self.region
+                    .as_ref()
+                    .map(|r| r.start_row + r.line_count as u16)
+            })
             .unwrap_or(0);
 
         let render_lines = self.build_layer_lines(layer, registry, theme);
 
         let (frame, cursor_pos) = Layout::new().compose_spans_with_cursor(
-            render_lines.iter().map(|l| (l.spans.clone(), l.cursor_offset)),
+            render_lines
+                .iter()
+                .map(|l| (l.spans.clone(), l.cursor_offset)),
             available as u16,
         );
 
@@ -240,9 +263,8 @@ impl RenderPipeline {
             line_count: total_lines,
         });
 
-        let cursor = cursor_pos.map(|(col, row)| {
-            (start_col + col as u16, start_row + 1 + row as u16)
-        });
+        let cursor =
+            cursor_pos.map(|(col, row)| (start_col + col as u16, start_row + 1 + row as u16));
 
         Ok(cursor)
     }
@@ -313,7 +335,6 @@ impl RenderPipeline {
         line
     }
 
-
     fn ensure_region(&mut self, terminal: &mut Terminal, line_count: usize) -> io::Result<u16> {
         if let Some(region) = &mut self.region {
             if line_count > region.line_count {
@@ -358,7 +379,12 @@ impl RenderPipeline {
         Ok(())
     }
 
-    fn clear_extra_lines(&self, terminal: &mut Terminal, start: u16, current_len: usize) -> io::Result<()> {
+    fn clear_extra_lines(
+        &self,
+        terminal: &mut Terminal,
+        start: u16,
+        current_len: usize,
+    ) -> io::Result<()> {
         let Some(region) = &self.region else {
             return Ok(());
         };

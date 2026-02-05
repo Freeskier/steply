@@ -3,7 +3,7 @@ use crate::button_input::ButtonInput;
 use crate::checkbox_input::CheckboxInput;
 use crate::choice_input::ChoiceInput;
 use crate::color_input::ColorInput;
-use crate::components::filterable_select_component::FilterableSelectComponent;
+use crate::components::file_browser_component::FileBrowserComponent;
 use crate::components::select_component::{SelectComponent, SelectMode};
 use crate::core::action_bindings::ActionBindings;
 use crate::core::binding::{BindTarget, ValueSource};
@@ -166,23 +166,7 @@ impl App {
         }
 
         if key.code == KeyCode::Tab && key.modifiers == KeyModifiers::NONE {
-            let handled = {
-                let App {
-                    state,
-                    layer_manager,
-                    ..
-                } = self;
-                let active_nodes = if let Some(active) = layer_manager.active_mut() {
-                    active.nodes_mut()
-                } else {
-                    state.flow.current_step_mut().nodes.as_mut_slice()
-                };
-                state.engine.handle_tab_completion(active_nodes)
-            };
-            if handled {
-                return;
-            }
-            self.handle_action(Action::NextInput);
+            self.handle_action(Action::TabKey(key));
             return;
         }
 
@@ -434,12 +418,11 @@ fn build_demo_steps() -> Vec<crate::core::step::Step> {
 }
 
 fn build_step_zero() -> crate::core::step::Step {
-    let component = FilterableSelectComponent::new(
-        "plan_select",
-        vec!["Free".to_string(), "Pro".to_string(), "Team".to_string()],
-    )
-    .with_label("Select plan:")
-    .with_placeholder("Type to filter");
+    let component = FileBrowserComponent::new("plan_select")
+        .with_label("Select plan:")
+        .with_recursive_search(true)
+        .with_max_visible(6)
+        .with_placeholder("Type to filter");
 
     let tags_component = SelectComponent::new("tags_select", Vec::new())
         .with_label("Tags (from input):")

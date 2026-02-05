@@ -10,5 +10,6 @@ pub enum Action {
     DeleteWord,
     DeleteWordForward,
     InputKey(KeyEvent),
+    TabKey(KeyEvent),
     ClearErrorMessage(String),
 }

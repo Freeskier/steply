@@ -42,6 +42,15 @@ impl FilterableSelectComponent {
         self
     }
 
+    pub fn with_max_visible(mut self, max_visible: usize) -> Self {
+        self.select.set_max_visible(max_visible);
+        self
+    }
+
+    pub fn set_max_visible(&mut self, max_visible: usize) {
+        self.select.set_max_visible(max_visible);
+    }
+
     pub fn with_options(mut self, options: Vec<String>) -> Self {
         self.set_options(options);
         self
@@ -140,6 +149,17 @@ impl Component for FilterableSelectComponent {
         modifiers: KeyModifiers,
         ctx: &mut EventContext,
     ) -> bool {
+        if modifiers == KeyModifiers::NONE && code == KeyCode::Tab {
+            if self.filter_input.value().trim().is_empty() || self.matches.is_empty() {
+                return false;
+            }
+            if self.accept_autocomplete() {
+                ctx.handled();
+                return true;
+            }
+            return false;
+        }
+
         if modifiers == KeyModifiers::NONE {
             let handled = match code {
                 KeyCode::Up | KeyCode::Down | KeyCode::Enter | KeyCode::Char(' ') => {
@@ -190,5 +210,31 @@ impl Component for FilterableSelectComponent {
         self.base.focused = focused;
         self.filter_input.set_focused(focused);
         self.select.set_focused(focused);
+    }
+
+    fn delete_word(&mut self, ctx: &mut EventContext) -> bool {
+        let before = self.filter_input.value();
+        self.filter_input.delete_word();
+        let after = self.filter_input.value();
+        if before != after {
+            self.refresh_matches();
+            ctx.handled();
+            true
+        } else {
+            false
+        }
+    }
+
+    fn delete_word_forward(&mut self, ctx: &mut EventContext) -> bool {
+        let before = self.filter_input.value();
+        self.filter_input.delete_word_forward();
+        let after = self.filter_input.value();
+        if before != after {
+            self.refresh_matches();
+            ctx.handled();
+            true
+        } else {
+            false
+        }
     }
 }

@@ -75,6 +75,14 @@ pub trait Component: Send {
         false
     }
 
+    fn delete_word(&mut self, _ctx: &mut EventContext) -> bool {
+        false
+    }
+
+    fn delete_word_forward(&mut self, _ctx: &mut EventContext) -> bool {
+        false
+    }
+
     fn render_children(&self) -> bool {
         matches!(self.focus_mode(), FocusMode::PassThrough)
     }

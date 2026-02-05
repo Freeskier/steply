@@ -21,6 +21,11 @@ pub enum SelectOption {
         text: String,
         highlights: Vec<(usize, usize)>,
     },
+    Styled {
+        text: String,
+        highlights: Vec<(usize, usize)>,
+        style: Style,
+    },
 }
 
 pub struct SelectComponent {
@@ -30,6 +35,8 @@ pub struct SelectComponent {
     mode: SelectMode,
     selected: Vec<usize>,
     active_index: usize,
+    scroll_offset: usize,
+    max_visible: Option<usize>,
     bound_target: Option<BindTarget>,
 }
 
@@ -46,6 +53,8 @@ impl SelectComponent {
             mode: SelectMode::Single,
             selected: Vec::new(),
             active_index: 0,
+            scroll_offset: 0,
+            max_visible: None,
             bound_target: None,
         }
     }
@@ -61,6 +70,21 @@ impl SelectComponent {
             self.selected.push(0);
         }
         self
+    }
+
+    pub fn with_max_visible(mut self, max_visible: usize) -> Self {
+        self.set_max_visible(max_visible);
+        self
+    }
+
+    pub fn set_max_visible(&mut self, max_visible: usize) {
+        if max_visible == 0 {
+            self.max_visible = None;
+        } else {
+            self.max_visible = Some(max_visible);
+        }
+        self.scroll_offset = 0;
+        self.clamp_active();
     }
 
     pub fn with_options(mut self, options: Vec<SelectOption>) -> Self {
@@ -103,18 +127,25 @@ impl SelectComponent {
 
     pub fn reset_active(&mut self) {
         self.active_index = 0;
+        self.scroll_offset = 0;
     }
 
     pub fn set_active_index(&mut self, index: usize) {
         if self.options.is_empty() {
             self.active_index = 0;
+            self.scroll_offset = 0;
         } else {
             self.active_index = index.min(self.options.len() - 1);
         }
+        self.ensure_visible();
     }
 
     pub fn options(&self) -> &[SelectOption] {
         &self.options
+    }
+
+    pub fn active_index(&self) -> usize {
+        self.active_index
     }
 
     pub fn toggle(&mut self, index: usize) {
@@ -187,6 +218,7 @@ impl SelectComponent {
         }
 
         self.active_index = next;
+        self.ensure_visible();
         true
     }
 
@@ -236,9 +268,54 @@ impl SelectComponent {
 
         if self.options.is_empty() {
             self.active_index = 0;
+            self.scroll_offset = 0;
         } else if self.active_index >= self.options.len() {
             self.active_index = self.options.len() - 1;
         }
+
+        self.ensure_visible();
+    }
+
+    fn clamp_active(&mut self) {
+        if self.options.is_empty() {
+            self.active_index = 0;
+        } else if self.active_index >= self.options.len() {
+            self.active_index = self.options.len() - 1;
+        }
+    }
+
+    fn ensure_visible(&mut self) {
+        let Some(max_visible) = self.max_visible else {
+            return;
+        };
+        let total = self.options.len();
+        if total <= max_visible {
+            self.scroll_offset = 0;
+            return;
+        }
+
+        let max_start = total.saturating_sub(max_visible);
+        if self.active_index < self.scroll_offset {
+            self.scroll_offset = self.active_index;
+        } else if self.active_index >= self.scroll_offset + max_visible {
+            self.scroll_offset = self.active_index.saturating_sub(max_visible - 1);
+        }
+        if self.scroll_offset > max_start {
+            self.scroll_offset = max_start;
+        }
+    }
+
+    fn visible_range(&self) -> (usize, usize) {
+        let total = self.options.len();
+        let Some(max_visible) = self.max_visible else {
+            return (0, total);
+        };
+        if total <= max_visible {
+            return (0, total);
+        }
+        let start = self.scroll_offset.min(total);
+        let end = (start + max_visible).min(total);
+        (start, end)
     }
 }
 
@@ -246,6 +323,7 @@ fn option_text(option: &SelectOption) -> &str {
     match option {
         SelectOption::Plain(text) => text,
         SelectOption::Highlighted { text, .. } => text,
+        SelectOption::Styled { text, .. } => text,
     }
 }
 
@@ -253,6 +331,14 @@ fn option_highlights(option: &SelectOption) -> &[(usize, usize)] {
     match option {
         SelectOption::Plain(_) => &[],
         SelectOption::Highlighted { highlights, .. } => highlights.as_slice(),
+        SelectOption::Styled { highlights, .. } => highlights.as_slice(),
+    }
+}
+
+fn option_style(option: &SelectOption) -> Option<&Style> {
+    match option {
+        SelectOption::Styled { style, .. } => Some(style),
+        _ => None,
     }
 }
 
@@ -270,9 +356,14 @@ fn render_option_spans(
 ) -> Vec<Span> {
     let text = option_text(option);
     let highlights = option_highlights(option);
+    let base_style = if let Some(style) = option_style(option) {
+        base_style.clone().merge(style)
+    } else {
+        base_style.clone()
+    };
 
     if highlights.is_empty() {
-        return vec![Span::new(text).with_style(base_style.clone())];
+        return vec![Span::new(text).with_style(base_style)];
     }
 
     let mut spans = Vec::new();
@@ -286,7 +377,7 @@ fn render_option_spans(
         let end = end.min(chars.len());
         if start > pos {
             let segment: String = chars[pos..start].iter().collect();
-            push_styled_span(&mut spans, segment, base_style);
+            push_styled_span(&mut spans, segment, &base_style);
         }
         if end > start {
             let segment: String = chars[start..end].iter().collect();
@@ -298,7 +389,7 @@ fn render_option_spans(
 
     if pos < chars.len() {
         let segment: String = chars[pos..].iter().collect();
-        push_styled_span(&mut spans, segment, base_style);
+        push_styled_span(&mut spans, segment, &base_style);
     }
 
     spans
@@ -333,7 +424,15 @@ impl Component for SelectComponent {
         let cursor_style = Style::new().with_color(Color::Yellow);
         let highlight_style = theme.decor_accent.clone().with_bold();
 
-        for (idx, option) in self.options.iter().enumerate() {
+        let (start, end) = self.visible_range();
+        let visible_len = end.saturating_sub(start);
+        for (idx, option) in self
+            .options
+            .iter()
+            .enumerate()
+            .skip(start)
+            .take(visible_len)
+        {
             let active = idx == self.active_index;
             let selected = self.selected.iter().any(|i| *i == idx);
             let cursor = if self.base.focused && active {
@@ -394,6 +493,27 @@ impl Component for SelectComponent {
                 spans,
                 cursor_offset: None,
             });
+        }
+
+        if let Some(max_visible) = self.max_visible {
+            let total = self.options.len();
+            if total > max_visible {
+                let start = start + 1;
+                let end = end;
+                let can_scroll_up = start > 1;
+                let can_scroll_down = end < total;
+                let indicator = match (can_scroll_up, can_scroll_down) {
+                    (true, true) => " ↑↓",
+                    (true, false) => " ↑",
+                    (false, true) => " ↓",
+                    (false, false) => "",
+                };
+                let footer = format!("[{}-{} of {}]{}", start, end, total, indicator);
+                lines.push(RenderLine {
+                    spans: vec![Span::new(footer).with_style(theme.hint.clone())],
+                    cursor_offset: None,
+                });
+            }
         }
 
         lines

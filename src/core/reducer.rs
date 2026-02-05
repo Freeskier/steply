@@ -76,24 +76,25 @@ impl Reducer {
                     None => state.flow.current_step_mut().nodes.as_mut_slice(),
                 };
                 let output = state.engine.handle_key(nodes, key_event);
+                Self::reduce_engine_output(state, output, error_timeout)
+            }
+            Action::TabKey(key_event) => {
+                let nodes = match active_nodes.as_deref_mut() {
+                    Some(nodes) => nodes,
+                    None => state.flow.current_step_mut().nodes.as_mut_slice(),
+                };
 
-                let has_submit = output
-                    .events
-                    .iter()
-                    .any(|e| matches!(e, FormEvent::SubmitRequested));
-                let mut effects = Self::form_events_to_effects(output.events);
-                for produced in output.produced {
-                    effects.push(Effect::ComponentProduced {
-                        id: produced.id,
-                        value: produced.value,
-                    });
+                if state.engine.handle_tab_completion(nodes) {
+                    return vec![];
                 }
 
-                if has_submit {
-                    effects.extend(Self::handle_submit(state, error_timeout));
+                let output = state.engine.handle_key(nodes, key_event);
+                if output.handled {
+                    return Self::reduce_engine_output(state, output, error_timeout);
                 }
 
-                effects
+                let events = state.engine.move_focus(nodes, 1);
+                Self::form_events_to_effects(events)
             }
             Action::ClearErrorMessage(id) => {
                 let nodes = match active_nodes.as_deref_mut() {
@@ -125,6 +126,31 @@ impl Reducer {
                 }
                 FormEvent::SubmitRequested => {}
             }
+        }
+
+        effects
+    }
+
+    fn reduce_engine_output(
+        state: &mut AppState,
+        output: crate::core::form_engine::EngineOutput,
+        error_timeout: Duration,
+    ) -> Vec<Effect> {
+        let has_submit = output
+            .events
+            .iter()
+            .any(|e| matches!(e, FormEvent::SubmitRequested));
+
+        let mut effects = Self::form_events_to_effects(output.events);
+        for produced in output.produced {
+            effects.push(Effect::ComponentProduced {
+                id: produced.id,
+                value: produced.value,
+            });
+        }
+
+        if has_submit {
+            effects.extend(Self::handle_submit(state, error_timeout));
         }
 
         effects

@@ -21,7 +21,6 @@ The UI is a tree of `Node` objects (`src/core/node.rs`). A `Step` contains a **r
 - `Node::Input(Box<dyn Input>)`
 - `Node::Component(Box<dyn Component>)`
 - `Node::Text(String)`
-- `Node::Separator`
 
 Components may own children (via `children()` / `children_mut()`), which makes the tree recursive.
 
@@ -34,11 +33,11 @@ It allows **clean composition**: components can embed inputs and other component
 
 - `id()`
 - `is_focused()` / `set_focused()`
-- `key_caps()`
+- `handle_key(...)`
 
 `Node` uses this to treat inputs and components consistently when it needs to read focus state or key capabilities.
 
-### 2.2 Input and Component
+### 2.3 Input and Component
 
 - `Input` (`src/inputs/input.rs`) represents a focusable field with value, cursor, validators, and rendering content.
 - `Component` (`src/core/component.rs`) represents a higher‑level UI unit. It can be **focusable** or **pass‑through** depending on `FocusMode`.
@@ -55,20 +54,21 @@ This enables **focus groups**, e.g. a filter input + list where letters go to th
 `EventContext` (`src/core/component.rs`) is the mechanism for components to emit updates in a uniform way:
 
 - `ctx.update_input(id, value)` → produces a normal `InputChanged` flow for a child input
+- `ctx.record_input(id, value)` → records an input change without re‑applying the value (prevents cursor reset)
 - `ctx.produce(value)` → emits a component value (bindable via `BindTarget`)
 - `ctx.submit()` → request submit
 - `ctx.handled()` → mark that the key was handled
 
 This keeps component key handling clean and avoids manual `ComponentResponse` assembly.
 
-### 2.3 Step and Flow
+### 2.4 Step and Flow
 
 - `Step` (`src/core/step.rs`) is a screen with prompt, hint, nodes, and form validators.
 - `Flow` (`src/core/flow.rs`) manages a list of steps, current index, and step status.
 
 Steps are built with `StepBuilder` (`src/core/step_builder.rs`). It constructs a flat list of root nodes which can contain nested children.
 
-### 2.4 Layers (Overlay)
+### 2.5 Layers (Overlay)
 
 - `Layer` (`src/core/layer.rs`) is a temporary UI layer (e.g. overlay search).
 - `LayerManager` (`src/core/layer_manager.rs`) swaps the active node tree between the step and the overlay.
@@ -97,7 +97,7 @@ When a layer is active, **focus and input are scoped to the layer’s node tree*
 1. If a key matches a global action binding, it is handled as an action.
 2. Otherwise it is forwarded to the focused widget/input.
 
-`Ctrl+Backspace` and `Ctrl+Delete` are handled globally and call `input.delete_word()` / `delete_word_forward()` on the focused input. Inputs override those methods when they need custom behavior.
+`Ctrl+Backspace` and `Ctrl+Delete` are handled globally and call `delete_word()` / `delete_word_forward()` on the focused widget. Inputs override those methods when they need custom behavior; group components can also handle them (e.g. focus‑group components with internal inputs).
 
 ### 3.4 Key Capture (KeyCaps)
 
@@ -133,6 +133,7 @@ Key responsibilities:
 
 - `events`: `FormEvent` like `InputChanged`, `FocusChanged`, `SubmitRequested`
 - `produced`: values emitted by components (for bindings)
+- `handled`: whether the key was handled by the focused widget
 
 ### 3.7 Component‑Driven Input Changes
 
@@ -148,7 +149,7 @@ Key responsibilities:
 
 ### 5.1 Render Context
 
-`RenderContext` (`src/ui/render/step_builder.rs`) provides access to theme and rendering helpers:
+`RenderContext` (`src/ui/render/step_renderer.rs`) provides access to theme and rendering helpers:
 
 - `render_node_lines` handles recursion for components and children
 - `render_input_full` and `render_input_field` draw inputs with cursor logic
@@ -183,8 +184,9 @@ The pipeline uses:
 **User key press → App → Reducer → FormEngine → Effects → Events → Render**
 
 1. Key press becomes `AppEvent::Key`.
-2. `App` checks for special cases (overlay toggle, tab completion, submit, action bindings).
-3. Remaining keys become `Action::InputKey` and go through `Reducer`.
+2. `App` checks for special cases (overlay toggle, submit, action bindings).
+3. `Tab` is handled as `Action::TabKey` in the `Reducer` to allow autocomplete‑then‑focus logic.
+4. Remaining keys become `Action::InputKey` and go through `Reducer`.
 4. `FormEngine` mutates focused node, producing `FormEvent`.
 5. `Reducer` converts `FormEvent` into `Effect` objects.
 6. `App::apply_effects` emits events and updates state.
@@ -199,7 +201,7 @@ The pipeline uses:
 - `src/core/step.rs`: step data (prompt, hint, nodes, validators).
 - `src/core/step_builder.rs`: ergonomic step creation.
 - `src/core/node.rs`: node tree + search utilities.
-- `src/core/component.rs`: component base, focus mode, response types.
+- `src/core/component.rs`: component base, focus mode, event context, delete‑word hooks.
 - `src/core/form_engine.rs`: focus traversal + input mutation.
 - `src/core/reducer.rs`: central action reducer.
 - `src/core/event.rs`: action enum.
@@ -215,7 +217,7 @@ The pipeline uses:
 - `src/inputs/validators.rs`: reusable validators.
 
 ### UI
-- `src/ui/render/step_builder.rs`: render context + step rendering.
+- `src/ui/render/step_renderer.rs`: render context + step rendering.
 - `src/ui/render/pipeline.rs`: terminal drawing pipeline.
 - `src/ui/render/decorator.rs`: status glyph decorations.
 - `src/ui/render/options.rs`: status render configuration.
@@ -237,7 +239,7 @@ The pipeline uses:
 
 - **New input**: implement `Input`, add rendering and key handling.
 - **New component**: implement `Component` and choose `FocusMode`.
-- **Focus group**: set `FocusMode::Group` and route keys to children, emitting `ComponentResponse::changes` for input updates.
+- **Focus group**: set `FocusMode::Group` and route keys to children, emitting `EventContext` changes for input updates.
 - **New overlay**: implement `Layer` and swap via `LayerManager`.
 
 ---

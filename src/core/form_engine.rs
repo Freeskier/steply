@@ -5,7 +5,7 @@ use crate::core::node::{Node, find_input_mut};
 use crate::core::validation;
 use crate::core::value::Value;
 use crate::core::widget::Widget;
-use crate::inputs::{Input, InputError, KeyResult};
+use crate::inputs::{Input, InputError};
 use crate::terminal::KeyEvent;
 
 #[derive(Clone, Debug)]
@@ -33,6 +33,7 @@ pub struct ComponentValue {
 pub struct EngineOutput {
     pub events: Vec<FormEvent>,
     pub produced: Vec<ComponentValue>,
+    pub handled: bool,
 }
 
 pub struct FormEngine {
@@ -179,6 +180,7 @@ impl FormEngine {
         let mut ctx = EventContext::new();
         let handled = widget.handle_key(key.code, key.modifiers, &mut ctx);
         let response = ctx.into_response(handled);
+        output.handled = response.handled;
 
         if let Some(value) = response.produced {
             output.produced.push(ComponentValue {
@@ -203,14 +205,63 @@ impl FormEngine {
     }
 
     pub fn handle_delete_word(&mut self, nodes: &mut [Node], forward: bool) -> Vec<FormEvent> {
-        self.update_focused_input(nodes, |input| {
-            if forward {
-                input.delete_word_forward();
-            } else {
-                input.delete_word();
+        let Some(target) = self
+            .focus_index
+            .and_then(|i| self.focus_targets.get(i))
+            .cloned()
+        else {
+            return vec![];
+        };
+
+        let Some(node) = node_at_path_mut(nodes, &target.path) else {
+            return vec![];
+        };
+
+        let Some(widget) = node.widget_ref_mut() else {
+            return vec![];
+        };
+
+        let mut ctx = EventContext::new();
+        let handled = match widget {
+            crate::core::node::WidgetRefMut::Input(input) => {
+                if forward {
+                    input.delete_word_forward();
+                } else {
+                    input.delete_word();
+                }
+                ctx.record_input(input.id().to_string(), input.value());
+                ctx.handled();
+                true
             }
-            None
-        })
+            crate::core::node::WidgetRefMut::Component(component) => {
+                if forward {
+                    component.delete_word_forward(&mut ctx)
+                } else {
+                    component.delete_word(&mut ctx)
+                }
+            }
+        };
+
+        if !handled {
+            return vec![];
+        }
+
+        let response = ctx.into_response(handled);
+        let mut events = Vec::new();
+
+        for change in response.changes {
+            if let Some(input) = find_input_mut(nodes, &change.id) {
+                let change_events =
+                    self.apply_input_change(input, &change.id, &change.value, change.apply);
+                events.extend(change_events);
+            }
+        }
+
+        if response.submit_requested {
+            events.push(FormEvent::SubmitRequested);
+        }
+
+        events
     }
 
     pub fn validate_focused(&self, nodes: &mut [Node]) -> Result<(), (NodeId, String)> {
@@ -301,48 +352,6 @@ impl FormEngine {
             return None;
         }
         find_input_mut(nodes, &target.id)
-    }
-
-    fn update_focused_input<F>(&mut self, nodes: &mut [Node], update: F) -> Vec<FormEvent>
-    where
-        F: FnOnce(&mut dyn Input) -> Option<KeyResult>,
-    {
-        let Some(input) = self.focused_input_mut(nodes) else {
-            return vec![];
-        };
-
-        let target_id = input.id().to_string();
-        self.update_input_value(input, &target_id, update)
-    }
-
-    fn update_input_value<F>(&self, input: &mut dyn Input, id: &str, update: F) -> Vec<FormEvent>
-    where
-        F: FnOnce(&mut dyn Input) -> Option<KeyResult>,
-    {
-        let before = input.value();
-        let result = update(input);
-        let after = input.value();
-
-        let mut events = Vec::new();
-
-        if before != after {
-            events.push(FormEvent::InputChanged {
-                id: id.to_string(),
-                value: after,
-            });
-            events.push(FormEvent::ErrorCancelled { id: id.to_string() });
-            input.clear_error();
-        }
-
-        if let Err(err) = validation::validate_input(input) {
-            input.set_error(Some(InputError::hidden(err)));
-        }
-
-        if matches!(result, Some(KeyResult::Submit)) {
-            events.push(FormEvent::SubmitRequested);
-        }
-
-        events
     }
 
     fn apply_input_change(

@@ -12,6 +12,7 @@ pub mod layer_manager;
 pub mod node;
 pub mod overlay;
 pub mod reducer;
+pub mod search;
 pub mod state;
 pub mod step;
 pub mod step_builder;

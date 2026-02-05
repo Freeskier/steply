@@ -14,10 +14,19 @@ pub enum SelectMode {
     List,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SelectOption {
+    Plain(String),
+    Highlighted {
+        text: String,
+        highlights: Vec<(usize, usize)>,
+    },
+}
+
 pub struct SelectComponent {
     base: ComponentBase,
     label: Option<String>,
-    options: Vec<String>,
+    options: Vec<SelectOption>,
     mode: SelectMode,
     selected: Vec<usize>,
     active_index: usize,
@@ -26,6 +35,10 @@ pub struct SelectComponent {
 
 impl SelectComponent {
     pub fn new(id: impl Into<String>, options: Vec<String>) -> Self {
+        let options = options
+            .into_iter()
+            .map(SelectOption::Plain)
+            .collect::<Vec<_>>();
         Self {
             base: ComponentBase::new(id),
             label: None,
@@ -50,6 +63,15 @@ impl SelectComponent {
         self
     }
 
+    pub fn with_options(mut self, options: Vec<SelectOption>) -> Self {
+        self.set_options(options);
+        self
+    }
+
+    pub fn set_options(&mut self, options: Vec<SelectOption>) {
+        self.apply_options(options);
+    }
+
     pub fn with_selected(mut self, selected: Vec<usize>) -> Self {
         self.selected = selected;
         self
@@ -72,11 +94,27 @@ impl SelectComponent {
     pub fn selected_values(&self) -> Vec<String> {
         let mut values = Vec::new();
         for idx in &self.selected {
-            if let Some(value) = self.options.get(*idx) {
-                values.push(value.clone());
+            if let Some(option) = self.options.get(*idx) {
+                values.push(option_text(option).to_string());
             }
         }
         values
+    }
+
+    pub fn reset_active(&mut self) {
+        self.active_index = 0;
+    }
+
+    pub fn set_active_index(&mut self, index: usize) {
+        if self.options.is_empty() {
+            self.active_index = 0;
+        } else {
+            self.active_index = index.min(self.options.len() - 1);
+        }
+    }
+
+    pub fn options(&self) -> &[SelectOption] {
+        &self.options
     }
 
     pub fn toggle(&mut self, index: usize) {
@@ -170,15 +208,12 @@ impl SelectComponent {
             .collect()
     }
 
-    fn apply_options(&mut self, new_options: Vec<String>) {
-        if new_options == self.options {
-            return;
-        }
-
+    fn apply_options(&mut self, new_options: Vec<SelectOption>) {
         let selected_values: HashSet<String> = self
             .selected
             .iter()
-            .filter_map(|idx| self.options.get(*idx).cloned())
+            .filter_map(|idx| self.options.get(*idx))
+            .map(|option| option_text(option).to_string())
             .collect();
 
         self.options = new_options;
@@ -186,8 +221,8 @@ impl SelectComponent {
             .options
             .iter()
             .enumerate()
-            .filter_map(|(idx, value)| {
-                if selected_values.contains(value) {
+            .filter_map(|(idx, option)| {
+                if selected_values.contains(option_text(option)) {
                     Some(idx)
                 } else {
                     None
@@ -205,6 +240,68 @@ impl SelectComponent {
             self.active_index = self.options.len() - 1;
         }
     }
+}
+
+fn option_text(option: &SelectOption) -> &str {
+    match option {
+        SelectOption::Plain(text) => text,
+        SelectOption::Highlighted { text, .. } => text,
+    }
+}
+
+fn option_highlights(option: &SelectOption) -> &[(usize, usize)] {
+    match option {
+        SelectOption::Plain(_) => &[],
+        SelectOption::Highlighted { highlights, .. } => highlights.as_slice(),
+    }
+}
+
+fn push_styled_span(spans: &mut Vec<Span>, text: String, style: &Style) {
+    if text.is_empty() {
+        return;
+    }
+    spans.push(Span::new(text).with_style(style.clone()));
+}
+
+fn render_option_spans(
+    option: &SelectOption,
+    base_style: &Style,
+    highlight_style: &Style,
+) -> Vec<Span> {
+    let text = option_text(option);
+    let highlights = option_highlights(option);
+
+    if highlights.is_empty() {
+        return vec![Span::new(text).with_style(base_style.clone())];
+    }
+
+    let mut spans = Vec::new();
+    let chars: Vec<char> = text.chars().collect();
+    let mut ranges = highlights.to_vec();
+    ranges.sort_by_key(|(start, _)| *start);
+
+    let mut pos = 0;
+    for (start, end) in ranges {
+        let start = start.min(chars.len());
+        let end = end.min(chars.len());
+        if start > pos {
+            let segment: String = chars[pos..start].iter().collect();
+            push_styled_span(&mut spans, segment, base_style);
+        }
+        if end > start {
+            let segment: String = chars[start..end].iter().collect();
+            let merged = base_style.clone().merge(highlight_style);
+            push_styled_span(&mut spans, segment, &merged);
+        }
+        pos = end;
+    }
+
+    if pos < chars.len() {
+        let segment: String = chars[pos..].iter().collect();
+        push_styled_span(&mut spans, segment, base_style);
+    }
+
+    spans
 }
 
 impl Component for SelectComponent {
@@ -234,6 +331,7 @@ impl Component for SelectComponent {
         let inactive_style = theme.hint.clone();
         let marker_style = Style::new().with_color(Color::Green);
         let cursor_style = Style::new().with_color(Color::Yellow);
+        let highlight_style = theme.decor_accent.clone().with_bold();
 
         for (idx, option) in self.options.iter().enumerate() {
             let active = idx == self.active_index;
@@ -248,15 +346,14 @@ impl Component for SelectComponent {
                 spans.push(Span::new(cursor).with_style(cursor_style.clone()));
                 spans.push(Span::new(" "));
 
-                let mut text_span = Span::new(option.clone());
-                if self.base.focused && active {
-                    text_span = text_span.with_style(theme.focused.clone());
+                let base_style = if self.base.focused && active {
+                    theme.focused.clone()
                 } else if selected {
-                    text_span = text_span.with_style(marker_style.clone());
+                    marker_style.clone()
                 } else {
-                    text_span = text_span.with_style(inactive_style.clone());
-                }
-                spans.push(text_span);
+                    inactive_style.clone()
+                };
+                spans.extend(render_option_spans(option, &base_style, &highlight_style));
 
                 lines.push(RenderLine {
                     spans,
@@ -279,13 +376,18 @@ impl Component for SelectComponent {
                 spans.push(Span::new(" "));
                 spans.push(marker_span);
                 spans.push(Span::new(" "));
-                spans.push(Span::new(option.clone()));
+                let base_style = Style::new();
+                spans.extend(render_option_spans(option, &base_style, &highlight_style));
             } else {
                 spans.push(Span::new(cursor).with_style(inactive_style.clone()));
                 spans.push(Span::new(" ").with_style(inactive_style.clone()));
                 spans.push(marker_span);
                 spans.push(Span::new(" ").with_style(inactive_style.clone()));
-                spans.push(Span::new(option.clone()).with_style(inactive_style.clone()));
+                spans.extend(render_option_spans(
+                    option,
+                    &inactive_style,
+                    &highlight_style,
+                ));
             }
 
             lines.push(RenderLine {
@@ -312,15 +414,23 @@ impl Component for SelectComponent {
                 .selected
                 .first()
                 .and_then(|idx| self.options.get(*idx))
-                .cloned()
-                .map(Value::Text),
+                .map(|option| Value::Text(option_text(option).to_string())),
         }
     }
 
     fn set_value(&mut self, value: Value) {
         match value {
-            Value::List(items) => self.apply_options(items),
-            Value::Text(text) => self.apply_options(Self::parse_bound_value(text)),
+            Value::List(items) => {
+                let options = items.into_iter().map(SelectOption::Plain).collect();
+                self.apply_options(options);
+            }
+            Value::Text(text) => {
+                let options = Self::parse_bound_value(text)
+                    .into_iter()
+                    .map(SelectOption::Plain)
+                    .collect();
+                self.apply_options(options);
+            }
             _ => {}
         }
     }

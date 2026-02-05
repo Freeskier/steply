@@ -3,6 +3,7 @@ use crate::button_input::ButtonInput;
 use crate::checkbox_input::CheckboxInput;
 use crate::choice_input::ChoiceInput;
 use crate::color_input::ColorInput;
+use crate::components::filterable_select_component::FilterableSelectComponent;
 use crate::components::select_component::{SelectComponent, SelectMode};
 use crate::core::action_bindings::ActionBindings;
 use crate::core::binding::{BindTarget, ValueSource};
@@ -433,12 +434,12 @@ fn build_demo_steps() -> Vec<crate::core::step::Step> {
 }
 
 fn build_step_zero() -> crate::core::step::Step {
-    let component = SelectComponent::new(
+    let component = FilterableSelectComponent::new(
         "plan_select",
         vec!["Free".to_string(), "Pro".to_string(), "Team".to_string()],
     )
     .with_label("Select plan:")
-    .with_mode(SelectMode::List);
+    .with_placeholder("Type to filter");
 
     let tags_component = SelectComponent::new("tags_select", Vec::new())
         .with_label("Tags (from input):")

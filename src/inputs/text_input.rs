@@ -1,4 +1,4 @@
-use crate::inputs::{Input, InputBase, InputCaps, KeyResult};
+use crate::inputs::{Input, InputBase, KeyResult};
 use crate::span::Span;
 use crate::terminal::{KeyCode, KeyModifiers};
 use crate::validators::Validator;
@@ -205,16 +205,6 @@ impl Input for TextInput {
         self.cursor_pos
     }
 
-    fn capabilities(&self) -> InputCaps {
-        InputCaps {
-            capture_ctrl_backspace: true,
-            capture_ctrl_delete: true,
-            capture_ctrl_left: true,
-            capture_ctrl_right: true,
-            ..InputCaps::default()
-        }
-    }
-
     fn handle_key(&mut self, code: KeyCode, modifiers: KeyModifiers) -> KeyResult {
         match code {
             KeyCode::Char(ch) => {
@@ -223,20 +213,13 @@ impl Input for TextInput {
             }
             KeyCode::Backspace => {
                 if modifiers.contains(KeyModifiers::CONTROL) {
-                    self.delete_word_impl();
+                    KeyResult::NotHandled
                 } else {
                     self.handle_backspace();
-                }
-                KeyResult::Handled
-            }
-            KeyCode::Delete => {
-                if modifiers.contains(KeyModifiers::CONTROL) {
-                    self.delete_word_forward_impl();
                     KeyResult::Handled
-                } else {
-                    KeyResult::NotHandled
                 }
             }
+            KeyCode::Delete => KeyResult::NotHandled,
             KeyCode::Left => {
                 if modifiers.contains(KeyModifiers::CONTROL) {
                     self.move_word_left();

@@ -1,10 +1,9 @@
+use crate::core::node::NodeId;
 use crate::span::Span;
 use crate::terminal::{KeyCode, KeyModifiers};
 use crate::theme::Theme;
 use crate::validators::Validator;
 use crate::value::Value;
-
-pub type NodeId = String;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InputError {
@@ -44,36 +43,6 @@ pub enum KeyResult {
     Handled,
     NotHandled,
     Submit,
-}
-
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub struct InputCaps {
-    pub capture_tab: bool,
-    pub capture_backtab: bool,
-    pub capture_ctrl_backspace: bool,
-    pub capture_ctrl_delete: bool,
-    pub capture_ctrl_left: bool,
-    pub capture_ctrl_right: bool,
-}
-
-impl InputCaps {
-    pub fn captures_key(&self, code: KeyCode, modifiers: KeyModifiers) -> bool {
-        match (code, modifiers) {
-            (KeyCode::Tab, mods) if mods == KeyModifiers::NONE => self.capture_tab,
-            (KeyCode::BackTab, mods) if mods.contains(KeyModifiers::SHIFT) => self.capture_backtab,
-            (KeyCode::Backspace, mods) if mods.contains(KeyModifiers::CONTROL) => {
-                self.capture_ctrl_backspace
-            }
-            (KeyCode::Delete, mods) if mods.contains(KeyModifiers::CONTROL) => {
-                self.capture_ctrl_delete
-            }
-            (KeyCode::Left, mods) if mods.contains(KeyModifiers::CONTROL) => self.capture_ctrl_left,
-            (KeyCode::Right, mods) if mods.contains(KeyModifiers::CONTROL) => {
-                self.capture_ctrl_right
-            }
-            _ => false,
-        }
-    }
 }
 
 pub trait Input: Send {
@@ -116,10 +85,6 @@ pub trait Input: Send {
     fn is_complete(&self) -> bool {
         true
     }
-    fn capabilities(&self) -> InputCaps {
-        InputCaps::default()
-    }
-
     fn is_focused(&self) -> bool {
         self.base().focused
     }
@@ -185,6 +150,33 @@ pub trait Input: Send {
     }
 
     fn handle_key(&mut self, code: KeyCode, modifiers: KeyModifiers) -> KeyResult;
+
+    fn handle_key_with_context(
+        &mut self,
+        code: KeyCode,
+        modifiers: KeyModifiers,
+        ctx: &mut crate::core::component::EventContext,
+    ) -> bool {
+        let before = self.value();
+        let result = self.handle_key(code, modifiers);
+        let after = self.value();
+
+        if before != after {
+            ctx.record_input(self.id().to_string(), after);
+        }
+
+        match result {
+            KeyResult::Handled => {
+                ctx.handled();
+                true
+            }
+            KeyResult::Submit => {
+                ctx.submit();
+                true
+            }
+            KeyResult::NotHandled => false,
+        }
+    }
 
     fn render_content(&self, theme: &Theme) -> Vec<Span>;
 

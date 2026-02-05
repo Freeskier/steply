@@ -1,5 +1,5 @@
+use crate::core::node::Node;
 use crate::core::node::NodeId;
-use crate::core::node_registry::NodeRegistry;
 use crate::core::step::Step;
 use crate::inputs::Input;
 use std::collections::HashMap;
@@ -13,16 +13,11 @@ pub struct ValidationContext {
 }
 
 impl ValidationContext {
-    pub fn from_step(step: &Step, registry: &NodeRegistry) -> Self {
+    pub fn from_step(step: &Step) -> Self {
         let mut values = HashMap::new();
         let mut completeness = HashMap::new();
 
-        for id in &step.node_ids {
-            if let Some(input) = registry.get_input(id) {
-                values.insert(id.clone(), input.raw_value());
-                completeness.insert(id.clone(), input.is_complete());
-            }
-        }
+        collect_values(&step.nodes, &mut values, &mut completeness);
 
         Self {
             values,
@@ -55,19 +50,11 @@ pub fn validate_input(input: &dyn Input) -> Result<(), String> {
     run_validators(input, &raw)
 }
 
-pub fn validate_all_inputs(step: &Step, registry: &NodeRegistry) -> Vec<(NodeId, String)> {
-    let mut errors: Vec<(NodeId, String)> = step
-        .node_ids
-        .iter()
-        .filter_map(|id| registry.get_input(id).map(|input| (id, input)))
-        .filter_map(|(id, input)| {
-            validate_input(input)
-                .err()
-                .map(|err| (id.clone(), err))
-        })
-        .collect();
+pub fn validate_all_inputs(step: &Step) -> Vec<(NodeId, String)> {
+    let mut errors = Vec::new();
+    collect_errors(&step.nodes, &mut errors);
 
-    let ctx = ValidationContext::from_step(step, registry);
+    let ctx = ValidationContext::from_step(step);
     for validator in &step.form_validators {
         errors.extend(validator(&ctx));
     }
@@ -80,4 +67,43 @@ fn run_validators(input: &dyn Input, value: &str) -> Result<(), String> {
         validator(value)?;
     }
     Ok(())
+}
+
+fn collect_values(
+    nodes: &[Node],
+    values: &mut HashMap<NodeId, String>,
+    completeness: &mut HashMap<NodeId, bool>,
+) {
+    for node in nodes {
+        match node {
+            Node::Input(input) => {
+                values.insert(input.id().to_string(), input.raw_value());
+                completeness.insert(input.id().to_string(), input.is_complete());
+            }
+            Node::Component(component) => {
+                if let Some(children) = component.children() {
+                    collect_values(children, values, completeness);
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
+fn collect_errors(nodes: &[Node], errors: &mut Vec<(NodeId, String)>) {
+    for node in nodes {
+        match node {
+            Node::Input(input) => {
+                if let Err(err) = validate_input(input.as_ref()) {
+                    errors.push((input.id().to_string(), err));
+                }
+            }
+            Node::Component(component) => {
+                if let Some(children) = component.children() {
+                    collect_errors(children, errors);
+                }
+            }
+            _ => {}
+        }
+    }
 }

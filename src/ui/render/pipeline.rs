@@ -1,6 +1,5 @@
 use crate::core::flow::StepStatus;
 use crate::core::layer::ActiveLayer;
-use crate::core::node_registry::NodeRegistry;
 use crate::core::step::Step;
 use crate::terminal::Terminal;
 use crate::ui::frame::Line;
@@ -110,7 +109,6 @@ impl RenderPipeline {
         &mut self,
         terminal: &mut Terminal,
         step: &Step,
-        registry: &NodeRegistry,
         theme: &Theme,
         options: RenderOptions,
     ) -> io::Result<Option<(u16, u16)>> {
@@ -118,7 +116,7 @@ impl RenderPipeline {
         let width = terminal.size().width;
 
         let builder = StepRenderer::new(theme);
-        let render_lines = builder.build(step, registry);
+        let render_lines = builder.build(step);
 
         let (frame, cursor_pos) = Layout::new().compose_spans_with_cursor(
             render_lines
@@ -199,7 +197,6 @@ impl RenderPipeline {
         &mut self,
         terminal: &mut Terminal,
         layer: &ActiveLayer,
-        registry: &NodeRegistry,
         theme: &Theme,
         anchor_cursor: Option<(u16, u16)>,
     ) -> io::Result<Option<(u16, u16)>> {
@@ -217,7 +214,7 @@ impl RenderPipeline {
             })
             .unwrap_or(0);
 
-        let render_lines = self.build_layer_lines(layer, registry, theme);
+        let render_lines = self.build_layer_lines(layer, theme);
 
         let (frame, cursor_pos) = Layout::new().compose_spans_with_cursor(
             render_lines
@@ -283,12 +280,7 @@ impl RenderPipeline {
         Ok(())
     }
 
-    fn build_layer_lines(
-        &self,
-        layer: &ActiveLayer,
-        registry: &NodeRegistry,
-        theme: &Theme,
-    ) -> Vec<RenderLine> {
+    fn build_layer_lines(&self, layer: &ActiveLayer, theme: &Theme) -> Vec<RenderLine> {
         let mut lines = Vec::new();
         let renderer = StepRenderer::new(theme);
 
@@ -308,10 +300,8 @@ impl RenderPipeline {
             }
         }
 
-        for id in layer.node_ids() {
-            if let Some(node) = registry.get(id) {
-                lines.extend(renderer.render_node_lines(node, registry));
-            }
+        for node in layer.nodes() {
+            lines.extend(renderer.render_node_lines(node));
         }
 
         lines

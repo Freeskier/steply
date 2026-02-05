@@ -1,6 +1,7 @@
 use crate::core::event::Action;
 use crate::core::event_queue::AppEvent;
 use crate::core::form_event::FormEvent;
+use crate::core::node::Node;
 use crate::core::node::NodeId;
 use crate::core::state::AppState;
 use crate::core::validation;
@@ -11,12 +12,21 @@ pub enum Effect {
     Emit(AppEvent),
     EmitAfter(AppEvent, Duration),
     CancelClearError(String),
+    ComponentProduced {
+        id: NodeId,
+        value: crate::core::value::Value,
+    },
 }
 
 pub struct Reducer;
 
 impl Reducer {
-    pub fn reduce(state: &mut AppState, action: Action, error_timeout: Duration) -> Vec<Effect> {
+    pub fn reduce(
+        state: &mut AppState,
+        action: Action,
+        error_timeout: Duration,
+        mut active_nodes: Option<&mut [Node]>,
+    ) -> Vec<Effect> {
         match action {
             Action::Exit => {
                 state.should_exit = true;
@@ -28,32 +38,56 @@ impl Reducer {
                 vec![]
             }
             Action::NextInput => {
-                let registry = state.flow.registry_mut();
-                let events = state.engine.move_focus(registry, 1);
+                let nodes = match active_nodes.as_deref_mut() {
+                    Some(nodes) => nodes,
+                    None => state.flow.current_step_mut().nodes.as_mut_slice(),
+                };
+                let events = state.engine.move_focus(nodes, 1);
                 Self::form_events_to_effects(events)
             }
             Action::PrevInput => {
-                let registry = state.flow.registry_mut();
-                let events = state.engine.move_focus(registry, -1);
+                let nodes = match active_nodes.as_deref_mut() {
+                    Some(nodes) => nodes,
+                    None => state.flow.current_step_mut().nodes.as_mut_slice(),
+                };
+                let events = state.engine.move_focus(nodes, -1);
                 Self::form_events_to_effects(events)
             }
             Action::Submit => Self::handle_submit(state, error_timeout),
             Action::DeleteWord => {
-                let registry = state.flow.registry_mut();
-                let events = state.engine.handle_delete_word(registry, false);
+                let nodes = match active_nodes.as_deref_mut() {
+                    Some(nodes) => nodes,
+                    None => state.flow.current_step_mut().nodes.as_mut_slice(),
+                };
+                let events = state.engine.handle_delete_word(nodes, false);
                 Self::form_events_to_effects(events)
             }
             Action::DeleteWordForward => {
-                let registry = state.flow.registry_mut();
-                let events = state.engine.handle_delete_word(registry, true);
+                let nodes = match active_nodes.as_deref_mut() {
+                    Some(nodes) => nodes,
+                    None => state.flow.current_step_mut().nodes.as_mut_slice(),
+                };
+                let events = state.engine.handle_delete_word(nodes, true);
                 Self::form_events_to_effects(events)
             }
             Action::InputKey(key_event) => {
-                let registry = state.flow.registry_mut();
-                let events = state.engine.handle_key(registry, key_event);
+                let nodes = match active_nodes.as_deref_mut() {
+                    Some(nodes) => nodes,
+                    None => state.flow.current_step_mut().nodes.as_mut_slice(),
+                };
+                let output = state.engine.handle_key(nodes, key_event);
 
-                let has_submit = events.iter().any(|e| matches!(e, FormEvent::SubmitRequested));
-                let mut effects = Self::form_events_to_effects(events);
+                let has_submit = output
+                    .events
+                    .iter()
+                    .any(|e| matches!(e, FormEvent::SubmitRequested));
+                let mut effects = Self::form_events_to_effects(output.events);
+                for produced in output.produced {
+                    effects.push(Effect::ComponentProduced {
+                        id: produced.id,
+                        value: produced.value,
+                    });
+                }
 
                 if has_submit {
                     effects.extend(Self::handle_submit(state, error_timeout));
@@ -62,8 +96,11 @@ impl Reducer {
                 effects
             }
             Action::ClearErrorMessage(id) => {
-                let registry = state.flow.registry_mut();
-                state.engine.clear_error(registry, &id);
+                let nodes = match active_nodes.as_deref_mut() {
+                    Some(nodes) => nodes,
+                    None => state.flow.current_step_mut().nodes.as_mut_slice(),
+                };
+                state.engine.clear_error(nodes, &id);
                 vec![]
             }
         }
@@ -86,8 +123,7 @@ impl Reducer {
                 FormEvent::ErrorScheduled { id } => {
                     effects.push(Effect::CancelClearError(id));
                 }
-                FormEvent::SubmitRequested => {
-                }
+                FormEvent::SubmitRequested => {}
             }
         }
 
@@ -119,8 +155,8 @@ impl Reducer {
         error_timeout: Duration,
         effects: &mut Vec<Effect>,
     ) -> bool {
-        let registry = state.flow.registry_mut();
-        if let Err((id, _err)) = state.engine.validate_focused(registry) {
+        let nodes = state.flow.current_step_mut().nodes.as_mut_slice();
+        if let Err((id, _err)) = state.engine.validate_focused(nodes) {
             effects.push(Effect::CancelClearError(id.clone()));
             effects.push(Effect::EmitAfter(
                 AppEvent::Action(Action::ClearErrorMessage(id)),
@@ -132,9 +168,9 @@ impl Reducer {
     }
 
     fn advance_focus(state: &mut AppState, effects: &mut Vec<Effect>) -> bool {
-        let registry = state.flow.registry_mut();
         let mut focus_events = Vec::new();
-        if state.engine.advance_focus(registry, &mut focus_events) {
+        let nodes = state.flow.current_step_mut().nodes.as_mut_slice();
+        if state.engine.advance_focus(nodes, &mut focus_events) {
             effects.extend(Self::form_events_to_effects(focus_events));
             return true;
         }
@@ -143,14 +179,13 @@ impl Reducer {
 
     fn validate_current_step(state: &AppState) -> Vec<(NodeId, String)> {
         let step = state.flow.current_step();
-        let registry = state.flow.registry();
-        validation::validate_all_inputs(step, registry)
+        validation::validate_all_inputs(step)
     }
 
     fn handle_successful_submit(state: &mut AppState, mut effects: Vec<Effect>) -> Vec<Effect> {
         if state.flow.has_next() {
-            let registry = state.flow.registry_mut();
-            state.engine.clear_focus(registry);
+            let nodes = state.flow.current_step_mut().nodes.as_mut_slice();
+            state.engine.clear_focus(nodes);
             state.flow.advance();
             state.reset_engine_for_current_step();
             return effects;
@@ -167,8 +202,8 @@ impl Reducer {
         error_timeout: Duration,
         effects: &mut Vec<Effect>,
     ) {
-        let registry = state.flow.registry_mut();
-        let scheduled_ids = state.engine.apply_errors(registry, errors);
+        let nodes = state.flow.current_step_mut().nodes.as_mut_slice();
+        let scheduled_ids = state.engine.apply_errors(nodes, errors);
 
         for id in scheduled_ids {
             effects.push(Effect::EmitAfter(
@@ -179,9 +214,9 @@ impl Reducer {
 
         if let Some((first_id, _)) = errors.first() {
             if let Some(idx) = state.engine.find_index_by_id(first_id) {
-                let registry = state.flow.registry_mut();
                 let mut focus_events = Vec::new();
-                state.engine.set_focus(registry, Some(idx), &mut focus_events);
+                let nodes = state.flow.current_step_mut().nodes.as_mut_slice();
+                state.engine.set_focus(nodes, Some(idx), &mut focus_events);
                 effects.extend(Self::form_events_to_effects(focus_events));
             }
         }

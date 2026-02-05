@@ -1,4 +1,4 @@
-use crate::inputs::{Input, InputBase, InputCaps, KeyResult};
+use crate::inputs::{Input, InputBase, KeyResult};
 use crate::span::Span;
 use crate::terminal::{KeyCode, KeyModifiers};
 use crate::text_input::TextInput;
@@ -243,10 +243,6 @@ impl Input for PathInput {
 
     fn cursor_pos(&self) -> usize {
         self.inner.cursor_pos()
-    }
-
-    fn capabilities(&self) -> InputCaps {
-        self.inner.capabilities()
     }
 
     fn supports_tab_completion(&self) -> bool {

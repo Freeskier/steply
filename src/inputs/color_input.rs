@@ -1,4 +1,4 @@
-use crate::inputs::{Input, InputBase, InputCaps, KeyResult};
+use crate::inputs::{Input, InputBase, KeyResult};
 use crate::span::Span;
 use crate::style::{Color, Style};
 use crate::terminal::{KeyCode, KeyModifiers};
@@ -335,14 +335,6 @@ impl Input for ColorInput {
 
     fn cursor_pos(&self) -> usize {
         self.channel.index()
-    }
-
-    fn capabilities(&self) -> InputCaps {
-        InputCaps {
-            capture_ctrl_left: true,
-            capture_ctrl_right: true,
-            ..InputCaps::default()
-        }
     }
 
     fn handle_key(&mut self, code: KeyCode, modifiers: KeyModifiers) -> KeyResult {

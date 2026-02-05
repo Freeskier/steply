@@ -1,4 +1,4 @@
-use crate::inputs::{Input, InputBase, InputCaps, KeyResult};
+use crate::inputs::{Input, InputBase, KeyResult};
 use crate::span::Span;
 use crate::terminal::{KeyCode, KeyModifiers};
 use crate::text_input::TextInput;
@@ -72,10 +72,6 @@ impl Input for PasswordInput {
 
     fn cursor_pos(&self) -> usize {
         self.inner.cursor_pos()
-    }
-
-    fn capabilities(&self) -> InputCaps {
-        self.inner.capabilities()
     }
 
     fn handle_key(&mut self, code: KeyCode, modifiers: KeyModifiers) -> KeyResult {

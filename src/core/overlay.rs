@@ -1,33 +1,24 @@
 use crate::core::binding::{BindTarget, ValueSource};
 use crate::core::event_queue::AppEvent;
 use crate::core::layer::Layer;
-use crate::core::node::{Node, NodeId};
-use crate::core::node_registry::NodeRegistry;
+use crate::core::node::{Node, first_input, first_input_mut};
 use crate::core::value::Value;
 use crate::text_input::TextInput;
-use std::mem;
 
 pub struct OverlayState {
     id: String,
     label: String,
     hint: Option<String>,
-    node_ids: Vec<NodeId>,
-    nodes: Vec<(NodeId, Node)>,
+    nodes: Vec<Node>,
     bind_target: Option<BindTarget>,
 }
 
 impl OverlayState {
-    pub fn new(
-        id: impl Into<String>,
-        label: impl Into<String>,
-        nodes: Vec<(NodeId, Node)>,
-    ) -> Self {
-        let node_ids = nodes.iter().map(|(id, _)| id.clone()).collect();
+    pub fn new(id: impl Into<String>, label: impl Into<String>, nodes: Vec<Node>) -> Self {
         Self {
             id: id.into(),
             label: label.into(),
             hint: None,
-            node_ids,
             nodes,
             bind_target: None,
         }
@@ -45,10 +36,7 @@ impl OverlayState {
 
     pub fn demo() -> Self {
         let input_id = "overlay_query".to_string();
-        let nodes = vec![(
-            input_id.clone(),
-            Node::input(TextInput::new(&input_id, "Search")),
-        )];
+        let nodes = vec![Node::input(TextInput::new(&input_id, "Search"))];
         Self::new("overlay_demo", "Overlay demo: type, Esc to close", nodes)
     }
 }
@@ -66,12 +54,12 @@ impl Layer for OverlayState {
         self.hint.as_deref()
     }
 
-    fn node_ids(&self) -> &[NodeId] {
-        &self.node_ids
+    fn nodes(&self) -> &[Node] {
+        &self.nodes
     }
 
-    fn nodes(&mut self) -> Vec<(NodeId, Node)> {
-        mem::take(&mut self.nodes)
+    fn nodes_mut(&mut self) -> &mut [Node] {
+        &mut self.nodes
     }
 
     fn bind_target(&self) -> Option<BindTarget> {
@@ -82,21 +70,15 @@ impl Layer for OverlayState {
         self.bind_target = target;
     }
 
-    fn set_value(&mut self, registry: &mut NodeRegistry, value: Value) {
-        let Some(id) = self.node_ids.first() else {
+    fn set_value(&mut self, value: Value) {
+        let Some(input) = first_input_mut(&mut self.nodes) else {
             return;
         };
-        if let Some(input) = registry.get_input_mut(id) {
-            input.set_value_typed(value);
-        }
+        input.set_value_typed(value);
     }
 
-    fn emit_close_events(&mut self, registry: &NodeRegistry, emit: &mut dyn FnMut(AppEvent)) {
-        let Some(id) = self.node_ids.first() else {
-            return;
-        };
-
-        let Some(input) = registry.get_input(id) else {
+    fn emit_close_events(&mut self, emit: &mut dyn FnMut(AppEvent)) {
+        let Some(input) = first_input(&self.nodes) else {
             return;
         };
 

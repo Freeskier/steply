@@ -1,7 +1,7 @@
 use crate::core::binding::BindTarget;
 use crate::core::event_queue::AppEvent;
-use crate::core::node::{Node, NodeId};
-use crate::core::node_registry::NodeRegistry;
+use crate::core::node::Node;
+use crate::core::node::NodeId;
 use crate::core::value::Value;
 
 pub trait Layer {
@@ -11,9 +11,9 @@ pub trait Layer {
 
     fn hint(&self) -> Option<&str>;
 
-    fn node_ids(&self) -> &[NodeId];
+    fn nodes(&self) -> &[Node];
 
-    fn nodes(&mut self) -> Vec<(NodeId, Node)>;
+    fn nodes_mut(&mut self) -> &mut [Node];
 
     fn bind_target(&self) -> Option<BindTarget> {
         None
@@ -21,9 +21,9 @@ pub trait Layer {
 
     fn set_bind_target(&mut self, _target: Option<BindTarget>) {}
 
-    fn set_value(&mut self, _registry: &mut NodeRegistry, _value: Value) {}
+    fn set_value(&mut self, _value: Value) {}
 
-    fn emit_close_events(&mut self, _registry: &NodeRegistry, _emit: &mut dyn FnMut(AppEvent)) {}
+    fn emit_close_events(&mut self, _emit: &mut dyn FnMut(AppEvent)) {}
 }
 
 pub struct ActiveLayer {
@@ -47,11 +47,11 @@ impl ActiveLayer {
         self.layer.hint()
     }
 
-    pub fn node_ids(&self) -> &[NodeId] {
-        self.layer.node_ids()
+    pub fn nodes(&self) -> &[Node] {
+        self.layer.nodes()
     }
 
-    pub fn first_input_id(&self) -> Option<&NodeId> {
-        self.layer.node_ids().first()
+    pub fn nodes_mut(&mut self) -> &mut [Node] {
+        self.layer.nodes_mut()
     }
 }

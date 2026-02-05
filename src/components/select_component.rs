@@ -1,12 +1,9 @@
 use crate::core::binding::BindTarget;
-use crate::core::component::{Component, ComponentBase, ComponentResponse};
-use crate::core::node::{Node, NodeId};
-use crate::core::node_registry::NodeRegistry;
+use crate::core::component::{Component, ComponentBase, EventContext, FocusMode};
 use crate::core::value::Value;
-use crate::ui::render::RenderLine;
+use crate::ui::render::{RenderContext, RenderLine};
 use crate::ui::span::Span;
 use crate::ui::style::{Color, Style};
-use crate::ui::theme::Theme;
 use std::collections::HashSet;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -219,16 +216,13 @@ impl Component for SelectComponent {
         &mut self.base
     }
 
-    fn node_ids(&self) -> &[NodeId] {
-        &[]
+    fn focus_mode(&self) -> FocusMode {
+        FocusMode::Group
     }
 
-    fn nodes(&mut self) -> Vec<(NodeId, Node)> {
-        Vec::new()
-    }
-
-    fn render(&self, _registry: &NodeRegistry, theme: &Theme) -> Vec<RenderLine> {
+    fn render(&self, ctx: &RenderContext) -> Vec<RenderLine> {
         let mut lines = Vec::new();
+        let theme = ctx.theme();
 
         if let Some(label) = &self.label {
             lines.push(RenderLine {
@@ -335,9 +329,10 @@ impl Component for SelectComponent {
         &mut self,
         code: crate::terminal::KeyCode,
         modifiers: crate::terminal::KeyModifiers,
-    ) -> ComponentResponse {
+        _ctx: &mut EventContext,
+    ) -> bool {
         if modifiers != crate::terminal::KeyModifiers::NONE {
-            return ComponentResponse::not_handled();
+            return false;
         }
 
         let handled = match code {
@@ -345,7 +340,7 @@ impl Component for SelectComponent {
             crate::terminal::KeyCode::Down => self.move_active(1),
             crate::terminal::KeyCode::Char(' ') => {
                 if self.mode == SelectMode::List {
-                    return ComponentResponse::not_handled();
+                    return false;
                 }
                 let _ = self.activate_current();
                 !self.options.is_empty()
@@ -355,17 +350,13 @@ impl Component for SelectComponent {
                     let _ = self.activate_current();
                 }
                 if let Some(value) = Component::value(self) {
-                    return ComponentResponse::produced(value);
+                    _ctx.produce(value);
                 }
                 true
             }
             _ => false,
         };
 
-        if handled {
-            ComponentResponse::handled()
-        } else {
-            ComponentResponse::not_handled()
-        }
+        handled
     }
 }

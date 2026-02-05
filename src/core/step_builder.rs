@@ -1,5 +1,5 @@
 use crate::core::component::Component;
-use crate::core::node::{Node, NodeId};
+use crate::core::node::Node;
 use crate::core::step::Step;
 use crate::core::validation::FormValidator;
 use crate::inputs::Input;
@@ -7,9 +7,8 @@ use crate::inputs::Input;
 pub struct StepBuilder {
     prompt: String,
     hint: Option<String>,
-    nodes: Vec<(NodeId, Node)>,
+    nodes: Vec<Node>,
     validators: Vec<FormValidator>,
-    auto_id_counter: usize,
 }
 
 impl StepBuilder {
@@ -19,7 +18,6 @@ impl StepBuilder {
             hint: None,
             nodes: Vec::new(),
             validators: Vec::new(),
-            auto_id_counter: 0,
         }
     }
 
@@ -29,28 +27,17 @@ impl StepBuilder {
     }
 
     pub fn input(mut self, input: impl Input + 'static) -> Self {
-        let id = input.id().to_string();
-        self.nodes.push((id, Node::input(input)));
+        self.nodes.push(Node::input(input));
         self
     }
 
     pub fn text(mut self, content: impl Into<String>) -> Self {
-        let id = self.next_auto_id("text");
-        self.nodes.push((id, Node::text(content)));
+        self.nodes.push(Node::text(content));
         self
     }
 
-    pub fn separator(mut self) -> Self {
-        let id = self.next_auto_id("sep");
-        self.nodes.push((id, Node::separator()));
-        self
-    }
-
-    pub fn component(mut self, mut component: impl Component + 'static) -> Self {
-        let id = component.id().to_string();
-        let nodes = component.nodes();
-        self.nodes.push((id, Node::component(component)));
-        self.nodes.extend(nodes);
+    pub fn component(mut self, component: impl Component + 'static) -> Self {
+        self.nodes.push(Node::component(component));
         self
     }
 
@@ -59,20 +46,12 @@ impl StepBuilder {
         self
     }
 
-    pub fn build(self) -> (Step, Vec<(NodeId, Node)>) {
-        let node_ids = self.nodes.iter().map(|(id, _)| id.clone()).collect();
-        let step = Step {
+    pub fn build(self) -> Step {
+        Step {
             prompt: self.prompt,
             hint: self.hint,
-            node_ids,
+            nodes: self.nodes,
             form_validators: self.validators,
-        };
-        (step, self.nodes)
-    }
-
-    fn next_auto_id(&mut self, prefix: &str) -> NodeId {
-        let id = format!("__{prefix}_{}", self.auto_id_counter);
-        self.auto_id_counter += 1;
-        id
+        }
     }
 }

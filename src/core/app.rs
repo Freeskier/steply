@@ -10,7 +10,7 @@ use crate::core::event::Action;
 use crate::core::event_queue::{AppEvent, EventQueue};
 use crate::core::flow::{Flow, StepStatus};
 use crate::core::layer_manager::LayerManager;
-use crate::core::node::{Node, NodeId};
+use crate::core::node::{Node, find_component, find_component_mut, find_input, find_input_mut};
 use crate::core::overlay::OverlayState;
 use crate::core::reducer::{Effect, Reducer};
 use crate::core::state::AppState;
@@ -96,17 +96,15 @@ impl App {
         }
 
         let step = self.state.flow.current_step();
-        let registry = self.state.flow.registry();
         let options = RenderOptions::active();
 
-        let step_cursor =
-            self.pipeline
-                .render_step(terminal, step, registry, &self.theme, options)?;
+        let step_cursor = self
+            .pipeline
+            .render_step(terminal, step, &self.theme, options)?;
 
         let cursor = if let Some(overlay) = self.layer_manager.active() {
-            let registry = self.state.flow.registry();
             self.pipeline
-                .render_layer(terminal, overlay, registry, &self.theme, step_cursor)?
+                .render_layer(terminal, overlay, &self.theme, step_cursor)?
         } else {
             step_cursor
         };
@@ -167,8 +165,20 @@ impl App {
         }
 
         if key.code == KeyCode::Tab && key.modifiers == KeyModifiers::NONE {
-            let registry = self.state.flow.registry_mut();
-            if self.state.engine.handle_tab_completion(registry) {
+            let handled = {
+                let App {
+                    state,
+                    layer_manager,
+                    ..
+                } = self;
+                let active_nodes = if let Some(active) = layer_manager.active_mut() {
+                    active.nodes_mut()
+                } else {
+                    state.flow.current_step_mut().nodes.as_mut_slice()
+                };
+                state.engine.handle_tab_completion(active_nodes)
+            };
+            if handled {
                 return;
             }
             self.handle_action(Action::NextInput);
@@ -177,37 +187,31 @@ impl App {
 
         if key.code == KeyCode::Enter
             && key.modifiers == KeyModifiers::NONE
-            && self.state.engine.focused_target().is_none()
+            && self.state.engine.focused_node_id().is_none()
         {
             self.handle_action(Action::Submit);
             return;
         }
 
-        if self.try_handle_component_key(key) {
-            self.events.emit(AppEvent::RequestRerender);
+        if let Some(action) = self.bindings.handle_key(&key) {
+            self.handle_action(action);
             return;
-        }
-
-        let registry = self.state.flow.registry();
-        let captured = self
-            .state
-            .engine
-            .focused_caps(registry)
-            .map(|caps| caps.captures_key(key.code, key.modifiers))
-            .unwrap_or(false);
-
-        if !captured {
-            if let Some(action) = self.bindings.handle_key(&key) {
-                self.handle_action(action);
-                return;
-            }
         }
 
         self.handle_action(Action::InputKey(key));
     }
 
     fn handle_action(&mut self, action: Action) {
-        let effects = Reducer::reduce(&mut self.state, action, ERROR_TIMEOUT);
+        let effects = if let Some(active) = self.layer_manager.active_mut() {
+            Reducer::reduce(
+                &mut self.state,
+                action,
+                ERROR_TIMEOUT,
+                Some(active.nodes_mut()),
+            )
+        } else {
+            Reducer::reduce(&mut self.state, action, ERROR_TIMEOUT, None)
+        };
         self.apply_effects(effects);
     }
 
@@ -217,57 +221,99 @@ impl App {
                 Effect::Emit(event) => self.events.emit(event),
                 Effect::EmitAfter(event, delay) => self.events.emit_after(event, delay),
                 Effect::CancelClearError(id) => self.events.cancel_clear_error_message(&id),
-            }
-        }
-    }
-
-    fn current_step_node_ids(&self) -> Vec<NodeId> {
-        let step = self.state.flow.current_step();
-        step.node_ids.clone()
-    }
-
-    fn try_handle_component_key(&mut self, key: KeyEvent) -> bool {
-        let Some(component_id) = self.state.engine.focused_component_id().cloned() else {
-            return false;
-        };
-
-        let registry = self.state.flow.registry_mut();
-        let Some(node) = registry.get_mut(&component_id) else {
-            return false;
-        };
-
-        if let Node::Component(component) = node {
-            let response = component.handle_key(key.code, key.modifiers);
-            if let Some(value) = response.produced {
-                if let Some(target) = component.bind_target() {
-                    self.events.emit(AppEvent::ValueProduced {
-                        source: ValueSource::Component(component_id.clone()),
-                        target,
-                        value,
-                    });
+                Effect::ComponentProduced { id, value } => {
+                    self.handle_component_produced(&id, value);
                 }
             }
-            return response.handled;
         }
+    }
 
-        false
+    fn active_nodes(&self) -> &[Node] {
+        if let Some(active) = self.layer_manager.active() {
+            return active.nodes();
+        }
+        self.state.flow.current_step().nodes.as_slice()
+    }
+
+    fn handle_component_produced(&mut self, id: &str, value: Value) {
+        let Some(component) = find_component(self.active_nodes(), id) else {
+            return;
+        };
+        let Some(target) = component.bind_target() else {
+            return;
+        };
+        self.events.emit(AppEvent::ValueProduced {
+            source: ValueSource::Component(id.to_string()),
+            target,
+            value,
+        });
+    }
+
+    fn value_for_target(&self, target: &BindTarget) -> Option<Value> {
+        match target {
+            BindTarget::Input(id) => self.find_input_any(id).map(|input| input.value_typed()),
+            BindTarget::Component(id) => self
+                .find_component_any(id)
+                .and_then(|component| component.value()),
+        }
+    }
+
+    fn set_value_for_target(&mut self, target: &BindTarget, value: Value) {
+        match target {
+            BindTarget::Input(id) => {
+                if let Some(input) = self.find_input_mut_any(id) {
+                    input.set_value_typed(value);
+                }
+            }
+            BindTarget::Component(id) => {
+                if let Some(component) = self.find_component_mut_any(id) {
+                    component.set_value(value);
+                }
+            }
+        }
+    }
+
+    fn find_input_any(&self, id: &str) -> Option<&dyn crate::inputs::Input> {
+        find_input(self.active_nodes(), id).or_else(|| {
+            let step_nodes = self.state.flow.current_step().nodes.as_slice();
+            find_input(step_nodes, id)
+        })
+    }
+
+    fn find_input_mut_any(&mut self, id: &str) -> Option<&mut dyn crate::inputs::Input> {
+        if let Some(active) = self.layer_manager.active_mut() {
+            if let Some(input) = find_input_mut(active.nodes_mut(), id) {
+                return Some(input);
+            }
+        }
+        find_input_mut(self.state.flow.current_step_mut().nodes.as_mut_slice(), id)
+    }
+
+    fn find_component_any(&self, id: &str) -> Option<&dyn crate::core::component::Component> {
+        find_component(self.active_nodes(), id).or_else(|| {
+            let step_nodes = self.state.flow.current_step().nodes.as_slice();
+            find_component(step_nodes, id)
+        })
+    }
+
+    fn find_component_mut_any(
+        &mut self,
+        id: &str,
+    ) -> Option<&mut dyn crate::core::component::Component> {
+        if let Some(active) = self.layer_manager.active_mut() {
+            if let Some(component) = find_component_mut(active.nodes_mut(), id) {
+                return Some(component);
+            }
+        }
+        find_component_mut(self.state.flow.current_step_mut().nodes.as_mut_slice(), id)
     }
 
     fn sync_step_bindings(&mut self) {
-        let node_ids = self.current_step_node_ids();
         let mut requests = Vec::new();
-        {
-            let registry = self.state.flow.registry();
-            for id in &node_ids {
-                if let Some(node) = registry.get(id) {
-                    if let Node::Component(component) = node {
-                        if let Some(target) = component.bind_target() {
-                            requests.push((id.clone(), target));
-                        }
-                    }
-                }
-            }
-        }
+        collect_component_bindings(
+            self.state.flow.current_step().nodes.as_slice(),
+            &mut requests,
+        );
 
         for (component_id, target) in requests {
             self.handle_value_requested(ValueSource::Component(component_id), target);
@@ -283,10 +329,10 @@ impl App {
     }
 
     fn open_overlay(&mut self) {
-        let registry = self.state.flow.registry_mut();
         let engine = &mut self.state.engine;
+        let step_nodes = self.state.flow.current_step_mut().nodes.as_mut_slice();
         self.layer_manager
-            .open(Box::new(OverlayState::demo()), registry, engine);
+            .open(Box::new(OverlayState::demo()), step_nodes, engine);
 
         if let Some(active) = self.layer_manager.active() {
             if let Some(target) = active.layer.bind_target() {
@@ -299,41 +345,33 @@ impl App {
     }
 
     fn close_overlay(&mut self) {
-        let step_node_ids = self.current_step_node_ids();
-        let registry = self.state.flow.registry_mut();
         let engine = &mut self.state.engine;
-        if self
-            .layer_manager
-            .close(registry, engine, step_node_ids, &mut |event| {
-                self.events.emit(event)
-            })
-        {
+        if self.layer_manager.close(
+            engine,
+            self.state.flow.current_step_mut().nodes.as_mut_slice(),
+            &mut |event| {
+                self.events.emit(event);
+            },
+        ) {
             self.pending_layer_clear = true;
         }
     }
 
     fn handle_value_requested(&mut self, source: ValueSource, target: BindTarget) {
-        let value = {
-            let registry = self.state.flow.registry();
-            registry.get_value(&target)
-        };
-
-        let Some(value) = value else {
+        let Some(value) = self.value_for_target(&target) else {
             return;
         };
 
         match source {
             ValueSource::Component(id) => {
-                let registry = self.state.flow.registry_mut();
-                if let Some(component) = registry.get_component_mut(&id) {
+                if let Some(component) = self.find_component_mut_any(&id) {
                     component.set_value(value);
                 }
             }
             ValueSource::Layer(id) => {
-                let registry = self.state.flow.registry_mut();
                 if let Some(active) = self.layer_manager.active_mut() {
                     if active.layer.id() == id {
-                        active.layer.set_value(registry, value);
+                        active.layer.set_value(value);
                     }
                 }
             }
@@ -341,8 +379,7 @@ impl App {
     }
 
     fn handle_value_produced(&mut self, target: BindTarget, value: Value) {
-        let registry = self.state.flow.registry_mut();
-        registry.set_value(&target, value);
+        self.set_value_for_target(&target, value);
     }
 
     fn render_completed_step(&mut self, terminal: &mut Terminal) -> io::Result<()> {
@@ -351,11 +388,10 @@ impl App {
             return Ok(());
         };
 
-        let registry = self.state.flow.registry();
         let options = RenderOptions::done();
 
         self.pipeline
-            .render_step(terminal, step, registry, &self.theme, options)?;
+            .render_step(terminal, step, &self.theme, options)?;
         self.pipeline.move_to_end(terminal)?;
         self.pipeline
             .write_connector(terminal, &self.theme, StepStatus::Done, 1)?;
@@ -371,7 +407,23 @@ impl Default for App {
     }
 }
 
-fn build_demo_steps() -> Vec<(crate::core::step::Step, Vec<(NodeId, Node)>)> {
+fn collect_component_bindings(nodes: &[Node], out: &mut Vec<(String, BindTarget)>) {
+    for node in nodes {
+        match node {
+            Node::Component(component) => {
+                if let Some(target) = component.bind_target() {
+                    out.push((component.id().to_string(), target));
+                }
+                if let Some(children) = component.children() {
+                    collect_component_bindings(children, out);
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
+fn build_demo_steps() -> Vec<crate::core::step::Step> {
     vec![
         build_step_zero(),
         build_step_one(),
@@ -380,7 +432,7 @@ fn build_demo_steps() -> Vec<(crate::core::step::Step, Vec<(NodeId, Node)>)> {
     ]
 }
 
-fn build_step_zero() -> (crate::core::step::Step, Vec<(NodeId, Node)>) {
+fn build_step_zero() -> crate::core::step::Step {
     let component = SelectComponent::new(
         "plan_select",
         vec!["Free".to_string(), "Pro".to_string(), "Team".to_string()],
@@ -402,7 +454,7 @@ fn build_step_zero() -> (crate::core::step::Step, Vec<(NodeId, Node)>) {
         .build()
 }
 
-fn build_step_one() -> (crate::core::step::Step, Vec<(NodeId, Node)>) {
+fn build_step_one() -> crate::core::step::Step {
     let tags_component = SelectComponent::new("tags_select", Vec::new())
         .with_label("Tags (from input):")
         .with_mode(SelectMode::Multi)
@@ -441,7 +493,7 @@ fn build_step_one() -> (crate::core::step::Step, Vec<(NodeId, Node)>) {
         .build()
 }
 
-fn build_step_two() -> (crate::core::step::Step, Vec<(NodeId, Node)>) {
+fn build_step_two() -> crate::core::step::Step {
     StepBuilder::new("Almost there:")
         .input(
             TextInput::new("password", "Password")
@@ -451,7 +503,7 @@ fn build_step_two() -> (crate::core::step::Step, Vec<(NodeId, Node)>) {
         .build()
 }
 
-fn build_step_three() -> (crate::core::step::Step, Vec<(NodeId, Node)>) {
+fn build_step_three() -> crate::core::step::Step {
     StepBuilder::new("Final step:")
         .hint("Try arrows left/right in select, and masked input")
         .input(

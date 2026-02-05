@@ -1,4 +1,4 @@
-use crate::inputs::{Input, InputBase, InputCaps, KeyResult};
+use crate::inputs::{Input, InputBase, KeyResult};
 use crate::span::Span;
 use crate::terminal::{KeyCode, KeyModifiers};
 use crate::validators::Validator;
@@ -375,14 +375,6 @@ impl Input for ArrayInput {
 
     fn render_brackets(&self) -> bool {
         false
-    }
-
-    fn capabilities(&self) -> InputCaps {
-        InputCaps {
-            capture_ctrl_left: true,
-            capture_ctrl_right: true,
-            ..InputCaps::default()
-        }
     }
 
     fn handle_key(&mut self, code: KeyCode, _modifiers: KeyModifiers) -> KeyResult {

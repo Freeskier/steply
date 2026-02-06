@@ -52,6 +52,60 @@ pub fn match_candidates_limited(
     matches
 }
 
+pub fn match_candidates_top(
+    query: &str,
+    candidates: &[String],
+    limit: usize,
+) -> Vec<FuzzyMatch> {
+    use std::cmp::Reverse;
+    use std::collections::BinaryHeap;
+
+    if limit == 0 {
+        return Vec::new();
+    }
+
+    let query = query.trim();
+    let mut heap: BinaryHeap<Reverse<(i32, usize)>> = BinaryHeap::new();
+    let mut matches = Vec::new();
+
+    for (index, candidate) in candidates.iter().enumerate() {
+        let matched_indices = if query.is_empty() {
+            Vec::new()
+        } else if let Some(indices) = match_indices(query, candidate) {
+            indices
+        } else {
+            continue;
+        };
+
+        let score = score_match(candidate, &matched_indices, query);
+        let ranges = indices_to_ranges(&matched_indices);
+        let fm = FuzzyMatch {
+            index,
+            score,
+            matched_indices,
+            ranges,
+        };
+        matches.push(fm);
+        let fm_index = matches.len() - 1;
+
+        if heap.len() < limit {
+            heap.push(Reverse((score, fm_index)));
+        } else if let Some(Reverse((min_score, min_idx))) = heap.peek() {
+            if score > *min_score || (score == *min_score && index < matches[*min_idx].index) {
+                heap.pop();
+                heap.push(Reverse((score, fm_index)));
+            }
+        }
+    }
+
+    let mut out = heap
+        .into_iter()
+        .map(|r| matches[r.0 .1].clone())
+        .collect::<Vec<_>>();
+    out.sort_by(|a, b| b.score.cmp(&a.score));
+    out
+}
+
 fn match_indices(query: &str, candidate: &str) -> Option<Vec<usize>> {
     let query_chars: Vec<char> = query.chars().map(|c| c.to_ascii_lowercase()).collect();
     let candidate_chars: Vec<char> = candidate.chars().map(|c| c.to_ascii_lowercase()).collect();

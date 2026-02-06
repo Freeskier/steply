@@ -3,7 +3,7 @@ use crate::button_input::ButtonInput;
 use crate::checkbox_input::CheckboxInput;
 use crate::choice_input::ChoiceInput;
 use crate::color_input::ColorInput;
-use crate::components::file_browser_component::FileBrowserComponent;
+use crate::components::file_browser::{FileBrowserState, overlay_for_list};
 use crate::components::select_component::{SelectComponent, SelectMode};
 use crate::core::action_bindings::ActionBindings;
 use crate::core::binding::{BindTarget, ValueSource};
@@ -30,6 +30,7 @@ use crate::ui::render::{RenderOptions, RenderPipeline};
 use crate::ui::theme::Theme;
 use crate::validators;
 use std::io;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 const ERROR_TIMEOUT: Duration = Duration::from_secs(2);
@@ -45,11 +46,13 @@ pub struct App {
 
     layer_manager: LayerManager,
     pending_layer_clear: bool,
+    file_browser_overlay_state: Option<Arc<Mutex<FileBrowserState>>>,
 }
 
 impl App {
     pub fn new() -> Self {
-        let flow = Flow::new(build_demo_steps());
+        let (steps, file_browser_overlay_state) = build_demo_steps();
+        let flow = Flow::new(steps);
         let state = AppState::new(flow);
 
         let mut pipeline = RenderPipeline::new();
@@ -66,6 +69,7 @@ impl App {
             last_cursor: None,
             layer_manager: LayerManager::new(),
             pending_layer_clear: false,
+            file_browser_overlay_state,
         }
     }
 
@@ -79,7 +83,14 @@ impl App {
         }
 
         let polled = if let Some(active) = self.layer_manager.active_mut() {
-            poll_components(active.nodes_mut())
+            if active.layer.focus_mode() == crate::core::layer::LayerFocusMode::Modal {
+                poll_components(active.nodes_mut())
+            } else {
+                let nodes = self.state.flow.current_step_mut().nodes.as_mut_slice();
+                let step_polled = poll_components(nodes);
+                let overlay_polled = poll_components(active.nodes_mut());
+                step_polled || overlay_polled
+            }
         } else {
             let nodes = self.state.flow.current_step_mut().nodes.as_mut_slice();
             poll_components(nodes)
@@ -109,15 +120,24 @@ impl App {
         }
 
         let step = self.state.flow.current_step();
-        let options = RenderOptions::active();
+        let mut options = RenderOptions::active();
+        if self.layer_manager.is_active() {
+            options.connect_to_next = true;
+        }
 
         let step_cursor = self
             .pipeline
             .render_step(terminal, step, &self.theme, options)?;
 
         let cursor = if let Some(overlay) = self.layer_manager.active() {
-            self.pipeline
-                .render_layer(terminal, overlay, &self.theme, step_cursor)?
+            let overlay_cursor =
+                self.pipeline
+                    .render_layer(terminal, overlay, &self.theme, step_cursor)?;
+            if overlay.layer.focus_mode() == crate::core::layer::LayerFocusMode::Shared {
+                step_cursor
+            } else {
+                overlay_cursor
+            }
         } else {
             step_cursor
         };
@@ -156,8 +176,12 @@ impl App {
             AppEvent::ValueRequested { source, target } => {
                 self.handle_value_requested(source, target);
             }
-            AppEvent::ValueProduced { target, value, .. } => {
-                self.handle_value_produced(target, value);
+            AppEvent::ValueProduced {
+                source,
+                target,
+                value,
+            } => {
+                self.handle_value_produced(source, target, value);
             }
             AppEvent::RequestRerender
             | AppEvent::InputChanged { .. }
@@ -175,6 +199,17 @@ impl App {
         if key.code == KeyCode::Esc && self.layer_manager.is_active() {
             self.close_overlay();
             return;
+        }
+
+        if !self.layer_manager.is_active() && self.should_open_file_browser_overlay(&key) {
+            self.open_overlay();
+        }
+
+        if let Some(active) = self.layer_manager.active_mut() {
+            let mut emit = |event| self.events.emit(event);
+            if active.layer.handle_key(key, &mut emit) {
+                return;
+            }
         }
 
         if key.code == KeyCode::Tab && key.modifiers == KeyModifiers::NONE {
@@ -200,12 +235,16 @@ impl App {
 
     fn handle_action(&mut self, action: Action) {
         let effects = if let Some(active) = self.layer_manager.active_mut() {
-            Reducer::reduce(
-                &mut self.state,
-                action,
-                ERROR_TIMEOUT,
-                Some(active.nodes_mut()),
-            )
+            if active.layer.focus_mode() == crate::core::layer::LayerFocusMode::Modal {
+                Reducer::reduce(
+                    &mut self.state,
+                    action,
+                    ERROR_TIMEOUT,
+                    Some(active.nodes_mut()),
+                )
+            } else {
+                Reducer::reduce(&mut self.state, action, ERROR_TIMEOUT, None)
+            }
         } else {
             Reducer::reduce(&mut self.state, action, ERROR_TIMEOUT, None)
         };
@@ -328,8 +367,14 @@ impl App {
     fn open_overlay(&mut self) {
         let engine = &mut self.state.engine;
         let step_nodes = self.state.flow.current_step_mut().nodes.as_mut_slice();
-        self.layer_manager
-            .open(Box::new(OverlayState::demo()), step_nodes, engine);
+        if let Some(state) = self.file_browser_overlay_state.clone() {
+            let overlay = overlay_for_list("file_browser_overlay", "", state);
+            self.layer_manager
+                .open(Box::new(overlay), step_nodes, engine);
+        } else {
+            self.layer_manager
+                .open(Box::new(OverlayState::demo()), step_nodes, engine);
+        }
 
         if let Some(active) = self.layer_manager.active() {
             if let Some(target) = active.layer.bind_target() {
@@ -375,8 +420,15 @@ impl App {
         }
     }
 
-    fn handle_value_produced(&mut self, target: BindTarget, value: Value) {
+    fn handle_value_produced(&mut self, source: ValueSource, target: BindTarget, value: Value) {
         self.set_value_for_target(&target, value);
+        if let ValueSource::Layer(id) = source {
+            if let Some(active) = self.layer_manager.active() {
+                if active.layer.id() == id {
+                    self.close_overlay();
+                }
+            }
+        }
     }
 
     fn render_completed_step(&mut self, terminal: &mut Terminal) -> io::Result<()> {
@@ -395,6 +447,24 @@ impl App {
         self.pipeline.reset_region();
 
         Ok(())
+    }
+
+    fn should_open_file_browser_overlay(&self, key: &KeyEvent) -> bool {
+        let Some(state) = self.file_browser_overlay_state.as_ref() else {
+            return false;
+        };
+        let edits_input = matches!(
+            key.code,
+            KeyCode::Char(_) | KeyCode::Backspace | KeyCode::Delete
+        );
+        if !edits_input {
+            return false;
+        }
+        let focused = self.state.engine.focused_node_id();
+        let Ok(state) = state.lock() else {
+            return false;
+        };
+        focused.map(|id| id == state.input_id()).unwrap_or(false)
     }
 }
 
@@ -420,24 +490,30 @@ fn collect_component_bindings(nodes: &[Node], out: &mut Vec<(String, BindTarget)
     }
 }
 
-fn build_demo_steps() -> Vec<crate::core::step::Step> {
-    vec![
-        build_step_zero(),
+fn build_demo_steps() -> (
+    Vec<crate::core::step::Step>,
+    Option<Arc<Mutex<FileBrowserState>>>,
+) {
+    let file_browser_state = Arc::new(Mutex::new(FileBrowserState::new("plan_select")));
+    let steps = vec![
+        build_step_zero(file_browser_state.clone()),
         build_step_one(),
         build_step_two(),
         build_step_three(),
-    ]
+    ];
+    (steps, Some(file_browser_state))
 }
 
-fn build_step_zero() -> crate::core::step::Step {
-    let component = FileBrowserComponent::new("plan_select")
-        .with_label("Select plan:")
-        .with_recursive_search(true)
-        .with_max_visible(6)
-        // .with_entry_filter(crate::components::file_browser_component::EntryFilter::FilesOnly)
-        // .with_extension_filter([".yml", ".yaml"])
-        .with_relative_paths(true)
-        .with_placeholder("Type to filter");
+fn build_step_zero(file_browser_state: Arc<Mutex<FileBrowserState>>) -> crate::core::step::Step {
+    let component =
+        crate::components::file_browser::FileBrowserInputComponent::from_state(file_browser_state)
+            .with_label("Select plan:")
+            .with_recursive_search(true)
+            .with_max_visible(6)
+            // .with_entry_filter(crate::components::file_browser::EntryFilter::FilesOnly)
+            // .with_extension_filter([".yml", ".yaml"])
+            .with_relative_paths(true)
+            .with_placeholder("Type to filter");
 
     let tags_component = SelectComponent::new("tags_select", Vec::new())
         .with_label("Tags (from input):")

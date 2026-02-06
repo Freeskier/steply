@@ -1,7 +1,7 @@
 use crate::core::binding::BindTarget;
 use crate::core::event_queue::AppEvent;
 use crate::core::form_engine::FormEngine;
-use crate::core::layer::{ActiveLayer, Layer};
+use crate::core::layer::{ActiveLayer, Layer, LayerFocusMode};
 use crate::core::node::{Node, find_component, find_input};
 
 pub struct LayerManager {
@@ -45,7 +45,9 @@ impl LayerManager {
             }
         }
 
-        engine.reset_with_nodes(layer.nodes_mut());
+        if layer.focus_mode() == LayerFocusMode::Modal {
+            engine.reset_with_nodes(layer.nodes_mut());
+        }
 
         self.active = Some(ActiveLayer::new(layer, saved_focus_id));
     }
@@ -61,12 +63,14 @@ impl LayerManager {
         };
 
         active.layer.emit_close_events(emit);
-        engine.reset_with_nodes(step_nodes);
+        if active.layer.focus_mode() == LayerFocusMode::Modal {
+            engine.reset_with_nodes(step_nodes);
 
-        if let Some(saved_id) = active.saved_focus_id {
-            if let Some(index) = engine.find_index_by_id(&saved_id) {
-                let mut events = Vec::new();
-                engine.set_focus(step_nodes, Some(index), &mut events);
+            if let Some(saved_id) = active.saved_focus_id {
+                if let Some(index) = engine.find_index_by_id(&saved_id) {
+                    let mut events = Vec::new();
+                    engine.set_focus(step_nodes, Some(index), &mut events);
+                }
             }
         }
 

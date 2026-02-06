@@ -1,8 +1,10 @@
 use crate::core::binding::{BindTarget, ValueSource};
 use crate::core::event_queue::AppEvent;
 use crate::core::layer::Layer;
+use crate::core::layer::LayerFocusMode;
 use crate::core::node::{Node, first_input, first_input_mut};
 use crate::core::value::Value;
+use crate::terminal::KeyEvent;
 use crate::text_input::TextInput;
 
 pub struct OverlayState {
@@ -11,6 +13,10 @@ pub struct OverlayState {
     hint: Option<String>,
     nodes: Vec<Node>,
     bind_target: Option<BindTarget>,
+    focus_mode: LayerFocusMode,
+    key_handler: Option<
+        Box<dyn FnMut(&mut OverlayState, KeyEvent, &mut dyn FnMut(AppEvent)) -> bool + Send>,
+    >,
 }
 
 impl OverlayState {
@@ -21,6 +27,8 @@ impl OverlayState {
             hint: None,
             nodes,
             bind_target: None,
+            focus_mode: LayerFocusMode::Modal,
+            key_handler: None,
         }
     }
 
@@ -34,10 +42,34 @@ impl OverlayState {
         self
     }
 
+    pub fn with_focus_mode(mut self, focus_mode: LayerFocusMode) -> Self {
+        self.focus_mode = focus_mode;
+        self
+    }
+
+    pub fn with_key_handler<F>(mut self, handler: F) -> Self
+    where
+        F: FnMut(&mut OverlayState, KeyEvent, &mut dyn FnMut(AppEvent)) -> bool + Send + 'static,
+    {
+        self.key_handler = Some(Box::new(handler));
+        self
+    }
+
     pub fn demo() -> Self {
         let input_id = "overlay_query".to_string();
         let nodes = vec![Node::input(TextInput::new(&input_id, "Search"))];
         Self::new("overlay_demo", "Overlay demo: type, Esc to close", nodes)
+    }
+
+    pub fn emit_value(&self, value: Value, emit: &mut dyn FnMut(AppEvent)) {
+        let Some(target) = self.bind_target.clone() else {
+            return;
+        };
+        emit(AppEvent::ValueProduced {
+            source: ValueSource::Layer(self.id.clone()),
+            target,
+            value,
+        });
     }
 }
 
@@ -60,6 +92,10 @@ impl Layer for OverlayState {
 
     fn nodes_mut(&mut self) -> &mut [Node] {
         &mut self.nodes
+    }
+
+    fn focus_mode(&self) -> LayerFocusMode {
+        self.focus_mode
     }
 
     fn bind_target(&self) -> Option<BindTarget> {
@@ -96,5 +132,14 @@ impl Layer for OverlayState {
             target,
             value,
         });
+    }
+
+    fn handle_key(&mut self, key: KeyEvent, emit: &mut dyn FnMut(AppEvent)) -> bool {
+        let Some(mut handler) = self.key_handler.take() else {
+            return false;
+        };
+        let handled = handler(self, key, emit);
+        self.key_handler = Some(handler);
+        handled
     }
 }

@@ -1,5 +1,5 @@
 use crate::components::select_component::{SelectComponent, SelectMode, SelectOption};
-use crate::core::component::{Component, ComponentBase, EventContext, FocusMode};
+use crate::core::component::Component;
 use crate::core::search::fuzzy;
 use crate::core::value::Value;
 use crate::inputs::Input;
@@ -12,12 +12,12 @@ use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::thread;
-use std::time::{Duration, SystemTime};
+use std::time::{Duration, Instant, SystemTime};
 
-pub struct FileBrowserComponent {
-    base: ComponentBase,
+pub struct FileBrowserState {
     input: TextInput,
     select: SelectComponent,
     current_dir: PathBuf,
@@ -38,6 +38,7 @@ pub struct FileBrowserComponent {
     spinner_tick: u8,
     scan_tx: Sender<(String, SearchResult)>,
     scan_rx: Receiver<(String, SearchResult)>,
+    input_debounce: Option<Instant>,
 }
 
 #[derive(Debug, Clone)]
@@ -45,7 +46,7 @@ struct FileEntry {
     name: String,
     name_lower: String,
     ext_lower: Option<String>,
-    path: PathBuf,
+    path: Arc<PathBuf>,
     is_dir: bool,
     size: Option<u64>,
     modified: Option<SystemTime>,
@@ -54,8 +55,10 @@ struct FileEntry {
 #[derive(Debug, Clone)]
 struct SearchResult {
     entries: Vec<FileEntry>,
-    options: Vec<SelectOption>,
     matches: Vec<fuzzy::FuzzyMatch>,
+    display_root: Option<PathBuf>,
+    show_relative: bool,
+    show_info: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -77,7 +80,7 @@ struct NewEntry {
     is_dir: bool,
 }
 
-impl FileBrowserComponent {
+impl FileBrowserState {
     pub fn new(id: impl Into<String>) -> Self {
         let id = id.into();
         let input = TextInput::new(format!("{}_filter", id), "Path");
@@ -87,7 +90,6 @@ impl FileBrowserComponent {
         let view_dir = current_dir.clone();
         let (scan_tx, scan_rx) = mpsc::channel();
         let mut component = Self {
-            base: ComponentBase::new(id),
             input,
             select,
             current_dir,
@@ -108,40 +110,28 @@ impl FileBrowserComponent {
             spinner_tick: 0,
             scan_tx,
             scan_rx,
+            input_debounce: None,
         };
         component.refresh_view();
         component
     }
 
-    pub fn with_label(mut self, label: impl Into<String>) -> Self {
+    pub fn set_label(&mut self, label: impl Into<String>) {
         self.input.base_mut_ref().label = label.into();
-        self
     }
 
-    pub fn with_placeholder(mut self, placeholder: impl Into<String>) -> Self {
-        self.input = self.input.with_placeholder(placeholder);
-        self
-    }
-
-    pub fn with_max_visible(mut self, max_visible: usize) -> Self {
-        self.select.set_max_visible(max_visible);
-        self
+    pub fn set_placeholder(&mut self, placeholder: impl Into<String>) {
+        let placeholder = placeholder.into();
+        self.input.base_mut_ref().placeholder = Some(placeholder);
     }
 
     pub fn set_max_visible(&mut self, max_visible: usize) {
         self.select.set_max_visible(max_visible);
     }
 
-    pub fn with_recursive_search(mut self, recursive: bool) -> Self {
+    pub fn set_recursive_search(&mut self, recursive: bool) {
         self.recursive_search = recursive;
         self.refresh_view();
-        self
-    }
-
-    pub fn with_entry_filter(mut self, filter: EntryFilter) -> Self {
-        self.entry_filter = filter;
-        self.refresh_view();
-        self
     }
 
     pub fn set_entry_filter(&mut self, filter: EntryFilter) {
@@ -156,15 +146,6 @@ impl FileBrowserComponent {
             self.entry_filter = filter;
         }
         self.refresh_view();
-    }
-
-    pub fn with_extension_filter<I, S>(mut self, exts: I) -> Self
-    where
-        I: IntoIterator<Item = S>,
-        S: AsRef<str>,
-    {
-        self.set_extension_filter(exts);
-        self
     }
 
     pub fn set_extension_filter<I, S>(&mut self, exts: I)
@@ -194,25 +175,18 @@ impl FileBrowserComponent {
         filter_entries(entries, self.entry_filter, self.extension_filter.as_ref())
     }
 
-    pub fn with_relative_paths(mut self, show_relative: bool) -> Self {
-        self.show_relative_paths = show_relative;
-        self.refresh_view();
-        self
-    }
-
     pub fn set_relative_paths(&mut self, show_relative: bool) {
         self.show_relative_paths = show_relative;
         self.refresh_view();
     }
 
-    pub fn with_show_hidden(mut self, show_hidden: bool) -> Self {
-        self.hide_hidden = !show_hidden;
-        self.refresh_view();
-        self
-    }
-
     pub fn set_show_hidden(&mut self, show_hidden: bool) {
         self.hide_hidden = !show_hidden;
+        self.refresh_view();
+    }
+
+    pub fn set_show_info(&mut self, show_info: bool) {
+        self.show_info = show_info;
         self.refresh_view();
     }
 
@@ -229,10 +203,10 @@ impl FileBrowserComponent {
             self.input.set_value(normalized.clone());
         }
         let parsed = parse_input(&normalized, &self.current_dir);
-
         self.view_dir = parsed.view_dir.clone();
 
-        let (entries, options, matches) = if parsed.path_mode {
+        // Handle path mode
+        if parsed.path_mode {
             let raw = normalized.trim();
             if let Some(query) = strip_recursive_fuzzy_segment(&parsed.segment) {
                 if let Some(result) = self.search_async(
@@ -242,11 +216,14 @@ impl FileBrowserComponent {
                     &parsed.view_dir,
                     SearchMode::Fuzzy,
                 ) {
-                    (result.entries, result.options, result.matches)
-                } else {
-                    (Vec::new(), Vec::new(), Vec::new())
+                    self.apply_search_result(&result);
+                    return;
                 }
-            } else if is_glob_query(raw) {
+                self.set_empty_results();
+                return;
+            }
+
+            if is_glob_query(raw) {
                 if let Some((base_dir, pattern)) = split_glob_path(normalized.trim()) {
                     let base_path = resolve_path(&base_dir, &self.current_dir);
                     let recursive = is_recursive_glob(&pattern);
@@ -258,142 +235,153 @@ impl FileBrowserComponent {
                             &base_path,
                             SearchMode::Glob,
                         ) {
-                            (result.entries, result.options, result.matches)
-                        } else {
-                            (Vec::new(), Vec::new(), Vec::new())
+                            self.apply_search_result(&result);
+                            return;
                         }
-                    } else {
-                        let entries = self.filter_entries(list_dir(&base_path, self.hide_hidden));
-                        let (entries, options) = glob_options(
-                            &entries,
-                            &pattern,
-                            Some(&base_path),
-                            self.show_relative_paths,
-                            self.show_info,
-                        );
-                        (entries, options, Vec::new())
+                        self.set_empty_results();
+                        return;
                     }
-                } else {
-                    (Vec::new(), Vec::new(), Vec::new())
-                }
-            } else {
-                let entries = self.filter_entries(list_dir(&parsed.view_dir, self.hide_hidden));
-                if parsed.segment.is_empty() {
-                    let options = entries
-                        .iter()
-                        .map(|entry| {
-                            entry_option(
-                                entry,
-                                &[],
-                                Some(&parsed.view_dir),
-                                self.show_relative_paths,
-                                self.show_info,
-                            )
-                        })
-                        .collect::<Vec<_>>();
-                    (entries, options, Vec::new())
-                } else {
-                    let (entries, options, matches) = options_from_query(
-                        &entries,
-                        &parsed.segment,
-                        Some(&parsed.view_dir),
-                        self.show_relative_paths,
-                        self.show_info,
-                    );
-                    (entries, options, matches)
-                }
-            }
-        } else if normalized.trim().is_empty() {
-            let entries = self.filter_entries(list_dir(&self.current_dir, self.hide_hidden));
-            let options = entries
-                .iter()
-                .map(|entry| {
-                    entry_option(
-                        entry,
-                        &[],
-                        Some(&self.current_dir),
-                        self.show_relative_paths,
-                        self.show_info,
-                    )
-                })
-                .collect::<Vec<_>>();
-            (entries, options, Vec::new())
-        } else {
-            let raw = normalized.trim();
-            if let Some(query) = strip_recursive_fuzzy(raw) {
-                let current_dir = self.current_dir.clone();
-                let display_root = self.current_dir.clone();
-                if let Some(result) = self.search_async(
-                    &current_dir,
-                    true,
-                    &query,
-                    &display_root,
-                    SearchMode::Fuzzy,
-                ) {
-                    (result.entries, result.options, result.matches)
-                } else {
-                    (Vec::new(), Vec::new(), Vec::new())
-                }
-            } else if is_glob_query(raw) {
-                let recursive = is_recursive_glob(raw);
-                if recursive {
-                    let current_dir = self.current_dir.clone();
-                    let display_root = self.current_dir.clone();
-                    if let Some(result) = self.search_async(
-                        &current_dir,
-                        true,
-                        raw,
-                        &display_root,
-                        SearchMode::Glob,
-                    ) {
-                        (result.entries, result.options, result.matches)
-                    } else {
-                        (Vec::new(), Vec::new(), Vec::new())
-                    }
-                } else {
-                    let entries = self.filter_entries(list_dir(&self.current_dir, self.hide_hidden));
-                    let (entries, options) = glob_options(
-                        &entries,
-                        raw,
-                        Some(&self.current_dir),
-                        self.show_relative_paths,
-                        self.show_info,
-                    );
-                    (entries, options, Vec::new())
-                }
-            } else if self.recursive_search {
-                let query = raw.to_string();
-                let current_dir = self.current_dir.clone();
-                let display_root = self.current_dir.clone();
-                if let Some(result) =
-                    self.search_async(&current_dir, true, &query, &display_root, SearchMode::Fuzzy)
-                {
-                    (result.entries, result.options, result.matches)
-                } else {
-                    (Vec::new(), Vec::new(), Vec::new())
-                }
-            } else {
-                let entries = self.filter_entries(list_dir(&self.current_dir, self.hide_hidden));
-                let (entries, options, matches) = options_from_query(
-                    &entries,
-                    raw,
-                    Some(&self.current_dir),
-                    self.show_relative_paths,
-                    self.show_info,
-                );
-                (entries, options, matches)
-            }
-        };
 
-        self.entries = entries;
-        self.matches = matches;
-        self.select.set_options(options);
+                    let entries = self.filter_entries(list_dir(&base_path, self.hide_hidden));
+                    let (entries, _) = glob_options(
+                        &entries,
+                        &pattern,
+                        Some(&base_path),
+                        self.show_relative_paths,
+                        self.show_info,
+                    );
+                    self.set_results_no_matches(entries, Some(&base_path));
+                    return;
+                }
+                self.set_empty_results();
+                return;
+            }
+
+            let entries = self.filter_entries(list_dir(&parsed.view_dir, self.hide_hidden));
+            if parsed.segment.is_empty() {
+                self.set_results_no_matches(entries, Some(&parsed.view_dir));
+                return;
+            }
+
+            let (entries, _, matches) = options_from_query(
+                &entries,
+                &parsed.segment,
+                Some(&parsed.view_dir),
+                self.show_relative_paths,
+                self.show_info,
+            );
+            self.set_results_with_matches(entries, matches, Some(&parsed.view_dir));
+            return;
+        }
+
+        // Handle non-path mode
+        if normalized.trim().is_empty() {
+            let current_dir = self.current_dir.clone();
+            let entries = self.filter_entries(list_dir(&current_dir, self.hide_hidden));
+            self.set_results_no_matches(entries, Some(&current_dir));
+            return;
+        }
+
+        let raw = normalized.trim();
+        if let Some(query) = strip_recursive_fuzzy(raw) {
+            let current_dir = self.current_dir.clone();
+            if let Some(result) =
+                self.search_async(&current_dir, true, &query, &current_dir, SearchMode::Fuzzy)
+            {
+                self.apply_search_result(&result);
+                return;
+            }
+            self.set_empty_results();
+            return;
+        }
+
+        if is_glob_query(raw) {
+            let recursive = is_recursive_glob(raw);
+            if recursive {
+                let current_dir = self.current_dir.clone();
+                if let Some(result) =
+                    self.search_async(&current_dir, true, raw, &current_dir, SearchMode::Glob)
+                {
+                    self.apply_search_result(&result);
+                    return;
+                }
+                self.set_empty_results();
+                return;
+            }
+
+            let current_dir = self.current_dir.clone();
+            let entries = self.filter_entries(list_dir(&current_dir, self.hide_hidden));
+            let (entries, _) = glob_options(
+                &entries,
+                raw,
+                Some(&current_dir),
+                self.show_relative_paths,
+                self.show_info,
+            );
+            self.set_results_no_matches(entries, Some(&current_dir));
+            return;
+        }
+
+        if self.recursive_search {
+            let current_dir = self.current_dir.clone();
+            if let Some(result) =
+                self.search_async(&current_dir, true, raw, &current_dir, SearchMode::Fuzzy)
+            {
+                self.apply_search_result(&result);
+                return;
+            }
+            self.set_empty_results();
+            return;
+        }
+
+        let current_dir = self.current_dir.clone();
+        let entries = self.filter_entries(list_dir(&current_dir, self.hide_hidden));
+        let (entries, _, matches) = options_from_query(
+            &entries,
+            raw,
+            Some(&current_dir),
+            self.show_relative_paths,
+            self.show_info,
+        );
+        self.set_results_with_matches(entries, matches, Some(&current_dir));
+    }
+
+    fn set_empty_results(&mut self) {
+        self.entries = Vec::new();
+        self.matches = Vec::new();
+        self.select.set_options(Vec::new());
         self.select.reset_active();
+    }
+
+    fn set_results_no_matches(&mut self, entries: Vec<FileEntry>, display_root: Option<&Path>) {
+        self.set_results(
+            entries,
+            Vec::new(),
+            display_root,
+            self.show_relative_paths,
+            self.show_info,
+        );
+    }
+
+    fn set_results_with_matches(
+        &mut self,
+        entries: Vec<FileEntry>,
+        matches: Vec<fuzzy::FuzzyMatch>,
+        display_root: Option<&Path>,
+    ) {
+        self.set_results(
+            entries,
+            matches,
+            display_root,
+            self.show_relative_paths,
+            self.show_info,
+        );
     }
 
     fn poll_scans(&mut self) -> bool {
         let mut updated = false;
         let current_key = self.current_search_key();
+
         let mut to_apply: Option<String> = None;
         for (key, result) in self.scan_rx.try_iter() {
             self.in_flight.remove(&key);
@@ -456,7 +444,7 @@ impl FileBrowserComponent {
                 let show_info = self.show_info;
                 let tx = self.scan_tx.clone();
                 thread::spawn(move || {
-                    let (entries, options) = glob_options(
+                    let (entries, _) = glob_options(
                         &entries,
                         &query,
                         Some(display_root.as_path()),
@@ -465,15 +453,17 @@ impl FileBrowserComponent {
                     );
                     let result = SearchResult {
                         entries,
-                        options,
                         matches: Vec::new(),
+                        display_root: Some(display_root),
+                        show_relative,
+                        show_info,
                     };
                     let _ = tx.send((key, result));
                 });
                 return None;
             }
 
-            let (entries, options, matches) = options_from_query(
+            let (entries, _, matches) = options_from_query(
                 &filtered,
                 query,
                 Some(display_root),
@@ -482,8 +472,10 @@ impl FileBrowserComponent {
             );
             let result = SearchResult {
                 entries,
-                options,
                 matches,
+                display_root: Some(display_root.to_path_buf()),
+                show_relative: self.show_relative_paths,
+                show_info: self.show_info,
             };
             self.cache.insert(key.clone(), result.clone());
             self.last_applied_key = Some(key);
@@ -516,11 +508,8 @@ impl FileBrowserComponent {
                 entries = filter_entries(entries, entry_filter, ext_filter.as_ref());
                 let normalized = query.replace('\\', "/");
                 let segments = split_segments(&normalized);
-                let name_pattern = segments
-                    .last()
-                    .cloned()
-                    .unwrap_or_else(String::new);
-                let options = build_glob_options(
+                let name_pattern = segments.last().cloned().unwrap_or_else(String::new);
+                let _ = build_glob_options(
                     &mut entries,
                     &name_pattern,
                     Some(display_root.as_path()),
@@ -529,8 +518,10 @@ impl FileBrowserComponent {
                 );
                 SearchResult {
                     entries,
-                    options,
                     matches: Vec::new(),
+                    display_root: Some(display_root),
+                    show_relative,
+                    show_info,
                 }
             } else {
                 let entries = if recursive {
@@ -539,7 +530,7 @@ impl FileBrowserComponent {
                     list_dir(&dir, hide_hidden)
                 };
                 let entries = filter_entries(entries, entry_filter, ext_filter.as_ref());
-                let (entries, options, matches) = options_from_query(
+                let (entries, _, matches) = options_from_query(
                     &entries,
                     &query,
                     Some(display_root.as_path()),
@@ -548,8 +539,10 @@ impl FileBrowserComponent {
                 );
                 SearchResult {
                     entries,
-                    options,
                     matches,
+                    display_root: Some(display_root),
+                    show_relative,
+                    show_info,
                 }
             };
             let _ = tx.send((key, result));
@@ -559,9 +552,37 @@ impl FileBrowserComponent {
     }
 
     fn apply_search_result(&mut self, result: &SearchResult) {
-        self.entries = result.entries.clone();
-        self.matches = result.matches.clone();
-        self.select.set_options(result.options.clone());
+        self.set_results(
+            result.entries.clone(),
+            result.matches.clone(),
+            result.display_root.as_deref(),
+            result.show_relative,
+            result.show_info,
+        );
+    }
+
+    fn set_results(
+        &mut self,
+        entries: Vec<FileEntry>,
+        matches: Vec<fuzzy::FuzzyMatch>,
+        display_root: Option<&Path>,
+        show_relative: bool,
+        show_info: bool,
+    ) {
+        let options = build_options(
+            &entries,
+            if matches.is_empty() {
+                None
+            } else {
+                Some(&matches)
+            },
+            display_root,
+            show_relative,
+            show_info,
+        );
+        self.entries = entries;
+        self.matches = matches;
+        self.select.set_options(options);
         self.select.reset_active();
     }
 
@@ -792,6 +813,10 @@ impl FileBrowserComponent {
         true
     }
 
+    fn mark_input_changed(&mut self) {
+        self.input_debounce = Some(Instant::now());
+    }
+
     fn has_autocomplete_candidates(&self) -> bool {
         let raw = self.input.value();
         let parsed = parse_input(&raw, &self.current_dir);
@@ -810,78 +835,221 @@ impl FileBrowserComponent {
     }
 }
 
-impl Component for FileBrowserComponent {
-    fn base(&self) -> &ComponentBase {
-        &self.base
+impl FileBrowserState {
+    pub fn input_id(&self) -> &str {
+        &self.input.base_ref().id
     }
 
-    fn base_mut(&mut self) -> &mut ComponentBase {
-        &mut self.base
+    pub fn list_id(&self) -> &str {
+        self.select.id()
     }
 
-    fn focus_mode(&self) -> FocusMode {
-        FocusMode::Group
+    pub fn input(&self) -> &TextInput {
+        &self.input
     }
 
-    fn render(&self, ctx: &RenderContext) -> Vec<RenderLine> {
-        let mut lines = Vec::new();
+    pub fn input_mut(&mut self) -> &mut TextInput {
+        &mut self.input
+    }
+
+    pub fn select(&self) -> &SelectComponent {
+        &self.select
+    }
+
+    pub fn select_mut(&mut self) -> &mut SelectComponent {
+        &mut self.select
+    }
+
+    pub fn render_input_line(&self, ctx: &RenderContext, focused: bool) -> RenderLine {
         let inline_error = self.input.has_visible_error();
-        let (spans, cursor_offset) =
-            ctx.render_input_full(&self.input, inline_error, self.base.focused);
-        lines.push(RenderLine {
+        let (spans, cursor_offset) = ctx.render_input_full(&self.input, inline_error, focused);
+        RenderLine {
             spans,
             cursor_offset,
-        });
-        lines.extend(self.select.render(ctx));
+        }
+    }
 
-        if let Some(new_entry) = self.new_entry_candidate() {
-            if self.entries.is_empty() {
-                let tag = if new_entry.is_dir { "NEW DIR" } else { "NEW FILE" };
-                let tag_style = Style::new().with_color(Color::Green).with_bold();
-                let name_style = Style::new().with_color(Color::Yellow);
-                lines.push(RenderLine {
-                    spans: vec![
-                        Span::new("[".to_string()),
-                        Span::new(tag).with_style(tag_style),
-                        Span::new("] "),
-                        Span::new(new_entry.label).with_style(name_style),
-                    ],
-                    cursor_offset: None,
-                });
+    pub fn render_list_lines(&mut self, ctx: &RenderContext, focused: bool) -> Vec<RenderLine> {
+        let mut lines = Vec::new();
+        // Add column headers if showing info
+        if self.show_info && !self.entries.is_empty() {
+            let max_name_width = compute_max_name_width(&self.entries, true);
+
+            let header_style = Style::new().with_color(Color::DarkGrey).with_dim();
+            // NAME is 4 chars, so padding is max_name_width - 4
+            let padding_after_name = if max_name_width > 4 {
+                " ".repeat(max_name_width - 4)
+            } else {
+                String::new()
+            };
+            lines.push(RenderLine {
+                spans: vec![
+                    Span::new(format!(
+                        "  NAME{}    {:>5}  {:>8}  {:>7}",
+                        padding_after_name, "TYPE", "SIZE", "MODIFIED"
+                    ))
+                    .with_style(header_style),
+                ],
+                cursor_offset: None,
+            });
+        }
+
+        let prev_focus = self.select.is_focused();
+        self.select.set_focused(focused);
+        let select_lines = self.select.render(ctx);
+        self.select.set_focused(prev_focus);
+        let options_len = self.select.options().len();
+        let max_visible = self.select.max_visible_value();
+        lines.extend(select_lines);
+        let mut padding = 0usize;
+        if let Some(max_visible) = max_visible {
+            if options_len < max_visible {
+                padding = max_visible - options_len;
+            }
+            let footer_present = options_len > max_visible;
+            if !footer_present {
+                // Reserve space for the select footer line to keep height stable.
+                padding += 1;
             }
         }
 
-        if self.is_searching_current() {
+        // Show [NEW DIR] / [NEW FILE] only when not searching
+        if !self.is_searching_current() {
+            if let Some(new_entry) = self.new_entry_candidate() {
+                if self.entries.is_empty() {
+                    let tag = if new_entry.is_dir {
+                        "NEW DIR"
+                    } else {
+                        "NEW FILE"
+                    };
+                    let tag_style = Style::new().with_color(Color::Green).with_bold();
+                    let name_style = Style::new().with_color(Color::Yellow);
+                    lines.push(RenderLine {
+                        spans: vec![
+                            Span::new("[".to_string()),
+                            Span::new(tag).with_style(tag_style),
+                            Span::new("] "),
+                            Span::new(new_entry.label).with_style(name_style),
+                        ],
+                        cursor_offset: None,
+                    });
+                }
+            }
+        }
+
+        // Keep height stable: spinner consumes one padding row when available.
+        let show_spinner = self.is_searching_current() && padding > 0;
+        if show_spinner {
+            padding = padding.saturating_sub(1);
+        }
+        for _ in 0..padding {
+            lines.push(RenderLine {
+                spans: vec![Span::new(" ").with_wrap(crate::ui::span::Wrap::No)],
+                cursor_offset: None,
+            });
+        }
+        if show_spinner {
             let spinner = self.spinner_frame();
-            let style = Style::new().with_color(Color::Cyan).with_bold();
+            let spinner_style = Style::new().with_color(Color::Cyan).with_bold();
             lines.push(RenderLine {
                 spans: vec![
-                    Span::new(spinner.to_string()).with_style(style),
+                    Span::new(spinner).with_style(spinner_style),
                     Span::new(" Searching..."),
                 ],
                 cursor_offset: None,
             });
         }
+
         lines
     }
 
-    fn value(&self) -> Option<Value> {
+    pub fn selected_value(&self) -> Option<Value> {
         self.selected_entry()
             .map(|entry| Value::Text(entry.path.to_string_lossy().to_string()))
     }
 
-    fn set_value(&mut self, value: Value) {
+    pub fn set_value(&mut self, value: Value) {
         if let Value::Text(text) = value {
             self.input.set_value(text);
             self.refresh_view();
         }
     }
 
-    fn handle_key(
+    pub fn handle_list_key(
         &mut self,
         code: KeyCode,
         modifiers: KeyModifiers,
-        ctx: &mut EventContext,
+        ctx: &mut crate::core::component::EventContext,
+    ) -> bool {
+        self.poll_scans();
+        if modifiers != KeyModifiers::NONE {
+            return false;
+        }
+
+        match code {
+            KeyCode::Up | KeyCode::Down | KeyCode::Char(' ') => {
+                return self.select.handle_key(code, modifiers, ctx);
+            }
+            KeyCode::Right => {
+                if let Some(entry) = self.selected_entry().cloned() {
+                    if entry.is_dir {
+                        self.enter_dir(&entry.path);
+                        ctx.handled();
+                        return true;
+                    }
+                }
+                return false;
+            }
+            KeyCode::Left => {
+                self.leave_dir();
+                ctx.handled();
+                return true;
+            }
+            KeyCode::Enter => {
+                if self.entries.is_empty() {
+                    if let Some(new_entry) = self.new_entry_candidate() {
+                        if new_entry.is_dir {
+                            if fs::create_dir_all(&new_entry.path).is_ok() {
+                                self.enter_dir(&new_entry.path);
+                                ctx.handled();
+                                return true;
+                            }
+                        } else {
+                            if let Some(parent) = new_entry.path.parent() {
+                                let _ = fs::create_dir_all(parent);
+                            }
+                            if fs::File::create(&new_entry.path).is_ok() {
+                                ctx.produce(Value::Text(
+                                    new_entry.path.to_string_lossy().to_string(),
+                                ));
+                                ctx.handled();
+                                return true;
+                            }
+                        }
+                    }
+                }
+                if let Some(entry) = self.selected_entry().cloned() {
+                    if entry.is_dir {
+                        self.enter_dir(&entry.path);
+                        ctx.handled();
+                        return true;
+                    }
+                }
+                if let Some(value) = self.selected_value() {
+                    ctx.produce(value);
+                    return true;
+                }
+                false
+            }
+            _ => false,
+        }
+    }
+
+    pub fn handle_input_key(
+        &mut self,
+        code: KeyCode,
+        modifiers: KeyModifiers,
+        ctx: &mut crate::core::component::EventContext,
     ) -> bool {
         self.poll_scans();
         if modifiers.contains(KeyModifiers::CONTROL) {
@@ -913,60 +1081,6 @@ impl Component for FileBrowserComponent {
         }
         if modifiers == KeyModifiers::NONE {
             match code {
-                KeyCode::Up | KeyCode::Down | KeyCode::Char(' ') => {
-                    return self.select.handle_key(code, modifiers, ctx);
-                }
-                KeyCode::Right => {
-                    if let Some(entry) = self.selected_entry().cloned() {
-                        if entry.is_dir {
-                            self.enter_dir(&entry.path);
-                            ctx.handled();
-                            return true;
-                        }
-                    }
-                    return false;
-                }
-                KeyCode::Left => {
-                    self.leave_dir();
-                    ctx.handled();
-                    return true;
-                }
-                KeyCode::Enter => {
-                    if self.entries.is_empty() {
-                        if let Some(new_entry) = self.new_entry_candidate() {
-                            if new_entry.is_dir {
-                                if fs::create_dir_all(&new_entry.path).is_ok() {
-                                    self.enter_dir(&new_entry.path);
-                                    ctx.handled();
-                                    return true;
-                                }
-                            } else {
-                                if let Some(parent) = new_entry.path.parent() {
-                                    let _ = fs::create_dir_all(parent);
-                                }
-                                if fs::File::create(&new_entry.path).is_ok() {
-                                    ctx.produce(Value::Text(
-                                        new_entry.path.to_string_lossy().to_string(),
-                                    ));
-                                    ctx.handled();
-                                    return true;
-                                }
-                            }
-                        }
-                    }
-                    if let Some(entry) = self.selected_entry().cloned() {
-                        if entry.is_dir {
-                            self.enter_dir(&entry.path);
-                            ctx.handled();
-                            return true;
-                        }
-                    }
-                    if let Some(value) = self.value() {
-                        ctx.produce(value);
-                        return true;
-                    }
-                    return false;
-                }
                 KeyCode::Tab => {
                     if !self.has_autocomplete_candidates() {
                         return false;
@@ -984,7 +1098,8 @@ impl Component for FileBrowserComponent {
         let after = self.input.value();
 
         if before != after {
-            self.refresh_view();
+            // Set debounce timer instead of immediate refresh
+            self.mark_input_changed();
             ctx.handled();
             return true;
         }
@@ -1002,9 +1117,32 @@ impl Component for FileBrowserComponent {
         }
     }
 
-    fn poll(&mut self) -> bool {
+    pub fn handle_combined_key(
+        &mut self,
+        code: KeyCode,
+        modifiers: KeyModifiers,
+        ctx: &mut crate::core::component::EventContext,
+    ) -> bool {
+        if self.handle_list_key(code, modifiers, ctx) {
+            return true;
+        }
+        self.handle_input_key(code, modifiers, ctx)
+    }
+
+    pub fn poll(&mut self) -> bool {
         let updated_scans = self.poll_scans();
         let updated_cache = self.apply_cached_search_if_ready();
+
+        // Handle debounced input
+        let mut debounce_triggered = false;
+        if let Some(debounce_time) = self.input_debounce {
+            if debounce_time.elapsed() >= Duration::from_millis(50) {
+                self.input_debounce = None;
+                self.refresh_view();
+                debounce_triggered = true;
+            }
+        }
+
         let mut updated_spinner = false;
         if self.is_searching_current() {
             self.spinner_tick = self.spinner_tick.wrapping_add(1);
@@ -1016,21 +1154,18 @@ impl Component for FileBrowserComponent {
             self.spinner_tick = 0;
             self.spinner_index = 0;
         }
-        updated_scans || updated_cache || updated_spinner
+
+        // Return true if debounce is pending to keep polling
+        let debounce_pending = self.input_debounce.is_some();
+        updated_scans || updated_cache || updated_spinner || debounce_triggered || debounce_pending
     }
 
-    fn set_focused(&mut self, focused: bool) {
-        self.base.focused = focused;
-        self.input.set_focused(focused);
-        self.select.set_focused(focused);
-    }
-
-    fn delete_word(&mut self, ctx: &mut EventContext) -> bool {
+    pub fn delete_word(&mut self, ctx: &mut crate::core::component::EventContext) -> bool {
         let before = self.input.value();
         self.input.delete_word();
         let after = self.input.value();
         if before != after {
-            self.refresh_view();
+            self.mark_input_changed();
             ctx.handled();
             true
         } else {
@@ -1038,12 +1173,12 @@ impl Component for FileBrowserComponent {
         }
     }
 
-    fn delete_word_forward(&mut self, ctx: &mut EventContext) -> bool {
+    pub fn delete_word_forward(&mut self, ctx: &mut crate::core::component::EventContext) -> bool {
         let before = self.input.value();
         self.input.delete_word_forward();
         let after = self.input.value();
         if before != after {
-            self.refresh_view();
+            self.mark_input_changed();
             ctx.handled();
             true
         } else {
@@ -1065,12 +1200,7 @@ fn parse_input(raw: &str, current_dir: &Path) -> ParsedInput {
     let trimmed = raw.trim();
     let path_part = trimmed;
 
-    let path_mode = path_part.starts_with('~')
-        || path_part.starts_with('/')
-        || path_part.starts_with("./")
-        || path_part.starts_with("../")
-        || path_part.starts_with(".\\")
-        || path_part.starts_with("..\\");
+    let path_mode = is_path_mode(path_part);
 
     let ends_with_slash = path_part.ends_with('/');
     let (dir_prefix, segment) = split_path(path_part);
@@ -1089,19 +1219,14 @@ fn parse_input(raw: &str, current_dir: &Path) -> ParsedInput {
     }
 }
 
-fn normalize_input(raw: &str, current_dir: &Path) -> String {
+fn normalize_input(raw: &str, _current_dir: &Path) -> String {
     let trimmed = raw.trim();
     if trimmed.is_empty() {
         return raw.to_string();
     }
     let path_part = trimmed;
 
-    let path_mode = path_part.starts_with('~')
-        || path_part.starts_with('/')
-        || path_part.starts_with("./")
-        || path_part.starts_with("../")
-        || path_part.starts_with(".\\")
-        || path_part.starts_with("..\\");
+    let path_mode = is_path_mode(path_part);
 
     if !path_mode {
         return raw.to_string();
@@ -1117,11 +1242,20 @@ fn normalize_input(raw: &str, current_dir: &Path) -> String {
         return raw.to_string();
     }
 
-    let normalized_path = normalize_path_part(path_part, current_dir);
+    let normalized_path = normalize_path_part(path_part);
     if normalized_path == path_part {
         return raw.to_string();
     }
     normalized_path
+}
+
+fn is_path_mode(path_part: &str) -> bool {
+    path_part.starts_with('~')
+        || path_part.starts_with('/')
+        || path_part.starts_with("./")
+        || path_part.starts_with("../")
+        || path_part.starts_with(".\\")
+        || path_part.starts_with("..\\")
 }
 
 fn split_path(path: &str) -> (String, String) {
@@ -1164,7 +1298,7 @@ fn resolve_path(path: &str, current_dir: &Path) -> PathBuf {
     path
 }
 
-fn normalize_path_part(path_part: &str, _current_dir: &Path) -> String {
+fn normalize_path_part(path_part: &str) -> String {
     if path_part.is_empty() {
         return String::new();
     }
@@ -1304,6 +1438,26 @@ fn list_dir_recursive(dir: &Path, hide_hidden: bool) -> Vec<FileEntry> {
     entries
 }
 
+fn list_dir_recursive_inner(dir: &Path, entries: &mut Vec<FileEntry>, hide_hidden: bool) {
+    let Ok(read_dir) = fs::read_dir(dir) else {
+        return;
+    };
+    for entry in read_dir.flatten() {
+        let path = entry.path();
+        let file_type = entry.file_type().ok();
+        let is_dir = file_type.map(|t| t.is_dir()).unwrap_or(false);
+        let name = entry.file_name().to_string_lossy().to_string();
+        if hide_hidden && name.starts_with('.') {
+            continue;
+        }
+        let metadata = entry.metadata().ok();
+        entries.push(build_entry(name, path.clone(), is_dir, metadata));
+        if is_dir {
+            list_dir_recursive_inner(&path, entries, hide_hidden);
+        }
+    }
+}
+
 fn list_dir_recursive_glob(dir: &Path, hide_hidden: bool, pattern: &str) -> Vec<FileEntry> {
     let mut entries = Vec::new();
     let normalized = pattern.replace('\\', "/");
@@ -1334,26 +1488,6 @@ fn glob_prefix_len(pattern_segments: &[String]) -> usize {
         }
     }
     pattern_segments.len()
-}
-
-fn list_dir_recursive_inner(dir: &Path, entries: &mut Vec<FileEntry>, hide_hidden: bool) {
-    let Ok(read_dir) = fs::read_dir(dir) else {
-        return;
-    };
-    for entry in read_dir.flatten() {
-        let path = entry.path();
-        let file_type = entry.file_type().ok();
-        let is_dir = file_type.map(|t| t.is_dir()).unwrap_or(false);
-        let name = entry.file_name().to_string_lossy().to_string();
-        if hide_hidden && name.starts_with('.') {
-            continue;
-        }
-        let metadata = entry.metadata().ok();
-        entries.push(build_entry(name, path.clone(), is_dir, metadata));
-        if is_dir {
-            list_dir_recursive_inner(&path, entries, hide_hidden);
-        }
-    }
 }
 
 fn list_dir_recursive_glob_inner(
@@ -1423,7 +1557,8 @@ fn entry_sort(a: &FileEntry, b: &FileEntry) -> Ordering {
     }
 }
 
-const MAX_MATCHES: usize = 2000;
+const MAX_MATCHES: usize = 5000;
+const QUICK_MATCH_THRESHOLD: usize = 10000;
 
 fn options_from_query(
     entries: &[FileEntry],
@@ -1433,74 +1568,102 @@ fn options_from_query(
     show_info: bool,
 ) -> (Vec<FileEntry>, Vec<SelectOption>, Vec<fuzzy::FuzzyMatch>) {
     let query = query.trim();
+    let max_name_width = compute_max_name_width(entries, show_info);
+
     if query.is_empty() {
         let options = entries
             .iter()
-            .map(|entry| entry_option(entry, &[], display_root, show_relative, show_info))
+            .map(|entry| {
+                entry_option(
+                    entry,
+                    &[],
+                    display_root,
+                    show_relative,
+                    show_info,
+                    max_name_width,
+                )
+            })
             .collect::<Vec<_>>();
         return (entries.to_vec(), options, Vec::new());
     }
 
-    let mut indices: Vec<usize> = (0..entries.len()).collect();
-    if let Some(filtered) = prefilter_entries(entries, query) {
-        indices = filtered;
-    }
-
-    let names = indices
-        .iter()
-        .map(|idx| entries[*idx].name.clone())
-        .collect::<Vec<_>>();
-    let mut matches = if names.len() > MAX_MATCHES * 4 {
-        fuzzy::match_candidates_top(query, &names, MAX_MATCHES)
+    // Prefilter to reduce candidate set
+    let indices: Vec<usize> = if let Some(filtered) = prefilter_entries(entries, query) {
+        filtered
     } else {
-        fuzzy::match_candidates(query, &names)
+        (0..entries.len()).collect()
     };
 
-    matches.sort_by(|a, b| {
-        let a_entry = indices
-            .get(a.index)
-            .and_then(|idx| entries.get(*idx));
-        let b_entry = indices
-            .get(b.index)
-            .and_then(|idx| entries.get(*idx));
-        match (a_entry, b_entry) {
-            (Some(ae), Some(be)) => {
-                let dir_order = match (ae.is_dir, be.is_dir) {
-                    (true, false) => Ordering::Less,
-                    (false, true) => Ordering::Greater,
-                    _ => Ordering::Equal,
-                };
-                if dir_order != Ordering::Equal {
-                    return dir_order;
-                }
-            }
-            _ => {}
-        }
-        b.score.cmp(&a.score)
-    });
+    // Early exit if no matches possible
+    if indices.is_empty() {
+        return (Vec::new(), Vec::new(), Vec::new());
+    }
 
-    let mut matched_entries = Vec::with_capacity(matches.len());
-    let mut options = Vec::with_capacity(matches.len());
-    let mut adjusted = Vec::with_capacity(matches.len());
+    // Use references instead of cloning names
+    let candidate_names: Vec<String> = indices
+        .iter()
+        .map(|&idx| entries[idx].name.clone())
+        .collect();
+
+    // Choose algorithm based on size
+    let mut matches = if indices.len() > QUICK_MATCH_THRESHOLD {
+        // For very large sets, use top-k algorithm
+        fuzzy::match_candidates_top(query, &candidate_names, MAX_MATCHES)
+    } else if indices.len() > MAX_MATCHES * 2 {
+        // For medium sets, also use top-k but with higher limit
+        fuzzy::match_candidates_top(query, &candidate_names, MAX_MATCHES)
+    } else {
+        // For small sets, do full matching
+        fuzzy::match_candidates(query, &candidate_names)
+    };
+
+    // Sort by score (fuzzy/glob results should prioritize match quality)
+    matches.sort_unstable_by(|a, b| b.score.cmp(&a.score).then_with(|| a.index.cmp(&b.index)));
+
+    // Limit results
+    if matches.len() > MAX_MATCHES {
+        matches.truncate(MAX_MATCHES);
+    }
+
+    // Build results efficiently - first collect entries and matches
+    let capacity = matches.len();
+    let mut matched_entries = Vec::with_capacity(capacity);
+    let mut temp_matches = Vec::with_capacity(capacity);
+
     for (pos, m) in matches.into_iter().enumerate() {
-        if let Some(entry_idx) = indices.get(m.index).copied() {
+        if let Some(&entry_idx) = indices.get(m.index) {
             if let Some(entry) = entries.get(entry_idx) {
                 matched_entries.push(entry.clone());
-                options.push(entry_option(
-                    entry,
-                    &m.ranges,
-                    display_root,
-                    show_relative,
-                    show_info,
+                temp_matches.push((
+                    m.ranges.clone(),
+                    fuzzy::FuzzyMatch {
+                        index: pos,
+                        score: m.score,
+                        matched_indices: m.matched_indices,
+                        ranges: m.ranges,
+                    },
                 ));
-                adjusted.push(fuzzy::FuzzyMatch {
-                    index: pos,
-                    score: m.score,
-                    matched_indices: m.matched_indices,
-                    ranges: m.ranges,
-                });
             }
         }
+    }
+
+    // Calculate max width for matched entries only
+    let max_name_width = compute_max_name_width(&matched_entries, show_info);
+
+    // Now create options with correct padding
+    let mut options = Vec::with_capacity(matched_entries.len());
+    let mut adjusted = Vec::with_capacity(matched_entries.len());
+
+    for (entry, (ranges, adj_match)) in matched_entries.iter().zip(temp_matches.into_iter()) {
+        options.push(entry_option(
+            entry,
+            &ranges,
+            display_root,
+            show_relative,
+            show_info,
+            max_name_width,
+        ));
+        adjusted.push(adj_match);
     }
 
     (matched_entries, options, adjusted)
@@ -1568,26 +1731,23 @@ fn build_glob_options(
     indices.sort_by(|&a, &b| {
         let ea = &entries[a];
         let eb = &entries[b];
-        let depth_a = match glob_depth(ea, display_root) {
-            Some(depth) => depth,
-            None => usize::MAX,
-        };
-        let depth_b = match glob_depth(eb, display_root) {
-            Some(depth) => depth,
-            None => usize::MAX,
-        };
-        depth_a
-            .cmp(&depth_b)
-            .then_with(|| match (ea.is_dir, eb.is_dir) {
-                (true, false) => Ordering::Less,
-                (false, true) => Ordering::Greater,
-                _ => Ordering::Equal,
-            })
-            .then_with(|| ea.name.to_lowercase().cmp(&eb.name.to_lowercase()))
+        let score_a = glob_score(name_pattern, &ea.name);
+        let score_b = glob_score(name_pattern, &eb.name);
+        let depth_a = glob_depth(ea, display_root).unwrap_or(usize::MAX);
+        let depth_b = glob_depth(eb, display_root).unwrap_or(usize::MAX);
+
+        score_b
+            .cmp(&score_a)
+            .then_with(|| depth_a.cmp(&depth_b))
+            .then_with(|| ea.name_lower.cmp(&eb.name_lower))
     });
 
     let mut sorted_entries = Vec::with_capacity(entries.len());
     let mut sorted_options = Vec::with_capacity(entries.len());
+
+    // Calculate max name width
+    let max_name_width = compute_max_name_width(entries, show_info);
+
     for idx in indices {
         let entry = entries[idx].clone();
         let highlights = glob_highlights(name_pattern, &entry.name);
@@ -1598,6 +1758,7 @@ fn build_glob_options(
             display_root,
             show_relative,
             show_info,
+            max_name_width,
         ));
     }
     *entries = sorted_entries;
@@ -1614,6 +1775,14 @@ fn glob_depth(entry: &FileEntry, display_root: Option<&Path>) -> Option<usize> {
     }
 }
 
+fn glob_score(pattern: &str, name: &str) -> usize {
+    let highlights = glob_highlights(pattern, name);
+    highlights
+        .iter()
+        .map(|(start, end)| end.saturating_sub(*start))
+        .sum()
+}
+
 fn split_segments(path: &str) -> Vec<String> {
     path.split('/')
         .filter(|part| !part.is_empty())
@@ -1625,7 +1794,6 @@ fn glob_match_path_segments(pattern_segments: &[String], target: &str) -> bool {
     let target_segments = split_segments(target);
     glob_match_segments(pattern_segments, &target_segments)
 }
-
 
 fn glob_match_segments(pattern: &[String], target: &[String]) -> bool {
     if pattern.is_empty() {
@@ -1754,44 +1922,128 @@ fn prefilter_entries(entries: &[FileEntry], query: &str) -> Option<Vec<usize>> {
     if query.contains('/') || query.contains('\\') {
         return None;
     }
-    if !query.starts_with('.') {
-        let q = query.to_ascii_lowercase();
-        if q.len() < 2 {
-            return None;
-        }
+
+    let q = query.to_ascii_lowercase();
+
+    // Early exit for empty or very short queries
+    if q.is_empty() {
+        return None;
+    }
+
+    // Extension filter - very fast path
+    if q.starts_with('.') && q.len() > 1 {
         let filtered: Vec<usize> = entries
             .iter()
             .enumerate()
             .filter_map(|(idx, entry)| {
-                if entry.name_lower.contains(&q) {
+                if entry.name_lower.ends_with(&q) {
                     Some(idx)
                 } else {
                     None
                 }
             })
             .collect();
-        if filtered.is_empty() {
-            return None;
-        }
-        return Some(filtered);
+        return if filtered.is_empty() {
+            None
+        } else {
+            Some(filtered)
+        };
     }
-    let needle = query.to_ascii_lowercase();
-    let filtered: Vec<usize> = entries
+
+    // Character set prefilter - check if entry has all query chars
+    if q.len() >= 2 {
+        let query_chars: Vec<char> = q.chars().collect();
+        let first_char = query_chars[0];
+
+        let filtered: Vec<usize> = entries
+            .iter()
+            .enumerate()
+            .filter_map(|(idx, entry)| {
+                // Quick first char check
+                if !entry.name_lower.contains(first_char) {
+                    return None;
+                }
+
+                // Check if all query chars exist in order
+                let mut q_idx = 0;
+                for ch in entry.name_lower.chars() {
+                    if q_idx >= query_chars.len() {
+                        break;
+                    }
+                    if ch == query_chars[q_idx] {
+                        q_idx += 1;
+                    }
+                }
+
+                if q_idx == query_chars.len() {
+                    Some(idx)
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        return if filtered.is_empty() {
+            None
+        } else {
+            Some(filtered)
+        };
+    }
+
+    None
+}
+
+fn compute_max_name_width(entries: &[FileEntry], show_info: bool) -> usize {
+    if !show_info {
+        return 0;
+    }
+    entries
         .iter()
-        .enumerate()
-        .filter_map(|(idx, entry)| {
-            if entry.name_lower.ends_with(&needle) {
-                Some(idx)
-            } else {
-                None
-            }
-        })
-        .collect();
-    if filtered.is_empty() {
-        None
-    } else {
-        Some(filtered)
+        .map(|e| e.name.chars().count())
+        .max()
+        .unwrap_or(0)
+}
+
+fn build_options(
+    entries: &[FileEntry],
+    matches: Option<&[fuzzy::FuzzyMatch]>,
+    display_root: Option<&Path>,
+    show_relative: bool,
+    show_info: bool,
+) -> Vec<SelectOption> {
+    let max_name_width = compute_max_name_width(entries, show_info);
+    if let Some(matches) = matches {
+        if !matches.is_empty() {
+            return entries
+                .iter()
+                .zip(matches.iter())
+                .map(|(entry, m)| {
+                    entry_option(
+                        entry,
+                        &m.ranges,
+                        display_root,
+                        show_relative,
+                        show_info,
+                        max_name_width,
+                    )
+                })
+                .collect();
+        }
     }
+
+    entries
+        .iter()
+        .map(|entry| {
+            entry_option(
+                entry,
+                &[],
+                display_root,
+                show_relative,
+                show_info,
+                max_name_width,
+            )
+        })
+        .collect()
 }
 
 fn entry_option(
@@ -1800,9 +2052,12 @@ fn entry_option(
     display_root: Option<&Path>,
     show_relative: bool,
     show_info: bool,
+    max_name_width: usize,
 ) -> SelectOption {
     let suffix = if show_info {
-        entry_info_suffix(entry).map(|info| format!("  {}", info))
+        let padding_needed = max_name_width.saturating_sub(entry.name.chars().count());
+        let padding = " ".repeat(padding_needed);
+        entry_info_suffix(entry).map(|info| format!("{}  {}", padding, info))
     } else {
         None
     };
@@ -1879,18 +2134,43 @@ fn entry_option(
 
 fn entry_info_suffix(entry: &FileEntry) -> Option<String> {
     let mut parts = Vec::new();
+
+    // Type indicator (DIR or extension)
+    let type_str = if entry.is_dir {
+        "DIR".to_string()
+    } else if let Some(ext) = &entry.ext_lower {
+        if ext.len() <= 5 {
+            ext.to_uppercase()
+        } else {
+            ext[..5].to_uppercase()
+        }
+    } else {
+        "FILE".to_string()
+    };
+    parts.push(format!("{:>5}", type_str));
+
+    // Size (for files only)
     if !entry.is_dir {
         if let Some(size) = entry.size {
-            parts.push(format_size(size));
+            parts.push(format!("{:>8}", format_size(size)));
+        } else {
+            parts.push(format!("{:>8}", "-"));
         }
+    } else {
+        parts.push(format!("{:>8}", "-"));
     }
+
+    // Modified time
     if let Some(modified) = entry.modified {
-        parts.push(format_age(modified));
+        parts.push(format!("{:>7}", format_age(modified)));
+    } else {
+        parts.push(format!("{:>7}", "-"));
     }
+
     if parts.is_empty() {
         None
     } else {
-        Some(parts.join(" "))
+        Some(format!("  {}", parts.join("  ")))
     }
 }
 
@@ -2102,7 +2382,12 @@ fn normalize_ext(ext: &str) -> String {
     ext.trim_start_matches('.').to_ascii_lowercase()
 }
 
-fn build_entry(name: String, path: PathBuf, is_dir: bool, metadata: Option<fs::Metadata>) -> FileEntry {
+fn build_entry(
+    name: String,
+    path: PathBuf,
+    is_dir: bool,
+    metadata: Option<fs::Metadata>,
+) -> FileEntry {
     let name_lower = name.to_ascii_lowercase();
     let ext_lower = if is_dir {
         None
@@ -2119,7 +2404,7 @@ fn build_entry(name: String, path: PathBuf, is_dir: bool, metadata: Option<fs::M
         name,
         name_lower,
         ext_lower,
-        path,
+        path: Arc::new(path),
         is_dir,
         size,
         modified,
@@ -2173,6 +2458,13 @@ fn elide_middle(text: &str, max_len: usize) -> String {
     let head_len = keep / 2;
     let tail_len = keep - head_len;
     let head: String = text.chars().take(head_len).collect();
-    let tail: String = text.chars().rev().take(tail_len).collect::<Vec<_>>().into_iter().rev().collect();
+    let tail: String = text
+        .chars()
+        .rev()
+        .take(tail_len)
+        .collect::<Vec<_>>()
+        .into_iter()
+        .rev()
+        .collect();
     format!("{}...{}", head, tail)
 }

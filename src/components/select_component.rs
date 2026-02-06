@@ -167,6 +167,10 @@ impl SelectComponent {
         &self.options
     }
 
+    pub fn max_visible_value(&self) -> Option<usize> {
+        self.max_visible
+    }
+
     pub fn active_index(&self) -> usize {
         self.active_index
     }
@@ -448,7 +452,12 @@ fn render_option_spans(
                 spans.push(Span::new(prefix).with_style(prefix_style.clone()));
             }
             let merged = base_style.clone().merge(name_style);
-            spans.extend(render_text_spans(&name, highlights, &merged, highlight_style));
+            spans.extend(render_text_spans(
+                &name,
+                highlights,
+                &merged,
+                highlight_style,
+            ));
             spans
         }
         SelectOption::Suffix {
@@ -461,7 +470,12 @@ fn render_option_spans(
             let (name, suffix) = split_text_at_char(text, *suffix_start);
             let mut spans = Vec::new();
             let merged = base_style.clone().merge(style);
-            spans.extend(render_text_spans(&name, highlights, &merged, highlight_style));
+            spans.extend(render_text_spans(
+                &name,
+                highlights,
+                &merged,
+                highlight_style,
+            ));
             if !suffix.is_empty() {
                 let merged_suffix = base_style.clone().merge(suffix_style);
                 spans.push(Span::new(suffix).with_style(merged_suffix));
@@ -485,7 +499,12 @@ fn render_option_spans(
                 spans.push(Span::new(prefix).with_style(prefix_style.clone()));
             }
             let merged = base_style.clone().merge(name_style);
-            spans.extend(render_text_spans(&name, highlights, &merged, highlight_style));
+            spans.extend(render_text_spans(
+                &name,
+                highlights,
+                &merged,
+                highlight_style,
+            ));
             if !suffix.is_empty() {
                 let merged_suffix = base_style.clone().merge(suffix_style);
                 spans.push(Span::new(suffix).with_style(merged_suffix));

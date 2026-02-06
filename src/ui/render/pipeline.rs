@@ -202,8 +202,14 @@ impl RenderPipeline {
     ) -> io::Result<Option<(u16, u16)>> {
         terminal.refresh_size()?;
         let width = terminal.size().width;
-        let start_col = self.decoration_width() as u16;
-        let available = width.saturating_sub(start_col);
+        let decoration_width = self.decoration_width() as u16;
+        let decorated = self.decoration_enabled;
+        let start_col = if decorated { 0 } else { decoration_width };
+        let content_width = if decorated {
+            width.saturating_sub(decoration_width)
+        } else {
+            width.saturating_sub(start_col)
+        };
 
         let start_row = anchor_cursor
             .map(|(_, row)| row + 1)
@@ -220,48 +226,114 @@ impl RenderPipeline {
             render_lines
                 .iter()
                 .map(|l| (l.spans.clone(), l.cursor_offset)),
-            available as u16,
+            content_width as u16,
         );
 
         let content_lines = frame.lines();
-        let separator = self.build_separator_line(width, theme);
+        let separator = if decorated {
+            self.build_separator_line(width, theme)
+        } else {
+            self.build_separator_line(content_width, theme)
+        };
 
         let total_lines = content_lines.len() + 2;
+        let total_lines_with_corner = if decorated {
+            total_lines + 1
+        } else {
+            total_lines
+        };
+
+        if let Some(region) = &self.region {
+            let offset = start_row.saturating_sub(region.start_row) as usize;
+            let desired = offset + total_lines_with_corner;
+            if desired > region.line_count {
+                let _ = self.ensure_region(terminal, desired)?;
+            }
+        }
 
         if let Some(prev) = &self.layer_region {
-            if prev.line_count > total_lines {
-                for idx in total_lines..prev.line_count {
+            if prev.line_count > total_lines_with_corner {
+                for idx in total_lines_with_corner..prev.line_count {
                     let row = start_row + idx as u16;
                     self.clear_line_at(terminal, row)?;
                 }
             }
         }
 
-        self.draw_line_at(terminal, start_row, &separator)?;
+        let gutter_style = theme.decor_active.clone();
+        let decorate_line = |mut line: Line| {
+            if decorated {
+                let mut new_line = Line::new();
+                new_line.push(
+                    Span::new("│  ")
+                        .with_style(gutter_style.clone())
+                        .with_wrap(Wrap::No),
+                );
+                for span in line.take_spans() {
+                    new_line.push(span);
+                }
+                new_line
+            } else {
+                line
+            }
+        };
+
+        if decorated {
+            self.draw_line_at(terminal, start_row, &separator)?;
+        } else {
+            self.draw_line_at(terminal, start_row, &decorate_line(separator.clone()))?;
+        }
 
         for (idx, line) in content_lines.iter().enumerate() {
             let row = start_row + 1 + idx as u16;
             terminal.queue_move_cursor(start_col, row)?;
-            terminal.render_line(line)?;
-            let line_width = line.width();
-            if line_width < available as usize {
-                let padding = available as usize - line_width;
+            let decorated_line = decorate_line(line.clone());
+            terminal.render_line(&decorated_line)?;
+            let line_width = decorated_line.width();
+            let target_width = if decorated {
+                width as usize
+            } else {
+                content_width as usize
+            };
+            if line_width < target_width {
+                let padding = target_width - line_width;
                 terminal.writer_mut().write_all(&vec![b' '; padding])?;
             }
         }
 
         let bottom_row = start_row + 1 + content_lines.len() as u16;
-        self.draw_line_at(terminal, bottom_row, &separator)?;
+        if decorated {
+            self.draw_line_at(terminal, bottom_row, &separator)?;
+        } else {
+            self.draw_line_at(terminal, bottom_row, &decorate_line(separator))?;
+        }
+
+        if decorated {
+            let mut corner = Line::new();
+            corner.push(
+                Span::new("└  ")
+                    .with_style(theme.decor_active.clone())
+                    .with_wrap(Wrap::No),
+            );
+            let corner_row = bottom_row + 1;
+            self.draw_line_at(terminal, corner_row, &corner)?;
+        }
 
         terminal.flush()?;
 
         self.layer_region = Some(LayerRegion {
             start_row,
-            line_count: total_lines,
+            line_count: total_lines_with_corner,
         });
 
-        let cursor =
-            cursor_pos.map(|(col, row)| (start_col + col as u16, start_row + 1 + row as u16));
+        let cursor = cursor_pos.map(|(col, row)| {
+            let col = if decorated {
+                decoration_width + col as u16
+            } else {
+                start_col + col as u16
+            };
+            (col, start_row + 1 + row as u16)
+        });
 
         Ok(cursor)
     }

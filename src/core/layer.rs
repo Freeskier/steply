@@ -3,6 +3,13 @@ use crate::core::event_queue::AppEvent;
 use crate::core::node::Node;
 use crate::core::node::NodeId;
 use crate::core::value::Value;
+use crate::terminal::KeyEvent;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LayerFocusMode {
+    Modal,
+    Shared,
+}
 
 pub trait Layer {
     fn id(&self) -> &str;
@@ -15,6 +22,10 @@ pub trait Layer {
 
     fn nodes_mut(&mut self) -> &mut [Node];
 
+    fn focus_mode(&self) -> LayerFocusMode {
+        LayerFocusMode::Modal
+    }
+
     fn bind_target(&self) -> Option<BindTarget> {
         None
     }
@@ -24,6 +35,10 @@ pub trait Layer {
     fn set_value(&mut self, _value: Value) {}
 
     fn emit_close_events(&mut self, _emit: &mut dyn FnMut(AppEvent)) {}
+
+    fn handle_key(&mut self, _key: KeyEvent, _emit: &mut dyn FnMut(AppEvent)) -> bool {
+        false
+    }
 }
 
 pub struct ActiveLayer {

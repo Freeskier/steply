@@ -14,6 +14,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::thread;
+use std::time::{Duration, SystemTime};
 
 pub struct FileBrowserComponent {
     base: ComponentBase,
@@ -26,6 +27,7 @@ pub struct FileBrowserComponent {
     recursive_search: bool,
     hide_hidden: bool,
     show_relative_paths: bool,
+    show_info: bool,
     entry_filter: EntryFilter,
     extension_filter: Option<HashSet<String>>,
     cache: HashMap<String, SearchResult>,
@@ -45,6 +47,8 @@ struct FileEntry {
     ext_lower: Option<String>,
     path: PathBuf,
     is_dir: bool,
+    size: Option<u64>,
+    modified: Option<SystemTime>,
 }
 
 #[derive(Debug, Clone)]
@@ -93,6 +97,7 @@ impl FileBrowserComponent {
             recursive_search: true,
             hide_hidden: true,
             show_relative_paths: false,
+            show_info: false,
             entry_filter: EntryFilter::All,
             extension_filter: None,
             cache: HashMap::new(),
@@ -141,6 +146,15 @@ impl FileBrowserComponent {
 
     pub fn set_entry_filter(&mut self, filter: EntryFilter) {
         self.entry_filter = filter;
+        self.refresh_view();
+    }
+
+    fn toggle_entry_filter(&mut self, filter: EntryFilter) {
+        if self.entry_filter == filter {
+            self.entry_filter = EntryFilter::All;
+        } else {
+            self.entry_filter = filter;
+        }
         self.refresh_view();
     }
 
@@ -255,6 +269,7 @@ impl FileBrowserComponent {
                             &pattern,
                             Some(&base_path),
                             self.show_relative_paths,
+                            self.show_info,
                         );
                         (entries, options, Vec::new())
                     }
@@ -272,6 +287,7 @@ impl FileBrowserComponent {
                                 &[],
                                 Some(&parsed.view_dir),
                                 self.show_relative_paths,
+                                self.show_info,
                             )
                         })
                         .collect::<Vec<_>>();
@@ -282,6 +298,7 @@ impl FileBrowserComponent {
                         &parsed.segment,
                         Some(&parsed.view_dir),
                         self.show_relative_paths,
+                        self.show_info,
                     );
                     (entries, options, matches)
                 }
@@ -296,6 +313,7 @@ impl FileBrowserComponent {
                         &[],
                         Some(&self.current_dir),
                         self.show_relative_paths,
+                        self.show_info,
                     )
                 })
                 .collect::<Vec<_>>();
@@ -339,6 +357,7 @@ impl FileBrowserComponent {
                         raw,
                         Some(&self.current_dir),
                         self.show_relative_paths,
+                        self.show_info,
                     );
                     (entries, options, Vec::new())
                 }
@@ -360,6 +379,7 @@ impl FileBrowserComponent {
                     raw,
                     Some(&self.current_dir),
                     self.show_relative_paths,
+                    self.show_info,
                 );
                 (entries, options, matches)
             }
@@ -407,6 +427,7 @@ impl FileBrowserComponent {
             self.hide_hidden,
             query,
             self.show_relative_paths,
+            self.show_info,
             mode,
             self.entry_filter,
             self.extension_filter.as_ref(),
@@ -432,10 +453,16 @@ impl FileBrowserComponent {
                 let query = query.to_string();
                 let display_root = display_root.to_path_buf();
                 let show_relative = self.show_relative_paths;
+                let show_info = self.show_info;
                 let tx = self.scan_tx.clone();
                 thread::spawn(move || {
-                    let (entries, options) =
-                        glob_options(&entries, &query, Some(display_root.as_path()), show_relative);
+                    let (entries, options) = glob_options(
+                        &entries,
+                        &query,
+                        Some(display_root.as_path()),
+                        show_relative,
+                        show_info,
+                    );
                     let result = SearchResult {
                         entries,
                         options,
@@ -451,6 +478,7 @@ impl FileBrowserComponent {
                 query,
                 Some(display_root),
                 self.show_relative_paths,
+                self.show_info,
             );
             let result = SearchResult {
                 entries,
@@ -473,6 +501,7 @@ impl FileBrowserComponent {
         let query = query.to_string();
         let display_root = display_root.to_path_buf();
         let show_relative = self.show_relative_paths;
+        let show_info = self.show_info;
         let mode = mode;
         let entry_filter = self.entry_filter;
         let ext_filter = self.extension_filter.clone();
@@ -496,6 +525,7 @@ impl FileBrowserComponent {
                     &name_pattern,
                     Some(display_root.as_path()),
                     show_relative,
+                    show_info,
                 );
                 SearchResult {
                     entries,
@@ -514,6 +544,7 @@ impl FileBrowserComponent {
                     &query,
                     Some(display_root.as_path()),
                     show_relative,
+                    show_info,
                 );
                 SearchResult {
                     entries,
@@ -613,6 +644,7 @@ impl FileBrowserComponent {
                     self.hide_hidden,
                     &query,
                     self.show_relative_paths,
+                    self.show_info,
                     SearchMode::Fuzzy,
                     self.entry_filter,
                     self.extension_filter.as_ref(),
@@ -628,6 +660,7 @@ impl FileBrowserComponent {
                             self.hide_hidden,
                             &pattern,
                             self.show_relative_paths,
+                            self.show_info,
                             SearchMode::Glob,
                             self.entry_filter,
                             self.extension_filter.as_ref(),
@@ -646,6 +679,7 @@ impl FileBrowserComponent {
                         self.hide_hidden,
                         &fuzzy,
                         self.show_relative_paths,
+                        self.show_info,
                         SearchMode::Fuzzy,
                         self.entry_filter,
                         self.extension_filter.as_ref(),
@@ -657,6 +691,7 @@ impl FileBrowserComponent {
                     self.hide_hidden,
                     query,
                     self.show_relative_paths,
+                    self.show_info,
                     if is_glob_query(query) {
                         SearchMode::Glob
                     } else {
@@ -849,6 +884,33 @@ impl Component for FileBrowserComponent {
         ctx: &mut EventContext,
     ) -> bool {
         self.poll_scans();
+        if modifiers.contains(KeyModifiers::CONTROL) {
+            match code {
+                KeyCode::Char('h') => {
+                    self.hide_hidden = !self.hide_hidden;
+                    self.refresh_view();
+                    ctx.handled();
+                    return true;
+                }
+                KeyCode::Char('f') => {
+                    self.toggle_entry_filter(EntryFilter::FilesOnly);
+                    ctx.handled();
+                    return true;
+                }
+                KeyCode::Char('d') => {
+                    self.toggle_entry_filter(EntryFilter::DirsOnly);
+                    ctx.handled();
+                    return true;
+                }
+                KeyCode::Char('g') => {
+                    self.show_info = !self.show_info;
+                    self.refresh_view();
+                    ctx.handled();
+                    return true;
+                }
+                _ => {}
+            }
+        }
         if modifiers == KeyModifiers::NONE {
             match code {
                 KeyCode::Up | KeyCode::Down | KeyCode::Char(' ') => {
@@ -1227,7 +1289,8 @@ fn list_dir(dir: &Path, hide_hidden: bool) -> Vec<FileEntry> {
             if hide_hidden && name.starts_with('.') {
                 continue;
             }
-            entries.push(build_entry(name, path, is_dir));
+            let metadata = entry.metadata().ok();
+            entries.push(build_entry(name, path, is_dir, metadata));
         }
     }
     entries.sort_by(entry_sort);
@@ -1285,7 +1348,8 @@ fn list_dir_recursive_inner(dir: &Path, entries: &mut Vec<FileEntry>, hide_hidde
         if hide_hidden && name.starts_with('.') {
             continue;
         }
-        entries.push(build_entry(name, path.clone(), is_dir));
+        let metadata = entry.metadata().ok();
+        entries.push(build_entry(name, path.clone(), is_dir, metadata));
         if is_dir {
             list_dir_recursive_inner(&path, entries, hide_hidden);
         }
@@ -1313,6 +1377,7 @@ fn list_dir_recursive_glob_inner(
         if hide_hidden && name.starts_with('.') {
             continue;
         }
+        let metadata = entry.metadata().ok();
 
         rel_segments.push(name.clone());
 
@@ -1330,7 +1395,7 @@ fn list_dir_recursive_glob_inner(
 
         let literal_ok = literal.map(|lit| name.contains(lit)).unwrap_or(true);
         if literal_ok && glob_match_segments(pattern_segments, rel_segments) {
-            entries.push(build_entry(name, path.clone(), is_dir));
+            entries.push(build_entry(name, path.clone(), is_dir, metadata));
         }
 
         if is_dir {
@@ -1365,12 +1430,13 @@ fn options_from_query(
     query: &str,
     display_root: Option<&Path>,
     show_relative: bool,
+    show_info: bool,
 ) -> (Vec<FileEntry>, Vec<SelectOption>, Vec<fuzzy::FuzzyMatch>) {
     let query = query.trim();
     if query.is_empty() {
         let options = entries
             .iter()
-            .map(|entry| entry_option(entry, &[], display_root, show_relative))
+            .map(|entry| entry_option(entry, &[], display_root, show_relative, show_info))
             .collect::<Vec<_>>();
         return (entries.to_vec(), options, Vec::new());
     }
@@ -1425,6 +1491,7 @@ fn options_from_query(
                     &m.ranges,
                     display_root,
                     show_relative,
+                    show_info,
                 ));
                 adjusted.push(fuzzy::FuzzyMatch {
                     index: pos,
@@ -1444,6 +1511,7 @@ fn glob_options(
     pattern: &str,
     display_root: Option<&Path>,
     show_relative: bool,
+    show_info: bool,
 ) -> (Vec<FileEntry>, Vec<SelectOption>) {
     let normalized = pattern.replace('\\', "/");
     let pattern_segments = split_segments(&normalized);
@@ -1472,6 +1540,7 @@ fn glob_options(
         name_pattern,
         display_root,
         show_relative,
+        show_info,
     );
     (matched_entries, options)
 }
@@ -1490,6 +1559,7 @@ fn build_glob_options(
     name_pattern: &str,
     display_root: Option<&Path>,
     show_relative: bool,
+    show_info: bool,
 ) -> Vec<SelectOption> {
     if entries.is_empty() {
         return Vec::new();
@@ -1527,6 +1597,7 @@ fn build_glob_options(
             &highlights,
             display_root,
             show_relative,
+            show_info,
         ));
     }
     *entries = sorted_entries;
@@ -1728,28 +1799,66 @@ fn entry_option(
     highlights: &[(usize, usize)],
     display_root: Option<&Path>,
     show_relative: bool,
+    show_info: bool,
 ) -> SelectOption {
+    let suffix = if show_info {
+        entry_info_suffix(entry).map(|info| format!("  {}", info))
+    } else {
+        None
+    };
     if show_relative {
         if let Some(root) = display_root {
             if let Some(prefix) = relative_prefix(&entry.path, root) {
                 let name = entry.name.clone();
-                let text = format!("{}{}", prefix, name);
+                let suffix_text = suffix.unwrap_or_default();
+                let text = format!("{}{}{}", prefix, name, suffix_text);
                 let name_start = prefix.chars().count();
+                let suffix_start = name_start + name.chars().count();
                 let prefix_style = Style::new().with_color(Color::DarkGrey).with_dim();
                 let name_style = if entry.is_dir {
                     Style::new().with_color(Color::Blue).with_bold()
                 } else {
                     Style::new()
                 };
-                return SelectOption::Split {
+                if suffix_text.is_empty() {
+                    return SelectOption::Split {
+                        text,
+                        name_start,
+                        highlights: highlights.to_vec(),
+                        prefix_style,
+                        name_style,
+                    };
+                }
+                let suffix_style = Style::new().with_color(Color::DarkGrey).with_dim();
+                return SelectOption::SplitSuffix {
                     text,
                     name_start,
+                    suffix_start,
                     highlights: highlights.to_vec(),
                     prefix_style,
                     name_style,
+                    suffix_style,
                 };
             }
         }
+    }
+
+    if let Some(suffix_text) = suffix {
+        let suffix_start = entry.name.chars().count();
+        let text = format!("{}{}", entry.name, suffix_text);
+        let suffix_style = Style::new().with_color(Color::DarkGrey).with_dim();
+        let style = if entry.is_dir {
+            Style::new().with_color(Color::Blue).with_bold()
+        } else {
+            Style::new()
+        };
+        return SelectOption::Suffix {
+            text,
+            highlights: highlights.to_vec(),
+            suffix_start,
+            style,
+            suffix_style,
+        };
     }
 
     if entry.is_dir {
@@ -1765,6 +1874,63 @@ fn entry_option(
             text: entry.name.clone(),
             highlights: highlights.to_vec(),
         }
+    }
+}
+
+fn entry_info_suffix(entry: &FileEntry) -> Option<String> {
+    let mut parts = Vec::new();
+    if !entry.is_dir {
+        if let Some(size) = entry.size {
+            parts.push(format_size(size));
+        }
+    }
+    if let Some(modified) = entry.modified {
+        parts.push(format_age(modified));
+    }
+    if parts.is_empty() {
+        None
+    } else {
+        Some(parts.join(" "))
+    }
+}
+
+fn format_size(size: u64) -> String {
+    const UNITS: [&str; 5] = ["B", "K", "M", "G", "T"];
+    let mut value = size as f64;
+    let mut unit = UNITS[0];
+    for next in UNITS.iter().skip(1) {
+        if value < 1024.0 {
+            break;
+        }
+        value /= 1024.0;
+        unit = next;
+    }
+    if unit == "B" {
+        format!("{}B", size)
+    } else if value >= 10.0 {
+        format!("{:.0}{}", value, unit)
+    } else {
+        format!("{:.1}{}", value, unit)
+    }
+}
+
+fn format_age(modified: SystemTime) -> String {
+    let delta = SystemTime::now()
+        .duration_since(modified)
+        .unwrap_or_else(|_| Duration::ZERO);
+    let secs = delta.as_secs();
+    if secs < 60 {
+        format!("{}s", secs)
+    } else if secs < 60 * 60 {
+        format!("{}m", secs / 60)
+    } else if secs < 60 * 60 * 24 {
+        format!("{}h", secs / 3600)
+    } else if secs < 60 * 60 * 24 * 30 {
+        format!("{}d", secs / (60 * 60 * 24))
+    } else if secs < 60 * 60 * 24 * 365 {
+        format!("{}mo", secs / (60 * 60 * 24 * 30))
+    } else {
+        format!("{}y", secs / (60 * 60 * 24 * 365))
     }
 }
 
@@ -1815,6 +1981,7 @@ fn cache_key(
     hide_hidden: bool,
     query: &str,
     show_relative: bool,
+    show_info: bool,
     mode: SearchMode,
     entry_filter: EntryFilter,
     ext_filter: Option<&HashSet<String>>,
@@ -1837,11 +2004,12 @@ fn cache_key(
         String::new()
     };
     format!(
-        "{}|r:{}|h:{}|d:{}|m:{}|f:{}|e:{}|q:{}",
+        "{}|r:{}|h:{}|d:{}|i:{}|m:{}|f:{}|e:{}|q:{}",
         dir.to_string_lossy(),
         recursive,
         hide_hidden,
         display,
+        show_info,
         mode,
         filter,
         ext_tag,
@@ -1934,7 +2102,7 @@ fn normalize_ext(ext: &str) -> String {
     ext.trim_start_matches('.').to_ascii_lowercase()
 }
 
-fn build_entry(name: String, path: PathBuf, is_dir: bool) -> FileEntry {
+fn build_entry(name: String, path: PathBuf, is_dir: bool, metadata: Option<fs::Metadata>) -> FileEntry {
     let name_lower = name.to_ascii_lowercase();
     let ext_lower = if is_dir {
         None
@@ -1943,12 +2111,18 @@ fn build_entry(name: String, path: PathBuf, is_dir: bool) -> FileEntry {
             .map(|(_, ext)| normalize_ext(ext))
             .filter(|ext| !ext.is_empty())
     };
+    let size = metadata
+        .as_ref()
+        .and_then(|meta| if is_dir { None } else { Some(meta.len()) });
+    let modified = metadata.and_then(|meta| meta.modified().ok());
     FileEntry {
         name,
         name_lower,
         ext_lower,
         path,
         is_dir,
+        size,
+        modified,
     }
 }
 

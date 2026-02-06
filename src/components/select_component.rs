@@ -33,6 +33,22 @@ pub enum SelectOption {
         prefix_style: Style,
         name_style: Style,
     },
+    Suffix {
+        text: String,
+        highlights: Vec<(usize, usize)>,
+        suffix_start: usize,
+        style: Style,
+        suffix_style: Style,
+    },
+    SplitSuffix {
+        text: String,
+        name_start: usize,
+        suffix_start: usize,
+        highlights: Vec<(usize, usize)>,
+        prefix_style: Style,
+        name_style: Style,
+        suffix_style: Style,
+    },
 }
 
 pub struct SelectComponent {
@@ -332,6 +348,8 @@ fn option_text(option: &SelectOption) -> &str {
         SelectOption::Highlighted { text, .. } => text,
         SelectOption::Styled { text, .. } => text,
         SelectOption::Split { text, .. } => text,
+        SelectOption::Suffix { text, .. } => text,
+        SelectOption::SplitSuffix { text, .. } => text,
     }
 }
 
@@ -431,6 +449,47 @@ fn render_option_spans(
             }
             let merged = base_style.clone().merge(name_style);
             spans.extend(render_text_spans(&name, highlights, &merged, highlight_style));
+            spans
+        }
+        SelectOption::Suffix {
+            text,
+            highlights,
+            suffix_start,
+            style,
+            suffix_style,
+        } => {
+            let (name, suffix) = split_text_at_char(text, *suffix_start);
+            let mut spans = Vec::new();
+            let merged = base_style.clone().merge(style);
+            spans.extend(render_text_spans(&name, highlights, &merged, highlight_style));
+            if !suffix.is_empty() {
+                let merged_suffix = base_style.clone().merge(suffix_style);
+                spans.push(Span::new(suffix).with_style(merged_suffix));
+            }
+            spans
+        }
+        SelectOption::SplitSuffix {
+            text,
+            name_start,
+            suffix_start,
+            highlights,
+            prefix_style,
+            name_style,
+            suffix_style,
+        } => {
+            let (prefix, rest) = split_text_at_char(text, *name_start);
+            let name_len = suffix_start.saturating_sub(*name_start);
+            let (name, suffix) = split_text_at_char(&rest, name_len);
+            let mut spans = Vec::new();
+            if !prefix.is_empty() {
+                spans.push(Span::new(prefix).with_style(prefix_style.clone()));
+            }
+            let merged = base_style.clone().merge(name_style);
+            spans.extend(render_text_spans(&name, highlights, &merged, highlight_style));
+            if !suffix.is_empty() {
+                let merged_suffix = base_style.clone().merge(suffix_style);
+                spans.push(Span::new(suffix).with_style(merged_suffix));
+            }
             spans
         }
     }

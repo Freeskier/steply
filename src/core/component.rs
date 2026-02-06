@@ -75,6 +75,10 @@ pub trait Component: Send {
         false
     }
 
+    fn poll(&mut self) -> bool {
+        false
+    }
+
     fn delete_word(&mut self, _ctx: &mut EventContext) -> bool {
         false
     }

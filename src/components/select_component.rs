@@ -26,6 +26,13 @@ pub enum SelectOption {
         highlights: Vec<(usize, usize)>,
         style: Style,
     },
+    Split {
+        text: String,
+        name_start: usize,
+        highlights: Vec<(usize, usize)>,
+        prefix_style: Style,
+        name_style: Style,
+    },
 }
 
 pub struct SelectComponent {
@@ -324,21 +331,7 @@ fn option_text(option: &SelectOption) -> &str {
         SelectOption::Plain(text) => text,
         SelectOption::Highlighted { text, .. } => text,
         SelectOption::Styled { text, .. } => text,
-    }
-}
-
-fn option_highlights(option: &SelectOption) -> &[(usize, usize)] {
-    match option {
-        SelectOption::Plain(_) => &[],
-        SelectOption::Highlighted { highlights, .. } => highlights.as_slice(),
-        SelectOption::Styled { highlights, .. } => highlights.as_slice(),
-    }
-}
-
-fn option_style(option: &SelectOption) -> Option<&Style> {
-    match option {
-        SelectOption::Styled { style, .. } => Some(style),
-        _ => None,
+        SelectOption::Split { text, .. } => text,
     }
 }
 
@@ -349,21 +342,14 @@ fn push_styled_span(spans: &mut Vec<Span>, text: String, style: &Style) {
     spans.push(Span::new(text).with_style(style.clone()));
 }
 
-fn render_option_spans(
-    option: &SelectOption,
+fn render_text_spans(
+    text: &str,
+    highlights: &[(usize, usize)],
     base_style: &Style,
     highlight_style: &Style,
 ) -> Vec<Span> {
-    let text = option_text(option);
-    let highlights = option_highlights(option);
-    let base_style = if let Some(style) = option_style(option) {
-        base_style.clone().merge(style)
-    } else {
-        base_style.clone()
-    };
-
     if highlights.is_empty() {
-        return vec![Span::new(text).with_style(base_style)];
+        return vec![Span::new(text).with_style(base_style.clone())];
     }
 
     let mut spans = Vec::new();
@@ -377,7 +363,7 @@ fn render_option_spans(
         let end = end.min(chars.len());
         if start > pos {
             let segment: String = chars[pos..start].iter().collect();
-            push_styled_span(&mut spans, segment, &base_style);
+            push_styled_span(&mut spans, segment, base_style);
         }
         if end > start {
             let segment: String = chars[start..end].iter().collect();
@@ -389,10 +375,65 @@ fn render_option_spans(
 
     if pos < chars.len() {
         let segment: String = chars[pos..].iter().collect();
-        push_styled_span(&mut spans, segment, &base_style);
+        push_styled_span(&mut spans, segment, base_style);
     }
 
     spans
+}
+
+fn byte_index_at_char(text: &str, char_idx: usize) -> usize {
+    if char_idx == 0 {
+        return 0;
+    }
+    text.char_indices()
+        .nth(char_idx)
+        .map(|(idx, _)| idx)
+        .unwrap_or_else(|| text.len())
+}
+
+fn split_text_at_char(text: &str, char_idx: usize) -> (String, String) {
+    let split_at = byte_index_at_char(text, char_idx);
+    let (left, right) = text.split_at(split_at);
+    (left.to_string(), right.to_string())
+}
+
+fn render_option_spans(
+    option: &SelectOption,
+    base_style: &Style,
+    highlight_style: &Style,
+) -> Vec<Span> {
+    match option {
+        SelectOption::Plain(text) => {
+            vec![Span::new(text).with_style(base_style.clone())]
+        }
+        SelectOption::Highlighted { text, highlights } => {
+            render_text_spans(text, highlights, base_style, highlight_style)
+        }
+        SelectOption::Styled {
+            text,
+            highlights,
+            style,
+        } => {
+            let merged = base_style.clone().merge(style);
+            render_text_spans(text, highlights, &merged, highlight_style)
+        }
+        SelectOption::Split {
+            text,
+            name_start,
+            highlights,
+            prefix_style,
+            name_style,
+        } => {
+            let (prefix, name) = split_text_at_char(text, *name_start);
+            let mut spans = Vec::new();
+            if !prefix.is_empty() {
+                spans.push(Span::new(prefix).with_style(prefix_style.clone()));
+            }
+            let merged = base_style.clone().merge(name_style);
+            spans.extend(render_text_spans(&name, highlights, &merged, highlight_style));
+            spans
+        }
+    }
 }
 
 impl Component for SelectComponent {

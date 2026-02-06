@@ -311,3 +311,23 @@ pub fn first_input_mut(nodes: &mut [Node]) -> Option<&mut dyn Input> {
     }
     None
 }
+
+pub fn poll_components(nodes: &mut [Node]) -> bool {
+    let mut updated = false;
+    for node in nodes {
+        match node {
+            Node::Component(component) => {
+                if component.poll() {
+                    updated = true;
+                }
+                if let Some(children) = component.children_mut() {
+                    if poll_components(children) {
+                        updated = true;
+                    }
+                }
+            }
+            Node::Input(_) | Node::Text(_) => {}
+        }
+    }
+    updated
+}

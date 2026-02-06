@@ -22,7 +22,7 @@ pub fn match_candidates(query: &str, candidates: &[String]) -> Vec<FuzzyMatch> {
         }
 
         if let Some(matched_indices) = match_indices(query, candidate) {
-            let score = score_match(candidate, &matched_indices, query.chars().count());
+            let score = score_match(candidate, &matched_indices, query);
             let ranges = indices_to_ranges(&matched_indices);
             matches.push(FuzzyMatch {
                 index,
@@ -34,6 +34,21 @@ pub fn match_candidates(query: &str, candidates: &[String]) -> Vec<FuzzyMatch> {
     }
 
     matches.sort_by(|a, b| b.score.cmp(&a.score));
+    matches
+}
+
+pub fn match_candidates_limited(
+    query: &str,
+    candidates: &[String],
+    limit: usize,
+) -> Vec<FuzzyMatch> {
+    if limit == 0 {
+        return Vec::new();
+    }
+    let mut matches = match_candidates(query, candidates);
+    if matches.len() > limit {
+        matches.truncate(limit);
+    }
     matches
 }
 
@@ -73,13 +88,17 @@ fn match_indices(query: &str, candidate: &str) -> Option<Vec<usize>> {
     }
 }
 
-fn score_match(candidate: &str, matched_indices: &[usize], query_len: usize) -> i32 {
+fn score_match(candidate: &str, matched_indices: &[usize], query: &str) -> i32 {
     if matched_indices.is_empty() {
         return 0;
     }
 
     let chars: Vec<char> = candidate.chars().collect();
     let mut score = (matched_indices.len() as i32) * 10;
+    let query = query.trim();
+    let query_len = query.chars().count();
+    let candidate_lower = candidate.to_ascii_lowercase();
+    let query_lower = query.to_ascii_lowercase();
 
     if matched_indices.len() == query_len {
         score += 20;
@@ -119,6 +138,18 @@ fn score_match(candidate: &str, matched_indices: &[usize], query_len: usize) -> 
         }
     }
 
+    if !query_lower.is_empty() {
+        if candidate_lower.ends_with(&query_lower) {
+            score += 80;
+        }
+        if query_lower.starts_with('.') && candidate_lower.ends_with(&query_lower) {
+            score += 40;
+        }
+        if contains_whole_segment(&candidate_lower, &query_lower) {
+            score += 60;
+        }
+    }
+
     let len_penalty = (chars.len() as i32) / 2;
     score -= len_penalty;
 
@@ -150,4 +181,29 @@ fn indices_to_ranges(indices: &[usize]) -> Vec<(usize, usize)> {
 
 fn is_boundary(ch: char) -> bool {
     ch.is_whitespace() || matches!(ch, '/' | '\\' | '_' | '-' | '.' | ':')
+}
+
+fn contains_whole_segment(hay: &str, needle: &str) -> bool {
+    if needle.is_empty() {
+        return false;
+    }
+    for (idx, _) in hay.match_indices(needle) {
+        let before = if idx == 0 {
+            None
+        } else {
+            hay[..idx].chars().last()
+        };
+        let after_idx = idx + needle.len();
+        let after = if after_idx >= hay.len() {
+            None
+        } else {
+            hay[after_idx..].chars().next()
+        };
+        let before_ok = before.map(is_boundary).unwrap_or(true);
+        let after_ok = after.map(is_boundary).unwrap_or(true);
+        if before_ok && after_ok {
+            return true;
+        }
+    }
+    false
 }

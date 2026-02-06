@@ -11,7 +11,9 @@ use crate::core::event::Action;
 use crate::core::event_queue::{AppEvent, EventQueue};
 use crate::core::flow::{Flow, StepStatus};
 use crate::core::layer_manager::LayerManager;
-use crate::core::node::{Node, find_component, find_component_mut, find_input, find_input_mut};
+use crate::core::node::{
+    Node, find_component, find_component_mut, find_input, find_input_mut, poll_components,
+};
 use crate::core::overlay::OverlayState;
 use crate::core::reducer::{Effect, Reducer};
 use crate::core::state::AppState;
@@ -73,6 +75,16 @@ impl App {
 
         while let Some(event) = self.events.next_ready(now) {
             self.dispatch(event);
+            processed = true;
+        }
+
+        let polled = if let Some(active) = self.layer_manager.active_mut() {
+            poll_components(active.nodes_mut())
+        } else {
+            let nodes = self.state.flow.current_step_mut().nodes.as_mut_slice();
+            poll_components(nodes)
+        };
+        if polled {
             processed = true;
         }
 
@@ -422,6 +434,9 @@ fn build_step_zero() -> crate::core::step::Step {
         .with_label("Select plan:")
         .with_recursive_search(true)
         .with_max_visible(6)
+        // .with_entry_filter(crate::components::file_browser_component::EntryFilter::FilesOnly)
+        // .with_extension_filter([".yml", ".yaml"])
+        .with_relative_paths(true)
         .with_placeholder("Type to filter");
 
     let tags_component = SelectComponent::new("tags_select", Vec::new())

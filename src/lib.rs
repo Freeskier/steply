@@ -4,7 +4,6 @@ pub mod inputs;
 pub mod terminal;
 pub mod ui;
 
-pub use core::action_bindings;
 pub use core::app;
 pub use core::binding;
 pub use core::component;
@@ -12,7 +11,7 @@ pub use core::event;
 pub use core::event_queue;
 pub use core::flow;
 pub use core::form_engine;
-pub use core::form_event;
+pub use core::key_bindings;
 pub use core::layer;
 pub use core::layer_manager;
 pub use core::node;

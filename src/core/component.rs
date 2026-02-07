@@ -4,7 +4,7 @@ use crate::core::node::NodeId;
 use crate::core::value::Value;
 use crate::terminal::{KeyCode, KeyModifiers};
 use crate::ui::render::RenderContext;
-use crate::ui::render::RenderLine;
+use crate::ui::render::RenderOutput;
 
 pub struct ComponentBase {
     pub id: NodeId,
@@ -46,7 +46,7 @@ pub trait Component: Send {
         FocusMode::PassThrough
     }
 
-    fn render(&self, ctx: &RenderContext) -> Vec<RenderLine>;
+    fn render(&self, ctx: &RenderContext) -> RenderOutput;
 
     fn is_focused(&self) -> bool {
         self.base().focused
@@ -66,25 +66,20 @@ pub trait Component: Send {
 
     fn set_value(&mut self, _value: Value) {}
 
-    fn handle_key(
-        &mut self,
-        _code: KeyCode,
-        _modifiers: KeyModifiers,
-        _ctx: &mut EventContext,
-    ) -> bool {
-        false
+    fn handle_key(&mut self, _code: KeyCode, _modifiers: KeyModifiers) -> ComponentResponse {
+        ComponentResponse::not_handled()
     }
 
     fn poll(&mut self) -> bool {
         false
     }
 
-    fn delete_word(&mut self, _ctx: &mut EventContext) -> bool {
-        false
+    fn delete_word(&mut self) -> ComponentResponse {
+        ComponentResponse::not_handled()
     }
 
-    fn delete_word_forward(&mut self, _ctx: &mut EventContext) -> bool {
-        false
+    fn delete_word_forward(&mut self) -> ComponentResponse {
+        ComponentResponse::not_handled()
     }
 
     fn render_children(&self) -> bool {
@@ -98,11 +93,6 @@ pub struct ComponentResponse {
     pub produced: Option<Value>,
     pub changes: Vec<InputChange>,
     pub submit_requested: bool,
-}
-
-#[derive(Debug, Clone)]
-pub struct EventContext {
-    response: ComponentResponse,
 }
 
 #[derive(Debug, Clone)]
@@ -149,60 +139,47 @@ impl ComponentResponse {
         }
     }
 
+    pub fn input_changed(id: impl Into<NodeId>, value: impl Into<String>) -> Self {
+        let mut response = Self::handled();
+        response.push_change(id, value);
+        response
+    }
+
+    pub fn input_recorded(id: impl Into<NodeId>, value: impl Into<String>) -> Self {
+        let mut response = Self::handled();
+        response.record_input(id, value);
+        response
+    }
+
+    pub fn mark_handled(&mut self) {
+        self.handled = true;
+    }
+
     pub fn push_change(&mut self, id: impl Into<NodeId>, value: impl Into<String>) {
+        self.handled = true;
         self.changes.push(InputChange {
             id: id.into(),
             value: value.into(),
             apply: true,
         });
     }
-}
-
-impl EventContext {
-    pub fn new() -> Self {
-        Self {
-            response: ComponentResponse::not_handled(),
-        }
-    }
-
-    pub fn handled(&mut self) {
-        self.response.handled = true;
-    }
-
-    pub fn produce(&mut self, value: Value) {
-        self.response.handled = true;
-        self.response.produced = Some(value);
-    }
-
-    pub fn submit(&mut self) {
-        self.response.handled = true;
-        self.response.submit_requested = true;
-    }
-
-    pub fn update_input(&mut self, id: impl Into<NodeId>, value: impl Into<String>) {
-        self.response.handled = true;
-        self.response.push_change(id, value);
-    }
 
     pub fn record_input(&mut self, id: impl Into<NodeId>, value: impl Into<String>) {
-        self.response.handled = true;
-        self.response.changes.push(InputChange {
+        self.handled = true;
+        self.changes.push(InputChange {
             id: id.into(),
             value: value.into(),
             apply: false,
         });
     }
 
-    pub fn into_response(self, handled: bool) -> ComponentResponse {
-        ComponentResponse {
-            handled,
-            ..self.response
-        }
+    pub fn set_produced(&mut self, value: Value) {
+        self.handled = true;
+        self.produced = Some(value);
     }
-}
 
-impl Default for EventContext {
-    fn default() -> Self {
-        Self::new()
+    pub fn set_submit_requested(&mut self) {
+        self.handled = true;
+        self.submit_requested = true;
     }
 }

@@ -16,32 +16,31 @@ impl Layout {
         self
     }
 
-    pub fn compose_spans_with_cursor<I>(
+    pub fn compose_render_output(
         &self,
-        spans_list: I,
+        lines: &[crate::ui::render::RenderLine],
+        cursor: Option<crate::ui::render::RenderCursor>,
         width: u16,
-    ) -> (Frame, Option<(usize, usize)>)
-    where
-        I: IntoIterator<Item = (Vec<Span>, Option<usize>)>,
-    {
+    ) -> (Frame, Option<(usize, usize)>) {
         let mut ctx = LayoutContext::new(width as usize, self.margin);
-        let mut cursor: Option<(usize, usize)> = None;
+        let mut visual_cursor: Option<(usize, usize)> = None;
         let mut line_idx = 0usize;
 
-        for (spans, cursor_offset) in spans_list {
-            let (line_count, cursor_pos) = scan_spans(&spans, width as usize, cursor_offset);
+        for (idx, line) in lines.iter().enumerate() {
+            let cursor_offset = cursor.filter(|c| c.line == idx).map(|c| c.offset);
+            let (line_count, cursor_pos) = scan_spans(&line.spans, width as usize, cursor_offset);
 
-            if cursor.is_none() {
+            if visual_cursor.is_none() {
                 if let Some((row_offset, col)) = cursor_pos {
-                    cursor = Some((col, line_idx + row_offset));
+                    visual_cursor = Some((col, line_idx + row_offset));
                 }
             }
 
             line_idx += line_count;
-            ctx.place_spans(spans);
+            ctx.place_spans(&line.spans);
         }
 
-        (ctx.finish(), cursor)
+        (ctx.finish(), visual_cursor)
     }
 }
 
@@ -63,13 +62,13 @@ impl LayoutContext {
         }
     }
 
-    fn place_spans(&mut self, spans: Vec<Span>) {
+    fn place_spans(&mut self, spans: &[Span]) {
         for span in spans {
             if span.text() == "\n" {
                 self.new_line();
                 continue;
             }
-            self.place_span(span);
+            self.place_span(span.clone());
         }
         self.new_line();
     }

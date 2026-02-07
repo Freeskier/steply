@@ -1,7 +1,7 @@
 use crate::terminal::KeyEvent;
 
 #[derive(Debug, Clone)]
-pub enum Action {
+pub enum Command {
     Exit,
     Cancel,
     Submit,

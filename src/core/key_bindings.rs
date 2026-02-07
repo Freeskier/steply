@@ -1,4 +1,4 @@
-use crate::event::Action;
+use crate::event::Command;
 use crate::terminal::{KeyCode, KeyEvent, KeyModifiers};
 use std::collections::HashMap;
 
@@ -29,11 +29,11 @@ impl KeyBinding {
     }
 }
 
-pub struct ActionBindings {
-    bindings: HashMap<KeyBinding, Action>,
+pub struct KeyBindings {
+    bindings: HashMap<KeyBinding, Command>,
 }
 
-impl ActionBindings {
+impl KeyBindings {
     pub fn new() -> Self {
         let mut manager = Self {
             bindings: HashMap::new(),
@@ -43,21 +43,24 @@ impl ActionBindings {
     }
 
     fn setup_default_bindings(&mut self) {
-        self.bind(KeyBinding::ctrl(KeyCode::Char('c')), Action::Cancel);
-        self.bind(KeyBinding::key(KeyCode::Esc), Action::Cancel);
+        self.bind(KeyBinding::ctrl(KeyCode::Char('c')), Command::Cancel);
+        self.bind(KeyBinding::key(KeyCode::Esc), Command::Cancel);
 
-        self.bind(KeyBinding::key(KeyCode::Tab), Action::NextInput);
+        self.bind(KeyBinding::key(KeyCode::Tab), Command::NextInput);
         self.bind(
             KeyBinding::new(KeyCode::BackTab, KeyModifiers::SHIFT),
-            Action::PrevInput,
+            Command::PrevInput,
         );
 
-        self.bind(KeyBinding::ctrl(KeyCode::Backspace), Action::DeleteWord);
-        self.bind(KeyBinding::ctrl(KeyCode::Char('w')), Action::DeleteWord);
-        self.bind(KeyBinding::ctrl(KeyCode::Delete), Action::DeleteWordForward);
+        self.bind(KeyBinding::ctrl(KeyCode::Backspace), Command::DeleteWord);
+        self.bind(KeyBinding::ctrl(KeyCode::Char('w')), Command::DeleteWord);
+        self.bind(
+            KeyBinding::ctrl(KeyCode::Delete),
+            Command::DeleteWordForward,
+        );
     }
 
-    pub fn bind(&mut self, key: KeyBinding, action: Action) {
+    pub fn bind(&mut self, key: KeyBinding, action: Command) {
         self.bindings.insert(key, action);
     }
 
@@ -65,13 +68,13 @@ impl ActionBindings {
         self.bindings.remove(key);
     }
 
-    pub fn handle_key(&self, key_event: &KeyEvent) -> Option<Action> {
+    pub fn handle_key(&self, key_event: &KeyEvent) -> Option<Command> {
         let binding = KeyBinding::from_key_event(key_event);
         self.bindings.get(&binding).cloned()
     }
 }
 
-impl Default for ActionBindings {
+impl Default for KeyBindings {
     fn default() -> Self {
         Self::new()
     }

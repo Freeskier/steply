@@ -1,14 +1,17 @@
 mod decorator;
 mod options;
 mod pipeline;
-mod step_renderer;
+mod render_context;
+mod render_trait;
+mod step_render;
 
 pub use decorator::Decorator;
 pub use options::RenderOptions;
 pub use pipeline::RenderPipeline;
-pub use step_renderer::{RenderContext, StepRenderer};
+pub use render_context::RenderContext;
+pub use render_trait::{Render, RenderCursor, RenderOutput};
 
+#[derive(Debug, Clone)]
 pub struct RenderLine {
     pub spans: Vec<crate::span::Span>,
-    pub cursor_offset: Option<usize>,
 }

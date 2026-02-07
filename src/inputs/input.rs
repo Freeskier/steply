@@ -151,30 +151,31 @@ pub trait Input: Send {
 
     fn handle_key(&mut self, code: KeyCode, modifiers: KeyModifiers) -> KeyResult;
 
-    fn handle_key_with_context(
+    fn handle_key_with_response(
         &mut self,
         code: KeyCode,
         modifiers: KeyModifiers,
-        ctx: &mut crate::core::component::EventContext,
-    ) -> bool {
+    ) -> crate::core::component::ComponentResponse {
         let before = self.value();
         let result = self.handle_key(code, modifiers);
         let after = self.value();
 
-        if before != after {
-            ctx.record_input(self.id().to_string(), after);
-        }
+        let mut response = if before != after {
+            crate::core::component::ComponentResponse::input_recorded(self.id().to_string(), after)
+        } else {
+            crate::core::component::ComponentResponse::not_handled()
+        };
 
         match result {
             KeyResult::Handled => {
-                ctx.handled();
-                true
+                response.mark_handled();
+                response
             }
             KeyResult::Submit => {
-                ctx.submit();
-                true
+                response.set_submit_requested();
+                response
             }
-            KeyResult::NotHandled => false,
+            KeyResult::NotHandled => response,
         }
     }
 

@@ -1,7 +1,7 @@
-use crate::core::component::{Component, ComponentBase, EventContext, FocusMode};
+use crate::core::component::{Component, ComponentBase, ComponentResponse, FocusMode};
 use crate::core::value::Value;
 use crate::terminal::{KeyCode, KeyModifiers};
-use crate::ui::render::{RenderContext, RenderLine};
+use crate::ui::render::{RenderContext, RenderOutput};
 use std::sync::{Arc, Mutex};
 
 use super::state::FileBrowserState;
@@ -38,7 +38,7 @@ impl Component for FileBrowserListComponent {
         FocusMode::Group
     }
 
-    fn render(&self, ctx: &RenderContext) -> Vec<RenderLine> {
+    fn render(&self, ctx: &RenderContext) -> RenderOutput {
         let mut state = self.state.lock().unwrap();
         state.render_list_lines(ctx, true)
     }
@@ -47,16 +47,8 @@ impl Component for FileBrowserListComponent {
         self.state.lock().unwrap().selected_value()
     }
 
-    fn handle_key(
-        &mut self,
-        code: KeyCode,
-        modifiers: KeyModifiers,
-        ctx: &mut EventContext,
-    ) -> bool {
-        self.state
-            .lock()
-            .unwrap()
-            .handle_list_key(code, modifiers, ctx)
+    fn handle_key(&mut self, code: KeyCode, modifiers: KeyModifiers) -> ComponentResponse {
+        self.state.lock().unwrap().handle_list_key(code, modifiers)
     }
 
     fn poll(&mut self) -> bool {

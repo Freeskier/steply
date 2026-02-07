@@ -1,4 +1,5 @@
 use crate::core::binding::{BindTarget, ValueSource};
+use crate::core::component::ComponentResponse;
 use crate::core::event_queue::AppEvent;
 use crate::core::layer::Layer;
 use crate::core::layer::LayerFocusMode;
@@ -70,6 +71,12 @@ impl OverlayState {
             target,
             value,
         });
+    }
+
+    pub fn emit_response(&self, response: ComponentResponse, emit: &mut dyn FnMut(AppEvent)) {
+        if let Some(value) = response.produced {
+            self.emit_value(value, emit);
+        }
     }
 }
 

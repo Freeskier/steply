@@ -1,11 +1,11 @@
-use crate::core::component::{Component, ComponentBase, EventContext, FocusMode};
+use crate::core::component::{Component, ComponentBase, ComponentResponse, FocusMode};
 use crate::core::value::Value;
 use crate::inputs::Input;
 use crate::terminal::{KeyCode, KeyModifiers};
-use crate::ui::render::{RenderContext, RenderLine};
+use crate::ui::render::{RenderContext, RenderOutput};
 use std::sync::{Arc, Mutex};
 
-use super::state::{EntryFilter, FileBrowserState};
+use super::{EntryFilter, FileBrowserState};
 
 pub struct FileBrowserComponent {
     base: ComponentBase,
@@ -117,12 +117,11 @@ impl Component for FileBrowserComponent {
         FocusMode::Group
     }
 
-    fn render(&self, ctx: &RenderContext) -> Vec<RenderLine> {
+    fn render(&self, ctx: &RenderContext) -> RenderOutput {
         let mut state = self.state.lock().unwrap();
-        let mut lines = Vec::new();
-        lines.push(state.render_input_line(ctx, self.base.focused));
-        lines.extend(state.render_list_lines(ctx, self.base.focused));
-        lines
+        let mut output = state.render_input_line(ctx, self.base.focused);
+        output.append(state.render_list_lines(ctx, self.base.focused));
+        output
     }
 
     fn value(&self) -> Option<Value> {
@@ -133,16 +132,11 @@ impl Component for FileBrowserComponent {
         self.state.lock().unwrap().set_value(value);
     }
 
-    fn handle_key(
-        &mut self,
-        code: KeyCode,
-        modifiers: KeyModifiers,
-        ctx: &mut EventContext,
-    ) -> bool {
+    fn handle_key(&mut self, code: KeyCode, modifiers: KeyModifiers) -> ComponentResponse {
         self.state
             .lock()
             .unwrap()
-            .handle_combined_key(code, modifiers, ctx)
+            .handle_combined_key(code, modifiers)
     }
 
     fn poll(&mut self) -> bool {
@@ -156,11 +150,11 @@ impl Component for FileBrowserComponent {
         state.select_mut().set_focused(focused);
     }
 
-    fn delete_word(&mut self, ctx: &mut EventContext) -> bool {
-        self.state.lock().unwrap().delete_word(ctx)
+    fn delete_word(&mut self) -> ComponentResponse {
+        self.state.lock().unwrap().delete_word()
     }
 
-    fn delete_word_forward(&mut self, ctx: &mut EventContext) -> bool {
-        self.state.lock().unwrap().delete_word_forward(ctx)
+    fn delete_word_forward(&mut self) -> ComponentResponse {
+        self.state.lock().unwrap().delete_word_forward()
     }
 }

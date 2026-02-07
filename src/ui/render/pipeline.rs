@@ -6,7 +6,7 @@ use crate::ui::frame::Line;
 use crate::ui::layout::Layout;
 use crate::ui::render::decorator::Decorator;
 use crate::ui::render::options::RenderOptions;
-use crate::ui::render::{RenderLine, StepRenderer};
+use crate::ui::render::{Render, RenderLine};
 use crate::ui::span::{Span, Wrap};
 use crate::ui::theme::Theme;
 use std::io::{self, Write};
@@ -115,21 +115,16 @@ impl RenderPipeline {
         terminal.refresh_size()?;
         let width = terminal.size().width;
 
-        let builder = StepRenderer::new(theme);
-        let render_lines = builder.build(step);
+        let ctx = crate::ui::render::RenderContext::new(theme);
+        let render_output = step.render(&ctx);
 
-        let (frame, cursor_pos) = Layout::new().compose_spans_with_cursor(
-            render_lines
-                .iter()
-                .map(|l| (l.spans.clone(), l.cursor_offset)),
-            width,
-        );
+        let (base_lines, cursor_pos) = self.layout_render_output(&render_output, width);
 
         let lines = if self.decoration_enabled {
             let decorator = Decorator::new(theme);
-            decorator.decorate(frame.lines().to_vec(), &options)
+            decorator.decorate(base_lines, &options)
         } else {
-            frame.lines().to_vec()
+            base_lines
         };
 
         let start = self.ensure_region(terminal, lines.len())?;
@@ -202,14 +197,7 @@ impl RenderPipeline {
     ) -> io::Result<Option<(u16, u16)>> {
         terminal.refresh_size()?;
         let width = terminal.size().width;
-        let decoration_width = self.decoration_width() as u16;
         let decorated = self.decoration_enabled;
-        let start_col = if decorated { 0 } else { decoration_width };
-        let content_width = if decorated {
-            width.saturating_sub(decoration_width)
-        } else {
-            width.saturating_sub(start_col)
-        };
 
         let start_row = anchor_cursor
             .map(|(_, row)| row + 1)
@@ -220,120 +208,39 @@ impl RenderPipeline {
             })
             .unwrap_or(0);
 
-        let render_lines = self.build_layer_lines(layer, theme);
+        let render_output = self.build_layer_output(layer, theme, decorated, width);
 
-        let (frame, cursor_pos) = Layout::new().compose_spans_with_cursor(
-            render_lines
-                .iter()
-                .map(|l| (l.spans.clone(), l.cursor_offset)),
-            content_width as u16,
-        );
-
-        let content_lines = frame.lines();
-        let separator = if decorated {
-            self.build_separator_line(width, theme)
-        } else {
-            self.build_separator_line(content_width, theme)
-        };
-
-        let total_lines = content_lines.len() + 2;
-        let total_lines_with_corner = if decorated {
-            total_lines + 1
-        } else {
-            total_lines
-        };
+        let (content_lines, cursor_pos) = self.layout_render_output(&render_output, width);
+        let total_lines = content_lines.len();
 
         if let Some(region) = &self.region {
             let offset = start_row.saturating_sub(region.start_row) as usize;
-            let desired = offset + total_lines_with_corner;
+            let desired = offset + total_lines;
             if desired > region.line_count {
                 let _ = self.ensure_region(terminal, desired)?;
             }
         }
 
         if let Some(prev) = &self.layer_region {
-            if prev.line_count > total_lines_with_corner {
-                for idx in total_lines_with_corner..prev.line_count {
+            if prev.line_count > total_lines {
+                for idx in total_lines..prev.line_count {
                     let row = start_row + idx as u16;
                     self.clear_line_at(terminal, row)?;
                 }
             }
         }
 
-        let gutter_style = theme.decor_active.clone();
-        let decorate_line = |mut line: Line| {
-            if decorated {
-                let mut new_line = Line::new();
-                new_line.push(
-                    Span::new("│  ")
-                        .with_style(gutter_style.clone())
-                        .with_wrap(Wrap::No),
-                );
-                for span in line.take_spans() {
-                    new_line.push(span);
-                }
-                new_line
-            } else {
-                line
-            }
-        };
-
-        if decorated {
-            self.draw_line_at(terminal, start_row, &separator)?;
-        } else {
-            self.draw_line_at(terminal, start_row, &decorate_line(separator.clone()))?;
-        }
-
-        for (idx, line) in content_lines.iter().enumerate() {
-            let row = start_row + 1 + idx as u16;
-            terminal.queue_move_cursor(start_col, row)?;
-            let decorated_line = decorate_line(line.clone());
-            terminal.render_line(&decorated_line)?;
-            let line_width = decorated_line.width();
-            let target_width = if decorated {
-                width as usize
-            } else {
-                content_width as usize
-            };
-            if line_width < target_width {
-                let padding = target_width - line_width;
-                terminal.writer_mut().write_all(&vec![b' '; padding])?;
-            }
-        }
-
-        let bottom_row = start_row + 1 + content_lines.len() as u16;
-        if decorated {
-            self.draw_line_at(terminal, bottom_row, &separator)?;
-        } else {
-            self.draw_line_at(terminal, bottom_row, &decorate_line(separator))?;
-        }
-
-        if decorated {
-            let mut corner = Line::new();
-            corner.push(
-                Span::new("└  ")
-                    .with_style(theme.decor_active.clone())
-                    .with_wrap(Wrap::No),
-            );
-            let corner_row = bottom_row + 1;
-            self.draw_line_at(terminal, corner_row, &corner)?;
-        }
+        self.draw_lines(terminal, start_row, &content_lines)?;
+        self.clear_extra_lines(terminal, start_row, content_lines.len())?;
 
         terminal.flush()?;
 
         self.layer_region = Some(LayerRegion {
             start_row,
-            line_count: total_lines_with_corner,
+            line_count: total_lines,
         });
 
-        let cursor = cursor_pos.map(|(col, row)| {
-            let col = if decorated {
-                decoration_width + col as u16
-            } else {
-                start_col + col as u16
-            };
-            (col, start_row + 1 + row as u16)
-        });
+        let cursor = cursor_pos.map(|(col, row)| (col as u16, start_row + row as u16));
 
         Ok(cursor)
     }
@@ -352,49 +259,112 @@ impl RenderPipeline {
         Ok(())
     }
 
-    fn build_layer_lines(&self, layer: &ActiveLayer, theme: &Theme) -> Vec<RenderLine> {
-        let mut lines = Vec::new();
-        let renderer = StepRenderer::new(theme);
+    fn build_layer_output(
+        &self,
+        layer: &ActiveLayer,
+        theme: &Theme,
+        decorated: bool,
+        width: u16,
+    ) -> crate::ui::render::RenderOutput {
+        let ctx = crate::ui::render::RenderContext::new(theme);
+        let mut content = crate::ui::render::RenderOutput::empty();
 
         if !layer.label().is_empty() {
-            lines.push(RenderLine {
+            content.append(crate::ui::render::RenderOutput::from_line(RenderLine {
                 spans: vec![Span::new(layer.label()).with_style(theme.prompt.clone())],
-                cursor_offset: None,
-            });
+            }));
         }
 
         if let Some(hint) = layer.hint() {
             if !hint.is_empty() {
-                lines.push(RenderLine {
+                content.append(crate::ui::render::RenderOutput::from_line(RenderLine {
                     spans: vec![Span::new(hint).with_style(theme.hint.clone())],
-                    cursor_offset: None,
-                });
+                }));
             }
         }
 
         for node in layer.nodes() {
-            lines.extend(renderer.render_node_lines(node));
+            content.append(ctx.render_node_lines(node));
         }
 
-        lines
+        let mut output = crate::ui::render::RenderOutput::empty();
+        output.append(crate::ui::render::RenderOutput::from_line(
+            self.separator_line(width, theme),
+        ));
+
+        let content = if decorated {
+            let gutter = vec![
+                Span::new("│  ")
+                    .with_style(theme.decor_active.clone())
+                    .with_wrap(Wrap::No),
+            ];
+            self.apply_gutter(content, &gutter, 3)
+        } else {
+            content
+        };
+        output.append(content);
+
+        output.append(crate::ui::render::RenderOutput::from_line(
+            self.separator_line(width, theme),
+        ));
+
+        if decorated {
+            output.append(crate::ui::render::RenderOutput::from_line(RenderLine {
+                spans: vec![
+                    Span::new("└  ")
+                        .with_style(theme.decor_active.clone())
+                        .with_wrap(Wrap::No),
+                ],
+            }));
+        }
+
+        output
     }
 
-    fn build_separator_line(&self, width: u16, theme: &Theme) -> Line {
-        let mut line = Line::new();
-        line.push(
+    fn separator_line(&self, width: u16, theme: &Theme) -> RenderLine {
+        let mut spans = Vec::new();
+        spans.push(
             Span::new("›")
                 .with_style(theme.decor_accent.clone())
                 .with_wrap(Wrap::No),
         );
         let dash_count = width.saturating_sub(1) as usize;
         if dash_count > 0 {
-            line.push(
+            spans.push(
                 Span::new("─".repeat(dash_count))
                     .with_style(theme.decor_done.clone())
                     .with_wrap(Wrap::No),
             );
         }
-        line
+        RenderLine { spans }
+    }
+
+    fn apply_gutter(
+        &self,
+        mut output: crate::ui::render::RenderOutput,
+        gutter: &[Span],
+        cursor_delta: usize,
+    ) -> crate::ui::render::RenderOutput {
+        for line in &mut output.lines {
+            let mut spans = Vec::with_capacity(gutter.len() + line.spans.len());
+            spans.extend(gutter.iter().cloned());
+            spans.extend(line.spans.drain(..));
+            line.spans = spans;
+        }
+        if let Some(cursor) = output.cursor.as_mut() {
+            cursor.offset += cursor_delta;
+        }
+        output
+    }
+
+    fn layout_render_output(
+        &self,
+        render_output: &crate::ui::render::RenderOutput,
+        width: u16,
+    ) -> (Vec<Line>, Option<(usize, usize)>) {
+        let (frame, cursor_pos) =
+            Layout::new().compose_render_output(&render_output.lines, render_output.cursor, width);
+        (frame.lines().to_vec(), cursor_pos)
     }
 
     fn ensure_region(&mut self, terminal: &mut Terminal, line_count: usize) -> io::Result<u16> {

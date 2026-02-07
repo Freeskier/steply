@@ -1,7 +1,5 @@
 use crate::core::component::{Component, FocusMode};
-use crate::core::widget::Widget;
 use crate::inputs::Input;
-use crate::terminal::{KeyCode, KeyModifiers};
 
 pub type NodeId = String;
 
@@ -84,14 +82,18 @@ impl Node {
     }
 
     pub fn is_focused(&self) -> bool {
-        self.widget_ref()
-            .map(|widget| widget.is_focused())
-            .unwrap_or(false)
+        match self {
+            Node::Input(input) => input.is_focused(),
+            Node::Component(component) => component.is_focused(),
+            _ => false,
+        }
     }
 
     pub fn set_focused(&mut self, focused: bool) {
-        if let Some(mut widget) = self.widget_ref_mut() {
-            widget.set_focused(focused);
+        match self {
+            Node::Input(input) => input.set_focused(focused),
+            Node::Component(component) => component.set_focused(focused),
+            _ => {}
         }
     }
 
@@ -106,94 +108,6 @@ impl Node {
         match self {
             Node::Component(component) => component.children_mut(),
             _ => None,
-        }
-    }
-
-    pub fn widget_ref(&self) -> Option<WidgetRef<'_>> {
-        match self {
-            Node::Input(input) => Some(WidgetRef::Input(input.as_ref())),
-            Node::Component(component) => Some(WidgetRef::Component(component.as_ref())),
-            _ => None,
-        }
-    }
-
-    pub fn widget_ref_mut(&mut self) -> Option<WidgetRefMut<'_>> {
-        match self {
-            Node::Input(input) => Some(WidgetRefMut::Input(input.as_mut())),
-            Node::Component(component) => Some(WidgetRefMut::Component(component.as_mut())),
-            _ => None,
-        }
-    }
-}
-
-pub enum WidgetRef<'a> {
-    Input(&'a dyn Input),
-    Component(&'a dyn Component),
-}
-
-pub enum WidgetRefMut<'a> {
-    Input(&'a mut dyn Input),
-    Component(&'a mut dyn Component),
-}
-
-impl<'a> Widget for WidgetRef<'a> {
-    fn id(&self) -> &str {
-        match self {
-            WidgetRef::Input(input) => input.id(),
-            WidgetRef::Component(component) => component.id(),
-        }
-    }
-
-    fn is_focused(&self) -> bool {
-        match self {
-            WidgetRef::Input(input) => input.is_focused(),
-            WidgetRef::Component(component) => component.is_focused(),
-        }
-    }
-
-    fn set_focused(&mut self, _focused: bool) {}
-
-    fn handle_key(
-        &mut self,
-        _code: KeyCode,
-        _modifiers: KeyModifiers,
-        _ctx: &mut crate::core::component::EventContext,
-    ) -> bool {
-        false
-    }
-}
-
-impl<'a> Widget for WidgetRefMut<'a> {
-    fn id(&self) -> &str {
-        match self {
-            WidgetRefMut::Input(input) => input.id(),
-            WidgetRefMut::Component(component) => component.id(),
-        }
-    }
-
-    fn is_focused(&self) -> bool {
-        match self {
-            WidgetRefMut::Input(input) => input.is_focused(),
-            WidgetRefMut::Component(component) => component.is_focused(),
-        }
-    }
-
-    fn set_focused(&mut self, focused: bool) {
-        match self {
-            WidgetRefMut::Input(input) => input.set_focused(focused),
-            WidgetRefMut::Component(component) => component.set_focused(focused),
-        }
-    }
-
-    fn handle_key(
-        &mut self,
-        code: KeyCode,
-        modifiers: KeyModifiers,
-        ctx: &mut crate::core::component::EventContext,
-    ) -> bool {
-        match self {
-            WidgetRefMut::Input(input) => input.handle_key_with_context(code, modifiers, ctx),
-            WidgetRefMut::Component(component) => component.handle_key(code, modifiers, ctx),
         }
     }
 }

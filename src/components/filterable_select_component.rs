@@ -1,11 +1,11 @@
 use crate::components::select_component::{SelectComponent, SelectMode, SelectOption};
-use crate::core::component::{Component, ComponentBase, EventContext, FocusMode};
+use crate::core::component::{Component, ComponentBase, ComponentResponse, FocusMode};
 use crate::core::search::{autocomplete, fuzzy};
 use crate::core::value::Value;
 use crate::inputs::Input;
 use crate::inputs::text_input::TextInput;
 use crate::terminal::{KeyCode, KeyModifiers};
-use crate::ui::render::{RenderContext, RenderLine};
+use crate::ui::render::{RenderContext, RenderOutput};
 
 pub struct FilterableSelectComponent {
     base: ComponentBase,
@@ -113,19 +113,11 @@ impl Component for FilterableSelectComponent {
         FocusMode::Group
     }
 
-    fn render(&self, ctx: &RenderContext) -> Vec<RenderLine> {
-        let mut lines = Vec::new();
-
+    fn render(&self, ctx: &RenderContext) -> RenderOutput {
         let inline_error = self.filter_input.has_visible_error();
-        let (spans, cursor_offset) =
-            ctx.render_input_full(&self.filter_input, inline_error, self.base.focused);
-        lines.push(RenderLine {
-            spans,
-            cursor_offset,
-        });
-
-        lines.extend(self.select.render(ctx));
-        lines
+        let mut output = ctx.render_input_full(&self.filter_input, inline_error, self.base.focused);
+        output.append(self.select.render(ctx));
+        output
     }
 
     fn value(&self) -> Option<Value> {
@@ -143,32 +135,26 @@ impl Component for FilterableSelectComponent {
         }
     }
 
-    fn handle_key(
-        &mut self,
-        code: KeyCode,
-        modifiers: KeyModifiers,
-        ctx: &mut EventContext,
-    ) -> bool {
+    fn handle_key(&mut self, code: KeyCode, modifiers: KeyModifiers) -> ComponentResponse {
         if modifiers == KeyModifiers::NONE && code == KeyCode::Tab {
             if self.filter_input.value().trim().is_empty() || self.matches.is_empty() {
-                return false;
+                return ComponentResponse::not_handled();
             }
             if self.accept_autocomplete() {
-                ctx.handled();
-                return true;
+                return ComponentResponse::handled();
             }
-            return false;
+            return ComponentResponse::not_handled();
         }
 
         if modifiers == KeyModifiers::NONE {
-            let handled = match code {
+            let response = match code {
                 KeyCode::Up | KeyCode::Down | KeyCode::Enter | KeyCode::Char(' ') => {
-                    self.select.handle_key(code, modifiers, ctx)
+                    self.select.handle_key(code, modifiers)
                 }
-                _ => false,
+                _ => ComponentResponse::not_handled(),
             };
-            if handled {
-                return true;
+            if response.handled {
+                return response;
             }
         }
 
@@ -177,8 +163,7 @@ impl Component for FilterableSelectComponent {
                 let at_end =
                     self.filter_input.cursor_pos() >= self.filter_input.value().chars().count();
                 if at_end && self.accept_autocomplete() {
-                    ctx.handled();
-                    return true;
+                    return ComponentResponse::handled();
                 }
             }
         }
@@ -189,20 +174,13 @@ impl Component for FilterableSelectComponent {
 
         if before != after {
             self.refresh_matches();
-            ctx.handled();
-            return true;
+            return ComponentResponse::handled();
         }
 
         match result {
-            crate::inputs::KeyResult::Submit => {
-                ctx.submit();
-                true
-            }
-            crate::inputs::KeyResult::Handled => {
-                ctx.handled();
-                true
-            }
-            crate::inputs::KeyResult::NotHandled => false,
+            crate::inputs::KeyResult::Submit => ComponentResponse::submit_requested(),
+            crate::inputs::KeyResult::Handled => ComponentResponse::handled(),
+            crate::inputs::KeyResult::NotHandled => ComponentResponse::not_handled(),
         }
     }
 
@@ -212,29 +190,27 @@ impl Component for FilterableSelectComponent {
         self.select.set_focused(focused);
     }
 
-    fn delete_word(&mut self, ctx: &mut EventContext) -> bool {
+    fn delete_word(&mut self) -> ComponentResponse {
         let before = self.filter_input.value();
         self.filter_input.delete_word();
         let after = self.filter_input.value();
         if before != after {
             self.refresh_matches();
-            ctx.handled();
-            true
+            ComponentResponse::handled()
         } else {
-            false
+            ComponentResponse::not_handled()
         }
     }
 
-    fn delete_word_forward(&mut self, ctx: &mut EventContext) -> bool {
+    fn delete_word_forward(&mut self) -> ComponentResponse {
         let before = self.filter_input.value();
         self.filter_input.delete_word_forward();
         let after = self.filter_input.value();
         if before != after {
             self.refresh_matches();
-            ctx.handled();
-            true
+            ComponentResponse::handled()
         } else {
-            false
+            ComponentResponse::not_handled()
         }
     }
 }

@@ -1,6 +1,5 @@
-use crate::core::event::Action;
+use crate::core::event::Command;
 use crate::core::event_queue::AppEvent;
-use crate::core::form_event::FormEvent;
 use crate::core::node::Node;
 use crate::core::node::NodeId;
 use crate::core::state::AppState;
@@ -23,54 +22,54 @@ pub struct Reducer;
 impl Reducer {
     pub fn reduce(
         state: &mut AppState,
-        action: Action,
+        command: Command,
         error_timeout: Duration,
         mut active_nodes: Option<&mut [Node]>,
     ) -> Vec<Effect> {
-        match action {
-            Action::Exit => {
+        match command {
+            Command::Exit => {
                 state.should_exit = true;
                 vec![]
             }
-            Action::Cancel => {
+            Command::Cancel => {
                 state.flow.cancel_current();
                 state.should_exit = true;
                 vec![]
             }
-            Action::NextInput => {
+            Command::NextInput => {
                 let nodes = match active_nodes.as_deref_mut() {
                     Some(nodes) => nodes,
                     None => state.flow.current_step_mut().nodes.as_mut_slice(),
                 };
                 let events = state.engine.move_focus(nodes, 1);
-                Self::form_events_to_effects(events)
+                Self::focus_changes_to_effects(events)
             }
-            Action::PrevInput => {
+            Command::PrevInput => {
                 let nodes = match active_nodes.as_deref_mut() {
                     Some(nodes) => nodes,
                     None => state.flow.current_step_mut().nodes.as_mut_slice(),
                 };
                 let events = state.engine.move_focus(nodes, -1);
-                Self::form_events_to_effects(events)
+                Self::focus_changes_to_effects(events)
             }
-            Action::Submit => Self::handle_submit(state, error_timeout),
-            Action::DeleteWord => {
+            Command::Submit => Self::handle_submit(state, error_timeout),
+            Command::DeleteWord => {
                 let nodes = match active_nodes.as_deref_mut() {
                     Some(nodes) => nodes,
                     None => state.flow.current_step_mut().nodes.as_mut_slice(),
                 };
                 let events = state.engine.handle_delete_word(nodes, false);
-                Self::form_events_to_effects(events)
+                Self::reduce_engine_output(state, events, error_timeout)
             }
-            Action::DeleteWordForward => {
+            Command::DeleteWordForward => {
                 let nodes = match active_nodes.as_deref_mut() {
                     Some(nodes) => nodes,
                     None => state.flow.current_step_mut().nodes.as_mut_slice(),
                 };
                 let events = state.engine.handle_delete_word(nodes, true);
-                Self::form_events_to_effects(events)
+                Self::reduce_engine_output(state, events, error_timeout)
             }
-            Action::InputKey(key_event) => {
+            Command::InputKey(key_event) => {
                 let nodes = match active_nodes.as_deref_mut() {
                     Some(nodes) => nodes,
                     None => state.flow.current_step_mut().nodes.as_mut_slice(),
@@ -78,7 +77,7 @@ impl Reducer {
                 let output = state.engine.handle_key(nodes, key_event);
                 Self::reduce_engine_output(state, output, error_timeout)
             }
-            Action::TabKey(key_event) => {
+            Command::TabKey(key_event) => {
                 let nodes = match active_nodes.as_deref_mut() {
                     Some(nodes) => nodes,
                     None => state.flow.current_step_mut().nodes.as_mut_slice(),
@@ -94,9 +93,9 @@ impl Reducer {
                 }
 
                 let events = state.engine.move_focus(nodes, 1);
-                Self::form_events_to_effects(events)
+                Self::focus_changes_to_effects(events)
             }
-            Action::ClearErrorMessage(id) => {
+            Command::ClearErrorMessage(id) => {
                 let nodes = match active_nodes.as_deref_mut() {
                     Some(nodes) => nodes,
                     None => state.flow.current_step_mut().nodes.as_mut_slice(),
@@ -107,25 +106,11 @@ impl Reducer {
         }
     }
 
-    fn form_events_to_effects(events: Vec<FormEvent>) -> Vec<Effect> {
+    fn focus_changes_to_effects(changes: Vec<(Option<NodeId>, Option<NodeId>)>) -> Vec<Effect> {
         let mut effects = Vec::new();
 
-        for event in events {
-            match event {
-                FormEvent::InputChanged { id, value } => {
-                    effects.push(Effect::Emit(AppEvent::InputChanged { id, value }));
-                }
-                FormEvent::FocusChanged { from, to } => {
-                    effects.push(Effect::Emit(AppEvent::FocusChanged { from, to }));
-                }
-                FormEvent::ErrorCancelled { id } => {
-                    effects.push(Effect::CancelClearError(id));
-                }
-                FormEvent::ErrorScheduled { id } => {
-                    effects.push(Effect::CancelClearError(id));
-                }
-                FormEvent::SubmitRequested => {}
-            }
+        for (from, to) in changes {
+            effects.push(Effect::Emit(AppEvent::FocusChanged { from, to }));
         }
 
         effects
@@ -136,12 +121,15 @@ impl Reducer {
         output: crate::core::form_engine::EngineOutput,
         error_timeout: Duration,
     ) -> Vec<Effect> {
-        let has_submit = output
-            .events
-            .iter()
-            .any(|e| matches!(e, FormEvent::SubmitRequested));
+        let mut effects = Vec::new();
+        for (id, value) in output.input_changes {
+            effects.push(Effect::Emit(AppEvent::InputChanged {
+                id: id.clone(),
+                value,
+            }));
+            effects.push(Effect::CancelClearError(id));
+        }
 
-        let mut effects = Self::form_events_to_effects(output.events);
         for produced in output.produced {
             effects.push(Effect::ComponentProduced {
                 id: produced.id,
@@ -149,7 +137,7 @@ impl Reducer {
             });
         }
 
-        if has_submit {
+        if output.submit_requested {
             effects.extend(Self::handle_submit(state, error_timeout));
         }
 
@@ -185,7 +173,7 @@ impl Reducer {
         if let Err((id, _err)) = state.engine.validate_focused(nodes) {
             effects.push(Effect::CancelClearError(id.clone()));
             effects.push(Effect::EmitAfter(
-                AppEvent::Action(Action::ClearErrorMessage(id)),
+                AppEvent::ClearErrorMessage(id),
                 error_timeout,
             ));
             return true;
@@ -197,7 +185,7 @@ impl Reducer {
         let mut focus_events = Vec::new();
         let nodes = state.flow.current_step_mut().nodes.as_mut_slice();
         if state.engine.advance_focus(nodes, &mut focus_events) {
-            effects.extend(Self::form_events_to_effects(focus_events));
+            effects.extend(Self::focus_changes_to_effects(focus_events));
             return true;
         }
         false
@@ -233,7 +221,7 @@ impl Reducer {
 
         for id in scheduled_ids {
             effects.push(Effect::EmitAfter(
-                AppEvent::Action(Action::ClearErrorMessage(id)),
+                AppEvent::ClearErrorMessage(id),
                 error_timeout,
             ));
         }
@@ -243,7 +231,7 @@ impl Reducer {
                 let mut focus_events = Vec::new();
                 let nodes = state.flow.current_step_mut().nodes.as_mut_slice();
                 state.engine.set_focus(nodes, Some(idx), &mut focus_events);
-                effects.extend(Self::form_events_to_effects(focus_events));
+                effects.extend(Self::focus_changes_to_effects(focus_events));
             }
         }
     }

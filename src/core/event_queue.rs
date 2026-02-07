@@ -1,5 +1,4 @@
 use crate::binding::{BindTarget, ValueSource};
-use crate::event::Action;
 use crate::terminal::KeyEvent;
 use crate::value::Value;
 use std::collections::VecDeque;
@@ -8,7 +7,7 @@ use std::time::{Duration, Instant};
 #[derive(Debug, Clone)]
 pub enum AppEvent {
     Key(KeyEvent),
-    Action(Action),
+    ClearErrorMessage(String),
     ValueRequested {
         source: ValueSource,
         target: BindTarget,
@@ -62,11 +61,11 @@ impl EventQueue {
 
     pub fn cancel_clear_error_message(&mut self, id: &str) {
         self.queue.retain(|queued| match queued {
-            AppEvent::Action(Action::ClearErrorMessage(queued_id)) => queued_id != id,
+            AppEvent::ClearErrorMessage(queued_id) => queued_id != id,
             _ => true,
         });
         self.scheduled.retain(|scheduled| match &scheduled.event {
-            AppEvent::Action(Action::ClearErrorMessage(scheduled_id)) => scheduled_id != id,
+            AppEvent::ClearErrorMessage(scheduled_id) => scheduled_id != id,
             _ => true,
         });
     }

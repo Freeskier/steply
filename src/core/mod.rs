@@ -1,4 +1,3 @@
-pub mod action_bindings;
 pub mod app;
 pub mod binding;
 pub mod component;
@@ -6,7 +5,7 @@ pub mod event;
 pub mod event_queue;
 pub mod flow;
 pub mod form_engine;
-pub mod form_event;
+pub mod key_bindings;
 pub mod layer;
 pub mod layer_manager;
 pub mod node;
@@ -18,4 +17,3 @@ pub mod step;
 pub mod step_builder;
 pub mod validation;
 pub mod value;
-pub mod widget;

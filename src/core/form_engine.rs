@@ -1,10 +1,8 @@
-use crate::core::component::EventContext;
-use crate::core::form_event::FormEvent;
+use crate::core::component::ComponentResponse;
 use crate::core::node::NodeId;
 use crate::core::node::{Node, find_input_mut};
 use crate::core::validation;
 use crate::core::value::Value;
-use crate::core::widget::Widget;
 use crate::inputs::{Input, InputError};
 use crate::terminal::KeyEvent;
 
@@ -31,9 +29,10 @@ pub struct ComponentValue {
 
 #[derive(Debug, Default, Clone)]
 pub struct EngineOutput {
-    pub events: Vec<FormEvent>,
+    pub input_changes: Vec<(NodeId, String)>,
     pub produced: Vec<ComponentValue>,
     pub handled: bool,
+    pub submit_requested: bool,
 }
 
 pub struct FormEngine {
@@ -95,7 +94,11 @@ impl FormEngine {
         input.handle_tab_completion()
     }
 
-    pub fn move_focus(&mut self, nodes: &mut [Node], direction: isize) -> Vec<FormEvent> {
+    pub fn move_focus(
+        &mut self,
+        nodes: &mut [Node],
+        direction: isize,
+    ) -> Vec<(Option<NodeId>, Option<NodeId>)> {
         if self.focus_targets.is_empty() {
             return vec![];
         }
@@ -121,7 +124,7 @@ impl FormEngine {
         &mut self,
         nodes: &mut [Node],
         new_index: Option<usize>,
-        events: &mut Vec<FormEvent>,
+        events: &mut Vec<(Option<NodeId>, Option<NodeId>)>,
     ) {
         let from_target = self.focus_index.and_then(|i| self.focus_targets.get(i));
         let to_target = new_index.and_then(|i| self.focus_targets.get(i));
@@ -141,10 +144,7 @@ impl FormEngine {
         self.focus_index = new_index;
         let from_id = from_target.map(|t| t.id.clone());
         let to_id = to_target.map(|t| t.id.clone());
-        events.push(FormEvent::FocusChanged {
-            from: from_id,
-            to: to_id,
-        });
+        events.push((from_id, to_id));
     }
 
     pub fn clear_focus(&mut self, nodes: &mut [Node]) {
@@ -173,13 +173,11 @@ impl FormEngine {
             return output;
         };
 
-        let Some(mut widget) = node.widget_ref_mut() else {
-            return output;
+        let response = match node {
+            Node::Input(input) => input.handle_key_with_response(key.code, key.modifiers),
+            Node::Component(component) => component.handle_key(key.code, key.modifiers),
+            Node::Text(_) => ComponentResponse::not_handled(),
         };
-
-        let mut ctx = EventContext::new();
-        let handled = widget.handle_key(key.code, key.modifiers, &mut ctx);
-        let response = ctx.into_response(handled);
         output.handled = response.handled;
 
         if let Some(value) = response.produced {
@@ -191,77 +189,80 @@ impl FormEngine {
 
         for change in response.changes {
             if let Some(input) = find_input_mut(nodes, &change.id) {
-                let events =
-                    self.apply_input_change(input, &change.id, &change.value, change.apply);
-                output.events.extend(events);
+                self.apply_input_change(
+                    input,
+                    &change.id,
+                    &change.value,
+                    change.apply,
+                    &mut output,
+                );
             }
         }
 
         if response.submit_requested {
-            output.events.push(FormEvent::SubmitRequested);
+            output.submit_requested = true;
         }
 
         output
     }
 
-    pub fn handle_delete_word(&mut self, nodes: &mut [Node], forward: bool) -> Vec<FormEvent> {
+    pub fn handle_delete_word(&mut self, nodes: &mut [Node], forward: bool) -> EngineOutput {
         let Some(target) = self
             .focus_index
             .and_then(|i| self.focus_targets.get(i))
             .cloned()
         else {
-            return vec![];
+            return EngineOutput::default();
         };
 
         let Some(node) = node_at_path_mut(nodes, &target.path) else {
-            return vec![];
+            return EngineOutput::default();
         };
 
-        let Some(widget) = node.widget_ref_mut() else {
-            return vec![];
-        };
-
-        let mut ctx = EventContext::new();
-        let handled = match widget {
-            crate::core::node::WidgetRefMut::Input(input) => {
+        let response = match node {
+            Node::Input(input) => {
                 if forward {
                     input.delete_word_forward();
                 } else {
                     input.delete_word();
                 }
-                ctx.record_input(input.id().to_string(), input.value());
-                ctx.handled();
-                true
+                let mut response = ComponentResponse::handled();
+                response.record_input(input.id().to_string(), input.value());
+                response
             }
-            crate::core::node::WidgetRefMut::Component(component) => {
+            Node::Component(component) => {
                 if forward {
-                    component.delete_word_forward(&mut ctx)
+                    component.delete_word_forward()
                 } else {
-                    component.delete_word(&mut ctx)
+                    component.delete_word()
                 }
             }
+            Node::Text(_) => ComponentResponse::not_handled(),
         };
 
-        if !handled {
-            return vec![];
+        if !response.handled {
+            return EngineOutput::default();
         }
 
-        let response = ctx.into_response(handled);
-        let mut events = Vec::new();
-
+        let mut output = EngineOutput::default();
+        output.handled = true;
         for change in response.changes {
             if let Some(input) = find_input_mut(nodes, &change.id) {
-                let change_events =
-                    self.apply_input_change(input, &change.id, &change.value, change.apply);
-                events.extend(change_events);
+                self.apply_input_change(
+                    input,
+                    &change.id,
+                    &change.value,
+                    change.apply,
+                    &mut output,
+                );
             }
         }
 
         if response.submit_requested {
-            events.push(FormEvent::SubmitRequested);
+            output.submit_requested = true;
         }
 
-        events
+        output
     }
 
     pub fn validate_focused(&self, nodes: &mut [Node]) -> Result<(), (NodeId, String)> {
@@ -314,7 +315,11 @@ impl FormEngine {
         }
     }
 
-    pub fn advance_focus(&mut self, nodes: &mut [Node], events: &mut Vec<FormEvent>) -> bool {
+    pub fn advance_focus(
+        &mut self,
+        nodes: &mut [Node],
+        events: &mut Vec<(Option<NodeId>, Option<NodeId>)>,
+    ) -> bool {
         let Some(current) = self.focus_index else {
             return false;
         };
@@ -360,23 +365,19 @@ impl FormEngine {
         id: &str,
         value: &str,
         apply: bool,
-    ) -> Vec<FormEvent> {
+        output: &mut EngineOutput,
+    ) {
         if apply {
             input.set_value(value.to_string());
         }
-        let mut events = Vec::new();
-        events.push(FormEvent::InputChanged {
-            id: id.to_string(),
-            value: value.to_string(),
-        });
-        events.push(FormEvent::ErrorCancelled { id: id.to_string() });
+        output
+            .input_changes
+            .push((id.to_string(), value.to_string()));
         input.clear_error();
 
         if let Err(err) = validation::validate_input(input) {
             input.set_error(Some(InputError::hidden(err)));
         }
-
-        events
     }
 
     fn set_target_focus(&self, nodes: &mut [Node], target: &FocusTarget, focused: bool) {

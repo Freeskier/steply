@@ -5,11 +5,11 @@ use crate::choice_input::ChoiceInput;
 use crate::color_input::ColorInput;
 use crate::components::file_browser::{FileBrowserState, overlay_for_list};
 use crate::components::select_component::{SelectComponent, SelectMode};
-use crate::core::action_bindings::ActionBindings;
 use crate::core::binding::{BindTarget, ValueSource};
-use crate::core::event::Action;
+use crate::core::event::Command;
 use crate::core::event_queue::{AppEvent, EventQueue};
 use crate::core::flow::{Flow, StepStatus};
+use crate::core::key_bindings::KeyBindings;
 use crate::core::layer_manager::LayerManager;
 use crate::core::node::{
     Node, find_component, find_component_mut, find_input, find_input_mut, poll_components,
@@ -37,7 +37,7 @@ const ERROR_TIMEOUT: Duration = Duration::from_secs(2);
 pub struct App {
     state: AppState,
     pipeline: RenderPipeline,
-    bindings: ActionBindings,
+    bindings: KeyBindings,
     events: EventQueue,
     theme: Theme,
 
@@ -62,7 +62,7 @@ impl App {
         Self {
             state,
             pipeline,
-            bindings: ActionBindings::new(),
+            bindings: KeyBindings::new(),
             events: EventQueue::new(),
             theme: Theme::default(),
             last_rendered_step: 0,
@@ -172,7 +172,7 @@ impl App {
     fn dispatch(&mut self, event: AppEvent) {
         match event {
             AppEvent::Key(key) => self.handle_key_event(key),
-            AppEvent::Action(action) => self.handle_action(action),
+            AppEvent::ClearErrorMessage(id) => self.handle_command(Command::ClearErrorMessage(id)),
             AppEvent::ValueRequested { source, target } => {
                 self.handle_value_requested(source, target);
             }
@@ -213,7 +213,7 @@ impl App {
         }
 
         if key.code == KeyCode::Tab && key.modifiers == KeyModifiers::NONE {
-            self.handle_action(Action::TabKey(key));
+            self.handle_command(Command::TabKey(key));
             return;
         }
 
@@ -221,32 +221,32 @@ impl App {
             && key.modifiers == KeyModifiers::NONE
             && self.state.engine.focused_node_id().is_none()
         {
-            self.handle_action(Action::Submit);
+            self.handle_command(Command::Submit);
             return;
         }
 
-        if let Some(action) = self.bindings.handle_key(&key) {
-            self.handle_action(action);
+        if let Some(command) = self.bindings.handle_key(&key) {
+            self.handle_command(command);
             return;
         }
 
-        self.handle_action(Action::InputKey(key));
+        self.handle_command(Command::InputKey(key));
     }
 
-    fn handle_action(&mut self, action: Action) {
+    fn handle_command(&mut self, command: Command) {
         let effects = if let Some(active) = self.layer_manager.active_mut() {
             if active.layer.focus_mode() == crate::core::layer::LayerFocusMode::Modal {
                 Reducer::reduce(
                     &mut self.state,
-                    action,
+                    command,
                     ERROR_TIMEOUT,
                     Some(active.nodes_mut()),
                 )
             } else {
-                Reducer::reduce(&mut self.state, action, ERROR_TIMEOUT, None)
+                Reducer::reduce(&mut self.state, command, ERROR_TIMEOUT, None)
             }
         } else {
-            Reducer::reduce(&mut self.state, action, ERROR_TIMEOUT, None)
+            Reducer::reduce(&mut self.state, command, ERROR_TIMEOUT, None)
         };
         self.apply_effects(effects);
     }

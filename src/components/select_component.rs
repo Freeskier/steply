@@ -1,7 +1,7 @@
 use crate::core::binding::BindTarget;
-use crate::core::component::{Component, ComponentBase, EventContext, FocusMode};
+use crate::core::component::{Component, ComponentBase, ComponentResponse, FocusMode};
 use crate::core::value::Value;
-use crate::ui::render::{RenderContext, RenderLine};
+use crate::ui::render::{RenderContext, RenderLine, RenderOutput};
 use crate::ui::span::Span;
 use crate::ui::style::{Color, Style};
 use std::collections::HashSet;
@@ -527,14 +527,13 @@ impl Component for SelectComponent {
         FocusMode::Group
     }
 
-    fn render(&self, ctx: &RenderContext) -> Vec<RenderLine> {
+    fn render(&self, ctx: &RenderContext) -> RenderOutput {
         let mut lines = Vec::new();
         let theme = ctx.theme();
 
         if let Some(label) = &self.label {
             lines.push(RenderLine {
                 spans: vec![Span::new(label.clone())],
-                cursor_offset: None,
             });
         }
 
@@ -573,10 +572,7 @@ impl Component for SelectComponent {
                 };
                 spans.extend(render_option_spans(option, &base_style, &highlight_style));
 
-                lines.push(RenderLine {
-                    spans,
-                    cursor_offset: None,
-                });
+                lines.push(RenderLine { spans });
                 continue;
             }
             let marker = self.marker_symbol(idx);
@@ -608,10 +604,7 @@ impl Component for SelectComponent {
                 ));
             }
 
-            lines.push(RenderLine {
-                spans,
-                cursor_offset: None,
-            });
+            lines.push(RenderLine { spans });
         }
 
         if let Some(max_visible) = self.max_visible {
@@ -630,12 +623,11 @@ impl Component for SelectComponent {
                 let footer = format!("[{}-{} of {}]{}", start, end, total, indicator);
                 lines.push(RenderLine {
                     spans: vec![Span::new(footer).with_style(theme.hint.clone())],
-                    cursor_offset: None,
                 });
             }
         }
 
-        lines
+        RenderOutput::from_lines(lines)
     }
 
     fn bind_target(&self) -> Option<BindTarget> {
@@ -678,10 +670,9 @@ impl Component for SelectComponent {
         &mut self,
         code: crate::terminal::KeyCode,
         modifiers: crate::terminal::KeyModifiers,
-        _ctx: &mut EventContext,
-    ) -> bool {
+    ) -> ComponentResponse {
         if modifiers != crate::terminal::KeyModifiers::NONE {
-            return false;
+            return ComponentResponse::not_handled();
         }
 
         let handled = match code {
@@ -689,7 +680,7 @@ impl Component for SelectComponent {
             crate::terminal::KeyCode::Down => self.move_active(1),
             crate::terminal::KeyCode::Char(' ') => {
                 if self.mode == SelectMode::List {
-                    return false;
+                    return ComponentResponse::not_handled();
                 }
                 let _ = self.activate_current();
                 !self.options.is_empty()
@@ -699,13 +690,17 @@ impl Component for SelectComponent {
                     let _ = self.activate_current();
                 }
                 if let Some(value) = Component::value(self) {
-                    _ctx.produce(value);
+                    return ComponentResponse::produced(value);
                 }
                 true
             }
             _ => false,
         };
 
-        handled
+        if handled {
+            ComponentResponse::handled()
+        } else {
+            ComponentResponse::not_handled()
+        }
     }
 }

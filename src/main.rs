@@ -1,63 +1,18 @@
-use std::io;
-use std::time::Duration;
-use steply::app::App;
-use steply::terminal::Terminal;
-use steply::terminal_event::TerminalEvent;
+use steply_v2::app::runtime::Runtime;
+use steply_v2::state::app_state::AppState;
+use steply_v2::state::demo::build_demo_flow;
+use steply_v2::terminal::terminal::Terminal;
 
 fn main() {
-    if let Err(e) = run() {
-        eprintln!("Error: {}", e);
+    if let Err(err) = run() {
+        eprintln!("error: {err}");
     }
 }
 
-fn run() -> io::Result<()> {
-    let mut terminal = Terminal::new()?;
-    terminal.enter_raw_mode()?;
-    terminal.set_line_wrap(false)?;
-    terminal.hide_cursor()?;
-
-    let result = event_loop(&mut terminal);
-
-    terminal.show_cursor()?;
-    terminal.set_line_wrap(true)?;
-    terminal.exit_raw_mode()?;
-
-    result
-}
-
-fn event_loop(terminal: &mut Terminal) -> io::Result<()> {
-    let mut app = App::new();
-
-    let mut render_requested = true;
-
-    loop {
-        if terminal.poll(Duration::from_millis(100))? {
-            match terminal.read_event()? {
-                TerminalEvent::Key(key_event) => {
-                    app.handle_key(key_event);
-                }
-                TerminalEvent::Resize { .. } => {
-                    app.request_rerender();
-                }
-            }
-        }
-
-        if app.tick() {
-            render_requested = true;
-        }
-
-        if render_requested {
-            app.render(terminal)?;
-            render_requested = false;
-        }
-
-        if app.should_exit() {
-            break;
-        }
-    }
-
-    app.move_to_end(terminal)?;
-    terminal.clear_from_cursor_down()?;
-
-    Ok(())
+fn run() -> std::io::Result<()> {
+    let flow = build_demo_flow();
+    let state = AppState::new(flow);
+    let terminal = Terminal::new()?;
+    let mut runtime = Runtime::new(state, terminal);
+    runtime.run()
 }

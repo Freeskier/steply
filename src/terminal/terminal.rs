@@ -1,270 +1,277 @@
-use crate::frame::{Frame, Line};
-use crate::style::Color;
-use crate::terminal::{KeyCode, KeyEvent, KeyModifiers};
-use crate::terminal_event::TerminalEvent;
-use crossterm::event::{Event, KeyEventKind, poll, read};
-use crossterm::style::{
-    Attribute, ResetColor, SetAttribute, SetBackgroundColor, SetForegroundColor,
+use crate::ui::span::SpanLine;
+use crate::ui::style::Color;
+use crossterm::cursor::{Hide, MoveTo, Show, position};
+use crossterm::event::{
+    self, Event as CrosstermEvent, KeyCode as CrosstermKeyCode, KeyEvent as CrosstermKeyEvent,
+    KeyModifiers as CrosstermKeyModifiers,
 };
-use crossterm::{cursor, execute, queue, terminal};
+use crossterm::style::{
+    Color as CrosstermColor, Print, ResetColor, SetBackgroundColor, SetForegroundColor,
+};
+use crossterm::terminal::{self, Clear, ClearType};
+use crossterm::{execute, queue};
 use std::io::{self, Stdout, Write};
 use std::time::Duration;
 
-#[derive(Debug, Clone, Copy)]
-pub struct Size {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum KeyCode {
+    Unknown,
+    Char(char),
+    Enter,
+    Tab,
+    BackTab,
+    Esc,
+    Backspace,
+    Delete,
+    Left,
+    Right,
+    Up,
+    Down,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct KeyModifiers(u8);
+
+impl KeyModifiers {
+    pub const NONE: Self = Self(0);
+    pub const SHIFT: Self = Self(1 << 0);
+    pub const CONTROL: Self = Self(1 << 1);
+
+    pub fn contains(self, other: Self) -> bool {
+        (self.0 & other.0) == other.0
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct KeyEvent {
+    pub code: KeyCode,
+    pub modifiers: KeyModifiers,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TerminalEvent {
+    Key(KeyEvent),
+    Resize(TerminalSize),
+    Tick,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TerminalSize {
     pub width: u16,
     pub height: u16,
 }
 
-#[derive(Debug, Clone, Copy)]
-pub struct Pos {
-    pub x: u16,
-    pub y: u16,
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CursorPos {
+    pub col: u16,
+    pub row: u16,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TerminalState {
+    pub size: TerminalSize,
+    pub cursor: Option<CursorPos>,
 }
 
 pub struct Terminal {
     stdout: Stdout,
-    size: Size,
-    cursor: Pos,
+    state: TerminalState,
+    origin_row: u16,
+    last_rendered_lines: usize,
 }
 
 impl Terminal {
     pub fn new() -> io::Result<Self> {
-        let stdout = io::stdout();
         let (width, height) = terminal::size()?;
-        let (x, y) = cursor::position()?;
         Ok(Self {
-            stdout,
-            size: Size { width, height },
-            cursor: Pos { x, y },
+            stdout: io::stdout(),
+            state: TerminalState {
+                size: TerminalSize { width, height },
+                cursor: None,
+            },
+            origin_row: 0,
+            last_rendered_lines: 0,
         })
     }
 
-    pub fn writer_mut(&mut self) -> &mut Stdout {
-        &mut self.stdout
-    }
-
-    pub fn enter_raw_mode(&mut self) -> io::Result<()> {
-        terminal::enable_raw_mode()
-    }
-
-    pub fn exit_raw_mode(&mut self) -> io::Result<()> {
-        terminal::disable_raw_mode()
-    }
-
-    pub fn set_line_wrap(&mut self, enabled: bool) -> io::Result<()> {
-        if enabled {
-            execute!(self.stdout, terminal::EnableLineWrap)?;
+    pub fn enter(&mut self) -> io::Result<()> {
+        self.refresh_size()?;
+        let (_, row) = position()?;
+        self.origin_row = if self.state.size.height == 0 {
+            0
         } else {
-            execute!(self.stdout, terminal::DisableLineWrap)?;
-        }
+            row.saturating_add(1)
+                .min(self.state.size.height.saturating_sub(1))
+        };
+        terminal::enable_raw_mode()?;
+        execute!(self.stdout, Hide)?;
         Ok(())
     }
 
-    pub fn size(&self) -> Size {
-        self.size
+    pub fn exit(&mut self) -> io::Result<()> {
+        self.refresh_size()?;
+        let height = self.state.size.height;
+        let max_rows = height.saturating_sub(self.origin_row) as usize;
+        let used_rows = self.last_rendered_lines.min(max_rows) as u16;
+        let final_row = if height == 0 {
+            0
+        } else {
+            self.origin_row
+                .saturating_add(used_rows)
+                .min(height.saturating_sub(1))
+        };
+        execute!(
+            self.stdout,
+            MoveTo(0, final_row),
+            Clear(ClearType::CurrentLine),
+            Show
+        )?;
+        writeln!(self.stdout)?;
+        self.stdout.flush()?;
+        terminal::disable_raw_mode()?;
+        Ok(())
     }
 
-    pub fn cursor_position(&self) -> Pos {
-        self.cursor
+    pub fn poll_event(&mut self, timeout: Duration) -> io::Result<TerminalEvent> {
+        if event::poll(timeout)? {
+            match event::read()? {
+                CrosstermEvent::Key(key) => Ok(TerminalEvent::Key(map_key_event(key))),
+                CrosstermEvent::Resize(width, height) => {
+                    Ok(TerminalEvent::Resize(TerminalSize { width, height }))
+                }
+                _ => Ok(TerminalEvent::Tick),
+            }
+        } else {
+            Ok(TerminalEvent::Tick)
+        }
     }
 
-    pub fn refresh_size(&mut self) -> io::Result<bool> {
+    pub fn size(&self) -> TerminalSize {
+        self.state.size
+    }
+
+    pub fn state(&self) -> TerminalState {
+        self.state
+    }
+
+    pub fn set_size(&mut self, size: TerminalSize) {
+        self.state.size = size;
+    }
+
+    pub fn refresh_size(&mut self) -> io::Result<()> {
         let (width, height) = terminal::size()?;
-        let changed = self.size.width != width || self.size.height != height;
-        self.size = Size { width, height };
-        Ok(changed)
-    }
-
-    pub fn refresh_cursor_position(&mut self) -> io::Result<()> {
-        let (x, y) = cursor::position()?;
-        self.cursor = Pos { x, y };
+        self.state.size = TerminalSize { width, height };
         Ok(())
     }
 
-    pub fn poll(&self, timeout: Duration) -> io::Result<bool> {
-        poll(timeout)
-    }
+    pub fn render(&mut self, lines: &[SpanLine], cursor: Option<CursorPos>) -> io::Result<()> {
+        self.refresh_size()?;
+        self.state.cursor = cursor;
 
-    pub fn read_event(&mut self) -> io::Result<TerminalEvent> {
-        loop {
-            let event = read()?;
-            match event {
-                Event::Key(key) => {
-                    if key.kind != KeyEventKind::Press {
-                        continue;
-                    }
-                    return Ok(TerminalEvent::Key(map_key_event(key)));
+        let width = self.state.size.width;
+        let height = self.state.size.height;
+        let available_rows = height.saturating_sub(self.origin_row) as usize;
+        let to_draw = lines.len().min(available_rows);
+        let clear_rows = self.last_rendered_lines.max(to_draw);
+
+        for row in 0..clear_rows {
+            queue!(
+                self.stdout,
+                MoveTo(0, self.origin_row.saturating_add(row as u16)),
+                Clear(ClearType::CurrentLine)
+            )?;
+            let Some(line) = lines.get(row) else {
+                continue;
+            };
+            let mut used = 0usize;
+            for span in line {
+                if used >= width as usize {
+                    break;
                 }
-                Event::Resize(width, height) => {
-                    self.size = Size { width, height };
-                    return Ok(TerminalEvent::Resize { width, height });
+
+                let available = (width as usize).saturating_sub(used);
+                let clipped: String = span.text.chars().take(available).collect();
+                if clipped.is_empty() {
+                    continue;
                 }
-                _ => continue,
+
+                if let Some(color) = span.style.color {
+                    queue!(self.stdout, SetForegroundColor(map_color(color)))?;
+                }
+                if let Some(background) = span.style.background {
+                    queue!(self.stdout, SetBackgroundColor(map_color(background)))?;
+                }
+                queue!(self.stdout, Print(clipped.clone()), ResetColor)?;
+                used = used.saturating_add(clipped.chars().count());
             }
         }
-    }
+        self.last_rendered_lines = to_draw;
 
-    pub fn hide_cursor(&mut self) -> io::Result<()> {
-        execute!(self.stdout, cursor::Hide)?;
-        Ok(())
-    }
-
-    pub fn show_cursor(&mut self) -> io::Result<()> {
-        execute!(self.stdout, cursor::Show)?;
-        Ok(())
-    }
-
-    pub fn move_cursor(&mut self, x: u16, y: u16) -> io::Result<()> {
-        execute!(self.stdout, cursor::MoveTo(x, y))?;
-        self.cursor = Pos { x, y };
-        Ok(())
-    }
-
-    pub fn clear_line(&mut self) -> io::Result<()> {
-        execute!(
-            self.stdout,
-            terminal::Clear(terminal::ClearType::CurrentLine)
-        )?;
-        Ok(())
-    }
-
-    pub fn clear_from_cursor_down(&mut self) -> io::Result<()> {
-        execute!(
-            self.stdout,
-            terminal::Clear(terminal::ClearType::FromCursorDown)
-        )?;
-        Ok(())
-    }
-
-    pub fn queue_hide_cursor(&mut self) -> io::Result<()> {
-        queue!(self.stdout, cursor::Hide)?;
-        Ok(())
-    }
-
-    pub fn queue_show_cursor(&mut self) -> io::Result<()> {
-        queue!(self.stdout, cursor::Show)?;
-        Ok(())
-    }
-
-    pub fn queue_move_cursor(&mut self, x: u16, y: u16) -> io::Result<()> {
-        queue!(self.stdout, cursor::MoveTo(x, y))?;
-        self.cursor = Pos { x, y };
-        Ok(())
-    }
-
-    pub fn queue_clear_line(&mut self) -> io::Result<()> {
-        queue!(
-            self.stdout,
-            terminal::Clear(terminal::ClearType::CurrentLine)
-        )?;
-        Ok(())
-    }
-
-    pub fn render_line(&mut self, line: &Line) -> io::Result<()> {
-        for span in line.spans() {
-            let has_style = span.style().color().is_some()
-                || span.style().background().is_some()
-                || span.style().bold()
-                || span.style().italic()
-                || span.style().underline();
-
-            if let Some(fg) = span.style().color() {
-                write!(self.stdout, "{}", SetForegroundColor(map_color(fg)))?;
+        if let Some(cursor) = self.state.cursor {
+            if width > 0 && height > 0 {
+                let col = cursor.col.min(width.saturating_sub(1));
+                let max_local_row = available_rows.saturating_sub(1) as u16;
+                let row = self
+                    .origin_row
+                    .saturating_add(cursor.row.min(max_local_row))
+                    .min(height.saturating_sub(1));
+                queue!(self.stdout, MoveTo(col, row), Show)?;
+            } else {
+                queue!(self.stdout, Hide)?;
             }
-            if let Some(bg) = span.style().background() {
-                write!(self.stdout, "{}", SetBackgroundColor(map_color(bg)))?;
-            }
-
-            if span.style().bold() {
-                write!(self.stdout, "{}", SetAttribute(Attribute::Bold))?;
-            }
-            if span.style().dim() {
-                write!(self.stdout, "{}", SetAttribute(Attribute::Dim))?;
-            }
-            if span.style().italic() {
-                write!(self.stdout, "{}", SetAttribute(Attribute::Italic))?;
-            }
-            if span.style().underline() {
-                write!(self.stdout, "{}", SetAttribute(Attribute::Underlined))?;
-            }
-
-            write!(self.stdout, "{}", span.text())?;
-
-            if has_style {
-                write!(self.stdout, "{}", SetAttribute(Attribute::Reset))?;
-                write!(self.stdout, "{}", ResetColor)?;
-            }
+        } else {
+            queue!(self.stdout, Hide)?;
         }
-        Ok(())
-    }
 
-    pub fn render_frame(&mut self, frame: &Frame) -> io::Result<()> {
-        for (i, line) in frame.lines().iter().enumerate() {
-            if i > 0 {
-                writeln!(self.stdout)?;
-            }
-            self.render_line(line)?;
-        }
-        Ok(())
-    }
-
-    pub fn flush(&mut self) -> io::Result<()> {
         self.stdout.flush()
     }
 }
 
-fn map_color(color: Color) -> crossterm::style::Color {
+fn map_color(color: Color) -> CrosstermColor {
     match color {
-        Color::Black => crossterm::style::Color::Black,
-        Color::DarkGrey => crossterm::style::Color::DarkGrey,
-        Color::Red => crossterm::style::Color::Red,
-        Color::Green => crossterm::style::Color::Green,
-        Color::Yellow => crossterm::style::Color::Yellow,
-        Color::Blue => crossterm::style::Color::Blue,
-        Color::Magenta => crossterm::style::Color::Magenta,
-        Color::Cyan => crossterm::style::Color::Cyan,
-        Color::White => crossterm::style::Color::White,
-        Color::Rgb(r, g, b) => crossterm::style::Color::Rgb { r, g, b },
+        Color::Reset => CrosstermColor::Reset,
+        Color::Black => CrosstermColor::Black,
+        Color::Red => CrosstermColor::DarkRed,
+        Color::Green => CrosstermColor::DarkGreen,
+        Color::Yellow => CrosstermColor::DarkYellow,
+        Color::Blue => CrosstermColor::DarkBlue,
+        Color::Magenta => CrosstermColor::DarkMagenta,
+        Color::Cyan => CrosstermColor::DarkCyan,
+        Color::White => CrosstermColor::White,
     }
 }
 
-fn map_key_event(event: crossterm::event::KeyEvent) -> KeyEvent {
+fn map_key_event(key: CrosstermKeyEvent) -> KeyEvent {
     KeyEvent {
-        code: map_key_code(event.code),
-        modifiers: map_key_modifiers(event.modifiers),
+        code: map_key_code(key.code),
+        modifiers: map_key_modifiers(key.modifiers),
     }
 }
 
-fn map_key_code(code: crossterm::event::KeyCode) -> KeyCode {
+fn map_key_code(code: CrosstermKeyCode) -> KeyCode {
     match code {
-        crossterm::event::KeyCode::Char(ch) => KeyCode::Char(ch),
-        crossterm::event::KeyCode::Backspace => KeyCode::Backspace,
-        crossterm::event::KeyCode::Enter => KeyCode::Enter,
-        crossterm::event::KeyCode::Esc => KeyCode::Esc,
-        crossterm::event::KeyCode::Left => KeyCode::Left,
-        crossterm::event::KeyCode::Right => KeyCode::Right,
-        crossterm::event::KeyCode::Up => KeyCode::Up,
-        crossterm::event::KeyCode::Down => KeyCode::Down,
-        crossterm::event::KeyCode::Home => KeyCode::Home,
-        crossterm::event::KeyCode::End => KeyCode::End,
-        crossterm::event::KeyCode::Tab => KeyCode::Tab,
-        crossterm::event::KeyCode::BackTab => KeyCode::BackTab,
-        crossterm::event::KeyCode::Delete => KeyCode::Delete,
-        _ => KeyCode::Other,
+        CrosstermKeyCode::Char(ch) => KeyCode::Char(ch),
+        CrosstermKeyCode::Enter => KeyCode::Enter,
+        CrosstermKeyCode::Tab => KeyCode::Tab,
+        CrosstermKeyCode::BackTab => KeyCode::BackTab,
+        CrosstermKeyCode::Esc => KeyCode::Esc,
+        CrosstermKeyCode::Backspace => KeyCode::Backspace,
+        CrosstermKeyCode::Delete => KeyCode::Delete,
+        CrosstermKeyCode::Left => KeyCode::Left,
+        CrosstermKeyCode::Right => KeyCode::Right,
+        CrosstermKeyCode::Up => KeyCode::Up,
+        CrosstermKeyCode::Down => KeyCode::Down,
+        _ => KeyCode::Unknown,
     }
 }
 
-fn map_key_modifiers(modifiers: crossterm::event::KeyModifiers) -> KeyModifiers {
-    let mut mapped = KeyModifiers::NONE;
-    if modifiers.contains(crossterm::event::KeyModifiers::SHIFT) {
-        mapped |= KeyModifiers::SHIFT;
+fn map_key_modifiers(modifiers: CrosstermKeyModifiers) -> KeyModifiers {
+    let mut out = KeyModifiers::NONE;
+    if modifiers.contains(CrosstermKeyModifiers::SHIFT) {
+        out.0 |= KeyModifiers::SHIFT.0;
     }
-    if modifiers.contains(crossterm::event::KeyModifiers::CONTROL) {
-        mapped |= KeyModifiers::CONTROL;
+    if modifiers.contains(CrosstermKeyModifiers::CONTROL) {
+        out.0 |= KeyModifiers::CONTROL.0;
     }
-    if modifiers.contains(crossterm::event::KeyModifiers::ALT) {
-        mapped |= KeyModifiers::ALT;
-    }
-    mapped
+    out
 }

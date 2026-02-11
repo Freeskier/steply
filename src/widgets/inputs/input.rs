@@ -1,9 +1,13 @@
+use super::text_edit;
+use super::validators::Validator;
 use crate::app::event::WidgetEvent;
 use crate::domain::value::Value;
 use crate::terminal::terminal::{CursorPos, KeyCode, KeyEvent};
+use crate::ui::span::Span;
+use crate::ui::style::{Color, Style};
 use crate::widgets::base::InputBase;
 use crate::widgets::traits::{
-    DrawOutput, Drawable, FocusMode, InteractionResult, Interactive, RenderContext,
+    DrawOutput, Drawable, FocusMode, InteractionResult, Interactive, RenderContext, TextAction,
 };
 
 pub struct Input {
@@ -11,6 +15,7 @@ pub struct Input {
     value: String,
     cursor: usize,
     submit_target: Option<String>,
+    validators: Vec<Validator>,
 }
 
 impl Input {
@@ -20,11 +25,17 @@ impl Input {
             value: String::new(),
             cursor: 0,
             submit_target: None,
+            validators: Vec::new(),
         }
     }
 
     pub fn with_submit_target(mut self, target: impl Into<String>) -> Self {
         self.submit_target = Some(target.into());
+        self
+    }
+
+    pub fn with_validator(mut self, validator: Validator) -> Self {
+        self.validators.push(validator);
         self
     }
 }
@@ -34,13 +45,27 @@ impl Drawable for Input {
         self.base.id()
     }
 
-    fn draw(&self, _ctx: &RenderContext) -> DrawOutput {
-        DrawOutput::plain_lines(vec![format!(
-            "{} {}: {}",
-            self.base.focus_marker(),
-            self.base.label(),
-            self.value
-        )])
+    fn draw(&self, ctx: &RenderContext) -> DrawOutput {
+        let prefix = format!("{} {}: ", self.base.focus_marker(), self.base.label());
+
+        let (value_text, value_style) = if let Some(error) = ctx.visible_errors.get(self.base.id())
+        {
+            (
+                format!("✗ {}", error),
+                Style::new().color(Color::Red).bold(),
+            )
+        } else if ctx.invalid_hidden.contains(self.base.id()) {
+            (self.value.clone(), Style::new().color(Color::Red))
+        } else {
+            (self.value.clone(), Style::default())
+        };
+
+        DrawOutput {
+            lines: vec![vec![
+                Span::new(prefix).no_wrap(),
+                Span::styled(value_text, value_style).no_wrap(),
+            ]],
+        }
     }
 }
 
@@ -60,28 +85,23 @@ impl Interactive for Input {
     fn on_key(&mut self, key: KeyEvent) -> InteractionResult {
         match key.code {
             KeyCode::Char(ch) => {
-                self.value.insert(self.cursor, ch);
-                self.cursor += 1;
+                text_edit::insert_char(&mut self.value, &mut self.cursor, ch);
                 InteractionResult::handled()
             }
             KeyCode::Backspace => {
-                if self.cursor > 0 {
-                    self.cursor -= 1;
-                    self.value.remove(self.cursor);
+                if text_edit::backspace_char(&mut self.value, &mut self.cursor) {
                     return InteractionResult::handled();
                 }
                 InteractionResult::ignored()
             }
             KeyCode::Left => {
-                if self.cursor > 0 {
-                    self.cursor -= 1;
+                if text_edit::move_left(&mut self.cursor, &self.value) {
                     return InteractionResult::handled();
                 }
                 InteractionResult::ignored()
             }
             KeyCode::Right => {
-                if self.cursor < self.value.len() {
-                    self.cursor += 1;
+                if text_edit::move_right(&mut self.cursor, &self.value) {
                     return InteractionResult::handled();
                 }
                 InteractionResult::ignored()
@@ -99,12 +119,28 @@ impl Interactive for Input {
         }
     }
 
+    fn on_text_action(&mut self, action: TextAction) -> InteractionResult {
+        let handled = match action {
+            TextAction::DeleteWordLeft => {
+                text_edit::delete_word_left(&mut self.value, &mut self.cursor)
+            }
+            TextAction::DeleteWordRight => {
+                text_edit::delete_word_right(&mut self.value, &mut self.cursor)
+            }
+        };
+        if handled {
+            InteractionResult::handled()
+        } else {
+            InteractionResult::ignored()
+        }
+    }
+
     fn on_event(&mut self, event: &WidgetEvent) -> InteractionResult {
         match event {
             WidgetEvent::ValueProduced { target, value } if target == self.base.id() => {
                 if let Value::Text(v) = value {
                     self.value = v.clone();
-                    self.cursor = self.value.len();
+                    self.cursor = text_edit::char_count(&self.value);
                     return InteractionResult::handled();
                 }
                 InteractionResult::ignored()
@@ -120,8 +156,15 @@ impl Interactive for Input {
     fn set_value(&mut self, value: Value) {
         if let Value::Text(v) = value {
             self.value = v;
-            self.cursor = self.value.len();
+            self.cursor = text_edit::char_count(&self.value);
         }
+    }
+
+    fn validate(&self) -> Result<(), String> {
+        for validator in &self.validators {
+            validator(&self.value)?;
+        }
+        Ok(())
     }
 
     fn cursor_pos(&self) -> Option<CursorPos> {

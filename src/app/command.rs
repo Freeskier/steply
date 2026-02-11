@@ -1,4 +1,5 @@
-use crate::terminal::terminal::{KeyCode, KeyEvent, KeyModifiers};
+use crate::terminal::terminal::KeyEvent;
+use crate::widgets::traits::TextAction;
 
 #[derive(Debug, Clone)]
 pub enum Command {
@@ -7,18 +8,9 @@ pub enum Command {
     NextFocus,
     PrevFocus,
     InputKey(KeyEvent),
+    TextAction(TextAction),
     OpenLayer(String),
     CloseLayer,
     Tick,
     Noop,
-}
-
-pub fn map_key_to_command(key: KeyEvent) -> Command {
-    match (key.code, key.modifiers) {
-        (KeyCode::Esc, _) => Command::Exit,
-        (KeyCode::Char('c'), m) if m.contains(KeyModifiers::CONTROL) => Command::Exit,
-        (KeyCode::Tab, KeyModifiers::NONE) => Command::NextFocus,
-        (KeyCode::BackTab, _) => Command::PrevFocus,
-        _ => Command::InputKey(key),
-    }
 }

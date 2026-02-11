@@ -3,12 +3,31 @@ use crate::domain::value::Value;
 use crate::terminal::terminal::{CursorPos, KeyEvent};
 use crate::widgets::traits::{
     DrawOutput, FocusMode, InteractionResult, InteractiveNode, RenderContext, RenderNode,
+    TextAction,
 };
 
 pub enum Node {
     Input(Box<dyn InteractiveNode>),
     Component(Box<dyn InteractiveNode>),
     Output(Box<dyn RenderNode>),
+}
+
+pub fn visit_nodes(nodes: &[Node], f: &mut impl FnMut(&Node)) {
+    for node in nodes {
+        f(node);
+        if let Some(children) = node.children() {
+            visit_nodes(children, f);
+        }
+    }
+}
+
+pub fn visit_nodes_mut(nodes: &mut [Node], f: &mut impl FnMut(&mut Node)) {
+    for node in nodes {
+        f(node);
+        if let Some(children) = node.children_mut() {
+            visit_nodes_mut(children, f);
+        }
+    }
 }
 
 impl Node {
@@ -45,6 +64,13 @@ impl Node {
     pub fn on_key(&mut self, key: KeyEvent) -> InteractionResult {
         match self {
             Self::Input(w) | Self::Component(w) => w.on_key(key),
+            Self::Output(_) => InteractionResult::ignored(),
+        }
+    }
+
+    pub fn on_text_action(&mut self, action: TextAction) -> InteractionResult {
+        match self {
+            Self::Input(w) | Self::Component(w) => w.on_text_action(action),
             Self::Output(_) => InteractionResult::ignored(),
         }
     }
@@ -111,10 +137,10 @@ pub fn find_node_mut<'a>(nodes: &'a mut [Node], id: &str) -> Option<&'a mut Node
         if node.id() == id {
             return Some(node);
         }
-        if let Some(children) = node.children_mut() {
-            if let Some(found) = find_node_mut(children, id) {
-                return Some(found);
-            }
+        if let Some(children) = node.children_mut()
+            && let Some(found) = find_node_mut(children, id)
+        {
+            return Some(found);
         }
     }
     None
@@ -125,10 +151,10 @@ pub fn find_node<'a>(nodes: &'a [Node], id: &str) -> Option<&'a Node> {
         if node.id() == id {
             return Some(node);
         }
-        if let Some(children) = node.children() {
-            if let Some(found) = find_node(children, id) {
-                return Some(found);
-            }
+        if let Some(children) = node.children()
+            && let Some(found) = find_node(children, id)
+        {
+            return Some(found);
         }
     }
     None

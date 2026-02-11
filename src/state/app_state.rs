@@ -1,21 +1,28 @@
-use crate::app::event::WidgetEvent;
+use crate::app::event::{AppEvent, WidgetEvent};
+use crate::app::scheduler::SchedulerCommand;
 use crate::domain::value::Value;
-use crate::node::{Node, apply_focus, find_node, find_node_mut};
+use crate::node::{Node, apply_focus, find_node_mut, visit_nodes, visit_nodes_mut};
 use crate::state::flow::Flow;
 use crate::state::focus::FocusState;
 use crate::state::layer::{LayerManager, LayerMode, LayerState};
+use crate::state::step::Step;
 use crate::state::store::ValueStore;
-use crate::state::validation::ValidationState;
+use crate::state::validation::{ErrorVisibility, ValidationState};
 use crate::terminal::terminal::KeyEvent;
 use crate::widgets::inputs::input::Input;
 use crate::widgets::outputs::text::Text;
-use crate::widgets::traits::InteractionResult;
+use crate::widgets::traits::{InteractionResult, TextAction};
+use std::collections::HashMap;
+use std::time::Duration;
+
+const ERROR_INLINE_TTL: Duration = Duration::from_secs(2);
 
 pub struct AppState {
     flow: Flow,
     layers: LayerManager,
     store: ValueStore,
     validation: ValidationState,
+    pending_scheduler: Vec<SchedulerCommand>,
     pub focus: FocusState,
     pub should_exit: bool,
 }
@@ -27,6 +34,7 @@ impl AppState {
             layers: LayerManager::new(),
             store: ValueStore::new(),
             validation: ValidationState::default(),
+            pending_scheduler: Vec::new(),
             focus: FocusState::default(),
             should_exit: false,
         };
@@ -36,6 +44,14 @@ impl AppState {
 
     pub fn current_step_id(&self) -> &str {
         &self.flow.current_step().id
+    }
+
+    pub fn current_step_index(&self) -> usize {
+        self.flow.current_index()
+    }
+
+    pub fn steps(&self) -> &[Step] {
+        self.flow.steps()
     }
 
     pub fn current_prompt(&self) -> &str {
@@ -68,6 +84,10 @@ impl AppState {
         self.validation.visible_error(id)
     }
 
+    pub fn is_hidden_invalid(&self, id: &str) -> bool {
+        self.validation.is_hidden_invalid(id)
+    }
+
     pub fn dispatch_key_to_focused(&mut self, key: KeyEvent) -> InteractionResult {
         let Some(focused_id) = self.focus.current_id().map(ToOwned::to_owned) else {
             return InteractionResult::ignored();
@@ -82,7 +102,29 @@ impl AppState {
         };
 
         if result.handled {
-            self.validate_focused(true);
+            // Live typing: keep validation updated, but do not reveal error yet.
+            self.validate_focused(false);
+        }
+        self.apply_focus_state();
+        result
+    }
+
+    pub fn dispatch_text_action_to_focused(&mut self, action: TextAction) -> InteractionResult {
+        let Some(focused_id) = self.focus.current_id().map(ToOwned::to_owned) else {
+            return InteractionResult::ignored();
+        };
+
+        let result = {
+            let nodes = self.active_nodes_mut();
+            let Some(node) = find_node_mut(nodes, &focused_id) else {
+                return InteractionResult::ignored();
+            };
+            node.on_text_action(action)
+        };
+
+        if result.handled {
+            // Global text actions should behave like typing: hidden until blur/submit.
+            self.validate_focused(false);
         }
         self.apply_focus_state();
         result
@@ -97,6 +139,7 @@ impl AppState {
 
     pub fn tick_active_nodes(&mut self) -> InteractionResult {
         let mut merged = InteractionResult::ignored();
+
         for node in self.active_nodes_mut() {
             let result = node.on_tick();
             merged.handled |= result.handled;
@@ -109,6 +152,9 @@ impl AppState {
         match event {
             WidgetEvent::ValueProduced { target, value } => {
                 self.set_value_by_id(&target, value);
+            }
+            WidgetEvent::ClearInlineError { id } => {
+                self.validation.clear_error(&id);
             }
             WidgetEvent::RequestSubmit => {
                 if self.layers.has_active() {
@@ -130,22 +176,19 @@ impl AppState {
     }
 
     pub fn focus_next(&mut self) {
-        if !self.validate_focused(true) {
-            return;
-        }
+        self.validate_focused(false);
         self.focus.next();
         self.apply_focus_state();
     }
 
     pub fn focus_prev(&mut self) {
-        if !self.validate_focused(true) {
-            return;
-        }
+        self.validate_focused(false);
         self.focus.prev();
         self.apply_focus_state();
     }
 
     pub fn open_demo_layer(&mut self, layer_id: String) {
+        let saved_focus_id = self.focus.current_id().map(ToOwned::to_owned);
         let overlay_input =
             Input::new("overlay_input", "Overlay input").with_submit_target("tags_raw".to_string());
         let nodes = vec![
@@ -155,14 +198,16 @@ impl AppState {
             ))),
             Node::Input(Box::new(overlay_input)),
         ];
-        self.layers
-            .open(LayerState::new(layer_id, LayerMode::Modal, nodes));
+        self.layers.open(
+            LayerState::new(layer_id, LayerMode::Modal, nodes),
+            saved_focus_id,
+        );
         self.rebuild_focus();
     }
 
     pub fn close_layer(&mut self) {
-        self.layers.close();
-        self.rebuild_focus();
+        let restored_focus = self.layers.close();
+        self.rebuild_focus_with_target(restored_focus.as_deref());
     }
 
     fn handle_step_submit(&mut self) {
@@ -184,23 +229,19 @@ impl AppState {
     }
 
     fn sync_current_step_values_to_store(&mut self) {
-        let ids: Vec<String> = self
-            .flow
-            .current_step()
-            .nodes
-            .iter()
-            .map(|node| node.id().to_string())
-            .collect();
+        let values = {
+            let mut out = Vec::<(String, Value)>::new();
+            visit_nodes(self.flow.current_step().nodes.as_slice(), &mut |node| {
+                if let Some(value) = node.value() {
+                    out.push((node.id().to_string(), value));
+                }
+            });
+            out
+        };
 
-        for id in ids {
-            if let Some(value) = self.value_by_id_on_current_step(&id) {
-                self.set_value_by_id(&id, value);
-            }
+        for (id, value) in values {
+            self.set_value_by_id(&id, value);
         }
-    }
-
-    fn value_by_id_on_current_step(&self, id: &str) -> Option<Value> {
-        find_node(self.flow.current_step().nodes.as_slice(), id).and_then(|node| node.value())
     }
 
     fn set_value_by_id(&mut self, id: &str, value: Value) {
@@ -228,26 +269,36 @@ impl AppState {
     }
 
     fn hydrate_current_step_from_store(&mut self) {
-        let values: Vec<(String, Value)> = self
+        let values: HashMap<String, Value> = self
             .store
             .iter()
             .map(|(id, value)| (id.to_string(), value.clone()))
             .collect();
 
-        for (id, value) in values {
-            if let Some(node) =
-                find_node_mut(self.flow.current_step_mut().nodes.as_mut_slice(), &id)
-            {
-                node.set_value(value);
+        visit_nodes_mut(
+            self.flow.current_step_mut().nodes.as_mut_slice(),
+            &mut |node| {
+                if let Some(value) = values.get(node.id()) {
+                    node.set_value(value.clone());
+                }
+            },
+        );
+    }
+
+    fn rebuild_focus_with_target(&mut self, target: Option<&str>) {
+        self.focus = FocusState::from_nodes(self.active_nodes());
+        if let Some(id) = target {
+            self.focus.set_focus_by_id(id);
+            if self.focus.current_id().is_none() {
+                self.focus = FocusState::from_nodes(self.active_nodes());
             }
         }
-        self.validate_current_step(false);
+        self.prune_validation_for_active_nodes();
+        self.apply_focus_state();
     }
 
     fn rebuild_focus(&mut self) {
-        self.focus = FocusState::from_nodes(self.active_nodes());
-        self.prune_validation_for_active_nodes();
-        self.apply_focus_state();
+        self.rebuild_focus_with_target(None);
     }
 
     fn apply_focus_state(&mut self) {
@@ -263,10 +314,17 @@ impl AppState {
     }
 
     fn validate_current_step(&mut self, reveal: bool) -> bool {
-        let ids = collect_node_ids(self.flow.current_step().nodes.as_slice());
+        let validations = {
+            let mut out = Vec::<(String, Result<(), String>)>::new();
+            visit_nodes(self.flow.current_step().nodes.as_slice(), &mut |node| {
+                out.push((node.id().to_string(), node.validate()));
+            });
+            out
+        };
+
         let mut valid = true;
-        for id in ids {
-            if !self.validate_on_current_step(&id, reveal) {
+        for (id, result) in validations {
+            if !self.apply_validation_result(&id, Some(result), reveal) {
                 valid = false;
             }
         }
@@ -274,23 +332,24 @@ impl AppState {
     }
 
     fn focus_first_invalid_on_current_step(&mut self) {
-        let ids = collect_node_ids(self.flow.current_step().nodes.as_slice());
-        for id in ids {
-            if self.validation.visible_error(&id).is_some() {
-                self.focus.set_focus_by_id(&id);
-                return;
+        let mut first_invalid: Option<String> = None;
+        visit_nodes(self.flow.current_step().nodes.as_slice(), &mut |node| {
+            if first_invalid.is_none() && self.validation.visible_error(node.id()).is_some() {
+                first_invalid = Some(node.id().to_string());
             }
+        });
+        if let Some(id) = first_invalid {
+            self.focus.set_focus_by_id(&id);
         }
     }
 
     fn validate_in_active_nodes(&mut self, id: &str, reveal: bool) -> bool {
-        let validation_result = find_node(self.active_nodes(), id).map(|node| node.validate());
-        self.apply_validation_result(id, validation_result, reveal)
-    }
-
-    fn validate_on_current_step(&mut self, id: &str, reveal: bool) -> bool {
-        let validation_result =
-            find_node(self.flow.current_step().nodes.as_slice(), id).map(|node| node.validate());
+        let mut validation_result: Option<Result<(), String>> = None;
+        visit_nodes(self.active_nodes(), &mut |node| {
+            if validation_result.is_none() && node.id() == id {
+                validation_result = Some(node.validate());
+            }
+        });
         self.apply_validation_result(id, validation_result, reveal)
     }
 
@@ -303,28 +362,45 @@ impl AppState {
         match validation_result {
             Some(Ok(())) | None => {
                 self.validation.clear_error(id);
+                self.pending_scheduler.push(SchedulerCommand::Cancel {
+                    key: inline_error_key(id),
+                });
                 true
             }
             Some(Err(error)) => {
-                self.validation.set_error(id.to_string(), error, reveal);
+                let visibility = if reveal {
+                    ErrorVisibility::Inline
+                } else {
+                    ErrorVisibility::Hidden
+                };
+                self.validation.set_error(id.to_string(), error, visibility);
+                if reveal {
+                    self.pending_scheduler.push(SchedulerCommand::Debounce {
+                        key: inline_error_key(id),
+                        delay: ERROR_INLINE_TTL,
+                        event: AppEvent::Widget(WidgetEvent::ClearInlineError {
+                            id: id.to_string(),
+                        }),
+                    });
+                }
                 false
             }
         }
     }
 
     fn prune_validation_for_active_nodes(&mut self) {
-        let ids = collect_node_ids(self.active_nodes());
+        let mut ids = Vec::new();
+        visit_nodes(self.active_nodes(), &mut |node| {
+            ids.push(node.id().to_string())
+        });
         self.validation.clear_for_ids(&ids);
+    }
+
+    pub fn take_pending_scheduler_commands(&mut self) -> Vec<SchedulerCommand> {
+        self.pending_scheduler.drain(..).collect()
     }
 }
 
-fn collect_node_ids(nodes: &[Node]) -> Vec<String> {
-    let mut ids = Vec::new();
-    for node in nodes {
-        ids.push(node.id().to_string());
-        if let Some(children) = node.children() {
-            ids.extend(collect_node_ids(children));
-        }
-    }
-    ids
+fn inline_error_key(id: &str) -> String {
+    format!("validation:inline:{id}")
 }

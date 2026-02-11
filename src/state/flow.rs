@@ -18,6 +18,10 @@ impl Flow {
         self.steps.len()
     }
 
+    pub fn steps(&self) -> &[Step] {
+        &self.steps
+    }
+
     pub fn has_next(&self) -> bool {
         self.current + 1 < self.steps.len()
     }

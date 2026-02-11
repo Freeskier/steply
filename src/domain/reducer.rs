@@ -7,7 +7,7 @@ pub struct Reducer;
 
 impl Reducer {
     pub fn reduce(state: &mut AppState, command: Command) -> Vec<Effect> {
-        match command {
+        let mut effects = match command {
             Command::Exit => {
                 if state.has_active_layer() {
                     state.close_layer();
@@ -39,6 +39,14 @@ impl Reducer {
                 }
                 effects
             }
+            Command::TextAction(action) => {
+                let result = state.dispatch_text_action_to_focused(action);
+                let mut effects = Self::effects_from_widget_events(result.events);
+                if result.handled {
+                    effects.push(Effect::RequestRender);
+                }
+                effects
+            }
             Command::OpenLayer(layer_id) => {
                 state.open_demo_layer(layer_id);
                 vec![Effect::RequestRender]
@@ -56,7 +64,16 @@ impl Reducer {
                 effects
             }
             Command::Noop => vec![],
-        }
+        };
+
+        effects.extend(
+            state
+                .take_pending_scheduler_commands()
+                .into_iter()
+                .map(Effect::Schedule),
+        );
+
+        effects
     }
 
     fn effects_from_widget_events(events: Vec<WidgetEvent>) -> Vec<Effect> {

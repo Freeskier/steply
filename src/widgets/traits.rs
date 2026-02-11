@@ -3,6 +3,7 @@ use crate::domain::value::Value;
 use crate::node::Node;
 use crate::terminal::terminal::{CursorPos, KeyEvent, TerminalSize};
 use crate::ui::span::{Span, SpanLine};
+use std::collections::{HashMap, HashSet};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FocusMode {
@@ -16,6 +17,8 @@ pub enum FocusMode {
 pub struct RenderContext {
     pub focused_id: Option<String>,
     pub terminal_size: TerminalSize,
+    pub visible_errors: HashMap<String, String>,
+    pub invalid_hidden: HashSet<String>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -65,12 +68,21 @@ impl InteractionResult {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TextAction {
+    DeleteWordLeft,
+    DeleteWordRight,
+}
+
 pub trait Interactive: Send {
     fn focus_mode(&self) -> FocusMode;
     fn is_focused(&self) -> bool;
     fn set_focused(&mut self, focused: bool);
 
     fn on_key(&mut self, key: KeyEvent) -> InteractionResult;
+    fn on_text_action(&mut self, _action: TextAction) -> InteractionResult {
+        InteractionResult::ignored()
+    }
     fn on_event(&mut self, _event: &WidgetEvent) -> InteractionResult {
         InteractionResult::ignored()
     }

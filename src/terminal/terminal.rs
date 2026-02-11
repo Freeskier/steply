@@ -6,14 +6,15 @@ use crossterm::event::{
     KeyModifiers as CrosstermKeyModifiers,
 };
 use crossterm::style::{
-    Color as CrosstermColor, Print, ResetColor, SetBackgroundColor, SetForegroundColor,
+    Attribute, Color as CrosstermColor, Print, ResetColor, SetAttribute, SetBackgroundColor,
+    SetForegroundColor,
 };
 use crossterm::terminal::{self, Clear, ClearType};
 use crossterm::{execute, queue};
 use std::io::{self, Stdout, Write};
 use std::time::Duration;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum KeyCode {
     Unknown,
     Char(char),
@@ -29,7 +30,7 @@ pub enum KeyCode {
     Down,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct KeyModifiers(u8);
 
 impl KeyModifiers {
@@ -201,7 +202,13 @@ impl Terminal {
                 if let Some(background) = span.style.background {
                     queue!(self.stdout, SetBackgroundColor(map_color(background)))?;
                 }
+                if span.style.bold {
+                    queue!(self.stdout, SetAttribute(Attribute::Bold))?;
+                }
                 queue!(self.stdout, Print(clipped.clone()), ResetColor)?;
+                if span.style.bold {
+                    queue!(self.stdout, SetAttribute(Attribute::NormalIntensity))?;
+                }
                 used = used.saturating_add(clipped.chars().count());
             }
         }
@@ -231,8 +238,9 @@ fn map_color(color: Color) -> CrosstermColor {
     match color {
         Color::Reset => CrosstermColor::Reset,
         Color::Black => CrosstermColor::Black,
-        Color::Red => CrosstermColor::DarkRed,
-        Color::Green => CrosstermColor::DarkGreen,
+        Color::DarkGrey => CrosstermColor::DarkGrey,
+        Color::Red => CrosstermColor::Red,
+        Color::Green => CrosstermColor::Green,
         Color::Yellow => CrosstermColor::DarkYellow,
         Color::Blue => CrosstermColor::DarkBlue,
         Color::Magenta => CrosstermColor::DarkMagenta,

@@ -2,6 +2,7 @@
 pub enum Color {
     Reset,
     Black,
+    DarkGrey,
     Red,
     Green,
     Yellow,
@@ -15,6 +16,7 @@ pub enum Color {
 pub struct Style {
     pub color: Option<Color>,
     pub background: Option<Color>,
+    pub bold: bool,
 }
 
 impl Style {
@@ -29,6 +31,11 @@ impl Style {
 
     pub fn background(mut self, color: Color) -> Self {
         self.background = Some(color);
+        self
+    }
+
+    pub fn bold(mut self) -> Self {
+        self.bold = true;
         self
     }
 }

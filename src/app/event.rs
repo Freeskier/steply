@@ -7,6 +7,7 @@ pub type NodeId = String;
 #[derive(Debug, Clone)]
 pub enum WidgetEvent {
     ValueProduced { target: NodeId, value: Value },
+    ClearInlineError { id: NodeId },
     RequestSubmit,
     RequestFocus { target: NodeId },
     OpenLayer { layer_id: String },

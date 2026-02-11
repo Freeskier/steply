@@ -22,9 +22,14 @@ impl LayerState {
     }
 }
 
+struct ActiveLayer {
+    layer: LayerState,
+    saved_focus_id: Option<String>,
+}
+
 #[derive(Default)]
 pub struct LayerManager {
-    active: Option<LayerState>,
+    active: Option<ActiveLayer>,
 }
 
 impl LayerManager {
@@ -37,18 +42,21 @@ impl LayerManager {
     }
 
     pub fn active(&self) -> Option<&LayerState> {
-        self.active.as_ref()
+        self.active.as_ref().map(|active| &active.layer)
     }
 
     pub fn active_mut(&mut self) -> Option<&mut LayerState> {
-        self.active.as_mut()
+        self.active.as_mut().map(|active| &mut active.layer)
     }
 
-    pub fn open(&mut self, layer: LayerState) {
-        self.active = Some(layer);
+    pub fn open(&mut self, layer: LayerState, saved_focus_id: Option<String>) {
+        self.active = Some(ActiveLayer {
+            layer,
+            saved_focus_id,
+        });
     }
 
-    pub fn close(&mut self) {
-        self.active = None;
+    pub fn close(&mut self) -> Option<String> {
+        self.active.take().and_then(|active| active.saved_focus_id)
     }
 }

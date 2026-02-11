@@ -1,10 +1,12 @@
-use crate::app::command::{Command, map_key_to_command};
+use crate::app::command::Command;
 use crate::app::event::AppEvent;
+use crate::app::key_bindings::KeyBindings;
 use crate::app::scheduler::Scheduler;
 use crate::domain::effect::Effect;
 use crate::domain::reducer::Reducer;
 use crate::state::app_state::AppState;
 use crate::terminal::terminal::{Terminal, TerminalEvent};
+use crate::ui::options::RenderOptions;
 use crate::ui::renderer::Renderer;
 use std::io;
 use std::time::{Duration, Instant};
@@ -13,15 +15,32 @@ pub struct Runtime {
     state: AppState,
     terminal: Terminal,
     scheduler: Scheduler,
+    key_bindings: KeyBindings,
+    render_options: RenderOptions,
 }
 
 impl Runtime {
     pub fn new(state: AppState, terminal: Terminal) -> Self {
+        Self::with_key_bindings(state, terminal, KeyBindings::new())
+    }
+
+    pub fn with_key_bindings(
+        state: AppState,
+        terminal: Terminal,
+        key_bindings: KeyBindings,
+    ) -> Self {
         Self {
             state,
             terminal,
             scheduler: Scheduler::new(),
+            key_bindings,
+            render_options: RenderOptions::default(),
         }
+    }
+
+    pub fn with_render_options(mut self, render_options: RenderOptions) -> Self {
+        self.render_options = render_options;
+        self
     }
 
     pub fn run(&mut self) -> io::Result<()> {
@@ -61,7 +80,10 @@ impl Runtime {
                 self.render()
             }
             AppEvent::Terminal(TerminalEvent::Key(key)) => {
-                let command = map_key_to_command(key);
+                let command = self
+                    .key_bindings
+                    .resolve(key)
+                    .unwrap_or(Command::InputKey(key));
                 self.process_command(command)
             }
             AppEvent::Terminal(TerminalEvent::Tick) => self.process_command(Command::Tick),
@@ -104,7 +126,8 @@ impl Runtime {
     }
 
     fn render(&mut self) -> io::Result<()> {
-        let frame = Renderer::render(&self.state, self.terminal.size());
+        let frame =
+            Renderer::render_with_options(&self.state, self.terminal.size(), self.render_options);
         self.terminal.render(&frame.lines, frame.cursor)
     }
 }

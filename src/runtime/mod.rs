@@ -1,5 +1,7 @@
 pub mod command;
 pub mod event;
 pub mod key_bindings;
-pub mod runtime;
+pub mod runner;
 pub mod scheduler;
+
+pub use runner::Runtime;

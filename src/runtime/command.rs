@@ -1,4 +1,4 @@
-use crate::terminal::terminal::KeyEvent;
+use crate::terminal::KeyEvent;
 use crate::widgets::traits::TextAction;
 
 #[derive(Debug, Clone)]
@@ -9,8 +9,8 @@ pub enum Command {
     PrevFocus,
     InputKey(KeyEvent),
     TextAction(TextAction),
-    OpenLayer(String),
-    CloseLayer,
+    OpenOverlay(String),
+    CloseOverlay,
     Tick,
     Noop,
 }

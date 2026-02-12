@@ -1,3 +1,2 @@
 pub mod input;
-mod text_edit;
-pub mod validators;
+pub(crate) mod text_edit;

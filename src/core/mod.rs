@@ -1,3 +1,5 @@
 pub mod effect;
 pub mod reducer;
 pub mod value;
+
+pub type NodeId = String;

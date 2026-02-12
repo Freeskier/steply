@@ -1,8 +1,8 @@
-use crate::app::event::WidgetEvent;
-use crate::domain::value::Value;
-use crate::node::Node;
-use crate::terminal::terminal::{CursorPos, KeyEvent, TerminalSize};
+use crate::core::value::Value;
+use crate::runtime::event::WidgetEvent;
+use crate::terminal::{CursorPos, KeyEvent, TerminalSize};
 use crate::ui::span::{Span, SpanLine};
+use crate::widgets::node::Node;
 use std::collections::{HashMap, HashSet};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -11,6 +11,31 @@ pub enum FocusMode {
     Leaf,
     Group,
     Container,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OverlayMode {
+    Exclusive,
+    Shared,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct OverlayPlacement {
+    pub row: u16,
+    pub col: u16,
+    pub width: u16,
+    pub height: u16,
+}
+
+impl OverlayPlacement {
+    pub fn new(row: u16, col: u16, width: u16, height: u16) -> Self {
+        Self {
+            row,
+            col,
+            width,
+            height,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -76,8 +101,22 @@ pub enum TextAction {
 
 pub trait Interactive: Send {
     fn focus_mode(&self) -> FocusMode;
-    fn is_focused(&self) -> bool;
-    fn set_focused(&mut self, focused: bool);
+
+    fn overlay_placement(&self) -> Option<OverlayPlacement> {
+        None
+    }
+    fn overlay_is_visible(&self) -> bool {
+        false
+    }
+    fn overlay_open(&mut self, _saved_focus_id: Option<String>) -> bool {
+        false
+    }
+    fn overlay_close(&mut self) -> Option<String> {
+        None
+    }
+    fn overlay_mode(&self) -> OverlayMode {
+        OverlayMode::Exclusive
+    }
 
     fn on_key(&mut self, key: KeyEvent) -> InteractionResult;
     fn on_text_action(&mut self, _action: TextAction) -> InteractionResult {

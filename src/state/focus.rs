@@ -1,9 +1,8 @@
-use crate::node::Node;
+use crate::widgets::node::Node;
 
 #[derive(Debug, Clone)]
 pub struct FocusTarget {
     pub id: String,
-    pub path: Vec<usize>,
 }
 
 #[derive(Debug, Default, Clone)]
@@ -21,7 +20,7 @@ impl FocusState {
 
     pub fn rebuild(&mut self, nodes: &[Node]) {
         self.targets.clear();
-        collect_targets(nodes, &mut self.targets, &[]);
+        collect_targets(nodes, &mut self.targets);
         self.index = if self.targets.is_empty() {
             None
         } else {
@@ -62,21 +61,17 @@ impl FocusState {
     }
 }
 
-fn collect_targets(nodes: &[Node], out: &mut Vec<FocusTarget>, prefix: &[usize]) {
-    for (idx, node) in nodes.iter().enumerate() {
-        let mut path = prefix.to_vec();
-        path.push(idx);
-
+fn collect_targets(nodes: &[Node], out: &mut Vec<FocusTarget>) {
+    for node in nodes {
         if node.is_focusable_leaf_or_group() {
             out.push(FocusTarget {
                 id: node.id().to_string(),
-                path,
             });
             continue;
         }
 
         if let Some(children) = node.children() {
-            collect_targets(children, out, &path);
+            collect_targets(children, out);
         }
     }
 }

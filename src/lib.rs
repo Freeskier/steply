@@ -1,6 +1,5 @@
-pub mod app;
-pub mod domain;
-pub mod node;
+pub mod core;
+pub mod runtime;
 pub mod state;
 pub mod terminal;
 pub mod ui;

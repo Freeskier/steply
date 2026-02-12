@@ -1,9 +1,9 @@
-use crate::app::event::WidgetEvent;
-use crate::domain::value::Value;
-use crate::terminal::terminal::{CursorPos, KeyEvent};
+use crate::core::value::Value;
+use crate::runtime::event::WidgetEvent;
+use crate::terminal::{CursorPos, KeyEvent};
 use crate::widgets::traits::{
-    DrawOutput, FocusMode, InteractionResult, InteractiveNode, RenderContext, RenderNode,
-    TextAction,
+    DrawOutput, FocusMode, InteractionResult, InteractiveNode, OverlayMode, OverlayPlacement,
+    RenderContext, RenderNode, TextAction,
 };
 
 pub enum Node {
@@ -54,10 +54,10 @@ impl Node {
         }
     }
 
-    pub fn set_focused(&mut self, focused: bool) {
+    pub fn focus_mode(&self) -> FocusMode {
         match self {
-            Self::Input(w) | Self::Component(w) => w.set_focused(focused),
-            Self::Output(_) => {}
+            Self::Input(w) | Self::Component(w) => w.focus_mode(),
+            Self::Output(_) => FocusMode::None,
         }
     }
 
@@ -130,6 +130,41 @@ impl Node {
             Self::Output(_) => None,
         }
     }
+
+    pub fn overlay_placement(&self) -> Option<OverlayPlacement> {
+        match self {
+            Self::Input(w) | Self::Component(w) => w.overlay_placement(),
+            Self::Output(_) => None,
+        }
+    }
+
+    pub fn overlay_is_visible(&self) -> bool {
+        match self {
+            Self::Input(w) | Self::Component(w) => w.overlay_is_visible(),
+            Self::Output(_) => false,
+        }
+    }
+
+    pub fn overlay_open(&mut self, saved_focus_id: Option<String>) -> bool {
+        match self {
+            Self::Input(w) | Self::Component(w) => w.overlay_open(saved_focus_id),
+            Self::Output(_) => false,
+        }
+    }
+
+    pub fn overlay_close(&mut self) -> Option<String> {
+        match self {
+            Self::Input(w) | Self::Component(w) => w.overlay_close(),
+            Self::Output(_) => None,
+        }
+    }
+
+    pub fn overlay_mode(&self) -> OverlayMode {
+        match self {
+            Self::Input(w) | Self::Component(w) => w.overlay_mode(),
+            Self::Output(_) => OverlayMode::Exclusive,
+        }
+    }
 }
 
 pub fn find_node_mut<'a>(nodes: &'a mut [Node], id: &str) -> Option<&'a mut Node> {
@@ -160,12 +195,59 @@ pub fn find_node<'a>(nodes: &'a [Node], id: &str) -> Option<&'a Node> {
     None
 }
 
-pub fn apply_focus(nodes: &mut [Node], focused_id: Option<&str>) {
+pub fn find_overlay<'a>(nodes: &'a [Node], id: &str) -> Option<&'a Node> {
     for node in nodes {
-        let focused = focused_id.is_some_and(|id| node.id() == id);
-        node.set_focused(focused);
-        if let Some(children) = node.children_mut() {
-            apply_focus(children, focused_id);
+        if node.id() == id && node.overlay_placement().is_some() {
+            return Some(node);
+        }
+        if let Some(children) = node.children()
+            && let Some(found) = find_overlay(children, id)
+        {
+            return Some(found);
         }
     }
+    None
+}
+
+pub fn find_overlay_mut<'a>(nodes: &'a mut [Node], id: &str) -> Option<&'a mut Node> {
+    for node in nodes {
+        let is_target_overlay = node.id() == id && node.overlay_placement().is_some();
+        if is_target_overlay {
+            return Some(node);
+        }
+        if let Some(children) = node.children_mut()
+            && let Some(found) = find_overlay_mut(children, id)
+        {
+            return Some(found);
+        }
+    }
+    None
+}
+
+pub fn find_visible_overlay(nodes: &[Node]) -> Option<&Node> {
+    for node in nodes {
+        if node.overlay_is_visible() {
+            return Some(node);
+        }
+        if let Some(children) = node.children()
+            && let Some(found) = find_visible_overlay(children)
+        {
+            return Some(found);
+        }
+    }
+    None
+}
+
+pub fn find_visible_overlay_mut(nodes: &mut [Node]) -> Option<&mut Node> {
+    for node in nodes {
+        if node.overlay_is_visible() {
+            return Some(node);
+        }
+        if let Some(children) = node.children_mut()
+            && let Some(found) = find_visible_overlay_mut(children)
+        {
+            return Some(found);
+        }
+    }
+    None
 }

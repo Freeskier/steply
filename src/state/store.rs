@@ -1,7 +1,5 @@
-use crate::domain::value::Value;
+use crate::core::{NodeId, value::Value};
 use std::collections::HashMap;
-
-pub type NodeId = String;
 
 #[derive(Default)]
 pub struct ValueStore {

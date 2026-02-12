@@ -9,10 +9,11 @@ use crossterm::style::{
     Attribute, Color as CrosstermColor, Print, ResetColor, SetAttribute, SetBackgroundColor,
     SetForegroundColor,
 };
-use crossterm::terminal::{self, Clear, ClearType};
+use crossterm::terminal::{self, Clear, ClearType, ScrollUp};
 use crossterm::{execute, queue};
 use std::io::{self, Stdout, Write};
 use std::time::Duration;
+use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum KeyCode {
@@ -114,19 +115,27 @@ impl Terminal {
         let height = self.state.size.height;
         let max_rows = height.saturating_sub(self.origin_row) as usize;
         let used_rows = self.last_rendered_lines.min(max_rows) as u16;
+        let target_row = self.origin_row.saturating_add(used_rows);
+        let can_move_below_render = target_row < height;
         let final_row = if height == 0 {
             0
+        } else if can_move_below_render {
+            target_row
         } else {
-            self.origin_row
-                .saturating_add(used_rows)
-                .min(height.saturating_sub(1))
+            height.saturating_sub(1)
         };
-        execute!(
-            self.stdout,
-            MoveTo(0, final_row),
-            Clear(ClearType::CurrentLine),
-            Show
-        )?;
+
+        if can_move_below_render {
+            execute!(
+                self.stdout,
+                MoveTo(0, final_row),
+                Clear(ClearType::CurrentLine),
+                Show
+            )?;
+        } else {
+            execute!(self.stdout, MoveTo(0, final_row), Show)?;
+        }
+
         writeln!(self.stdout)?;
         self.stdout.flush()?;
         terminal::disable_raw_mode()?;
@@ -169,6 +178,8 @@ impl Terminal {
         self.refresh_size()?;
         self.state.cursor = cursor;
 
+        self.ensure_vertical_space(lines.len())?;
+
         let width = self.state.size.width;
         let height = self.state.size.height;
         let available_rows = height.saturating_sub(self.origin_row) as usize;
@@ -191,7 +202,7 @@ impl Terminal {
                 }
 
                 let available = (width as usize).saturating_sub(used);
-                let clipped: String = span.text.chars().take(available).collect();
+                let clipped = clip_to_width(&span.text, available);
                 if clipped.is_empty() {
                     continue;
                 }
@@ -205,11 +216,11 @@ impl Terminal {
                 if span.style.bold {
                     queue!(self.stdout, SetAttribute(Attribute::Bold))?;
                 }
-                queue!(self.stdout, Print(clipped.clone()), ResetColor)?;
+                queue!(self.stdout, Print(clipped.as_str()), ResetColor)?;
                 if span.style.bold {
                     queue!(self.stdout, SetAttribute(Attribute::NormalIntensity))?;
                 }
-                used = used.saturating_add(clipped.chars().count());
+                used = used.saturating_add(UnicodeWidthStr::width(clipped.as_str()));
             }
         }
         self.last_rendered_lines = to_draw;
@@ -231,6 +242,28 @@ impl Terminal {
         }
 
         self.stdout.flush()
+    }
+
+    fn ensure_vertical_space(&mut self, requested_rows: usize) -> io::Result<()> {
+        let height = self.state.size.height as usize;
+        if height == 0 || requested_rows == 0 {
+            return Ok(());
+        }
+
+        let required_rows = requested_rows.min(height);
+        let available_rows = height.saturating_sub(self.origin_row as usize);
+        if required_rows <= available_rows || self.origin_row == 0 {
+            return Ok(());
+        }
+
+        let missing_rows = required_rows.saturating_sub(available_rows);
+        let shift = missing_rows.min(self.origin_row as usize) as u16;
+        if shift > 0 {
+            execute!(self.stdout, ScrollUp(shift))?;
+            self.origin_row = self.origin_row.saturating_sub(shift);
+        }
+
+        Ok(())
     }
 }
 
@@ -280,6 +313,24 @@ fn map_key_modifiers(modifiers: CrosstermKeyModifiers) -> KeyModifiers {
     }
     if modifiers.contains(CrosstermKeyModifiers::CONTROL) {
         out.0 |= KeyModifiers::CONTROL.0;
+    }
+    out
+}
+
+fn clip_to_width(text: &str, max_width: usize) -> String {
+    if max_width == 0 {
+        return String::new();
+    }
+
+    let mut used = 0usize;
+    let mut out = String::new();
+    for ch in text.chars() {
+        let ch_width = UnicodeWidthChar::width(ch).unwrap_or(0);
+        if used.saturating_add(ch_width) > max_width {
+            break;
+        }
+        out.push(ch);
+        used = used.saturating_add(ch_width);
     }
     out
 }

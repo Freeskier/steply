@@ -1,8 +1,10 @@
+use crate::widgets::traits::OverlayPlacement;
+use crate::widgets::traits::{FocusMode, OverlayMode};
+
 #[derive(Debug, Clone)]
 pub struct InputBase {
     id: String,
     label: String,
-    focused: bool,
 }
 
 impl InputBase {
@@ -10,7 +12,6 @@ impl InputBase {
         Self {
             id: id.into(),
             label: label.into(),
-            focused: false,
         }
     }
 
@@ -22,20 +23,12 @@ impl InputBase {
         &self.label
     }
 
-    pub fn is_focused(&self) -> bool {
-        self.focused
+    pub fn focus_marker(&self, focused: bool) -> &'static str {
+        if focused { ">" } else { " " }
     }
 
-    pub fn set_focused(&mut self, focused: bool) {
-        self.focused = focused;
-    }
-
-    pub fn focus_marker(&self) -> &'static str {
-        if self.focused { ">" } else { " " }
-    }
-
-    pub fn prefixed_label(&self) -> String {
-        format!("{} {}", self.focus_marker(), self.label)
+    pub fn prefixed_label(&self, focused: bool) -> String {
+        format!("{} {}", self.focus_marker(focused), self.label)
     }
 }
 
@@ -43,7 +36,6 @@ impl InputBase {
 pub struct ComponentBase {
     id: String,
     label: String,
-    focused: bool,
 }
 
 impl ComponentBase {
@@ -51,7 +43,6 @@ impl ComponentBase {
         Self {
             id: id.into(),
             label: label.into(),
-            focused: false,
         }
     }
 
@@ -63,15 +54,78 @@ impl ComponentBase {
         &self.label
     }
 
-    pub fn is_focused(&self) -> bool {
-        self.focused
+    pub fn focus_marker(&self, focused: bool) -> &'static str {
+        if focused { ">" } else { " " }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct ModalBase {
+    id: String,
+    label: String,
+    placement: OverlayPlacement,
+    focus_mode: FocusMode,
+    overlay_mode: OverlayMode,
+    visible: bool,
+    saved_focus_id: Option<String>,
+}
+
+impl ModalBase {
+    pub fn new(
+        id: impl Into<String>,
+        label: impl Into<String>,
+        placement: OverlayPlacement,
+    ) -> Self {
+        Self {
+            id: id.into(),
+            label: label.into(),
+            placement,
+            focus_mode: FocusMode::Container,
+            overlay_mode: OverlayMode::Exclusive,
+            visible: false,
+            saved_focus_id: None,
+        }
     }
 
-    pub fn set_focused(&mut self, focused: bool) {
-        self.focused = focused;
+    pub fn id(&self) -> &str {
+        &self.id
     }
 
-    pub fn focus_marker(&self) -> &'static str {
-        if self.focused { ">" } else { " " }
+    pub fn label(&self) -> &str {
+        &self.label
+    }
+
+    pub fn placement(&self) -> OverlayPlacement {
+        self.placement
+    }
+
+    pub fn is_visible(&self) -> bool {
+        self.visible
+    }
+
+    pub fn focus_mode(&self) -> FocusMode {
+        self.focus_mode
+    }
+
+    pub fn set_focus_mode(&mut self, focus_mode: FocusMode) {
+        self.focus_mode = focus_mode;
+    }
+
+    pub fn overlay_mode(&self) -> OverlayMode {
+        self.overlay_mode
+    }
+
+    pub fn set_overlay_mode(&mut self, overlay_mode: OverlayMode) {
+        self.overlay_mode = overlay_mode;
+    }
+
+    pub fn open(&mut self, saved_focus_id: Option<String>) {
+        self.saved_focus_id = saved_focus_id;
+        self.visible = true;
+    }
+
+    pub fn close(&mut self) -> Option<String> {
+        self.visible = false;
+        self.saved_focus_id.take()
     }
 }

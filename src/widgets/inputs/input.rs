@@ -1,14 +1,15 @@
 use super::text_edit;
-use super::validators::Validator;
-use crate::app::event::WidgetEvent;
-use crate::domain::value::Value;
-use crate::terminal::terminal::{CursorPos, KeyCode, KeyEvent};
+use crate::core::value::Value;
+use crate::runtime::event::WidgetEvent;
+use crate::terminal::{CursorPos, KeyCode, KeyEvent};
 use crate::ui::span::Span;
 use crate::ui::style::{Color, Style};
 use crate::widgets::base::InputBase;
 use crate::widgets::traits::{
     DrawOutput, Drawable, FocusMode, InteractionResult, Interactive, RenderContext, TextAction,
 };
+use crate::widgets::validators::Validator;
+use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
 pub struct Input {
     base: InputBase,
@@ -46,7 +47,15 @@ impl Drawable for Input {
     }
 
     fn draw(&self, ctx: &RenderContext) -> DrawOutput {
-        let prefix = format!("{} {}: ", self.base.focus_marker(), self.base.label());
+        let is_focused = ctx
+            .focused_id
+            .as_deref()
+            .is_some_and(|id| id == self.base.id());
+        let prefix = format!(
+            "{} {}: ",
+            self.base.focus_marker(is_focused),
+            self.base.label()
+        );
 
         let (value_text, value_style) = if let Some(error) = ctx.visible_errors.get(self.base.id())
         {
@@ -72,14 +81,6 @@ impl Drawable for Input {
 impl Interactive for Input {
     fn focus_mode(&self) -> FocusMode {
         FocusMode::Leaf
-    }
-
-    fn is_focused(&self) -> bool {
-        self.base.is_focused()
-    }
-
-    fn set_focused(&mut self, focused: bool) {
-        self.base.set_focused(focused);
     }
 
     fn on_key(&mut self, key: KeyEvent) -> InteractionResult {
@@ -168,13 +169,18 @@ impl Interactive for Input {
     }
 
     fn cursor_pos(&self) -> Option<CursorPos> {
-        if self.base.is_focused() {
-            Some(CursorPos {
-                col: (self.base.label().len() + self.cursor + 4) as u16,
-                row: 0,
-            })
-        } else {
-            None
+        let prefix = format!("{} {}: ", self.base.focus_marker(true), self.base.label());
+        let mut value_width = 0usize;
+        for ch in self
+            .value
+            .chars()
+            .take(text_edit::clamp_cursor(self.cursor, &self.value))
+        {
+            value_width = value_width.saturating_add(UnicodeWidthChar::width(ch).unwrap_or(0));
         }
+        Some(CursorPos {
+            col: (UnicodeWidthStr::width(prefix.as_str()) + value_width) as u16,
+            row: 0,
+        })
     }
 }

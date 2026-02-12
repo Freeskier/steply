@@ -1,5 +1,5 @@
-use crate::app::command::Command;
-use crate::terminal::terminal::{KeyCode, KeyEvent, KeyModifiers};
+use crate::runtime::command::Command;
+use crate::terminal::{KeyCode, KeyEvent, KeyModifiers};
 use crate::widgets::traits::TextAction;
 use std::collections::HashMap;
 
@@ -58,7 +58,7 @@ impl KeyBindings {
         self.bind(KeyBinding::ctrl(KeyCode::Char('c')), Command::Exit);
         self.bind(
             KeyBinding::ctrl(KeyCode::Char('o')),
-            Command::OpenLayer("demo_overlay".to_string()),
+            Command::OpenOverlay("demo_overlay".to_string()),
         );
         self.bind(KeyBinding::key(KeyCode::Esc), Command::Exit);
         self.bind(KeyBinding::key(KeyCode::Tab), Command::NextFocus);

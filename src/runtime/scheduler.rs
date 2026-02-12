@@ -1,4 +1,4 @@
-use crate::app::event::AppEvent;
+use crate::runtime::event::AppEvent;
 use std::collections::{HashMap, VecDeque};
 use std::time::{Duration, Instant};
 
@@ -73,10 +73,10 @@ impl Scheduler {
                 });
             }
             SchedulerCommand::Throttle { key, window, event } => {
-                if let Some(until) = self.throttle_until.get(&key) {
-                    if *until > now {
-                        return;
-                    }
+                if let Some(until) = self.throttle_until.get(&key)
+                    && *until > now
+                {
+                    return;
                 }
                 self.throttle_until.insert(key, now + window);
                 self.ready.push_back(event);

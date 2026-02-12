@@ -1,12 +1,11 @@
-use crate::app::command::Command;
-use crate::app::event::AppEvent;
-use crate::app::key_bindings::KeyBindings;
-use crate::app::scheduler::Scheduler;
-use crate::domain::effect::Effect;
-use crate::domain::reducer::Reducer;
+use crate::core::effect::Effect;
+use crate::core::reducer::Reducer;
+use crate::runtime::command::Command;
+use crate::runtime::event::{AppEvent, WidgetEvent};
+use crate::runtime::key_bindings::KeyBindings;
+use crate::runtime::scheduler::Scheduler;
 use crate::state::app_state::AppState;
-use crate::terminal::terminal::{Terminal, TerminalEvent};
-use crate::ui::options::RenderOptions;
+use crate::terminal::{Terminal, TerminalEvent};
 use crate::ui::renderer::Renderer;
 use std::io;
 use std::time::{Duration, Instant};
@@ -16,7 +15,6 @@ pub struct Runtime {
     terminal: Terminal,
     scheduler: Scheduler,
     key_bindings: KeyBindings,
-    render_options: RenderOptions,
 }
 
 impl Runtime {
@@ -34,13 +32,7 @@ impl Runtime {
             terminal,
             scheduler: Scheduler::new(),
             key_bindings,
-            render_options: RenderOptions::default(),
         }
-    }
-
-    pub fn with_render_options(mut self, render_options: RenderOptions) -> Self {
-        self.render_options = render_options;
-        self
     }
 
     pub fn run(&mut self) -> io::Result<()> {
@@ -49,7 +41,7 @@ impl Runtime {
         let run_result = (|| -> io::Result<()> {
             self.render()?;
 
-            while !self.state.should_exit {
+            while !self.state.should_exit() {
                 self.process_scheduled_events()?;
 
                 let now = Instant::now();
@@ -89,8 +81,10 @@ impl Runtime {
             AppEvent::Terminal(TerminalEvent::Tick) => self.process_command(Command::Tick),
             AppEvent::Command(command) => self.process_command(command),
             AppEvent::Widget(widget_event) => {
-                self.state.handle_widget_event(widget_event);
-                self.render()
+                if self.apply_widget_event(widget_event) {
+                    self.render()?;
+                }
+                Ok(())
             }
         }
     }
@@ -106,8 +100,7 @@ impl Runtime {
         for effect in effects {
             match effect {
                 Effect::EmitWidget(event) => {
-                    self.state.handle_widget_event(event);
-                    render_requested = true;
+                    render_requested |= self.apply_widget_event(event);
                 }
                 Effect::Schedule(cmd) => {
                     self.scheduler.schedule(cmd, Instant::now());
@@ -125,9 +118,12 @@ impl Runtime {
         Ok(())
     }
 
+    fn apply_widget_event(&mut self, event: WidgetEvent) -> bool {
+        self.state.handle_widget_event(event)
+    }
+
     fn render(&mut self) -> io::Result<()> {
-        let frame =
-            Renderer::render_with_options(&self.state, self.terminal.size(), self.render_options);
+        let frame = Renderer::render(&self.state, self.terminal.size());
         self.terminal.render(&frame.lines, frame.cursor)
     }
 }

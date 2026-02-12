@@ -1,12 +1,18 @@
-use crate::node::Node;
 use crate::state::app_state::AppState;
-use crate::terminal::terminal::{CursorPos, TerminalSize};
+use crate::state::step::StepStatus;
+use crate::terminal::{CursorPos, TerminalSize};
 use crate::ui::layout::Layout;
-use crate::ui::options::RenderOptions;
 use crate::ui::span::{Span, SpanLine};
 use crate::ui::style::{Color, Style};
+use crate::widgets::node::{Node, visit_nodes};
 use crate::widgets::traits::RenderContext;
 use std::collections::{HashMap, HashSet};
+
+mod decorations;
+mod overlay;
+
+use decorations::decorate_step_block;
+use overlay::apply_overlay;
 
 #[derive(Debug, Default, Clone)]
 pub struct RenderFrame {
@@ -16,155 +22,162 @@ pub struct RenderFrame {
 
 pub struct Renderer;
 
+const DECORATIONS_ENABLED: bool = true;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum StepVisualStatus {
+    Pending,
     Done,
     Active,
+    Cancelled,
+}
+
+impl From<StepStatus> for StepVisualStatus {
+    fn from(value: StepStatus) -> Self {
+        match value {
+            StepStatus::Pending => Self::Pending,
+            StepStatus::Active => Self::Active,
+            StepStatus::Done => Self::Done,
+            StepStatus::Cancelled => Self::Cancelled,
+        }
+    }
 }
 
 impl Renderer {
     pub fn render(state: &AppState, terminal_size: TerminalSize) -> RenderFrame {
-        Self::render_with_options(state, terminal_size, RenderOptions::default())
-    }
+        let mut frame = build_base_frame(state, terminal_size);
 
-    pub fn render_with_options(
-        state: &AppState,
-        terminal_size: TerminalSize,
-        options: RenderOptions,
-    ) -> RenderFrame {
-        if state.has_active_layer() {
-            return render_overlay_frame(state, terminal_size, options);
-        }
-
-        let mut frame = RenderFrame::default();
-        let current_idx = state.current_step_index();
-        let steps = state.steps();
-
-        for (idx, step) in steps.iter().enumerate().take(current_idx.saturating_add(1)) {
-            let status = if idx < current_idx {
-                StepVisualStatus::Done
-            } else {
-                StepVisualStatus::Active
-            };
-
-            let mut block_lines = Vec::<SpanLine>::new();
-            let mut block_cursor: Option<CursorPos> = None;
-            let mut row_offset: u16 = 0;
-
-            let title_style = match status {
-                StepVisualStatus::Active => Style::new().color(Color::Cyan),
-                StepVisualStatus::Done => Style::new().color(Color::DarkGrey),
-            };
-            block_lines.push(vec![Span::styled(
-                format!("{} [{}]", step.prompt, step.id),
-                title_style,
-            )]);
-            row_offset = row_offset.saturating_add(1);
-
-            if let Some(hint) = step.hint.as_deref() {
-                let hint_style = match status {
-                    StepVisualStatus::Active => Style::new().color(Color::Yellow),
-                    StepVisualStatus::Done => Style::new().color(Color::DarkGrey),
-                };
-                block_lines.push(vec![Span::styled(format!("Hint: {}", hint), hint_style)]);
-                row_offset = row_offset.saturating_add(1);
-            }
-
-            let ctx = render_context_for_step(state, terminal_size, status);
-            let track_cursor = status == StepVisualStatus::Active;
-            draw_nodes(
-                step.nodes.as_slice(),
-                &ctx,
-                &mut block_lines,
-                &mut block_cursor,
-                &mut row_offset,
-                track_cursor,
-            );
-
-            block_lines = Layout::compose(&block_lines, terminal_size.width);
-
-            if status != StepVisualStatus::Active {
-                tint_block(&mut block_lines, Color::DarkGrey);
-            }
-
-            if options.decorations_enabled {
-                decorate_step_block(
-                    &mut block_lines,
-                    &mut block_cursor,
-                    status == StepVisualStatus::Done,
-                    status,
-                );
-            }
-
-            let start_row = frame.lines.len() as u16;
-            frame.lines.extend(block_lines);
-            if frame.cursor.is_none()
-                && let Some(mut cursor) = block_cursor
-            {
-                cursor.row = cursor.row.saturating_add(start_row);
-                frame.cursor = Some(cursor);
-            }
-
-            if status == StepVisualStatus::Done {
-                frame.lines.push(vec![Span::new("")]);
-            }
+        if let Some(placement) = state.active_overlay_placement() {
+            apply_overlay(state, terminal_size, placement, &mut frame);
         }
 
         frame
     }
 }
 
-fn render_overlay_frame(
-    state: &AppState,
-    terminal_size: TerminalSize,
-    options: RenderOptions,
-) -> RenderFrame {
+fn build_base_frame(state: &AppState, terminal_size: TerminalSize) -> RenderFrame {
     let mut frame = RenderFrame::default();
-    let mut lines = Vec::<SpanLine>::new();
-    let mut cursor = None;
-    let mut row_offset: u16 = 0;
+    let current_idx = state.current_step_index();
+    let steps = state.steps();
+    let blocking_overlay = state.has_blocking_overlay();
 
-    let title_style = Style::new().color(Color::Cyan);
-    lines.push(vec![Span::styled(
-        format!("{} [{}]", state.current_prompt(), state.current_step_id()),
-        title_style,
-    )]);
-    row_offset = row_offset.saturating_add(1);
+    for (idx, step) in steps.iter().enumerate().take(current_idx.saturating_add(1)) {
+        let status = StepVisualStatus::from(state.step_status_at(idx));
 
-    if let Some(hint) = state.current_hint() {
-        lines.push(vec![Span::styled(
-            format!("Hint: {}", hint),
-            Style::new().color(Color::Yellow),
+        let mut block_lines = Vec::<SpanLine>::new();
+        let mut block_cursor: Option<CursorPos> = None;
+        let mut row_offset: u16 = 0;
+
+        let title_style = match status {
+            StepVisualStatus::Active => Style::new().color(Color::Cyan),
+            StepVisualStatus::Done | StepVisualStatus::Pending => {
+                Style::new().color(Color::DarkGrey)
+            }
+            StepVisualStatus::Cancelled => Style::new().color(Color::Red),
+        };
+        block_lines.push(vec![Span::styled(
+            format!("{} [{}]", step.prompt, step.id),
+            title_style,
         )]);
         row_offset = row_offset.saturating_add(1);
+
+        if let Some(hint) = step.hint.as_deref() {
+            let hint_style = match status {
+                StepVisualStatus::Active => Style::new().color(Color::Yellow),
+                StepVisualStatus::Done | StepVisualStatus::Pending => {
+                    Style::new().color(Color::DarkGrey)
+                }
+                StepVisualStatus::Cancelled => Style::new().color(Color::Red),
+            };
+            block_lines.push(vec![Span::styled(format!("Hint: {}", hint), hint_style)]);
+            row_offset = row_offset.saturating_add(1);
+        }
+
+        if status == StepVisualStatus::Active {
+            for error in state.current_step_errors() {
+                block_lines.push(vec![Span::styled(
+                    format!("✗ {}", error),
+                    Style::new().color(Color::Red).bold(),
+                )]);
+                row_offset = row_offset.saturating_add(1);
+            }
+        }
+
+        let focused_id = if status == StepVisualStatus::Active && !blocking_overlay {
+            state.focused_id()
+        } else {
+            None
+        };
+        let ctx = render_context_for_nodes(
+            state,
+            terminal_size,
+            status,
+            step.nodes.as_slice(),
+            focused_id,
+        );
+        let track_cursor = status == StepVisualStatus::Active && !blocking_overlay;
+        draw_nodes(
+            step.nodes.as_slice(),
+            &ctx,
+            &mut block_lines,
+            &mut block_cursor,
+            &mut row_offset,
+            track_cursor,
+        );
+
+        let layout_cursor = block_cursor.map(|cursor| (cursor.row as usize, cursor.col as usize));
+        let (composed_lines, mapped_cursor) =
+            Layout::compose_with_cursor(&block_lines, terminal_size.width, layout_cursor);
+        block_lines = composed_lines;
+        block_cursor = mapped_cursor.map(|(row, col)| CursorPos {
+            row: row.min(u16::MAX as usize) as u16,
+            col: col.min(u16::MAX as usize) as u16,
+        });
+
+        if status != StepVisualStatus::Active {
+            let tint = match status {
+                StepVisualStatus::Cancelled => Color::Red,
+                StepVisualStatus::Done | StepVisualStatus::Pending => Color::DarkGrey,
+                StepVisualStatus::Active => Color::Reset,
+            };
+            tint_block(&mut block_lines, tint);
+        }
+
+        if DECORATIONS_ENABLED {
+            decorate_step_block(
+                &mut block_lines,
+                &mut block_cursor,
+                idx < current_idx,
+                status,
+                idx == 0,
+            );
+        }
+
+        let start_row = frame.lines.len() as u16;
+        frame.lines.extend(block_lines);
+        if frame.cursor.is_none()
+            && let Some(mut cursor) = block_cursor
+        {
+            cursor.row = cursor.row.saturating_add(start_row);
+            frame.cursor = Some(cursor);
+        }
+
+        if status == StepVisualStatus::Done && !DECORATIONS_ENABLED {
+            frame.lines.push(vec![Span::new("")]);
+        }
     }
 
-    let ctx = render_context_for_step(state, terminal_size, StepVisualStatus::Active);
-    draw_nodes(
-        state.active_nodes(),
-        &ctx,
-        &mut lines,
-        &mut cursor,
-        &mut row_offset,
-        true,
-    );
-
-    lines = Layout::compose(&lines, terminal_size.width);
-    if options.decorations_enabled {
-        decorate_step_block(&mut lines, &mut cursor, false, StepVisualStatus::Active);
-    }
-
-    frame.lines = lines;
-    frame.cursor = cursor;
     frame
 }
 
-fn render_context_for_step(
+fn render_context_for_nodes(
     state: &AppState,
     terminal_size: TerminalSize,
     status: StepVisualStatus,
+    nodes: &[Node],
+    focused_id: Option<&str>,
 ) -> RenderContext {
-    if status == StepVisualStatus::Done {
+    if status != StepVisualStatus::Active {
         return RenderContext {
             focused_id: None,
             terminal_size,
@@ -175,16 +188,16 @@ fn render_context_for_step(
 
     let mut visible_errors = HashMap::<String, String>::new();
     let mut invalid_hidden = HashSet::<String>::new();
-    for node in state.active_nodes() {
+    visit_nodes(nodes, &mut |node| {
         if let Some(error) = state.visible_error(node.id()) {
             visible_errors.insert(node.id().to_string(), error.to_string());
         } else if state.is_hidden_invalid(node.id()) {
             invalid_hidden.insert(node.id().to_string());
         }
-    }
+    });
 
     RenderContext {
-        focused_id: state.focus.current_id().map(ToOwned::to_owned),
+        focused_id: focused_id.map(ToOwned::to_owned),
         terminal_size,
         visible_errors,
         invalid_hidden,
@@ -224,44 +237,5 @@ fn tint_block(lines: &mut [SpanLine], color: Color) {
         for span in line {
             span.style.color = Some(color);
         }
-    }
-}
-
-fn decorate_step_block(
-    lines: &mut Vec<SpanLine>,
-    cursor: &mut Option<CursorPos>,
-    connect_to_next: bool,
-    status: StepVisualStatus,
-) {
-    let decor_style = match status {
-        StepVisualStatus::Active => Style::new().color(Color::Green),
-        StepVisualStatus::Done => Style::new().color(Color::DarkGrey),
-    };
-
-    let mut decorated = Vec::<SpanLine>::with_capacity(lines.len().saturating_add(1));
-    for (idx, line) in lines.drain(..).enumerate() {
-        let prefix = if idx == 0 {
-            match status {
-                StepVisualStatus::Active => "◇  ",
-                StepVisualStatus::Done => "◈  ",
-            }
-        } else {
-            "│  "
-        };
-        let mut out_line = Vec::<Span>::with_capacity(line.len().saturating_add(1));
-        out_line.push(Span::styled(prefix, decor_style).no_wrap());
-        out_line.extend(line);
-        decorated.push(out_line);
-    }
-
-    if connect_to_next {
-        decorated.push(vec![Span::styled("│  ", decor_style).no_wrap()]);
-    } else {
-        decorated.push(vec![Span::styled("└  ", decor_style).no_wrap()]);
-    }
-    *lines = decorated;
-
-    if let Some(cursor) = cursor {
-        cursor.col = cursor.col.saturating_add(3);
     }
 }

@@ -1,6 +1,6 @@
-use crate::app::command::Command;
-use crate::app::event::WidgetEvent;
-use crate::domain::effect::Effect;
+use crate::core::effect::Effect;
+use crate::runtime::command::Command;
+use crate::runtime::event::WidgetEvent;
 use crate::state::app_state::AppState;
 
 pub struct Reducer;
@@ -9,10 +9,10 @@ impl Reducer {
     pub fn reduce(state: &mut AppState, command: Command) -> Vec<Effect> {
         let mut effects = match command {
             Command::Exit => {
-                if state.has_active_layer() {
-                    state.close_layer();
+                if state.has_active_overlay() {
+                    state.close_overlay();
                 } else {
-                    state.should_exit = true;
+                    state.request_exit();
                 }
                 vec![Effect::RequestRender]
             }
@@ -47,16 +47,12 @@ impl Reducer {
                 }
                 effects
             }
-            Command::OpenLayer(layer_id) => {
-                state.open_demo_layer(layer_id);
-                vec![Effect::RequestRender]
+            Command::OpenOverlay(overlay_id) => {
+                vec![Effect::EmitWidget(WidgetEvent::OpenOverlay { overlay_id })]
             }
-            Command::CloseLayer => {
-                state.close_layer();
-                vec![Effect::RequestRender]
-            }
+            Command::CloseOverlay => vec![Effect::EmitWidget(WidgetEvent::CloseOverlay)],
             Command::Tick => {
-                let result = state.tick_active_nodes();
+                let result = state.tick_all_nodes();
                 let mut effects = Self::effects_from_widget_events(result.events);
                 if result.handled {
                     effects.push(Effect::RequestRender);

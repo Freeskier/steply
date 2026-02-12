@@ -1,4 +1,5 @@
-pub type Validator = Box<dyn Fn(&str) -> Result<(), String> + Send>;
+pub type ValidationError = String;
+pub type Validator = Box<dyn Fn(&str) -> Result<(), ValidationError> + Send + Sync>;
 
 pub fn required(message: impl Into<String>) -> Validator {
     let message = message.into();

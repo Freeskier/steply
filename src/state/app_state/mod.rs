@@ -12,7 +12,6 @@ use crate::widgets::traits::{FocusMode, OverlayMode, OverlayPlacement};
 #[derive(Debug, Clone)]
 pub(crate) struct CompletionSession {
     pub owner_id: NodeId,
-    pub prefix: String,
     pub matches: Vec<String>,
     pub index: usize,
 }
@@ -197,6 +196,8 @@ impl AppState {
     }
 }
 
+mod completion;
 mod navigation;
+mod overlay_runtime;
 mod validation_runtime;
 mod value_sync;

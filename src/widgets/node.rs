@@ -100,9 +100,9 @@ impl Node {
         }
     }
 
-    pub fn completion_state(&mut self) -> Option<CompletionState<'_>> {
+    pub fn completion(&mut self) -> Option<CompletionState<'_>> {
         match self {
-            Self::Input(w) | Self::Component(w) => w.completion_state(),
+            Self::Input(w) | Self::Component(w) => w.completion(),
             Self::Output(_) => None,
         }
     }
@@ -136,8 +136,19 @@ impl Node {
     }
 
     pub fn validate(&self) -> Result<(), String> {
+        self.validate_submit()
+    }
+
+    pub fn validate_live(&self) -> Result<(), String> {
         match self {
-            Self::Input(w) | Self::Component(w) => w.validate(),
+            Self::Input(w) | Self::Component(w) => w.validate_live(),
+            Self::Output(_) => Ok(()),
+        }
+    }
+
+    pub fn validate_submit(&self) -> Result<(), String> {
+        match self {
+            Self::Input(w) | Self::Component(w) => w.validate_submit(),
             Self::Output(_) => Ok(()),
         }
     }

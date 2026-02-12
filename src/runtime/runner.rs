@@ -6,7 +6,7 @@ use crate::runtime::key_bindings::KeyBindings;
 use crate::runtime::scheduler::Scheduler;
 use crate::state::app_state::AppState;
 use crate::terminal::{Terminal, TerminalEvent};
-use crate::ui::renderer::Renderer;
+use crate::ui::renderer::{Renderer, RendererConfig};
 use std::io;
 use std::time::{Duration, Instant};
 
@@ -15,11 +15,12 @@ pub struct Runtime {
     terminal: Terminal,
     scheduler: Scheduler,
     key_bindings: KeyBindings,
+    renderer: Renderer,
 }
 
 impl Runtime {
     pub fn new(state: AppState, terminal: Terminal) -> Self {
-        Self::with_key_bindings(state, terminal, KeyBindings::new())
+        Self::with_parts(state, terminal, KeyBindings::new(), Renderer::default())
     }
 
     pub fn with_key_bindings(
@@ -27,11 +28,31 @@ impl Runtime {
         terminal: Terminal,
         key_bindings: KeyBindings,
     ) -> Self {
+        Self::with_parts(state, terminal, key_bindings, Renderer::default())
+    }
+
+    pub fn with_renderer(mut self, renderer: Renderer) -> Self {
+        self.renderer = renderer;
+        self
+    }
+
+    pub fn with_renderer_config(mut self, config: RendererConfig) -> Self {
+        self.renderer = Renderer::new(config);
+        self
+    }
+
+    fn with_parts(
+        state: AppState,
+        terminal: Terminal,
+        key_bindings: KeyBindings,
+        renderer: Renderer,
+    ) -> Self {
         Self {
             state,
             terminal,
             scheduler: Scheduler::new(),
             key_bindings,
+            renderer,
         }
     }
 
@@ -123,7 +144,7 @@ impl Runtime {
     }
 
     fn render(&mut self) -> io::Result<()> {
-        let frame = Renderer::render(&self.state, self.terminal.size());
+        let frame = self.renderer.render(&self.state, self.terminal.size());
         self.terminal.render(&frame.lines, frame.cursor)
     }
 }

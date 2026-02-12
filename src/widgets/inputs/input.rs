@@ -136,18 +136,18 @@ impl Interactive for Input {
         }
     }
 
-    fn text_edit_state(&mut self) -> Option<TextEditState<'_>> {
+    fn text_editing(&mut self) -> Option<TextEditState<'_>> {
         Some(TextEditState {
             value: &mut self.value,
             cursor: &mut self.cursor,
         })
     }
 
-    fn completion_state(&mut self) -> Option<CompletionState<'_>> {
+    fn completion(&mut self) -> Option<CompletionState<'_>> {
         Some(CompletionState {
             value: &mut self.value,
             cursor: &mut self.cursor,
-            items: &mut self.completion_items,
+            candidates: self.completion_items.as_slice(),
         })
     }
 
@@ -176,7 +176,7 @@ impl Interactive for Input {
         }
     }
 
-    fn validate(&self) -> Result<(), String> {
+    fn validate_submit(&self) -> Result<(), String> {
         for validator in &self.validators {
             validator(&self.value)?;
         }

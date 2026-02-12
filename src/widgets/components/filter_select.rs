@@ -219,22 +219,22 @@ impl Interactive for FilterSelect {
             .map(|value| Value::Text(value.to_string()))
     }
 
-    fn text_edit_state(&mut self) -> Option<TextEditState<'_>> {
+    fn text_editing(&mut self) -> Option<TextEditState<'_>> {
         Some(TextEditState {
             value: &mut self.query,
             cursor: &mut self.cursor,
         })
     }
 
-    fn completion_state(&mut self) -> Option<CompletionState<'_>> {
+    fn completion(&mut self) -> Option<CompletionState<'_>> {
         Some(CompletionState {
             value: &mut self.query,
             cursor: &mut self.cursor,
-            items: &mut self.options,
+            candidates: self.options.as_slice(),
         })
     }
 
-    fn after_text_edit(&mut self) {
+    fn on_text_edited(&mut self) {
         self.recompute_filter();
     }
 

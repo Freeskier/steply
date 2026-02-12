@@ -10,6 +10,7 @@ use std::collections::{HashMap, HashSet};
 
 mod decorations;
 mod overlay;
+mod overlay_geometry;
 
 use decorations::decorate_step_block;
 use overlay::apply_overlay;
@@ -20,9 +21,22 @@ pub struct RenderFrame {
     pub cursor: Option<CursorPos>,
 }
 
-pub struct Renderer;
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RendererConfig {
+    pub decorations_enabled: bool,
+}
 
-const DECORATIONS_ENABLED: bool = true;
+impl Default for RendererConfig {
+    fn default() -> Self {
+        Self {
+            decorations_enabled: true,
+        }
+    }
+}
+
+pub struct Renderer {
+    config: RendererConfig,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum StepVisualStatus {
@@ -44,8 +58,12 @@ impl From<StepStatus> for StepVisualStatus {
 }
 
 impl Renderer {
-    pub fn render(state: &AppState, terminal_size: TerminalSize) -> RenderFrame {
-        let mut frame = build_base_frame(state, terminal_size);
+    pub fn new(config: RendererConfig) -> Self {
+        Self { config }
+    }
+
+    pub fn render(&self, state: &AppState, terminal_size: TerminalSize) -> RenderFrame {
+        let mut frame = build_base_frame(state, terminal_size, self.config);
 
         let overlay_ids = state.overlay_stack_ids();
         let overlay_count = overlay_ids.len();
@@ -76,7 +94,17 @@ impl Renderer {
     }
 }
 
-fn build_base_frame(state: &AppState, terminal_size: TerminalSize) -> RenderFrame {
+impl Default for Renderer {
+    fn default() -> Self {
+        Self::new(RendererConfig::default())
+    }
+}
+
+fn build_base_frame(
+    state: &AppState,
+    terminal_size: TerminalSize,
+    config: RendererConfig,
+) -> RenderFrame {
     let mut frame = RenderFrame::default();
     let current_idx = state.current_step_index();
     let steps = state.steps();
@@ -164,7 +192,7 @@ fn build_base_frame(state: &AppState, terminal_size: TerminalSize) -> RenderFram
             tint_block(&mut block_lines, tint);
         }
 
-        if DECORATIONS_ENABLED {
+        if config.decorations_enabled {
             decorate_step_block(
                 &mut block_lines,
                 &mut block_cursor,
@@ -183,7 +211,7 @@ fn build_base_frame(state: &AppState, terminal_size: TerminalSize) -> RenderFram
             frame.cursor = Some(cursor);
         }
 
-        if status == StepVisualStatus::Done && !DECORATIONS_ENABLED {
+        if status == StepVisualStatus::Done && !config.decorations_enabled {
             frame.lines.push(vec![Span::new("")]);
         }
     }

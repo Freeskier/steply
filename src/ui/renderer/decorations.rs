@@ -3,6 +3,9 @@ use crate::terminal::CursorPos;
 use crate::ui::span::{Span, SpanLine};
 use crate::ui::style::{Color, Style};
 
+const DECOR_GUTTER: &str = "│  ";
+const DECOR_GUTTER_WIDTH: usize = 3;
+
 pub(super) fn decorate_step_block(
     lines: &mut Vec<SpanLine>,
     cursor: &mut Option<CursorPos>,
@@ -49,4 +52,32 @@ pub(super) fn decorate_step_block(
         }
         cursor.col = cursor.col.saturating_add(3);
     }
+}
+
+pub(super) fn decoration_gutter_width() -> usize {
+    DECOR_GUTTER_WIDTH
+}
+
+pub(super) fn inline_modal_gutter_span() -> Span {
+    Span::styled(DECOR_GUTTER, Style::new().color(Color::Green)).no_wrap()
+}
+
+pub(super) fn inline_modal_separator_line(
+    total_width: usize,
+    _left_padding_cols: usize,
+) -> SpanLine {
+    if total_width == 0 {
+        return vec![Span::new("").no_wrap()];
+    }
+
+    let mut rule = String::with_capacity(total_width);
+    rule.push('◆');
+    rule.push(' ');
+    rule.push(' ');
+
+    if total_width > 1 {
+        rule.push_str(&"━".repeat(total_width - 3));
+    }
+
+    vec![Span::styled(rule, Style::new().color(Color::DarkGrey)).no_wrap()]
 }

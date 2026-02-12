@@ -6,7 +6,7 @@ use crate::widgets::components::modal::Modal;
 use crate::widgets::inputs::input::Input;
 use crate::widgets::node::Node;
 use crate::widgets::outputs::text::Text;
-use crate::widgets::traits::OverlayPlacement;
+use crate::widgets::traits::{OverlayPlacement, OverlayRenderMode};
 use crate::widgets::validators;
 
 pub fn build_demo_flow() -> Flow {
@@ -67,7 +67,8 @@ pub fn build_demo_flow() -> Flow {
                             .with_submit_target("tags_raw".to_string()),
                     )),
                 ],
-            ))),
+            )
+            .with_render_mode(OverlayRenderMode::Inline))),
         ],
     )
     .with_validator(Box::new(|ctx| {

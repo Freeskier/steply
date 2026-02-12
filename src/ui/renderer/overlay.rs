@@ -1,3 +1,9 @@
+use super::decorations::{
+    decoration_gutter_width, inline_modal_gutter_span, inline_modal_separator_line,
+};
+use super::overlay_geometry::{
+    FloatingOverlayGeometry, InlineOverlayGeometry, OverlayGeometry, resolve_overlay_geometry,
+};
 use super::{RenderFrame, StepVisualStatus, draw_nodes, render_context_for_nodes};
 use crate::state::app_state::AppState;
 use crate::terminal::{CursorPos, TerminalSize};
@@ -16,30 +22,145 @@ pub(super) fn apply_overlay(
     focused_id: Option<&str>,
     frame: &mut RenderFrame,
 ) {
-    let (content_lines, overlay_cursor) =
-        render_overlay_content(state, terminal_size, overlay_nodes, placement, focused_id);
-    let box_lines = render_overlay_box(placement, &content_lines);
-
-    blend_overlay_lines(
-        &mut frame.lines,
-        placement.row as usize,
-        placement.col as usize,
-        placement.width as usize,
-        &box_lines,
+    let geometry = resolve_overlay_geometry(
+        placement,
+        terminal_size,
+        frame.lines.len(),
+        decoration_gutter_width(),
     );
 
-    if overlay_cursor.is_some() {
-        frame.cursor = overlay_cursor;
+    match geometry {
+        OverlayGeometry::Floating(geometry) => {
+            apply_floating_overlay(
+                state,
+                terminal_size,
+                overlay_nodes,
+                focused_id,
+                frame,
+                geometry,
+            );
+        }
+        OverlayGeometry::Inline(geometry) => {
+            apply_inline_overlay(
+                state,
+                terminal_size,
+                overlay_nodes,
+                focused_id,
+                frame,
+                geometry,
+            );
+        }
     }
 }
 
-fn render_overlay_content(
+fn apply_floating_overlay(
     state: &AppState,
     terminal_size: TerminalSize,
     overlay_nodes: &[Node],
-    placement: OverlayPlacement,
     focused_id: Option<&str>,
-) -> (Vec<SpanLine>, Option<CursorPos>) {
+    frame: &mut RenderFrame,
+    geometry: FloatingOverlayGeometry,
+) {
+    let body = render_overlay_body(
+        state,
+        terminal_size,
+        overlay_nodes,
+        focused_id,
+        geometry.content_width,
+    );
+    let box_lines = render_overlay_box(
+        geometry.width as usize,
+        geometry.height as usize,
+        &body.lines,
+    );
+
+    blend_overlay_lines(
+        &mut frame.lines,
+        geometry.row as usize,
+        geometry.col as usize,
+        geometry.width as usize,
+        &box_lines,
+    );
+
+    if let Some(local_cursor) = body.cursor {
+        frame.cursor = Some(CursorPos {
+            col: geometry.col.saturating_add(1).saturating_add(
+                local_cursor
+                    .col
+                    .min(geometry.content_width.saturating_sub(1)),
+            ),
+            row: geometry
+                .row
+                .saturating_add(1)
+                .saturating_add(local_cursor.row),
+        });
+    }
+}
+
+fn apply_inline_overlay(
+    state: &AppState,
+    terminal_size: TerminalSize,
+    overlay_nodes: &[Node],
+    focused_id: Option<&str>,
+    frame: &mut RenderFrame,
+    geometry: InlineOverlayGeometry,
+) {
+    let body = render_overlay_body(
+        state,
+        terminal_size,
+        overlay_nodes,
+        focused_id,
+        geometry.content_width,
+    );
+
+    let left_padding = " ".repeat(geometry.left_padding_cols);
+    let mut inserted = Vec::<SpanLine>::with_capacity(body.lines.len().saturating_add(2));
+    inserted.push(inline_modal_separator_line(terminal_size.width as usize, 0));
+    for mut line in body.lines {
+        let mut out = Vec::<Span>::with_capacity(line.len().saturating_add(2));
+        out.push(inline_modal_gutter_span());
+        if !left_padding.is_empty() {
+            out.push(Span::new(left_padding.clone()).no_wrap());
+        }
+        out.append(&mut line);
+        inserted.push(out);
+    }
+    inserted.push(inline_modal_separator_line(terminal_size.width as usize, 0));
+    let inserted_len = inserted.len() as u16;
+
+    frame
+        .lines
+        .splice(geometry.insert_row..geometry.insert_row, inserted);
+
+    if let Some(local_cursor) = body.cursor {
+        frame.cursor = Some(CursorPos {
+            col: (geometry
+                .content_col_offset()
+                .saturating_add(local_cursor.col as usize)) as u16,
+            row: local_cursor
+                .row
+                .saturating_add(geometry.insert_row.min(u16::MAX as usize) as u16)
+                .saturating_add(1),
+        });
+    } else if let Some(cursor) = frame.cursor.as_mut()
+        && cursor.row as usize >= geometry.insert_row
+    {
+        cursor.row = cursor.row.saturating_add(inserted_len);
+    }
+}
+
+struct OverlayBody {
+    lines: Vec<SpanLine>,
+    cursor: Option<CursorPos>,
+}
+
+fn render_overlay_body(
+    state: &AppState,
+    terminal_size: TerminalSize,
+    overlay_nodes: &[Node],
+    focused_id: Option<&str>,
+    content_width: u16,
+) -> OverlayBody {
     let mut lines = Vec::<SpanLine>::new();
     let mut cursor = None;
     let mut row_offset: u16 = 0;
@@ -60,28 +181,17 @@ fn render_overlay_content(
         true,
     );
 
-    let inner_width = placement.width.saturating_sub(2).max(1);
     let layout_cursor = cursor.map(|local| (local.row as usize, local.col as usize));
-    let (lines, mapped_cursor) = Layout::compose_with_cursor(&lines, inner_width, layout_cursor);
-
-    let overlay_cursor = mapped_cursor.map(|(row, col)| CursorPos {
-        col: placement
-            .col
-            .saturating_add(1)
-            .saturating_add(col.min(inner_width.saturating_sub(1) as usize) as u16),
-        row: placement
-            .row
-            .saturating_add(1)
-            .saturating_add(row.min(u16::MAX as usize) as u16),
+    let (lines, mapped_cursor) = Layout::compose_with_cursor(&lines, content_width, layout_cursor);
+    let cursor = mapped_cursor.map(|(row, col)| CursorPos {
+        row: row.min(u16::MAX as usize) as u16,
+        col: col.min(content_width.saturating_sub(1) as usize) as u16,
     });
 
-    (lines, overlay_cursor)
+    OverlayBody { lines, cursor }
 }
 
-fn render_overlay_box(placement: OverlayPlacement, content_lines: &[SpanLine]) -> Vec<SpanLine> {
-    let width = placement.width as usize;
-    let height = placement.height as usize;
-
+fn render_overlay_box(width: usize, height: usize, content_lines: &[SpanLine]) -> Vec<SpanLine> {
     if width == 0 || height == 0 {
         return Vec::new();
     }

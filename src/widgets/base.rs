@@ -1,5 +1,5 @@
 use crate::widgets::traits::OverlayPlacement;
-use crate::widgets::traits::{FocusMode, OverlayMode};
+use crate::widgets::traits::{FocusMode, OverlayMode, OverlayRenderMode};
 
 #[derive(Debug, Clone)]
 pub struct InputBase {
@@ -97,6 +97,10 @@ impl ModalBase {
 
     pub fn placement(&self) -> OverlayPlacement {
         self.placement
+    }
+
+    pub fn set_render_mode(&mut self, render_mode: OverlayRenderMode) {
+        self.placement = self.placement.with_render_mode(render_mode);
     }
 
     pub fn is_visible(&self) -> bool {

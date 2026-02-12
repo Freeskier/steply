@@ -21,11 +21,18 @@ pub enum OverlayMode {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OverlayRenderMode {
+    Floating,
+    Inline,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct OverlayPlacement {
     pub row: u16,
     pub col: u16,
     pub width: u16,
     pub height: u16,
+    pub render_mode: OverlayRenderMode,
 }
 
 impl OverlayPlacement {
@@ -35,7 +42,13 @@ impl OverlayPlacement {
             col,
             width,
             height,
+            render_mode: OverlayRenderMode::Floating,
         }
+    }
+
+    pub fn with_render_mode(mut self, render_mode: OverlayRenderMode) -> Self {
+        self.render_mode = render_mode;
+        self
     }
 }
 
@@ -125,7 +138,7 @@ pub struct TextEditState<'a> {
 pub struct CompletionState<'a> {
     pub value: &'a mut String,
     pub cursor: &'a mut usize,
-    pub items: &'a mut Vec<String>,
+    pub candidates: &'a [String],
 }
 
 impl TextAction {
@@ -157,22 +170,22 @@ pub trait Interactive: Send {
     }
 
     fn on_key(&mut self, key: KeyEvent) -> InteractionResult;
-    fn text_edit_state(&mut self) -> Option<TextEditState<'_>> {
+    fn text_editing(&mut self) -> Option<TextEditState<'_>> {
         None
     }
-    fn after_text_edit(&mut self) {}
+    fn on_text_edited(&mut self) {}
     fn on_text_action(&mut self, action: TextAction) -> InteractionResult {
-        let Some(mut state) = self.text_edit_state() else {
+        let Some(mut state) = self.text_editing() else {
             return InteractionResult::ignored();
         };
         if action.apply(&mut state) {
-            self.after_text_edit();
+            self.on_text_edited();
             InteractionResult::handled()
         } else {
             InteractionResult::ignored()
         }
     }
-    fn completion_state(&mut self) -> Option<CompletionState<'_>> {
+    fn completion(&mut self) -> Option<CompletionState<'_>> {
         None
     }
     fn on_event(&mut self, _event: &WidgetEvent) -> InteractionResult {
@@ -190,6 +203,12 @@ pub trait Interactive: Send {
     }
     fn set_value(&mut self, _value: Value) {}
     fn validate(&self) -> Result<(), String> {
+        self.validate_submit()
+    }
+    fn validate_live(&self) -> Result<(), String> {
+        self.validate_submit()
+    }
+    fn validate_submit(&self) -> Result<(), String> {
         Ok(())
     }
 

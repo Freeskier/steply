@@ -5,7 +5,7 @@ use crate::widgets::base::ModalBase;
 use crate::widgets::node::{Node, find_node_mut};
 use crate::widgets::traits::{
     DrawOutput, Drawable, FocusMode, InteractionResult, Interactive, OverlayMode, OverlayPlacement,
-    RenderContext, TextAction,
+    OverlayRenderMode, RenderContext, TextAction,
 };
 
 pub struct Modal {
@@ -69,6 +69,11 @@ impl Modal {
 
     pub fn with_overlay_mode(mut self, overlay_mode: OverlayMode) -> Self {
         self.base.set_overlay_mode(overlay_mode);
+        self
+    }
+
+    pub fn with_render_mode(mut self, render_mode: OverlayRenderMode) -> Self {
+        self.base.set_render_mode(render_mode);
         self
     }
 }

@@ -1,4 +1,5 @@
 use super::AppState;
+use crate::core::{NodeId, value::Value};
 use crate::runtime::event::{AppEvent, WidgetEvent};
 use crate::runtime::scheduler::SchedulerCommand;
 use crate::state::validation::{
@@ -25,7 +26,12 @@ impl AppState {
         let validations = {
             let mut out = Vec::<(String, Result<(), String>)>::new();
             visit_state_nodes(self.flow.current_step().nodes.as_slice(), &mut |node| {
-                out.push((node.id().to_string(), node.validate()));
+                let result = if reveal {
+                    node.validate_submit()
+                } else {
+                    node.validate_live()
+                };
+                out.push((node.id().to_string(), result));
             });
             out
         };
@@ -48,7 +54,12 @@ impl AppState {
         let mut validation_result: Option<Result<(), String>> = None;
         visit_nodes(self.active_nodes(), &mut |node| {
             if validation_result.is_none() && node.id() == id {
-                validation_result = Some(node.validate());
+                let result = if reveal {
+                    node.validate_submit()
+                } else {
+                    node.validate_live()
+                };
+                validation_result = Some(result);
             }
         });
         self.apply_validation_result(id, validation_result, reveal)
@@ -148,8 +159,8 @@ fn inline_error_key(id: &str) -> String {
     format!("validation:inline:{id}")
 }
 
-fn collect_node_values(nodes: &[Node]) -> HashMap<crate::core::NodeId, crate::core::value::Value> {
-    let mut values = HashMap::new();
+fn collect_node_values(nodes: &[Node]) -> HashMap<NodeId, Value> {
+    let mut values = HashMap::<NodeId, Value>::new();
     visit_state_nodes(nodes, &mut |node| {
         if let Some(value) = node.value() {
             values.insert(node.id().into(), value);

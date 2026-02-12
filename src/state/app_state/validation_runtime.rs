@@ -5,7 +5,7 @@ use crate::state::validation::{
     ErrorVisibility, ValidationContext, ValidationIssue, ValidationTarget,
 };
 use crate::widgets::node::Node;
-use crate::widgets::node::visit_nodes;
+use crate::widgets::node::{visit_nodes, visit_state_nodes};
 use std::collections::HashMap;
 use std::time::Duration;
 
@@ -24,7 +24,7 @@ impl AppState {
 
         let validations = {
             let mut out = Vec::<(String, Result<(), String>)>::new();
-            visit_nodes(self.flow.current_step().nodes.as_slice(), &mut |node| {
+            visit_state_nodes(self.flow.current_step().nodes.as_slice(), &mut |node| {
                 out.push((node.id().to_string(), node.validate()));
             });
             out
@@ -79,9 +79,7 @@ impl AppState {
                     self.pending_scheduler.push(SchedulerCommand::Debounce {
                         key: inline_error_key(id),
                         delay: ERROR_INLINE_TTL,
-                        event: AppEvent::Widget(WidgetEvent::ClearInlineError {
-                            id: id.to_string(),
-                        }),
+                        event: AppEvent::Widget(WidgetEvent::ClearInlineError { id: id.into() }),
                     });
                 }
                 false
@@ -124,7 +122,8 @@ impl AppState {
         for issue in issues {
             match issue.target {
                 ValidationTarget::Node(id) => {
-                    if !self.apply_validation_result(&id, Some(Err(issue.message)), reveal) {
+                    if !self.apply_validation_result(id.as_str(), Some(Err(issue.message)), reveal)
+                    {
                         valid = false;
                     }
                 }
@@ -149,11 +148,11 @@ fn inline_error_key(id: &str) -> String {
     format!("validation:inline:{id}")
 }
 
-fn collect_node_values(nodes: &[Node]) -> HashMap<String, crate::core::value::Value> {
+fn collect_node_values(nodes: &[Node]) -> HashMap<crate::core::NodeId, crate::core::value::Value> {
     let mut values = HashMap::new();
-    visit_nodes(nodes, &mut |node| {
+    visit_state_nodes(nodes, &mut |node| {
         if let Some(value) = node.value() {
-            values.insert(node.id().to_string(), value);
+            values.insert(node.id().into(), value);
         }
     });
     values

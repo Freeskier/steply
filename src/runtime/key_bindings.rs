@@ -22,6 +22,10 @@ impl KeyBinding {
         Self::new(code, KeyModifiers::CONTROL)
     }
 
+    pub fn alt(code: KeyCode) -> Self {
+        Self::new(code, KeyModifiers::ALT)
+    }
+
     pub fn from_event(event: KeyEvent) -> Self {
         Self {
             code: event.code,
@@ -58,7 +62,32 @@ impl KeyBindings {
         self.bind(KeyBinding::ctrl(KeyCode::Char('c')), Command::Exit);
         self.bind(
             KeyBinding::ctrl(KeyCode::Char('o')),
-            Command::OpenOverlay("demo_overlay".to_string()),
+            Command::OpenOverlayShortcut,
+        );
+        self.bind(
+            KeyBinding::ctrl(KeyCode::Char('1')),
+            Command::OpenOverlayAtIndex(0),
+        );
+        self.bind(
+            KeyBinding::ctrl(KeyCode::Char('2')),
+            Command::OpenOverlayAtIndex(1),
+        );
+        self.bind(
+            KeyBinding::ctrl(KeyCode::Char('3')),
+            Command::OpenOverlayAtIndex(2),
+        );
+
+        self.bind(
+            KeyBinding::alt(KeyCode::Char('1')),
+            Command::OpenOverlayAtIndex(0),
+        );
+        self.bind(
+            KeyBinding::alt(KeyCode::Char('2')),
+            Command::OpenOverlayAtIndex(1),
+        );
+        self.bind(
+            KeyBinding::alt(KeyCode::Char('3')),
+            Command::OpenOverlayAtIndex(2),
         );
         self.bind(KeyBinding::key(KeyCode::Esc), Command::Exit);
         self.bind(KeyBinding::key(KeyCode::Tab), Command::NextFocus);

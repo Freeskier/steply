@@ -47,8 +47,29 @@ impl Renderer {
     pub fn render(state: &AppState, terminal_size: TerminalSize) -> RenderFrame {
         let mut frame = build_base_frame(state, terminal_size);
 
-        if let Some(placement) = state.active_overlay_placement() {
-            apply_overlay(state, terminal_size, placement, &mut frame);
+        let overlay_ids = state.overlay_stack_ids();
+        let overlay_count = overlay_ids.len();
+        for (idx, overlay_id) in overlay_ids.iter().enumerate() {
+            let Some(overlay) = state.overlay_by_id(overlay_id) else {
+                continue;
+            };
+            let Some(placement) = overlay.overlay_placement() else {
+                continue;
+            };
+            let nodes = overlay.children().unwrap_or(&[]);
+            let focused_id = if idx + 1 == overlay_count {
+                state.focused_id()
+            } else {
+                None
+            };
+            apply_overlay(
+                state,
+                terminal_size,
+                nodes,
+                placement,
+                focused_id,
+                &mut frame,
+            );
         }
 
         frame

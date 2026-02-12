@@ -2,8 +2,8 @@ use crate::core::value::Value;
 use crate::runtime::event::WidgetEvent;
 use crate::terminal::{CursorPos, KeyEvent};
 use crate::widgets::traits::{
-    DrawOutput, FocusMode, InteractionResult, InteractiveNode, OverlayMode, OverlayPlacement,
-    RenderContext, RenderNode, TextAction,
+    CompletionState, DrawOutput, FocusMode, InteractionResult, InteractiveNode, OverlayMode,
+    OverlayPlacement, RenderContext, RenderNode, TextAction,
 };
 
 pub enum Node {
@@ -21,11 +21,29 @@ pub fn visit_nodes(nodes: &[Node], f: &mut impl FnMut(&Node)) {
     }
 }
 
+pub fn visit_state_nodes(nodes: &[Node], f: &mut impl FnMut(&Node)) {
+    for node in nodes {
+        f(node);
+        if let Some(children) = node.state_children() {
+            visit_state_nodes(children, f);
+        }
+    }
+}
+
 pub fn visit_nodes_mut(nodes: &mut [Node], f: &mut impl FnMut(&mut Node)) {
     for node in nodes {
         f(node);
         if let Some(children) = node.children_mut() {
             visit_nodes_mut(children, f);
+        }
+    }
+}
+
+pub fn visit_state_nodes_mut(nodes: &mut [Node], f: &mut impl FnMut(&mut Node)) {
+    for node in nodes {
+        f(node);
+        if let Some(children) = node.state_children_mut() {
+            visit_state_nodes_mut(children, f);
         }
     }
 }
@@ -82,6 +100,13 @@ impl Node {
         }
     }
 
+    pub fn completion_state(&mut self) -> Option<CompletionState<'_>> {
+        match self {
+            Self::Input(w) | Self::Component(w) => w.completion_state(),
+            Self::Output(_) => None,
+        }
+    }
+
     pub fn on_tick(&mut self) -> InteractionResult {
         match self {
             Self::Input(w) | Self::Component(w) => w.on_tick(),
@@ -127,6 +152,20 @@ impl Node {
     pub fn children_mut(&mut self) -> Option<&mut [Node]> {
         match self {
             Self::Input(w) | Self::Component(w) => w.children_mut(),
+            Self::Output(_) => None,
+        }
+    }
+
+    pub fn state_children(&self) -> Option<&[Node]> {
+        match self {
+            Self::Input(w) | Self::Component(w) => w.state_children(),
+            Self::Output(_) => None,
+        }
+    }
+
+    pub fn state_children_mut(&mut self) -> Option<&mut [Node]> {
+        match self {
+            Self::Input(w) | Self::Component(w) => w.state_children_mut(),
             Self::Output(_) => None,
         }
     }
@@ -200,7 +239,7 @@ pub fn find_overlay<'a>(nodes: &'a [Node], id: &str) -> Option<&'a Node> {
         if node.id() == id && node.overlay_placement().is_some() {
             return Some(node);
         }
-        if let Some(children) = node.children()
+        if let Some(children) = node.state_children()
             && let Some(found) = find_overlay(children, id)
         {
             return Some(found);
@@ -215,7 +254,7 @@ pub fn find_overlay_mut<'a>(nodes: &'a mut [Node], id: &str) -> Option<&'a mut N
         if is_target_overlay {
             return Some(node);
         }
-        if let Some(children) = node.children_mut()
+        if let Some(children) = node.state_children_mut()
             && let Some(found) = find_overlay_mut(children, id)
         {
             return Some(found);
@@ -229,7 +268,7 @@ pub fn find_visible_overlay(nodes: &[Node]) -> Option<&Node> {
         if node.overlay_is_visible() {
             return Some(node);
         }
-        if let Some(children) = node.children()
+        if let Some(children) = node.state_children()
             && let Some(found) = find_visible_overlay(children)
         {
             return Some(found);
@@ -243,7 +282,7 @@ pub fn find_visible_overlay_mut(nodes: &mut [Node]) -> Option<&mut Node> {
         if node.overlay_is_visible() {
             return Some(node);
         }
-        if let Some(children) = node.children_mut()
+        if let Some(children) = node.state_children_mut()
             && let Some(found) = find_visible_overlay_mut(children)
         {
             return Some(found);

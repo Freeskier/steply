@@ -38,6 +38,7 @@ impl KeyModifiers {
     pub const NONE: Self = Self(0);
     pub const SHIFT: Self = Self(1 << 0);
     pub const CONTROL: Self = Self(1 << 1);
+    pub const ALT: Self = Self(1 << 2);
 
     pub fn contains(self, other: Self) -> bool {
         (self.0 & other.0) == other.0
@@ -313,6 +314,9 @@ fn map_key_modifiers(modifiers: CrosstermKeyModifiers) -> KeyModifiers {
     }
     if modifiers.contains(CrosstermKeyModifiers::CONTROL) {
         out.0 |= KeyModifiers::CONTROL.0;
+    }
+    if modifiers.contains(CrosstermKeyModifiers::ALT) {
+        out.0 |= KeyModifiers::ALT.0;
     }
     out
 }

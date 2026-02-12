@@ -6,7 +6,8 @@ use crate::ui::style::{Color, Style};
 use crate::widgets::base::ComponentBase;
 use crate::widgets::inputs::text_edit;
 use crate::widgets::traits::{
-    DrawOutput, Drawable, FocusMode, InteractionResult, Interactive, RenderContext,
+    CompletionState, DrawOutput, Drawable, FocusMode, InteractionResult, Interactive,
+    RenderContext, TextEditState,
 };
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
@@ -188,7 +189,7 @@ impl Interactive for FilterSelect {
                     (self.submit_target.as_ref(), self.selected_value())
                 {
                     return InteractionResult::with_event(WidgetEvent::ValueProduced {
-                        target: target.clone(),
+                        target: target.as_str().into(),
                         value: Value::Text(selected.to_string()),
                     });
                 }
@@ -200,7 +201,7 @@ impl Interactive for FilterSelect {
 
     fn on_event(&mut self, event: &WidgetEvent) -> InteractionResult {
         match event {
-            WidgetEvent::ValueProduced { target, value } if target == self.base.id() => {
+            WidgetEvent::ValueProduced { target, value } if target.as_str() == self.base.id() => {
                 if let Value::Text(v) = value {
                     self.query = v.clone();
                     self.cursor = text_edit::char_count(&self.query);
@@ -216,6 +217,25 @@ impl Interactive for FilterSelect {
     fn value(&self) -> Option<Value> {
         self.selected_value()
             .map(|value| Value::Text(value.to_string()))
+    }
+
+    fn text_edit_state(&mut self) -> Option<TextEditState<'_>> {
+        Some(TextEditState {
+            value: &mut self.query,
+            cursor: &mut self.cursor,
+        })
+    }
+
+    fn completion_state(&mut self) -> Option<CompletionState<'_>> {
+        Some(CompletionState {
+            value: &mut self.query,
+            cursor: &mut self.cursor,
+            items: &mut self.options,
+        })
+    }
+
+    fn after_text_edit(&mut self) {
+        self.recompute_filter();
     }
 
     fn set_value(&mut self, value: Value) {

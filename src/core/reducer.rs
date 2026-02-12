@@ -18,23 +18,35 @@ impl Reducer {
             }
             Command::Submit => {
                 if let Some(result) = state.submit_focused() {
-                    Self::effects_from_widget_events(result.events)
+                    let mut effects = Self::effects_from_widget_events(result.events);
+                    if result.request_render {
+                        effects.push(Effect::RequestRender);
+                    }
+                    effects
                 } else {
                     vec![Effect::RequestRender]
                 }
             }
             Command::NextFocus => {
-                state.focus_next();
-                vec![Effect::RequestRender]
+                let result = state.handle_tab_forward();
+                let mut effects = Self::effects_from_widget_events(result.events);
+                if result.request_render {
+                    effects.push(Effect::RequestRender);
+                }
+                effects
             }
             Command::PrevFocus => {
-                state.focus_prev();
-                vec![Effect::RequestRender]
+                let result = state.handle_tab_backward();
+                let mut effects = Self::effects_from_widget_events(result.events);
+                if result.request_render {
+                    effects.push(Effect::RequestRender);
+                }
+                effects
             }
             Command::InputKey(key) => {
                 let result = state.dispatch_key_to_focused(key);
                 let mut effects = Self::effects_from_widget_events(result.events);
-                if result.handled {
+                if result.request_render {
                     effects.push(Effect::RequestRender);
                 }
                 effects
@@ -42,7 +54,7 @@ impl Reducer {
             Command::TextAction(action) => {
                 let result = state.dispatch_text_action_to_focused(action);
                 let mut effects = Self::effects_from_widget_events(result.events);
-                if result.handled {
+                if result.request_render {
                     effects.push(Effect::RequestRender);
                 }
                 effects
@@ -50,11 +62,25 @@ impl Reducer {
             Command::OpenOverlay(overlay_id) => {
                 vec![Effect::EmitWidget(WidgetEvent::OpenOverlay { overlay_id })]
             }
+            Command::OpenOverlayAtIndex(index) => {
+                if state.open_overlay_by_index(index) {
+                    vec![Effect::RequestRender]
+                } else {
+                    vec![]
+                }
+            }
+            Command::OpenOverlayShortcut => {
+                if state.open_default_overlay() {
+                    vec![Effect::RequestRender]
+                } else {
+                    vec![]
+                }
+            }
             Command::CloseOverlay => vec![Effect::EmitWidget(WidgetEvent::CloseOverlay)],
             Command::Tick => {
                 let result = state.tick_all_nodes();
                 let mut effects = Self::effects_from_widget_events(result.events);
-                if result.handled {
+                if result.request_render {
                     effects.push(Effect::RequestRender);
                 }
                 effects

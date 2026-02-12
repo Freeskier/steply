@@ -1,13 +1,13 @@
 use super::AppState;
 use crate::core::value::Value;
-use crate::widgets::node::{find_node_mut, visit_nodes, visit_nodes_mut};
+use crate::widgets::node::{find_node_mut, visit_state_nodes, visit_state_nodes_mut};
 use std::collections::HashMap;
 
 impl AppState {
     pub(super) fn sync_current_step_values_to_store(&mut self) {
         let values = {
             let mut out = Vec::<(String, Value)>::new();
-            visit_nodes(self.flow.current_step().nodes.as_slice(), &mut |node| {
+            visit_state_nodes(self.flow.current_step().nodes.as_slice(), &mut |node| {
                 if let Some(value) = node.value() {
                     out.push((node.id().to_string(), value));
                 }
@@ -36,7 +36,7 @@ impl AppState {
             .map(|(id, value)| (id.to_string(), value.clone()))
             .collect();
 
-        visit_nodes_mut(
+        visit_state_nodes_mut(
             self.flow.current_step_mut().nodes.as_mut_slice(),
             &mut |node| {
                 if let Some(value) = values.get(node.id()) {

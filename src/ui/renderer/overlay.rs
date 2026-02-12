@@ -4,16 +4,20 @@ use crate::terminal::{CursorPos, TerminalSize};
 use crate::ui::layout::Layout;
 use crate::ui::span::{Span, SpanLine};
 use crate::ui::style::{Color, Style};
+use crate::widgets::node::Node;
 use crate::widgets::traits::OverlayPlacement;
 use unicode_width::UnicodeWidthChar;
 
 pub(super) fn apply_overlay(
     state: &AppState,
     terminal_size: TerminalSize,
+    overlay_nodes: &[Node],
     placement: OverlayPlacement,
+    focused_id: Option<&str>,
     frame: &mut RenderFrame,
 ) {
-    let (content_lines, overlay_cursor) = render_overlay_content(state, terminal_size, placement);
+    let (content_lines, overlay_cursor) =
+        render_overlay_content(state, terminal_size, overlay_nodes, placement, focused_id);
     let box_lines = render_overlay_box(placement, &content_lines);
 
     blend_overlay_lines(
@@ -32,12 +36,10 @@ pub(super) fn apply_overlay(
 fn render_overlay_content(
     state: &AppState,
     terminal_size: TerminalSize,
+    overlay_nodes: &[Node],
     placement: OverlayPlacement,
+    focused_id: Option<&str>,
 ) -> (Vec<SpanLine>, Option<CursorPos>) {
-    let overlay_nodes = state
-        .active_overlay_nodes()
-        .unwrap_or_else(|| state.active_nodes());
-
     let mut lines = Vec::<SpanLine>::new();
     let mut cursor = None;
     let mut row_offset: u16 = 0;
@@ -47,7 +49,7 @@ fn render_overlay_content(
         terminal_size,
         StepVisualStatus::Active,
         overlay_nodes,
-        state.focused_id(),
+        focused_id,
     );
     draw_nodes(
         overlay_nodes,

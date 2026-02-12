@@ -25,11 +25,11 @@ pub enum WidgetEvent {
         target: NodeId,
     },
     OpenOverlay {
-        overlay_id: String,
+        overlay_id: NodeId,
     },
     CloseOverlay,
     OverlayLifecycle {
-        overlay_id: String,
+        overlay_id: NodeId,
         phase: OverlayLifecycle,
     },
     RequestRender,

@@ -6,7 +6,8 @@ use crate::ui::span::Span;
 use crate::ui::style::{Color, Style};
 use crate::widgets::base::InputBase;
 use crate::widgets::traits::{
-    DrawOutput, Drawable, FocusMode, InteractionResult, Interactive, RenderContext, TextAction,
+    CompletionState, DrawOutput, Drawable, FocusMode, InteractionResult, Interactive,
+    RenderContext, TextEditState,
 };
 use crate::widgets::validators::Validator;
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
@@ -17,6 +18,7 @@ pub struct Input {
     cursor: usize,
     submit_target: Option<String>,
     validators: Vec<Validator>,
+    completion_items: Vec<String>,
 }
 
 impl Input {
@@ -27,6 +29,7 @@ impl Input {
             cursor: 0,
             submit_target: None,
             validators: Vec::new(),
+            completion_items: Vec::new(),
         }
     }
 
@@ -38,6 +41,19 @@ impl Input {
     pub fn with_validator(mut self, validator: Validator) -> Self {
         self.validators.push(validator);
         self
+    }
+
+    pub fn with_completion_items(mut self, items: Vec<String>) -> Self {
+        self.completion_items = items;
+        self
+    }
+
+    pub fn set_completion_items(&mut self, items: Vec<String>) {
+        self.completion_items = items;
+    }
+
+    pub fn completion_items_mut(&mut self) -> &mut Vec<String> {
+        &mut self.completion_items
     }
 }
 
@@ -110,7 +126,7 @@ impl Interactive for Input {
             KeyCode::Enter => {
                 if let Some(target) = &self.submit_target {
                     return InteractionResult::with_event(WidgetEvent::ValueProduced {
-                        target: target.clone(),
+                        target: target.as_str().into(),
                         value: Value::Text(self.value.clone()),
                     });
                 }
@@ -120,25 +136,24 @@ impl Interactive for Input {
         }
     }
 
-    fn on_text_action(&mut self, action: TextAction) -> InteractionResult {
-        let handled = match action {
-            TextAction::DeleteWordLeft => {
-                text_edit::delete_word_left(&mut self.value, &mut self.cursor)
-            }
-            TextAction::DeleteWordRight => {
-                text_edit::delete_word_right(&mut self.value, &mut self.cursor)
-            }
-        };
-        if handled {
-            InteractionResult::handled()
-        } else {
-            InteractionResult::ignored()
-        }
+    fn text_edit_state(&mut self) -> Option<TextEditState<'_>> {
+        Some(TextEditState {
+            value: &mut self.value,
+            cursor: &mut self.cursor,
+        })
+    }
+
+    fn completion_state(&mut self) -> Option<CompletionState<'_>> {
+        Some(CompletionState {
+            value: &mut self.value,
+            cursor: &mut self.cursor,
+            items: &mut self.completion_items,
+        })
     }
 
     fn on_event(&mut self, event: &WidgetEvent) -> InteractionResult {
         match event {
-            WidgetEvent::ValueProduced { target, value } if target == self.base.id() => {
+            WidgetEvent::ValueProduced { target, value } if target.as_str() == self.base.id() => {
                 if let Value::Text(v) = value {
                     self.value = v.clone();
                     self.cursor = text_edit::char_count(&self.value);

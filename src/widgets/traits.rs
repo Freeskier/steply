@@ -2,6 +2,7 @@ use crate::core::value::Value;
 use crate::runtime::event::WidgetEvent;
 use crate::terminal::{CursorPos, KeyEvent, TerminalSize};
 use crate::ui::span::{Span, SpanLine};
+use crate::widgets::inputs::text_edit;
 use crate::widgets::node::Node;
 use std::collections::{HashMap, HashSet};
 
@@ -70,6 +71,7 @@ pub trait Drawable: Send {
 #[derive(Debug, Clone, Default)]
 pub struct InteractionResult {
     pub handled: bool,
+    pub request_render: bool,
     pub events: Vec<WidgetEvent>,
 }
 
@@ -78,9 +80,18 @@ impl InteractionResult {
         Self::default()
     }
 
+    pub fn consumed() -> Self {
+        Self {
+            handled: true,
+            request_render: false,
+            events: Vec::new(),
+        }
+    }
+
     pub fn handled() -> Self {
         Self {
             handled: true,
+            request_render: true,
             events: Vec::new(),
         }
     }
@@ -88,8 +99,15 @@ impl InteractionResult {
     pub fn with_event(event: WidgetEvent) -> Self {
         Self {
             handled: true,
+            request_render: true,
             events: vec![event],
         }
+    }
+
+    pub fn merge(&mut self, other: Self) {
+        self.handled |= other.handled;
+        self.request_render |= other.request_render;
+        self.events.extend(other.events);
     }
 }
 
@@ -97,6 +115,26 @@ impl InteractionResult {
 pub enum TextAction {
     DeleteWordLeft,
     DeleteWordRight,
+}
+
+pub struct TextEditState<'a> {
+    pub value: &'a mut String,
+    pub cursor: &'a mut usize,
+}
+
+pub struct CompletionState<'a> {
+    pub value: &'a mut String,
+    pub cursor: &'a mut usize,
+    pub items: &'a mut Vec<String>,
+}
+
+impl TextAction {
+    fn apply(self, state: &mut TextEditState<'_>) -> bool {
+        match self {
+            Self::DeleteWordLeft => text_edit::delete_word_left(state.value, state.cursor),
+            Self::DeleteWordRight => text_edit::delete_word_right(state.value, state.cursor),
+        }
+    }
 }
 
 pub trait Interactive: Send {
@@ -119,8 +157,23 @@ pub trait Interactive: Send {
     }
 
     fn on_key(&mut self, key: KeyEvent) -> InteractionResult;
-    fn on_text_action(&mut self, _action: TextAction) -> InteractionResult {
-        InteractionResult::ignored()
+    fn text_edit_state(&mut self) -> Option<TextEditState<'_>> {
+        None
+    }
+    fn after_text_edit(&mut self) {}
+    fn on_text_action(&mut self, action: TextAction) -> InteractionResult {
+        let Some(mut state) = self.text_edit_state() else {
+            return InteractionResult::ignored();
+        };
+        if action.apply(&mut state) {
+            self.after_text_edit();
+            InteractionResult::handled()
+        } else {
+            InteractionResult::ignored()
+        }
+    }
+    fn completion_state(&mut self) -> Option<CompletionState<'_>> {
+        None
     }
     fn on_event(&mut self, _event: &WidgetEvent) -> InteractionResult {
         InteractionResult::ignored()
@@ -145,6 +198,13 @@ pub trait Interactive: Send {
     }
     fn children_mut(&mut self) -> Option<&mut [Node]> {
         None
+    }
+
+    fn state_children(&self) -> Option<&[Node]> {
+        self.children()
+    }
+    fn state_children_mut(&mut self) -> Option<&mut [Node]> {
+        self.children_mut()
     }
 }
 

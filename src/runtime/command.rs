@@ -1,3 +1,4 @@
+use crate::core::NodeId;
 use crate::terminal::KeyEvent;
 use crate::widgets::traits::TextAction;
 
@@ -9,7 +10,9 @@ pub enum Command {
     PrevFocus,
     InputKey(KeyEvent),
     TextAction(TextAction),
-    OpenOverlay(String),
+    OpenOverlay(NodeId),
+    OpenOverlayAtIndex(usize),
+    OpenOverlayShortcut,
     CloseOverlay,
     Tick,
     Noop,

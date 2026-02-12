@@ -93,6 +93,37 @@ pub fn delete_word_right(value: &mut String, cursor: &mut usize) -> bool {
     true
 }
 
+pub fn completion_prefix(value: &str, cursor: usize) -> Option<(usize, String)> {
+    let chars: Vec<char> = value.chars().collect();
+    let pos = cursor.min(chars.len());
+
+    let mut start = pos;
+    while start > 0 && !is_separator(chars[start - 1]) {
+        start -= 1;
+    }
+
+    if start == pos {
+        return None;
+    }
+
+    Some((start, chars[start..pos].iter().collect()))
+}
+
+pub fn replace_completion_prefix(
+    value: &mut String,
+    cursor: &mut usize,
+    start: usize,
+    completion: &str,
+) {
+    let mut chars: Vec<char> = value.chars().collect();
+    let end = (*cursor).min(chars.len());
+    let start = start.min(end);
+
+    chars.splice(start..end, completion.chars());
+    *value = chars.into_iter().collect();
+    *cursor = start + completion.chars().count();
+}
+
 fn is_separator(ch: char) -> bool {
     ch.is_whitespace() || matches!(ch, '.' | '/' | ',' | '-' | '@' | '_' | ':')
 }

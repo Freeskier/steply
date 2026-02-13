@@ -89,7 +89,7 @@ impl KeyBindings {
             KeyBinding::alt(KeyCode::Char('3')),
             Command::OpenOverlayAtIndex(2),
         );
-        self.bind(KeyBinding::key(KeyCode::Esc), Command::Exit);
+        self.bind(KeyBinding::key(KeyCode::Esc), Command::Cancel);
         self.bind(KeyBinding::key(KeyCode::Tab), Command::NextFocus);
         self.bind(
             KeyBinding::new(KeyCode::BackTab, KeyModifiers::SHIFT),

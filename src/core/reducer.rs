@@ -9,7 +9,13 @@ impl Reducer {
     pub fn reduce(state: &mut AppState, command: Command) -> Vec<Effect> {
         let mut effects = match command {
             Command::Exit => {
-                if state.has_active_overlay() {
+                state.request_exit();
+                vec![Effect::RequestRender]
+            }
+            Command::Cancel => {
+                if state.cancel_completion_for_focused() {
+                    // Esc first closes completion UI before closing overlays/exiting app.
+                } else if state.has_active_overlay() {
                     state.close_overlay();
                 } else {
                     state.request_exit();

@@ -53,11 +53,18 @@ impl OverlayPlacement {
 }
 
 #[derive(Debug, Clone)]
+pub struct CompletionMenu {
+    pub matches: Vec<String>,
+    pub selected: usize,
+}
+
+#[derive(Debug, Clone)]
 pub struct RenderContext {
     pub focused_id: Option<String>,
     pub terminal_size: TerminalSize,
     pub visible_errors: HashMap<String, String>,
     pub invalid_hidden: HashSet<String>,
+    pub completion_menus: HashMap<String, CompletionMenu>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -156,9 +163,6 @@ pub trait Interactive: Send {
     fn overlay_placement(&self) -> Option<OverlayPlacement> {
         None
     }
-    fn overlay_is_visible(&self) -> bool {
-        false
-    }
     fn overlay_open(&mut self, _saved_focus_id: Option<String>) -> bool {
         false
     }
@@ -212,18 +216,18 @@ pub trait Interactive: Send {
         Ok(())
     }
 
-    fn children(&self) -> Option<&[Node]> {
+    fn visible_children(&self) -> Option<&[Node]> {
         None
     }
-    fn children_mut(&mut self) -> Option<&mut [Node]> {
+    fn visible_children_mut(&mut self) -> Option<&mut [Node]> {
         None
     }
 
-    fn state_children(&self) -> Option<&[Node]> {
-        self.children()
+    fn persistent_children(&self) -> Option<&[Node]> {
+        self.visible_children()
     }
-    fn state_children_mut(&mut self) -> Option<&mut [Node]> {
-        self.children_mut()
+    fn persistent_children_mut(&mut self) -> Option<&mut [Node]> {
+        self.visible_children_mut()
     }
 }
 

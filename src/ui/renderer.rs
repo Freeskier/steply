@@ -4,8 +4,8 @@ use crate::terminal::{CursorPos, TerminalSize};
 use crate::ui::layout::Layout;
 use crate::ui::span::{Span, SpanLine};
 use crate::ui::style::{Color, Style};
-use crate::widgets::node::{Node, visit_nodes};
-use crate::widgets::traits::RenderContext;
+use crate::widgets::node::{Node, NodeWalkScope, walk_nodes};
+use crate::widgets::traits::{CompletionMenu, RenderContext};
 use std::collections::{HashMap, HashSet};
 
 mod decorations;
@@ -74,7 +74,7 @@ impl Renderer {
             let Some(placement) = overlay.overlay_placement() else {
                 continue;
             };
-            let nodes = overlay.children().unwrap_or(&[]);
+            let nodes = overlay.persistent_children().unwrap_or(&[]);
             let focused_id = if idx + 1 == overlay_count {
                 state.focused_id()
             } else {
@@ -232,12 +232,14 @@ fn render_context_for_nodes(
             terminal_size,
             visible_errors: HashMap::new(),
             invalid_hidden: HashSet::new(),
+            completion_menus: HashMap::new(),
         };
     }
 
     let mut visible_errors = HashMap::<String, String>::new();
     let mut invalid_hidden = HashSet::<String>::new();
-    visit_nodes(nodes, &mut |node| {
+    let mut completion_menus = HashMap::<String, CompletionMenu>::new();
+    walk_nodes(nodes, NodeWalkScope::Visible, &mut |node| {
         if let Some(error) = state.visible_error(node.id()) {
             visible_errors.insert(node.id().to_string(), error.to_string());
         } else if state.is_hidden_invalid(node.id()) {
@@ -245,11 +247,16 @@ fn render_context_for_nodes(
         }
     });
 
+    if let Some((owner, matches, selected)) = state.completion_snapshot() {
+        completion_menus.insert(owner, CompletionMenu { matches, selected });
+    }
+
     RenderContext {
         focused_id: focused_id.map(ToOwned::to_owned),
         terminal_size,
         visible_errors,
         invalid_hidden,
+        completion_menus,
     }
 }
 

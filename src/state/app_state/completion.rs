@@ -3,77 +3,179 @@ use crate::core::NodeId;
 use crate::widgets::inputs::text_edit;
 use crate::widgets::node::find_node_mut;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum CompletionStartResult {
+    None,
+    ExpandedToSingle,
+    OpenedMenu,
+}
+
 impl AppState {
     pub(super) fn clear_completion_session(&mut self) {
-        self.completion_session = None;
+        self.ui.completion_session = None;
     }
 
-    pub(super) fn try_complete_focused(&mut self, reverse: bool) -> bool {
-        let Some(focused_id) = self.focus.current_id().map(ToOwned::to_owned) else {
+    pub fn completion_snapshot(&self) -> Option<(String, Vec<String>, usize)> {
+        let session = self.ui.completion_session.as_ref()?;
+        let focused = self.ui.focus.current_id()?;
+        if session.owner_id.as_str() != focused {
+            return None;
+        }
+
+        Some((
+            session.owner_id.to_string(),
+            session.matches.clone(),
+            session.index,
+        ))
+    }
+
+    pub(crate) fn has_completion_for_focused(&self) -> bool {
+        let Some(session) = self.ui.completion_session.as_ref() else {
+            return false;
+        };
+
+        self.ui
+            .focus
+            .current_id()
+            .is_some_and(|focused| session.owner_id.as_str() == focused)
+    }
+
+    pub(crate) fn cancel_completion_for_focused(&mut self) -> bool {
+        if self.has_completion_for_focused() {
+            self.clear_completion_session();
+            return true;
+        }
+        false
+    }
+
+    pub(super) fn accept_completion_for_focused(&mut self) -> bool {
+        let Some(focused_id) = self.ui.focus.current_id().map(ToOwned::to_owned) else {
+            self.clear_completion_session();
+            return false;
+        };
+        let Some(session) = self.ui.completion_session.clone() else {
+            return false;
+        };
+
+        if session.owner_id.as_str() != focused_id {
+            self.clear_completion_session();
+            return false;
+        }
+
+        let Some(selected) = session.matches.get(session.index).cloned() else {
             self.clear_completion_session();
             return false;
         };
 
-        let previous = self.completion_session.clone();
-        let next_session = (|| -> Option<CompletionSession> {
+        let updated = {
+            let nodes = self.active_nodes_mut();
+            let Some(node) = find_node_mut(nodes, &focused_id) else {
+                return false;
+            };
+            let Some(state) = node.completion() else {
+                return false;
+            };
+
+            text_edit::replace_completion_prefix(
+                state.value,
+                state.cursor,
+                session.start,
+                &selected,
+            );
+            true
+        };
+
+        self.clear_completion_session();
+        if updated {
+            self.validate_focused(false);
+            self.clear_step_errors();
+        }
+        updated
+    }
+
+    pub(super) fn cycle_completion_for_focused(&mut self, reverse: bool) -> bool {
+        let Some(session) = self.ui.completion_session.as_mut() else {
+            return false;
+        };
+        let Some(focused_id) = self.ui.focus.current_id() else {
+            self.clear_completion_session();
+            return false;
+        };
+
+        if session.owner_id.as_str() != focused_id || session.matches.len() <= 1 {
+            return false;
+        }
+
+        session.index = if reverse {
+            (session.index + session.matches.len() - 1) % session.matches.len()
+        } else {
+            (session.index + 1) % session.matches.len()
+        };
+        true
+    }
+
+    pub(super) fn try_start_completion_for_focused(
+        &mut self,
+        reverse: bool,
+    ) -> CompletionStartResult {
+        let Some(focused_id) = self.ui.focus.current_id().map(ToOwned::to_owned) else {
+            self.clear_completion_session();
+            return CompletionStartResult::None;
+        };
+
+        let result = (|| -> Option<CompletionStartResult> {
             let nodes = self.active_nodes_mut();
             let node = find_node_mut(nodes, &focused_id)?;
             let state = node.completion()?;
 
             let (start, token) = text_edit::completion_prefix(state.value.as_str(), *state.cursor)?;
-
-            let mut continuing = false;
-            let matches = if let Some(session) = previous.as_ref() {
-                let continuing_owner = session.owner_id.as_str() == focused_id;
-                let selected = session.matches.get(session.index);
-                if continuing_owner
-                    && selected.is_some_and(|selected| selected == &token)
-                    && !session.matches.is_empty()
-                {
-                    continuing = true;
-                    session.matches.clone()
-                } else {
-                    completion_matches(state.candidates, &token)
-                }
-            } else {
-                completion_matches(state.candidates, &token)
-            };
-
+            let matches = completion_matches(state.candidates, &token);
             if matches.is_empty() {
-                return None;
+                return Some(CompletionStartResult::None);
             }
 
-            let index = if continuing {
-                let current = previous.as_ref().map(|session| session.index).unwrap_or(0);
-                if reverse {
-                    (current + matches.len() - 1) % matches.len()
-                } else {
-                    (current + 1) % matches.len()
+            if matches.len() == 1 {
+                let only = &matches[0];
+                if only == &token {
+                    return Some(CompletionStartResult::None);
                 }
-            } else if reverse {
-                matches.len() - 1
-            } else {
-                0
-            };
+                text_edit::replace_completion_prefix(state.value, state.cursor, start, only);
+                return Some(CompletionStartResult::ExpandedToSingle);
+            }
 
-            text_edit::replace_completion_prefix(state.value, state.cursor, start, &matches[index]);
+            let prefix = longest_common_prefix(matches.as_slice());
+            if !prefix.is_empty() && prefix != token {
+                text_edit::replace_completion_prefix(state.value, state.cursor, start, &prefix);
+            }
 
-            Some(CompletionSession {
+            let index = if reverse { matches.len() - 1 } else { 0 };
+            self.ui.completion_session = Some(CompletionSession {
                 owner_id: NodeId::from(focused_id.as_str()),
                 matches,
                 index,
-            })
+                start,
+            });
+
+            Some(CompletionStartResult::OpenedMenu)
         })();
 
-        if let Some(session) = next_session {
-            self.completion_session = Some(session);
-            self.validate_focused(false);
-            self.clear_step_errors();
-            return true;
+        match result.unwrap_or(CompletionStartResult::None) {
+            CompletionStartResult::None => {
+                self.clear_completion_session();
+                CompletionStartResult::None
+            }
+            CompletionStartResult::ExpandedToSingle => {
+                self.clear_completion_session();
+                self.validate_focused(false);
+                self.clear_step_errors();
+                CompletionStartResult::ExpandedToSingle
+            }
+            CompletionStartResult::OpenedMenu => {
+                self.validate_focused(false);
+                self.clear_step_errors();
+                CompletionStartResult::OpenedMenu
+            }
         }
-
-        self.clear_completion_session();
-        false
     }
 }
 
@@ -90,4 +192,30 @@ fn completion_matches(items: &[String], prefix: &str) -> Vec<String> {
         }
     }
     out
+}
+
+fn longest_common_prefix(items: &[String]) -> String {
+    let Some(first) = items.first() else {
+        return String::new();
+    };
+
+    let first_chars: Vec<char> = first.chars().collect();
+    let mut prefix_len = first_chars.len();
+
+    for item in &items[1..] {
+        let item_chars: Vec<char> = item.chars().collect();
+        let mut common = 0usize;
+        while common < prefix_len && common < item_chars.len() {
+            if !first_chars[common].eq_ignore_ascii_case(&item_chars[common]) {
+                break;
+            }
+            common += 1;
+        }
+        prefix_len = common;
+        if prefix_len == 0 {
+            break;
+        }
+    }
+
+    first_chars.into_iter().take(prefix_len).collect()
 }

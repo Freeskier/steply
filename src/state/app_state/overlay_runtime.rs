@@ -8,7 +8,7 @@ use crate::widgets::traits::{FocusMode, OverlayMode};
 impl AppState {
     pub fn close_overlay(&mut self) {
         self.clear_completion_session();
-        let Some(entry) = self.overlays.close_top() else {
+        let Some(entry) = self.ui.overlays.close_top() else {
             return;
         };
 
@@ -60,7 +60,7 @@ impl AppState {
 
     pub(super) fn open_overlay_by_id(&mut self, overlay_id: &str) -> bool {
         self.clear_completion_session();
-        let saved_focus_id = self.focus.current_id().map(NodeId::from);
+        let saved_focus_id = self.ui.focus.current_id().map(NodeId::from);
         let (opened, focus_mode, overlay_mode) = {
             let nodes = self.flow.current_step_mut().nodes.as_mut_slice();
             let Some(overlay) = find_overlay_mut(nodes, overlay_id) else {
@@ -74,7 +74,7 @@ impl AppState {
             (opened, overlay.focus_mode(), overlay.overlay_mode())
         };
         if opened {
-            self.overlays.open(OverlayEntry {
+            self.ui.overlays.open(OverlayEntry {
                 id: NodeId::from(overlay_id),
                 mode: overlay_mode,
                 focus_mode,

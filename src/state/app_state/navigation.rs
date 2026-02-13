@@ -1,14 +1,34 @@
-use super::AppState;
+use super::{AppState, completion::CompletionStartResult};
 use crate::runtime::event::WidgetEvent;
 use crate::terminal::{KeyCode, KeyEvent, KeyModifiers};
-use crate::widgets::node::{find_node, find_node_mut, visit_nodes, visit_state_nodes_mut};
+use crate::widgets::node::{NodeWalkScope, find_node, find_node_mut, walk_nodes, walk_nodes_mut};
 use crate::widgets::traits::{FocusMode, InteractionResult, TextAction};
 
 impl AppState {
     pub fn dispatch_key_to_focused(&mut self, key: KeyEvent) -> InteractionResult {
-        let Some(focused_id) = self.focus.current_id().map(ToOwned::to_owned) else {
+        let Some(focused_id) = self.ui.focus.current_id().map(ToOwned::to_owned) else {
             return InteractionResult::ignored();
         };
+
+        if self.has_completion_for_focused() {
+            match key.code {
+                KeyCode::Up => {
+                    if self.cycle_completion_for_focused(true) {
+                        return InteractionResult::handled();
+                    }
+                }
+                KeyCode::Down => {
+                    if self.cycle_completion_for_focused(false) {
+                        return InteractionResult::handled();
+                    }
+                }
+                KeyCode::Enter => {
+                    self.accept_completion_for_focused();
+                    return InteractionResult::handled();
+                }
+                _ => {}
+            }
+        }
 
         let result = {
             let nodes = self.active_nodes_mut();
@@ -27,7 +47,7 @@ impl AppState {
     }
 
     pub fn dispatch_text_action_to_focused(&mut self, action: TextAction) -> InteractionResult {
-        let Some(focused_id) = self.focus.current_id().map(ToOwned::to_owned) else {
+        let Some(focused_id) = self.ui.focus.current_id().map(ToOwned::to_owned) else {
             return InteractionResult::ignored();
         };
 
@@ -48,8 +68,18 @@ impl AppState {
     }
 
     pub fn handle_tab_forward(&mut self) -> InteractionResult {
-        if self.try_complete_focused(false) {
+        if self.accept_completion_for_focused() {
+            self.focus_next();
             return InteractionResult::handled();
+        }
+
+        match self.try_start_completion_for_focused(false) {
+            CompletionStartResult::OpenedMenu => return InteractionResult::handled(),
+            CompletionStartResult::ExpandedToSingle => {
+                self.focus_next();
+                return InteractionResult::handled();
+            }
+            CompletionStartResult::None => {}
         }
 
         let result = self.dispatch_key_to_focused(KeyEvent {
@@ -65,8 +95,18 @@ impl AppState {
     }
 
     pub fn handle_tab_backward(&mut self) -> InteractionResult {
-        if self.try_complete_focused(true) {
+        if self.accept_completion_for_focused() {
+            self.focus_prev();
             return InteractionResult::handled();
+        }
+
+        match self.try_start_completion_for_focused(true) {
+            CompletionStartResult::OpenedMenu => return InteractionResult::handled(),
+            CompletionStartResult::ExpandedToSingle => {
+                self.focus_prev();
+                return InteractionResult::handled();
+            }
+            CompletionStartResult::None => {}
         }
 
         let result = self.dispatch_key_to_focused(KeyEvent {
@@ -82,7 +122,7 @@ impl AppState {
     }
 
     pub fn submit_focused(&mut self) -> Option<InteractionResult> {
-        let focused_id = self.focus.current_id()?.to_string();
+        let focused_id = self.ui.focus.current_id()?.to_string();
         let nodes = self.active_nodes_mut();
         let node = find_node_mut(nodes, &focused_id)?;
         Some(node.on_event(&WidgetEvent::RequestSubmit))
@@ -92,9 +132,11 @@ impl AppState {
         let mut merged = InteractionResult::ignored();
 
         for step in self.flow.steps_mut() {
-            visit_state_nodes_mut(step.nodes.as_mut_slice(), &mut |node| {
-                merged.merge(node.on_tick())
-            });
+            walk_nodes_mut(
+                step.nodes.as_mut_slice(),
+                NodeWalkScope::Persistent,
+                &mut |node| merged.merge(node.on_tick()),
+            );
         }
 
         merged
@@ -109,7 +151,7 @@ impl AppState {
                 true
             }
             WidgetEvent::ClearInlineError { id } => {
-                self.validation.clear_error(id.as_str());
+                self.runtime.validation.clear_error(id.as_str());
                 true
             }
             WidgetEvent::RequestSubmit => {
@@ -125,7 +167,7 @@ impl AppState {
                     return false;
                 }
                 self.clear_completion_session();
-                self.focus.set_focus_by_id(target.as_str());
+                self.ui.focus.set_focus_by_id(target.as_str());
                 true
             }
             WidgetEvent::OpenOverlay { overlay_id } => self.open_overlay_by_id(overlay_id.as_str()),
@@ -146,7 +188,7 @@ impl AppState {
             return;
         }
         self.validate_focused(false);
-        self.focus.next();
+        self.ui.focus.next();
     }
 
     pub fn focus_prev(&mut self) {
@@ -157,7 +199,7 @@ impl AppState {
             return;
         }
         self.validate_focused(false);
-        self.focus.prev();
+        self.ui.focus.prev();
     }
 
     pub(super) fn rebuild_focus_with_target(
@@ -166,11 +208,11 @@ impl AppState {
         prune_validation: bool,
     ) {
         self.clear_completion_session();
-        self.focus = crate::state::focus::FocusState::from_nodes(self.active_nodes());
+        self.ui.focus = crate::state::focus::FocusState::from_nodes(self.active_nodes());
         if let Some(id) = target {
-            self.focus.set_focus_by_id(id);
-            if self.focus.current_id().is_none() {
-                self.focus = crate::state::focus::FocusState::from_nodes(self.active_nodes());
+            self.ui.focus.set_focus_by_id(id);
+            if self.ui.focus.current_id().is_none() {
+                self.ui.focus = crate::state::focus::FocusState::from_nodes(self.active_nodes());
             }
         }
         if prune_validation {
@@ -192,11 +234,11 @@ impl AppState {
         self.sync_current_step_values_to_store();
 
         if self.flow.advance() {
-            self.overlays.clear();
+            self.ui.overlays.clear();
             self.hydrate_current_step_from_store();
             self.rebuild_focus();
         } else {
-            self.overlays.clear();
+            self.ui.overlays.clear();
             self.flow.complete_current();
             self.request_exit();
         }
@@ -204,13 +246,19 @@ impl AppState {
 
     fn focus_first_invalid_on_current_step(&mut self) {
         let mut first_invalid: Option<String> = None;
-        visit_nodes(self.current_step_nodes(), &mut |node| {
-            if first_invalid.is_none() && self.validation.visible_error(node.id()).is_some() {
-                first_invalid = Some(node.id().to_string());
-            }
-        });
+        walk_nodes(
+            self.current_step_nodes(),
+            NodeWalkScope::Visible,
+            &mut |node| {
+                if first_invalid.is_none()
+                    && self.runtime.validation.visible_error(node.id()).is_some()
+                {
+                    first_invalid = Some(node.id().to_string());
+                }
+            },
+        );
         if let Some(id) = first_invalid {
-            self.focus.set_focus_by_id(&id);
+            self.ui.focus.set_focus_by_id(&id);
         }
     }
 }

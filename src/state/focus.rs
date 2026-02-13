@@ -70,7 +70,7 @@ fn collect_targets(nodes: &[Node], out: &mut Vec<FocusTarget>) {
             continue;
         }
 
-        if let Some(children) = node.children() {
+        if let Some(children) = node.visible_children() {
             collect_targets(children, out);
         }
     }

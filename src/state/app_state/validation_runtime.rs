@@ -6,7 +6,7 @@ use crate::state::validation::{
     ErrorVisibility, ValidationContext, ValidationIssue, ValidationTarget,
 };
 use crate::widgets::node::Node;
-use crate::widgets::node::{visit_nodes, visit_state_nodes};
+use crate::widgets::node::{NodeWalkScope, walk_nodes};
 use std::collections::HashMap;
 use std::time::Duration;
 
@@ -14,25 +14,29 @@ const ERROR_INLINE_TTL: Duration = Duration::from_secs(2);
 
 impl AppState {
     pub(super) fn validate_focused(&mut self, reveal: bool) -> bool {
-        let Some(id) = self.focus.current_id().map(|id| id.to_string()) else {
+        let Some(id) = self.ui.focus.current_id().map(|id| id.to_string()) else {
             return true;
         };
         self.validate_in_active_nodes(&id, reveal)
     }
 
     pub(super) fn validate_current_step(&mut self, reveal: bool) -> bool {
-        self.validation.clear_step_errors();
+        self.runtime.validation.clear_step_errors();
 
         let validations = {
             let mut out = Vec::<(String, Result<(), String>)>::new();
-            visit_state_nodes(self.flow.current_step().nodes.as_slice(), &mut |node| {
-                let result = if reveal {
-                    node.validate_submit()
-                } else {
-                    node.validate_live()
-                };
-                out.push((node.id().to_string(), result));
-            });
+            walk_nodes(
+                self.flow.current_step().nodes.as_slice(),
+                NodeWalkScope::Persistent,
+                &mut |node| {
+                    let result = if reveal {
+                        node.validate_submit()
+                    } else {
+                        node.validate_live()
+                    };
+                    out.push((node.id().to_string(), result));
+                },
+            );
             out
         };
 
@@ -52,7 +56,7 @@ impl AppState {
 
     fn validate_in_active_nodes(&mut self, id: &str, reveal: bool) -> bool {
         let mut validation_result: Option<Result<(), String>> = None;
-        visit_nodes(self.active_nodes(), &mut |node| {
+        walk_nodes(self.active_nodes(), NodeWalkScope::Visible, &mut |node| {
             if validation_result.is_none() && node.id() == id {
                 let result = if reveal {
                     node.validate_submit()
@@ -73,10 +77,12 @@ impl AppState {
     ) -> bool {
         match validation_result {
             Some(Ok(())) | None => {
-                self.validation.clear_error(id);
-                self.pending_scheduler.push(SchedulerCommand::Cancel {
-                    key: inline_error_key(id),
-                });
+                self.runtime.validation.clear_error(id);
+                self.runtime
+                    .pending_scheduler
+                    .push(SchedulerCommand::Cancel {
+                        key: inline_error_key(id),
+                    });
                 true
             }
             Some(Err(error)) => {
@@ -85,13 +91,19 @@ impl AppState {
                 } else {
                     ErrorVisibility::Hidden
                 };
-                self.validation.set_error(id.to_string(), error, visibility);
+                self.runtime
+                    .validation
+                    .set_error(id.to_string(), error, visibility);
                 if reveal {
-                    self.pending_scheduler.push(SchedulerCommand::Debounce {
-                        key: inline_error_key(id),
-                        delay: ERROR_INLINE_TTL,
-                        event: AppEvent::Widget(WidgetEvent::ClearInlineError { id: id.into() }),
-                    });
+                    self.runtime
+                        .pending_scheduler
+                        .push(SchedulerCommand::Debounce {
+                            key: inline_error_key(id),
+                            delay: ERROR_INLINE_TTL,
+                            event: AppEvent::Widget(WidgetEvent::ClearInlineError {
+                                id: id.into(),
+                            }),
+                        });
                 }
                 false
             }
@@ -100,15 +112,15 @@ impl AppState {
 
     pub(super) fn prune_validation_for_active_nodes(&mut self) {
         let mut ids = Vec::new();
-        visit_nodes(self.active_nodes(), &mut |node| {
+        walk_nodes(self.active_nodes(), NodeWalkScope::Visible, &mut |node| {
             ids.push(node.id().to_string())
         });
-        self.validation.clear_for_ids(&ids);
-        self.validation.clear_step_errors();
+        self.runtime.validation.clear_for_ids(&ids);
+        self.runtime.validation.clear_step_errors();
     }
 
     pub fn take_pending_scheduler_commands(&mut self) -> Vec<SchedulerCommand> {
-        self.pending_scheduler.drain(..).collect()
+        self.runtime.pending_scheduler.drain(..).collect()
     }
 
     fn apply_step_validators(&mut self, reveal: bool) -> bool {
@@ -148,7 +160,7 @@ impl AppState {
         }
 
         if reveal {
-            self.validation.set_step_errors(step_errors);
+            self.runtime.validation.set_step_errors(step_errors);
         }
 
         valid
@@ -161,7 +173,7 @@ fn inline_error_key(id: &str) -> String {
 
 fn collect_node_values(nodes: &[Node]) -> HashMap<NodeId, Value> {
     let mut values = HashMap::<NodeId, Value>::new();
-    visit_state_nodes(nodes, &mut |node| {
+    walk_nodes(nodes, NodeWalkScope::Persistent, &mut |node| {
         if let Some(value) = node.value() {
             values.insert(node.id().into(), value);
         }

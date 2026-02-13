@@ -6,44 +6,32 @@ use crate::widgets::traits::{
     OverlayPlacement, RenderContext, RenderNode, TextAction,
 };
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NodeWalkScope {
+    Visible,
+    Persistent,
+}
+
 pub enum Node {
     Input(Box<dyn InteractiveNode>),
     Component(Box<dyn InteractiveNode>),
     Output(Box<dyn RenderNode>),
 }
 
-pub fn visit_nodes(nodes: &[Node], f: &mut impl FnMut(&Node)) {
+pub fn walk_nodes(nodes: &[Node], scope: NodeWalkScope, f: &mut impl FnMut(&Node)) {
     for node in nodes {
         f(node);
-        if let Some(children) = node.children() {
-            visit_nodes(children, f);
+        if let Some(children) = children_for_scope(node, scope) {
+            walk_nodes(children, scope, f);
         }
     }
 }
 
-pub fn visit_state_nodes(nodes: &[Node], f: &mut impl FnMut(&Node)) {
+pub fn walk_nodes_mut(nodes: &mut [Node], scope: NodeWalkScope, f: &mut impl FnMut(&mut Node)) {
     for node in nodes {
         f(node);
-        if let Some(children) = node.state_children() {
-            visit_state_nodes(children, f);
-        }
-    }
-}
-
-pub fn visit_nodes_mut(nodes: &mut [Node], f: &mut impl FnMut(&mut Node)) {
-    for node in nodes {
-        f(node);
-        if let Some(children) = node.children_mut() {
-            visit_nodes_mut(children, f);
-        }
-    }
-}
-
-pub fn visit_state_nodes_mut(nodes: &mut [Node], f: &mut impl FnMut(&mut Node)) {
-    for node in nodes {
-        f(node);
-        if let Some(children) = node.state_children_mut() {
-            visit_state_nodes_mut(children, f);
+        if let Some(children) = children_for_scope_mut(node, scope) {
+            walk_nodes_mut(children, scope, f);
         }
     }
 }
@@ -153,30 +141,30 @@ impl Node {
         }
     }
 
-    pub fn children(&self) -> Option<&[Node]> {
+    pub fn visible_children(&self) -> Option<&[Node]> {
         match self {
-            Self::Input(w) | Self::Component(w) => w.children(),
+            Self::Input(w) | Self::Component(w) => w.visible_children(),
             Self::Output(_) => None,
         }
     }
 
-    pub fn children_mut(&mut self) -> Option<&mut [Node]> {
+    pub fn visible_children_mut(&mut self) -> Option<&mut [Node]> {
         match self {
-            Self::Input(w) | Self::Component(w) => w.children_mut(),
+            Self::Input(w) | Self::Component(w) => w.visible_children_mut(),
             Self::Output(_) => None,
         }
     }
 
-    pub fn state_children(&self) -> Option<&[Node]> {
+    pub fn persistent_children(&self) -> Option<&[Node]> {
         match self {
-            Self::Input(w) | Self::Component(w) => w.state_children(),
+            Self::Input(w) | Self::Component(w) => w.persistent_children(),
             Self::Output(_) => None,
         }
     }
 
-    pub fn state_children_mut(&mut self) -> Option<&mut [Node]> {
+    pub fn persistent_children_mut(&mut self) -> Option<&mut [Node]> {
         match self {
-            Self::Input(w) | Self::Component(w) => w.state_children_mut(),
+            Self::Input(w) | Self::Component(w) => w.persistent_children_mut(),
             Self::Output(_) => None,
         }
     }
@@ -185,13 +173,6 @@ impl Node {
         match self {
             Self::Input(w) | Self::Component(w) => w.overlay_placement(),
             Self::Output(_) => None,
-        }
-    }
-
-    pub fn overlay_is_visible(&self) -> bool {
-        match self {
-            Self::Input(w) | Self::Component(w) => w.overlay_is_visible(),
-            Self::Output(_) => false,
         }
     }
 
@@ -217,12 +198,26 @@ impl Node {
     }
 }
 
+fn children_for_scope<'a>(node: &'a Node, scope: NodeWalkScope) -> Option<&'a [Node]> {
+    match scope {
+        NodeWalkScope::Visible => node.visible_children(),
+        NodeWalkScope::Persistent => node.persistent_children(),
+    }
+}
+
+fn children_for_scope_mut<'a>(node: &'a mut Node, scope: NodeWalkScope) -> Option<&'a mut [Node]> {
+    match scope {
+        NodeWalkScope::Visible => node.visible_children_mut(),
+        NodeWalkScope::Persistent => node.persistent_children_mut(),
+    }
+}
+
 pub fn find_node_mut<'a>(nodes: &'a mut [Node], id: &str) -> Option<&'a mut Node> {
     for node in nodes {
         if node.id() == id {
             return Some(node);
         }
-        if let Some(children) = node.children_mut()
+        if let Some(children) = node.visible_children_mut()
             && let Some(found) = find_node_mut(children, id)
         {
             return Some(found);
@@ -236,7 +231,7 @@ pub fn find_node<'a>(nodes: &'a [Node], id: &str) -> Option<&'a Node> {
         if node.id() == id {
             return Some(node);
         }
-        if let Some(children) = node.children()
+        if let Some(children) = node.visible_children()
             && let Some(found) = find_node(children, id)
         {
             return Some(found);
@@ -250,7 +245,7 @@ pub fn find_overlay<'a>(nodes: &'a [Node], id: &str) -> Option<&'a Node> {
         if node.id() == id && node.overlay_placement().is_some() {
             return Some(node);
         }
-        if let Some(children) = node.state_children()
+        if let Some(children) = node.persistent_children()
             && let Some(found) = find_overlay(children, id)
         {
             return Some(found);
@@ -265,36 +260,8 @@ pub fn find_overlay_mut<'a>(nodes: &'a mut [Node], id: &str) -> Option<&'a mut N
         if is_target_overlay {
             return Some(node);
         }
-        if let Some(children) = node.state_children_mut()
+        if let Some(children) = node.persistent_children_mut()
             && let Some(found) = find_overlay_mut(children, id)
-        {
-            return Some(found);
-        }
-    }
-    None
-}
-
-pub fn find_visible_overlay(nodes: &[Node]) -> Option<&Node> {
-    for node in nodes {
-        if node.overlay_is_visible() {
-            return Some(node);
-        }
-        if let Some(children) = node.state_children()
-            && let Some(found) = find_visible_overlay(children)
-        {
-            return Some(found);
-        }
-    }
-    None
-}
-
-pub fn find_visible_overlay_mut(nodes: &mut [Node]) -> Option<&mut Node> {
-    for node in nodes {
-        if node.overlay_is_visible() {
-            return Some(node);
-        }
-        if let Some(children) = node.state_children_mut()
-            && let Some(found) = find_visible_overlay_mut(children)
         {
             return Some(found);
         }

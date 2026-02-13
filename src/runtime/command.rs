@@ -5,6 +5,7 @@ use crate::widgets::traits::TextAction;
 #[derive(Debug, Clone)]
 pub enum Command {
     Exit,
+    Cancel,
     Submit,
     NextFocus,
     PrevFocus,

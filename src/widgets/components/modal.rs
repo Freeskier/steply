@@ -28,18 +28,14 @@ impl Modal {
         }
     }
 
-    pub fn open(&mut self, saved_focus_id: Option<String>) {
-        self.base.open(saved_focus_id);
+    pub fn open(&mut self) {
+        self.base.open();
         self.group_focus_id = first_focusable_id(self.nodes.as_slice());
     }
 
-    pub fn close(&mut self) -> Option<String> {
+    pub fn close(&mut self) {
         self.group_focus_id = None;
-        self.base.close()
-    }
-
-    pub fn is_visible(&self) -> bool {
-        self.base.is_visible()
+        self.base.close();
     }
 
     pub fn id(&self) -> &str {
@@ -97,17 +93,14 @@ impl Interactive for Modal {
         Some(self.placement())
     }
 
-    fn overlay_is_visible(&self) -> bool {
-        self.is_visible()
-    }
-
-    fn overlay_open(&mut self, saved_focus_id: Option<String>) -> bool {
-        self.open(saved_focus_id);
+    fn overlay_open(&mut self, _saved_focus_id: Option<String>) -> bool {
+        self.open();
         true
     }
 
     fn overlay_close(&mut self) -> Option<String> {
-        self.close()
+        self.close();
+        None
     }
 
     fn overlay_mode(&self) -> OverlayMode {
@@ -115,7 +108,7 @@ impl Interactive for Modal {
     }
 
     fn on_key(&mut self, key: KeyEvent) -> InteractionResult {
-        if self.base.focus_mode() == FocusMode::Group && self.is_visible() {
+        if self.base.focus_mode() == FocusMode::Group {
             let focusable = focusable_ids(self.nodes.as_slice());
             if focusable.is_empty() {
                 return InteractionResult::ignored();
@@ -159,7 +152,7 @@ impl Interactive for Modal {
     }
 
     fn on_text_action(&mut self, action: TextAction) -> InteractionResult {
-        if self.base.focus_mode() != FocusMode::Group || !self.is_visible() {
+        if self.base.focus_mode() != FocusMode::Group {
             return InteractionResult::ignored();
         }
 
@@ -177,9 +170,6 @@ impl Interactive for Modal {
             event,
             WidgetEvent::OverlayLifecycle { overlay_id, .. } if overlay_id.as_str() == self.base.id()
         );
-        if !self.is_visible() && !targeted_lifecycle {
-            return InteractionResult::ignored();
-        }
 
         if let WidgetEvent::OverlayLifecycle { phase, .. } = event {
             match phase {
@@ -211,36 +201,26 @@ impl Interactive for Modal {
             InteractionResult::ignored()
         };
 
-        if self.is_visible() || targeted_lifecycle {
-            for node in self.nodes_mut() {
-                merged.merge(node.on_event(event));
-            }
+        for node in self.nodes_mut() {
+            merged.merge(node.on_event(event));
         }
 
         merged
     }
 
-    fn children(&self) -> Option<&[Node]> {
-        if self.is_visible() {
-            Some(self.nodes())
-        } else {
-            None
-        }
+    fn visible_children(&self) -> Option<&[Node]> {
+        None
     }
 
-    fn children_mut(&mut self) -> Option<&mut [Node]> {
-        if self.is_visible() {
-            Some(self.nodes_mut())
-        } else {
-            None
-        }
+    fn visible_children_mut(&mut self) -> Option<&mut [Node]> {
+        None
     }
 
-    fn state_children(&self) -> Option<&[Node]> {
+    fn persistent_children(&self) -> Option<&[Node]> {
         Some(self.nodes())
     }
 
-    fn state_children_mut(&mut self) -> Option<&mut [Node]> {
+    fn persistent_children_mut(&mut self) -> Option<&mut [Node]> {
         Some(self.nodes_mut())
     }
 }
@@ -261,7 +241,7 @@ fn collect_focusable_ids(nodes: &[Node], out: &mut Vec<String>) {
             out.push(node.id().to_string());
             continue;
         }
-        if let Some(children) = node.children() {
+        if let Some(children) = node.persistent_children() {
             collect_focusable_ids(children, out);
         }
     }

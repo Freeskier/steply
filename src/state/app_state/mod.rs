@@ -6,7 +6,7 @@ use crate::state::overlay::OverlayState;
 use crate::state::step::Step;
 use crate::state::store::ValueStore;
 use crate::state::validation::ValidationState;
-use crate::widgets::node::{Node, find_overlay, find_overlay_mut, visit_state_nodes};
+use crate::widgets::node::{Node, NodeWalkScope, find_overlay, find_overlay_mut, walk_nodes};
 use crate::widgets::traits::{FocusMode, OverlayMode, OverlayPlacement};
 
 #[derive(Debug, Clone)]
@@ -14,16 +14,32 @@ pub(crate) struct CompletionSession {
     pub owner_id: NodeId,
     pub matches: Vec<String>,
     pub index: usize,
+    pub start: usize,
+}
+
+#[derive(Default)]
+struct UiState {
+    overlays: OverlayState,
+    focus: FocusState,
+    completion_session: Option<CompletionSession>,
+}
+
+#[derive(Default)]
+struct DataState {
+    store: ValueStore,
+}
+
+#[derive(Default)]
+struct RuntimeState {
+    validation: ValidationState,
+    pending_scheduler: Vec<SchedulerCommand>,
 }
 
 pub struct AppState {
     flow: Flow,
-    overlays: OverlayState,
-    store: ValueStore,
-    validation: ValidationState,
-    pending_scheduler: Vec<SchedulerCommand>,
-    focus: FocusState,
-    completion_session: Option<CompletionSession>,
+    ui: UiState,
+    data: DataState,
+    runtime: RuntimeState,
     should_exit: bool,
 }
 
@@ -31,12 +47,9 @@ impl AppState {
     pub fn new(flow: Flow) -> Self {
         let mut state = Self {
             flow,
-            overlays: OverlayState::default(),
-            store: ValueStore::new(),
-            validation: ValidationState::default(),
-            pending_scheduler: Vec::new(),
-            focus: FocusState::default(),
-            completion_session: None,
+            ui: UiState::default(),
+            data: DataState::default(),
+            runtime: RuntimeState::default(),
             should_exit: false,
         };
         state.rebuild_focus();
@@ -68,7 +81,7 @@ impl AppState {
     }
 
     pub fn focused_id(&self) -> Option<&str> {
-        self.focus.current_id()
+        self.ui.focus.current_id()
     }
 
     pub fn should_exit(&self) -> bool {
@@ -81,13 +94,13 @@ impl AppState {
 
     pub fn active_nodes(&self) -> &[Node] {
         let step_nodes = self.flow.current_step().nodes.as_slice();
-        if let Some(entry) = self.overlays.active_blocking()
+        if let Some(entry) = self.ui.overlays.active_blocking()
             && let Some(overlay) = find_overlay(step_nodes, entry.id.as_str())
         {
             if overlay.focus_mode() == FocusMode::Group {
                 return step_nodes;
             }
-            if let Some(children) = overlay.children() {
+            if let Some(children) = overlay.persistent_children() {
                 return children;
             }
         }
@@ -95,7 +108,7 @@ impl AppState {
     }
 
     pub fn active_nodes_mut(&mut self) -> &mut [Node] {
-        let active_blocking = self.overlays.active_blocking().cloned();
+        let active_blocking = self.ui.overlays.active_blocking().cloned();
         if let Some(active_blocking) = active_blocking {
             if active_blocking.focus_mode == FocusMode::Group {
                 return self.flow.current_step_mut().nodes.as_mut_slice();
@@ -104,7 +117,7 @@ impl AppState {
             let overlay = find_overlay_mut(step_nodes, active_blocking.id.as_str())
                 .expect("active overlay id should resolve to an overlay node");
             return overlay
-                .children_mut()
+                .persistent_children_mut()
                 .expect("active overlay should expose active children");
         }
         self.flow.current_step_mut().nodes.as_mut_slice()
@@ -119,7 +132,7 @@ impl AppState {
     }
 
     pub fn active_overlay(&self) -> Option<&Node> {
-        let overlay_id = self.overlays.active_id()?;
+        let overlay_id = self.ui.overlays.active_id()?;
         find_overlay(
             self.flow.current_step().nodes.as_slice(),
             overlay_id.as_str(),
@@ -131,7 +144,8 @@ impl AppState {
     }
 
     pub fn overlay_stack_ids(&self) -> Vec<NodeId> {
-        self.overlays
+        self.ui
+            .overlays
             .entries()
             .iter()
             .map(|entry| entry.id.clone())
@@ -139,7 +153,7 @@ impl AppState {
     }
 
     pub fn active_overlay_nodes(&self) -> Option<&[Node]> {
-        self.active_overlay().and_then(Node::children)
+        self.active_overlay().and_then(Node::persistent_children)
     }
 
     pub fn active_overlay_placement(&self) -> Option<OverlayPlacement> {
@@ -147,15 +161,15 @@ impl AppState {
     }
 
     pub fn active_overlay_focus_mode(&self) -> Option<FocusMode> {
-        self.overlays.active().map(|entry| entry.focus_mode)
+        self.ui.overlays.active().map(|entry| entry.focus_mode)
     }
 
     pub fn active_overlay_mode(&self) -> Option<OverlayMode> {
-        self.overlays.active().map(|entry| entry.mode)
+        self.ui.overlays.active().map(|entry| entry.mode)
     }
 
     pub fn has_blocking_overlay(&self) -> bool {
-        self.overlays.active_blocking().is_some()
+        self.ui.overlays.active_blocking().is_some()
     }
 
     pub fn default_overlay_id(&self) -> Option<String> {
@@ -167,11 +181,15 @@ impl AppState {
 
     pub fn overlay_ids_in_current_step(&self) -> Vec<NodeId> {
         let mut ids = Vec::<NodeId>::new();
-        visit_state_nodes(self.flow.current_step().nodes.as_slice(), &mut |node| {
-            if node.overlay_placement().is_some() {
-                ids.push(node.id().into());
-            }
-        });
+        walk_nodes(
+            self.flow.current_step().nodes.as_slice(),
+            NodeWalkScope::Persistent,
+            &mut |node| {
+                if node.overlay_placement().is_some() {
+                    ids.push(node.id().into());
+                }
+            },
+        );
         ids
     }
 
@@ -180,19 +198,19 @@ impl AppState {
     }
 
     pub fn visible_error(&self, id: &str) -> Option<&str> {
-        self.validation.visible_error(id)
+        self.runtime.validation.visible_error(id)
     }
 
     pub fn is_hidden_invalid(&self, id: &str) -> bool {
-        self.validation.is_hidden_invalid(id)
+        self.runtime.validation.is_hidden_invalid(id)
     }
 
     pub fn clear_step_errors(&mut self) {
-        self.validation.clear_step_errors();
+        self.runtime.validation.clear_step_errors();
     }
 
     pub fn current_step_errors(&self) -> &[String] {
-        self.validation.step_errors()
+        self.runtime.validation.step_errors()
     }
 }
 

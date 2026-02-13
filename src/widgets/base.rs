@@ -66,8 +66,6 @@ pub struct ModalBase {
     placement: OverlayPlacement,
     focus_mode: FocusMode,
     overlay_mode: OverlayMode,
-    visible: bool,
-    saved_focus_id: Option<String>,
 }
 
 impl ModalBase {
@@ -82,8 +80,6 @@ impl ModalBase {
             placement,
             focus_mode: FocusMode::Container,
             overlay_mode: OverlayMode::Exclusive,
-            visible: false,
-            saved_focus_id: None,
         }
     }
 
@@ -103,10 +99,6 @@ impl ModalBase {
         self.placement = self.placement.with_render_mode(render_mode);
     }
 
-    pub fn is_visible(&self) -> bool {
-        self.visible
-    }
-
     pub fn focus_mode(&self) -> FocusMode {
         self.focus_mode
     }
@@ -123,13 +115,7 @@ impl ModalBase {
         self.overlay_mode = overlay_mode;
     }
 
-    pub fn open(&mut self, saved_focus_id: Option<String>) {
-        self.saved_focus_id = saved_focus_id;
-        self.visible = true;
-    }
+    pub fn open(&mut self) {}
 
-    pub fn close(&mut self) -> Option<String> {
-        self.visible = false;
-        self.saved_focus_id.take()
-    }
+    pub fn close(&mut self) {}
 }

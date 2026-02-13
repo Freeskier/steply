@@ -85,13 +85,39 @@ impl Drawable for Input {
             (self.value.clone(), Style::default())
         };
 
-        DrawOutput {
-            lines: vec![vec![
-                Span::new(prefix).no_wrap(),
-                Span::styled(value_text, value_style).no_wrap(),
-            ]],
+        let mut first_line = vec![
+            Span::new(prefix).no_wrap(),
+            Span::styled(value_text, value_style).no_wrap(),
+        ];
+
+        let mut lines = Vec::new();
+        if is_focused
+            && ctx.visible_errors.get(self.base.id()).is_none()
+            && let Some(menu) = ctx.completion_menus.get(self.base.id())
+            && let Some(selected) = menu.matches.get(menu.selected)
+            && let Some(suffix) = completion_suffix(selected, self.value.as_str(), self.cursor)
+            && !suffix.is_empty()
+        {
+            first_line.push(Span::styled(suffix, Style::new().color(Color::DarkGrey)).no_wrap());
         }
+        lines.push(first_line);
+
+        DrawOutput { lines }
     }
+}
+
+fn completion_suffix(selected: &str, value: &str, cursor: usize) -> Option<String> {
+    let (_, token) = text_edit::completion_prefix(value, cursor)?;
+    if token.is_empty() {
+        return None;
+    }
+
+    if !selected.to_lowercase().starts_with(&token.to_lowercase()) {
+        return None;
+    }
+
+    let token_len = token.chars().count();
+    Some(selected.chars().skip(token_len).collect())
 }
 
 impl Interactive for Input {

@@ -36,7 +36,7 @@ pub fn build_demo_flow() -> Flow {
                     .with_validator(validators::min_length(
                         4,
                         "dupa must be at least 3 characters",
-                    )),
+                    )).with_completion_items(vec!["test".to_string(), "teść".to_string(), "ratata".to_string()]),
             )),
             Node::Component(Box::new(
                 FilterSelect::new(

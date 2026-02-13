@@ -64,17 +64,11 @@ impl ValidationContext {
     }
 
     pub fn text(&self, id: &str) -> Option<&str> {
-        self.value(id).and_then(|value| match value {
-            Value::Text(text) => Some(text.as_str()),
-            _ => None,
-        })
+        self.value(id).and_then(Value::as_text)
     }
 
     pub fn bool_value(&self, id: &str) -> Option<bool> {
-        self.value(id).and_then(|value| match value {
-            Value::Bool(flag) => Some(*flag),
-            _ => None,
-        })
+        self.value(id).and_then(Value::as_bool)
     }
 
     pub fn values(&self) -> &HashMap<NodeId, Value> {
@@ -86,14 +80,14 @@ pub type StepValidator = Box<dyn Fn(&ValidationContext) -> Vec<ValidationIssue> 
 
 #[derive(Debug, Default, Clone)]
 pub struct ValidationState {
-    entries: HashMap<String, ValidationEntry>,
+    entries: HashMap<NodeId, ValidationEntry>,
     step_errors: Vec<String>,
 }
 
 impl ValidationState {
     pub fn set_error(
         &mut self,
-        id: impl Into<String>,
+        id: impl Into<NodeId>,
         error: impl Into<String>,
         visibility: ErrorVisibility,
     ) {
@@ -147,8 +141,11 @@ impl ValidationState {
         })
     }
 
-    pub fn clear_for_ids(&mut self, allowed_ids: &[String]) {
-        self.entries
-            .retain(|id, _| allowed_ids.iter().any(|allowed| allowed == id));
+    pub fn clear_for_ids(&mut self, allowed_ids: &[NodeId]) {
+        self.entries.retain(|id, _| {
+            allowed_ids
+                .iter()
+                .any(|allowed| allowed.as_str() == id.as_str())
+        });
     }
 }

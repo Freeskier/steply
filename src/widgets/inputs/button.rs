@@ -104,14 +104,12 @@ impl Interactive for ButtonInput {
     }
 
     fn value(&self) -> Option<Value> {
-        Some(Value::Float(self.clicks as f64))
+        Some(Value::Number(self.clicks as f64))
     }
 
     fn set_value(&mut self, value: Value) {
-        match value {
-            Value::Float(number) => self.clicks = number.round() as i64,
-            Value::Text(text) => self.clicks = text.parse::<f64>().map_or(0, |v| v.round() as i64),
-            _ => {}
+        if let Some(number) = value.to_number() {
+            self.clicks = number.round() as i64;
         }
     }
 

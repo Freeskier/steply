@@ -379,7 +379,12 @@ impl Interactive for SelectList {
         }
 
         match self.mode {
-            SelectMode::Multi => Some(Value::List(self.selected_values())),
+            SelectMode::Multi => Some(Value::List(
+                self.selected_values()
+                    .into_iter()
+                    .map(Value::Text)
+                    .collect::<Vec<_>>(),
+            )),
             SelectMode::Single | SelectMode::Radio | SelectMode::List => self
                 .selected
                 .first()
@@ -389,37 +394,37 @@ impl Interactive for SelectList {
     }
 
     fn set_value(&mut self, value: Value) {
-        match value {
-            Value::Text(text) => {
+        if let Some(text) = value.to_text_scalar() {
+            if let Some(index) = self
+                .options
+                .iter()
+                .position(|option| option_text(option) == text.as_str())
+            {
+                self.selected.clear();
+                self.selected.push(index);
+                self.active_index = index;
+            }
+        } else if let Some(values) = value.as_list() {
+            self.selected.clear();
+            for value in values {
+                let Some(value) = value.to_text_scalar() else {
+                    continue;
+                };
                 if let Some(index) = self
                     .options
                     .iter()
-                    .position(|option| option_text(option) == text.as_str())
+                    .position(|option| option_text(option) == value.as_str())
                 {
-                    self.selected.clear();
-                    self.selected.push(index);
-                    self.active_index = index;
-                }
-            }
-            Value::List(values) => {
-                self.selected.clear();
-                for value in values {
-                    if let Some(index) = self
-                        .options
-                        .iter()
-                        .position(|option| option_text(option) == value.as_str())
-                    {
-                        if !self.selected.iter().any(|selected| *selected == index) {
-                            self.selected.push(index);
-                        }
+                    if !self.selected.iter().any(|selected| *selected == index) {
+                        self.selected.push(index);
                     }
                 }
-                self.selected.sort_unstable();
-                if let Some(first) = self.selected.first().copied() {
-                    self.active_index = first;
-                }
             }
-            _ => {}
+
+            self.selected.sort_unstable();
+            if let Some(first) = self.selected.first().copied() {
+                self.active_index = first;
+            }
         }
 
         clamp_active(&mut self.active_index, self.options.len());
@@ -433,8 +438,8 @@ impl Interactive for SelectList {
 
     fn on_event(&mut self, event: &WidgetEvent) -> InteractionResult {
         match event {
-            WidgetEvent::ValueProduced { target, value } if target.as_str() == self.base.id() => {
-                self.set_value(value.clone());
+            WidgetEvent::ValueChanged { change } if change.target.as_str() == self.base.id() => {
+                self.set_value(change.value.clone());
                 InteractionResult::handled()
             }
             _ => InteractionResult::ignored(),

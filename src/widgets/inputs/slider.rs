@@ -1,5 +1,5 @@
 use crate::core::value::Value;
-use crate::runtime::event::WidgetEvent;
+use crate::runtime::event::{ValueChange, WidgetEvent};
 use crate::terminal::{KeyCode, KeyEvent};
 use crate::ui::span::Span;
 use crate::ui::style::{Color, Style};
@@ -81,9 +81,8 @@ impl SliderInput {
             return InteractionResult::ignored();
         }
         if let Some(target) = &self.change_target {
-            return InteractionResult::with_event(WidgetEvent::ValueProduced {
-                target: target.clone().into(),
-                value: Value::Float(self.value as f64),
+            return InteractionResult::with_event(WidgetEvent::ValueChanged {
+                change: ValueChange::new(target.clone(), Value::Number(self.value as f64)),
             });
         }
         InteractionResult::handled()
@@ -167,22 +166,13 @@ impl Interactive for SliderInput {
     }
 
     fn value(&self) -> Option<Value> {
-        Some(Value::Float(self.value as f64))
+        Some(Value::Number(self.value as f64))
     }
 
     fn set_value(&mut self, value: Value) {
-        match value {
-            Value::Float(number) => {
-                self.value = number.round() as i64;
-                self.clamp_value();
-            }
-            Value::Text(text) => {
-                if let Ok(number) = text.parse::<f64>() {
-                    self.value = number.round() as i64;
-                    self.clamp_value();
-                }
-            }
-            _ => {}
+        if let Some(number) = value.to_number() {
+            self.value = number.round() as i64;
+            self.clamp_value();
         }
     }
 

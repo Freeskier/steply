@@ -131,7 +131,7 @@ impl Interactive for SelectInput {
     }
 
     fn set_value(&mut self, value: Value) {
-        if let Value::Text(text) = value
+        if let Some(text) = value.to_text_scalar()
             && let Some(position) = self.options.iter().position(|option| option == &text)
         {
             self.selected = position;

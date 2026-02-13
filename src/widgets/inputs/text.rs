@@ -12,7 +12,7 @@ use crate::widgets::traits::{
 use crate::widgets::validators::Validator;
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
-pub struct Input {
+pub struct TextInput {
     base: InputBase,
     value: String,
     cursor: usize,
@@ -21,7 +21,7 @@ pub struct Input {
     completion_items: Vec<String>,
 }
 
-impl Input {
+impl TextInput {
     pub fn new(id: impl Into<String>, label: impl Into<String>) -> Self {
         Self {
             base: InputBase::new(id, label),
@@ -57,7 +57,7 @@ impl Input {
     }
 }
 
-impl Drawable for Input {
+impl Drawable for TextInput {
     fn id(&self) -> &str {
         self.base.id()
     }
@@ -99,7 +99,7 @@ fn completion_suffix(selected: &str, value: &str, cursor: usize) -> Option<Strin
     Some(selected.chars().skip(token_len).collect())
 }
 
-impl Interactive for Input {
+impl Interactive for TextInput {
     fn focus_mode(&self) -> FocusMode {
         FocusMode::Leaf
     }
@@ -153,8 +153,8 @@ impl Interactive for Input {
 
     fn on_event(&mut self, event: &WidgetEvent) -> InteractionResult {
         match event {
-            WidgetEvent::ValueProduced { target, value } if target.as_str() == self.base.id() => {
-                if let Value::Text(v) = value {
+            WidgetEvent::ValueChanged { change } if change.target.as_str() == self.base.id() => {
+                if let Value::Text(v) = &change.value {
                     self.value = v.clone();
                     self.cursor = text_edit::char_count(&self.value);
                     return InteractionResult::handled();
@@ -170,7 +170,7 @@ impl Interactive for Input {
     }
 
     fn set_value(&mut self, value: Value) {
-        if let Value::Text(v) = value {
+        if let Some(v) = value.to_text_scalar() {
             self.value = v;
             self.cursor = text_edit::char_count(&self.value);
         }

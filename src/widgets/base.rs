@@ -73,7 +73,7 @@ impl ComponentBase {
 }
 
 #[derive(Debug, Clone)]
-pub struct ModalBase {
+pub struct OverlayBase {
     id: String,
     label: String,
     placement: OverlayPlacement,
@@ -81,7 +81,7 @@ pub struct ModalBase {
     overlay_mode: OverlayMode,
 }
 
-impl ModalBase {
+impl OverlayBase {
     pub fn new(
         id: impl Into<String>,
         label: impl Into<String>,

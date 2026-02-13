@@ -1,8 +1,9 @@
+use crate::core::NodeId;
 use crate::widgets::node::Node;
 
 #[derive(Debug, Clone)]
 pub struct FocusTarget {
-    pub id: String,
+    pub id: NodeId,
 }
 
 #[derive(Debug, Default, Clone)]
@@ -31,11 +32,14 @@ impl FocusState {
     pub fn current_id(&self) -> Option<&str> {
         self.index
             .and_then(|i| self.targets.get(i))
-            .map(|t| t.id.as_str())
+            .map(|target| target.id.as_str())
     }
 
     pub fn set_focus_by_id(&mut self, id: &str) {
-        self.index = self.targets.iter().position(|t| t.id == id);
+        self.index = self
+            .targets
+            .iter()
+            .position(|target| target.id.as_str() == id);
     }
 
     pub fn next(&mut self) {
@@ -65,7 +69,7 @@ fn collect_targets(nodes: &[Node], out: &mut Vec<FocusTarget>) {
     for node in nodes {
         if node.is_focusable_leaf_or_group() {
             out.push(FocusTarget {
-                id: node.id().to_string(),
+                id: node.id().into(),
             });
             continue;
         }

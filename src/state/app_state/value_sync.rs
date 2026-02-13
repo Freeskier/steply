@@ -1,5 +1,5 @@
 use super::AppState;
-use crate::core::value::Value;
+use crate::core::{NodeId, value::Value};
 use crate::widgets::node::{NodeWalkScope, find_node_mut, walk_nodes, walk_nodes_mut};
 use std::collections::HashMap;
 
@@ -20,24 +20,24 @@ impl AppState {
         };
 
         for (id, value) in values {
-            self.set_value_by_id(&id, value);
+            self.apply_value_change(id, value);
         }
     }
 
-    pub(super) fn set_value_by_id(&mut self, id: &str, value: Value) {
-        self.write_value_direct(id, value);
+    pub(super) fn apply_value_change(&mut self, target: impl Into<NodeId>, value: Value) {
+        self.write_value_direct(target.into(), value);
     }
 
-    fn write_value_direct(&mut self, id: &str, value: Value) {
+    fn write_value_direct(&mut self, id: NodeId, value: Value) {
         let changed = self
             .data
             .store
-            .get(id)
+            .get(id.as_str())
             .is_none_or(|current| current != &value);
-        self.data.store.set(id.to_string(), value.clone());
-        self.apply_value_to_step(id, value);
-        if changed && let Some(updated) = self.data.store.get(id).cloned() {
-            self.trigger_node_value_changed_tasks(id, &updated);
+        self.data.store.set(id.clone(), value.clone());
+        self.apply_value_to_step(id.as_str(), value);
+        if changed && let Some(updated) = self.data.store.get(id.as_str()).cloned() {
+            self.trigger_node_value_changed_tasks(id.as_str(), &updated);
         }
     }
 

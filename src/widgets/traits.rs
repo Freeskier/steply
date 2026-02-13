@@ -1,5 +1,5 @@
 use crate::core::value::Value;
-use crate::runtime::event::WidgetEvent;
+use crate::runtime::event::{ValueChange, WidgetEvent};
 use crate::terminal::{CursorPos, KeyEvent, TerminalSize};
 use crate::ui::span::{Span, SpanLine};
 use crate::widgets::inputs::text_edit;
@@ -130,9 +130,8 @@ impl InteractionResult {
 
     pub fn submit_or_produce(target: Option<&str>, value: Value) -> Self {
         if let Some(target) = target {
-            return Self::with_event(WidgetEvent::ValueProduced {
-                target: target.into(),
-                value,
+            return Self::with_event(WidgetEvent::ValueChanged {
+                change: ValueChange::new(target, value),
             });
         }
         Self::submit_requested()
@@ -255,8 +254,8 @@ pub trait RenderNode: Drawable {
 
     fn set_value(&mut self, _value: Value) {}
 
-    fn on_tick(&mut self) -> bool {
-        false
+    fn on_tick(&mut self) -> InteractionResult {
+        InteractionResult::ignored()
     }
 
     fn validate(&self) -> Result<(), String> {

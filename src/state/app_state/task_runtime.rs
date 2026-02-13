@@ -4,7 +4,8 @@ use crate::runtime::event::{AppEvent, WidgetEvent};
 use crate::runtime::scheduler::SchedulerCommand;
 use crate::state::step::StepStatus;
 use crate::task::{
-    ConcurrencyPolicy, TaskAssign, TaskCompletion, TaskInvocation, TaskRequest, TaskTrigger,
+    ConcurrencyPolicy, TaskAssign, TaskCancelToken, TaskCompletion, TaskId, TaskInvocation,
+    TaskRequest, TaskSpec, TaskTrigger,
 };
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
@@ -84,40 +85,71 @@ impl AppState {
         }
 
         let now = Instant::now();
-        let run_state = self.runtime.task_runs.entry(spec.id.clone()).or_default();
-
-        if !run_state.should_start(spec.rerun_policy, now, request.fingerprint) {
+        let should_start = {
+            let run_state = self.runtime.task_runs.entry(spec.id.clone()).or_default();
+            run_state.should_start(spec.rerun_policy, now, request.fingerprint)
+        };
+        if !should_start {
             return false;
         }
 
-        if !run_state.allows_start_while_running(spec.concurrency_policy) {
-            return false;
+        match spec.concurrency_policy {
+            ConcurrencyPolicy::DropNew => {
+                if self
+                    .runtime
+                    .task_runs
+                    .get(spec.id.as_str())
+                    .is_some_and(|run_state| run_state.is_running())
+                {
+                    return false;
+                }
+            }
+            ConcurrencyPolicy::Queue => {
+                if self
+                    .runtime
+                    .task_runs
+                    .get(spec.id.as_str())
+                    .is_some_and(|run_state| run_state.is_running())
+                {
+                    self.enqueue_task_request(spec.id.clone(), request);
+                    return false;
+                }
+            }
+            ConcurrencyPolicy::Restart => {
+                self.cancel_running_task(spec.id.as_str());
+            }
+            ConcurrencyPolicy::Parallel => {}
         }
 
-        let run_id = run_state.next_run_id();
-        run_state.on_started(run_id, now, request.fingerprint);
-
-        self.runtime.pending_task_invocations.push(TaskInvocation {
-            spec,
-            run_id,
-            fingerprint: request.fingerprint,
-        });
+        self.start_task_invocation(spec, request.fingerprint, now);
         false
     }
 
     pub(super) fn complete_task_run(&mut self, completion: TaskCompletion) -> bool {
-        let run_state = self
-            .runtime
-            .task_runs
-            .entry(completion.task_id.clone())
-            .or_default();
-        run_state.on_finished(completion.run_id, Instant::now());
+        self.remove_running_cancel_token(completion.task_id.as_str(), completion.run_id);
 
-        if completion.concurrency_policy == ConcurrencyPolicy::Restart
-            && run_state
-                .last_started_run_id()
-                .is_some_and(|run_id| run_id != completion.run_id)
-        {
+        let stale_restart_completion = {
+            let run_state = self
+                .runtime
+                .task_runs
+                .entry(completion.task_id.clone())
+                .or_default();
+            run_state.on_finished(completion.run_id, Instant::now());
+            completion.concurrency_policy == ConcurrencyPolicy::Restart
+                && run_state
+                    .last_started_run_id()
+                    .is_some_and(|run_id| run_id != completion.run_id)
+        };
+
+        if completion.concurrency_policy == ConcurrencyPolicy::Queue {
+            self.start_queued_task_if_any(completion.task_id.as_str());
+        }
+
+        if stale_restart_completion {
+            return false;
+        }
+
+        if completion.cancelled {
             return false;
         }
 
@@ -128,7 +160,7 @@ impl AppState {
         match completion.assign {
             TaskAssign::Ignore => true,
             TaskAssign::StorePath(path) | TaskAssign::WidgetValue(path) => {
-                self.set_value_by_id(path.as_str(), value);
+                self.apply_value_change(path, value);
                 true
             }
         }
@@ -202,7 +234,7 @@ impl AppState {
                 TaskTrigger::OnNodeValueChanged {
                     node_id: configured,
                     debounce_ms,
-                } if configured == node_id => Some((subscription.clone(), *debounce_ms)),
+                } if configured.as_str() == node_id => Some((subscription.clone(), *debounce_ms)),
                 _ => None,
             })
             .collect::<Vec<_>>();
@@ -288,6 +320,95 @@ impl AppState {
         }
         !self.flow.is_empty() && self.flow.current_status() == StepStatus::Active
     }
+
+    fn start_task_invocation(&mut self, spec: TaskSpec, fingerprint: Option<u64>, now: Instant) {
+        let cancel_token = TaskCancelToken::new();
+        let run_state = self.runtime.task_runs.entry(spec.id.clone()).or_default();
+        let run_id = run_state.next_run_id();
+        run_state.on_started(run_id, now, fingerprint);
+        self.register_running_cancel_token(spec.id.clone(), run_id, cancel_token.clone());
+
+        self.runtime.pending_task_invocations.push(TaskInvocation {
+            spec,
+            run_id,
+            fingerprint,
+            cancel_token,
+        });
+    }
+
+    fn enqueue_task_request(&mut self, task_id: TaskId, request: TaskRequest) {
+        const MAX_QUEUED_TASKS_PER_ID: usize = 128;
+
+        let queue = self
+            .runtime
+            .queued_task_requests
+            .entry(task_id)
+            .or_default();
+        if queue.len() >= MAX_QUEUED_TASKS_PER_ID {
+            queue.remove(0);
+        }
+        queue.push(request);
+    }
+
+    fn start_queued_task_if_any(&mut self, task_id: &str) {
+        let Some(mut queue) = self.runtime.queued_task_requests.remove(task_id) else {
+            return;
+        };
+        let Some(request) = queue.first().cloned() else {
+            return;
+        };
+
+        queue.remove(0);
+        if !queue.is_empty() {
+            self.runtime
+                .queued_task_requests
+                .insert(TaskId::from(task_id), queue);
+        }
+
+        let _ = self.request_task_run(request);
+    }
+
+    fn register_running_cancel_token(
+        &mut self,
+        task_id: TaskId,
+        run_id: u64,
+        cancel_token: TaskCancelToken,
+    ) {
+        self.runtime
+            .running_task_cancellations
+            .entry(task_id)
+            .or_default()
+            .push((run_id, cancel_token));
+    }
+
+    fn remove_running_cancel_token(&mut self, task_id: &str, run_id: u64) {
+        let Some(tokens) = self.runtime.running_task_cancellations.get_mut(task_id) else {
+            return;
+        };
+
+        tokens.retain(|(current_run_id, _)| *current_run_id != run_id);
+        if tokens.is_empty() {
+            self.runtime.running_task_cancellations.remove(task_id);
+        }
+    }
+
+    fn cancel_running_task(&mut self, task_id: &str) {
+        let Some(tokens) = self.runtime.running_task_cancellations.get(task_id) else {
+            return;
+        };
+
+        for (_, token) in tokens {
+            token.cancel();
+        }
+    }
+
+    pub(super) fn cancel_all_running_tasks(&mut self) {
+        for tokens in self.runtime.running_task_cancellations.values() {
+            for (_, token) in tokens {
+                token.cancel();
+            }
+        }
+    }
 }
 
 fn node_change_debounce_key(node_id: &str, task_id: &str) -> String {
@@ -318,13 +439,23 @@ fn hash_value(hasher: &mut DefaultHasher, value: &Value) {
             2u8.hash(hasher);
             flag.hash(hasher);
         }
-        Value::Float(number) => {
+        Value::Number(number) => {
             3u8.hash(hasher);
             number.to_bits().hash(hasher);
         }
         Value::List(values) => {
             4u8.hash(hasher);
-            values.hash(hasher);
+            values.len().hash(hasher);
+            for nested in values {
+                hash_value(hasher, nested);
+            }
+        }
+        Value::Object(value) => {
+            5u8.hash(hasher);
+            for (key, nested) in value {
+                key.hash(hasher);
+                hash_value(hasher, nested);
+            }
         }
     }
 }

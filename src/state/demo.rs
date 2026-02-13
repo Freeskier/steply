@@ -6,14 +6,14 @@ use crate::widgets::node::Node;
 use crate::widgets::outputs::progress::{
     Easing, ProgressOutput, ProgressStyle, ProgressTransition,
 };
-use crate::widgets::outputs::text::Text;
+use crate::widgets::outputs::text::TextOutput;
 
 pub fn build_demo_flow() -> Flow {
     let step = Step::new(
         "step_slider_progress",
         "Demo: Slider -> Progress",
         vec![
-            Node::Output(Box::new(Text::new(
+            Node::Output(Box::new(TextOutput::new(
                 "demo_intro",
                 "Move slider left/right in large steps. Progress interpolates smoothly.",
             ))),

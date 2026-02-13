@@ -1,6 +1,7 @@
 use super::model::SelectOption;
 use crate::ui::span::{Span, SpanLine};
 use crate::ui::style::{Color, Style};
+use crate::widgets::inputs::text_edit;
 
 pub(super) fn render_option_spans(
     option: &SelectOption,
@@ -161,21 +162,11 @@ fn render_text_spans(
 }
 
 fn split_text_at_char(text: &str, char_index: usize) -> (String, String) {
-    let byte_index = byte_index_at_char(text, char_index);
+    let byte_index = text_edit::byte_index_at_char(text, char_index);
     (
         text[..byte_index].to_string(),
         text[byte_index..].to_string(),
     )
-}
-
-fn byte_index_at_char(text: &str, char_index: usize) -> usize {
-    if char_index == 0 {
-        return 0;
-    }
-    text.char_indices()
-        .nth(char_index)
-        .map(|(idx, _)| idx)
-        .unwrap_or(text.len())
 }
 
 fn merge_style(base: Style, extra: Style) -> Style {

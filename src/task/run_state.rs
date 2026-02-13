@@ -1,4 +1,4 @@
-use crate::task::policy::{ConcurrencyPolicy, RerunPolicy};
+use crate::task::policy::RerunPolicy;
 use std::time::{Duration, Instant};
 
 #[derive(Debug, Clone, Default)]
@@ -64,20 +64,6 @@ impl TaskRunState {
                 now.saturating_duration_since(last_started_at) >= Duration::from_millis(ms)
             }
         }
-    }
-
-    pub fn allows_start_while_running(&self, concurrency: ConcurrencyPolicy) -> bool {
-        if !self.is_running() {
-            return true;
-        }
-        matches!(
-            concurrency,
-            ConcurrencyPolicy::Restart | ConcurrencyPolicy::Parallel
-        )
-    }
-
-    pub fn should_cancel_running_before_start(&self, concurrency: ConcurrencyPolicy) -> bool {
-        self.is_running() && matches!(concurrency, ConcurrencyPolicy::Restart)
     }
 
     pub fn on_started(&mut self, run_id: u64, now: Instant, fingerprint: Option<u64>) {

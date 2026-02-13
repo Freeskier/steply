@@ -129,7 +129,7 @@ impl Interactive for PasswordInput {
     }
 
     fn set_value(&mut self, value: Value) {
-        if let Value::Text(v) = value {
+        if let Some(v) = value.to_text_scalar() {
             self.value = v;
             self.cursor = text_edit::char_count(&self.value);
         }

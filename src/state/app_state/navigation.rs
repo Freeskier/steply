@@ -2,6 +2,7 @@ use super::{AppState, completion::CompletionStartResult};
 use crate::runtime::event::WidgetEvent;
 use crate::terminal::{KeyCode, KeyEvent, KeyModifiers};
 use crate::widgets::node::{NodeWalkScope, find_node, find_node_mut, walk_nodes, walk_nodes_mut};
+use crate::widgets::node_index::node_at_path_mut;
 use crate::widgets::traits::{FocusMode, InteractionResult, TextAction};
 
 impl AppState {
@@ -31,8 +32,22 @@ impl AppState {
         }
 
         let result = {
+            let path = self
+                .ui
+                .active_node_index
+                .visible_path(&focused_id)
+                .map(ToOwned::to_owned);
             let nodes = self.active_nodes_mut();
-            let Some(node) = find_node_mut(nodes, &focused_id) else {
+            let node = if let Some(path) = path.as_ref() {
+                if let Some(node) = node_at_path_mut(nodes, path, NodeWalkScope::Visible) {
+                    Some(node)
+                } else {
+                    find_node_mut(nodes, &focused_id)
+                }
+            } else {
+                find_node_mut(nodes, &focused_id)
+            };
+            let Some(node) = node else {
                 return InteractionResult::ignored();
             };
             node.on_key(key)
@@ -52,8 +67,22 @@ impl AppState {
         };
 
         let result = {
+            let path = self
+                .ui
+                .active_node_index
+                .visible_path(&focused_id)
+                .map(ToOwned::to_owned);
             let nodes = self.active_nodes_mut();
-            let Some(node) = find_node_mut(nodes, &focused_id) else {
+            let node = if let Some(path) = path.as_ref() {
+                if let Some(node) = node_at_path_mut(nodes, path, NodeWalkScope::Visible) {
+                    Some(node)
+                } else {
+                    find_node_mut(nodes, &focused_id)
+                }
+            } else {
+                find_node_mut(nodes, &focused_id)
+            };
+            let Some(node) = node else {
                 return InteractionResult::ignored();
             };
             node.on_text_action(action)
@@ -123,8 +152,21 @@ impl AppState {
 
     pub fn submit_focused(&mut self) -> Option<InteractionResult> {
         let focused_id = self.ui.focus.current_id()?.to_string();
+        let path = self
+            .ui
+            .active_node_index
+            .visible_path(&focused_id)
+            .map(ToOwned::to_owned);
         let nodes = self.active_nodes_mut();
-        let node = find_node_mut(nodes, &focused_id)?;
+        let node = if let Some(path) = path.as_ref() {
+            if let Some(node) = node_at_path_mut(nodes, path, NodeWalkScope::Visible) {
+                Some(node)
+            } else {
+                find_node_mut(nodes, &focused_id)
+            }
+        } else {
+            find_node_mut(nodes, &focused_id)
+        }?;
         Some(node.on_event(&WidgetEvent::RequestSubmit))
     }
 
@@ -144,8 +186,8 @@ impl AppState {
 
     pub fn handle_widget_event(&mut self, event: WidgetEvent) -> bool {
         match event {
-            WidgetEvent::ValueProduced { target, value } => {
-                self.set_value_by_id(target.as_str(), value);
+            WidgetEvent::ValueChanged { change } => {
+                self.apply_value_change(change.target, change.value);
                 self.clear_completion_session();
                 self.clear_step_errors();
                 true
@@ -163,7 +205,9 @@ impl AppState {
                 true
             }
             WidgetEvent::RequestFocus { target } => {
-                if find_node(self.active_nodes(), target.as_str()).is_none() {
+                if !self.ui.active_node_index.has_visible(target.as_str())
+                    && find_node(self.active_nodes(), target.as_str()).is_none()
+                {
                     return false;
                 }
                 self.clear_completion_session();
@@ -210,11 +254,18 @@ impl AppState {
         prune_validation: bool,
     ) {
         self.clear_completion_session();
-        self.ui.focus = crate::state::focus::FocusState::from_nodes(self.active_nodes());
+        self.ui.active_node_index =
+            crate::widgets::node_index::NodeIndex::build(self.active_nodes());
+        self.ui.focus =
+            crate::state::app_state::focus_engine::FocusEngine::from_nodes(self.active_nodes());
         if let Some(id) = target {
             self.ui.focus.set_focus_by_id(id);
             if self.ui.focus.current_id().is_none() {
-                self.ui.focus = crate::state::focus::FocusState::from_nodes(self.active_nodes());
+                self.ui.active_node_index =
+                    crate::widgets::node_index::NodeIndex::build(self.active_nodes());
+                self.ui.focus = crate::state::app_state::focus_engine::FocusEngine::from_nodes(
+                    self.active_nodes(),
+                );
             }
         }
         if prune_validation {

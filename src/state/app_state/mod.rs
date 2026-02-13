@@ -1,14 +1,17 @@
 use crate::core::NodeId;
 use crate::runtime::scheduler::SchedulerCommand;
 use crate::state::flow::Flow;
-use crate::state::focus::FocusState;
-use crate::state::overlay::OverlayState;
 use crate::state::step::Step;
 use crate::state::store::ValueStore;
 use crate::state::validation::ValidationState;
-use crate::task::{TaskId, TaskInvocation, TaskRunState, TaskSpec, TaskSubscription};
+use crate::task::{
+    TaskCancelToken, TaskId, TaskInvocation, TaskRequest, TaskRunState, TaskSpec, TaskSubscription,
+};
 use crate::widgets::node::{Node, NodeWalkScope, find_overlay, find_overlay_mut, walk_nodes};
+use crate::widgets::node_index::NodeIndex;
 use crate::widgets::traits::{FocusMode, OverlayMode, OverlayPlacement};
+use focus_engine::FocusEngine;
+use overlay_engine::OverlayEngine;
 use std::collections::HashMap;
 
 #[derive(Debug, Clone)]
@@ -21,8 +24,9 @@ pub(crate) struct CompletionSession {
 
 #[derive(Default)]
 struct UiState {
-    overlays: OverlayState,
-    focus: FocusState,
+    overlays: OverlayEngine,
+    focus: FocusEngine,
+    active_node_index: NodeIndex,
     completion_session: Option<CompletionSession>,
 }
 
@@ -36,6 +40,8 @@ struct RuntimeState {
     validation: ValidationState,
     pending_scheduler: Vec<SchedulerCommand>,
     pending_task_invocations: Vec<TaskInvocation>,
+    queued_task_requests: HashMap<TaskId, Vec<TaskRequest>>,
+    running_task_cancellations: HashMap<TaskId, Vec<(u64, TaskCancelToken)>>,
     task_runs: HashMap<TaskId, TaskRunState>,
     task_specs: HashMap<TaskId, TaskSpec>,
     task_subscriptions: Vec<TaskSubscription>,
@@ -46,6 +52,7 @@ pub struct AppState {
     ui: UiState,
     data: DataState,
     runtime: RuntimeState,
+    scratch_nodes: Vec<Node>,
     should_exit: bool,
 }
 
@@ -72,21 +79,31 @@ impl AppState {
                 validation: ValidationState::default(),
                 pending_scheduler: Vec::new(),
                 pending_task_invocations: Vec::new(),
+                queued_task_requests: HashMap::new(),
+                running_task_cancellations: HashMap::new(),
                 task_runs: HashMap::new(),
                 task_specs: spec_map,
                 task_subscriptions,
             },
+            scratch_nodes: Vec::new(),
             should_exit: false,
         };
-        state.rebuild_focus();
-        state.trigger_flow_start_tasks();
-        let current_step_id = state.current_step_id().to_string();
-        state.trigger_step_enter_tasks(current_step_id.as_str());
-        state.bootstrap_interval_tasks();
+        if state.flow.is_empty() {
+            state.should_exit = true;
+        } else {
+            state.rebuild_focus();
+            state.trigger_flow_start_tasks();
+            let current_step_id = state.current_step_id().to_string();
+            state.trigger_step_enter_tasks(current_step_id.as_str());
+            state.bootstrap_interval_tasks();
+        }
         state
     }
 
     pub fn current_step_id(&self) -> &str {
+        if self.flow.is_empty() {
+            return "";
+        }
         &self.flow.current_step().id
     }
 
@@ -103,10 +120,16 @@ impl AppState {
     }
 
     pub fn current_prompt(&self) -> &str {
+        if self.flow.is_empty() {
+            return "";
+        }
         &self.flow.current_step().prompt
     }
 
     pub fn current_hint(&self) -> Option<&str> {
+        if self.flow.is_empty() {
+            return None;
+        }
         self.flow.current_step().hint.as_deref()
     }
 
@@ -121,9 +144,14 @@ impl AppState {
     pub fn request_exit(&mut self) {
         self.should_exit = true;
         self.cancel_interval_tasks();
+        self.cancel_all_running_tasks();
+        self.runtime.queued_task_requests.clear();
     }
 
     pub fn active_nodes(&self) -> &[Node] {
+        if self.flow.is_empty() {
+            return &[];
+        }
         let step_nodes = self.flow.current_step().nodes.as_slice();
         if let Some(entry) = self.ui.overlays.active_blocking()
             && let Some(overlay) = find_overlay(step_nodes, entry.id.as_str())
@@ -139,17 +167,35 @@ impl AppState {
     }
 
     pub fn active_nodes_mut(&mut self) -> &mut [Node] {
+        if self.flow.is_empty() {
+            return self.scratch_nodes.as_mut_slice();
+        }
         let active_blocking = self.ui.overlays.active_blocking().cloned();
         if let Some(active_blocking) = active_blocking {
             if active_blocking.focus_mode == FocusMode::Group {
                 return self.flow.current_step_mut().nodes.as_mut_slice();
             }
-            let step_nodes = self.flow.current_step_mut().nodes.as_mut_slice();
-            let overlay = find_overlay_mut(step_nodes, active_blocking.id.as_str())
-                .expect("active overlay id should resolve to an overlay node");
-            return overlay
-                .persistent_children_mut()
-                .expect("active overlay should expose active children");
+
+            let has_overlay_children = find_overlay(
+                self.flow.current_step().nodes.as_slice(),
+                active_blocking.id.as_str(),
+            )
+            .and_then(Node::persistent_children)
+            .is_some();
+
+            if has_overlay_children {
+                let step_nodes = self.flow.current_step_mut().nodes.as_mut_slice();
+                if let Some(overlay) = find_overlay_mut(step_nodes, active_blocking.id.as_str())
+                    && let Some(children) = overlay.persistent_children_mut()
+                {
+                    return children;
+                }
+
+                return self.scratch_nodes.as_mut_slice();
+            }
+
+            self.ui.overlays.clear();
+            return self.flow.current_step_mut().nodes.as_mut_slice();
         }
         self.flow.current_step_mut().nodes.as_mut_slice()
     }
@@ -163,6 +209,9 @@ impl AppState {
     }
 
     pub fn active_overlay(&self) -> Option<&Node> {
+        if self.flow.is_empty() {
+            return None;
+        }
         let overlay_id = self.ui.overlays.active_id()?;
         find_overlay(
             self.flow.current_step().nodes.as_slice(),
@@ -171,6 +220,9 @@ impl AppState {
     }
 
     pub fn overlay_by_id(&self, id: &NodeId) -> Option<&Node> {
+        if self.flow.is_empty() {
+            return None;
+        }
         find_overlay(self.flow.current_step().nodes.as_slice(), id.as_str())
     }
 
@@ -211,6 +263,9 @@ impl AppState {
     }
 
     pub fn overlay_ids_in_current_step(&self) -> Vec<NodeId> {
+        if self.flow.is_empty() {
+            return Vec::new();
+        }
         let mut ids = Vec::<NodeId>::new();
         walk_nodes(
             self.flow.current_step().nodes.as_slice(),
@@ -225,6 +280,9 @@ impl AppState {
     }
 
     pub fn current_step_nodes(&self) -> &[Node] {
+        if self.flow.is_empty() {
+            return &[];
+        }
         self.flow.current_step().nodes.as_slice()
     }
 
@@ -246,7 +304,9 @@ impl AppState {
 }
 
 mod completion;
+mod focus_engine;
 mod navigation;
+mod overlay_engine;
 mod overlay_runtime;
 mod task_runtime;
 mod validation_runtime;

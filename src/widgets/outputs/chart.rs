@@ -2,6 +2,7 @@ use crate::core::value::Value;
 use crate::ui::span::Span;
 use crate::ui::style::{Color, Style};
 use crate::widgets::traits::{DrawOutput, Drawable, RenderContext, RenderNode};
+use std::collections::VecDeque;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ChartRenderMode {
@@ -14,7 +15,7 @@ pub struct ChartOutput {
     id: String,
     label: String,
     mode: ChartRenderMode,
-    points: Vec<f64>,
+    points: VecDeque<f64>,
     capacity: usize,
     fixed_min: Option<f64>,
     fixed_max: Option<f64>,
@@ -28,7 +29,7 @@ impl ChartOutput {
             id: id.into(),
             label: label.into(),
             mode: ChartRenderMode::Braille,
-            points: Vec::new(),
+            points: VecDeque::new(),
             capacity: 80,
             fixed_min: None,
             fixed_max: None,
@@ -69,14 +70,14 @@ impl ChartOutput {
             return;
         }
         if self.points.len() >= self.capacity {
-            self.points.remove(0);
+            let _ = self.points.pop_front();
         }
-        self.points.push(value);
+        self.points.push_back(value);
     }
 
-    fn append_points_from_list(&mut self, items: &[String]) {
+    fn append_points_from_list(&mut self, items: &[Value]) {
         for item in items {
-            if let Some(value) = parse_number(item.as_str()) {
+            if let Some(value) = item.to_number() {
                 self.push_point(value);
             }
         }
@@ -92,7 +93,7 @@ impl ChartOutput {
             return Some((min, max));
         }
 
-        let mut min = *self.points.first()?;
+        let mut min = *self.points.front()?;
         let mut max = min;
         for point in &self.points {
             if *point < min {
@@ -181,7 +182,7 @@ impl Drawable for ChartOutput {
         let normalized = self.normalized_points(min, max);
         let series = self.render_series(normalized.as_slice());
 
-        let now = *self.points.last().unwrap_or(&0.0);
+        let now = *self.points.back().unwrap_or(&0.0);
         let avg = self.points.iter().sum::<f64>() / self.points.len() as f64;
         let mut min_seen = now;
         let mut max_seen = now;
@@ -213,36 +214,14 @@ impl Drawable for ChartOutput {
 
 impl RenderNode for ChartOutput {
     fn set_value(&mut self, value: Value) {
-        match value {
-            Value::Float(number) => self.push_point(number),
-            Value::Text(text) => {
-                if let Some(value) = parse_number(text.as_str()) {
-                    self.push_point(value);
-                }
-            }
-            Value::List(values) => self.append_points_from_list(values.as_slice()),
-            Value::None => self.points.clear(),
-            Value::Bool(flag) => self.push_point(if flag { 1.0 } else { 0.0 }),
+        if let Some(number) = value.to_number() {
+            self.push_point(number);
+        } else if let Some(values) = value.as_list() {
+            self.append_points_from_list(values);
+        } else if matches!(value, Value::None) {
+            self.points.clear();
         }
     }
-}
-
-fn parse_number(text: &str) -> Option<f64> {
-    let trimmed = text.trim();
-    if trimmed.is_empty() {
-        return None;
-    }
-
-    if let Ok(value) = trimmed.parse::<f64>() {
-        return Some(value);
-    }
-
-    let first = trimmed
-        .split_whitespace()
-        .next()
-        .unwrap_or_default()
-        .trim_matches('%');
-    first.parse::<f64>().ok()
 }
 
 fn render_sparkline(points: &[f64]) -> Vec<(char, f64)> {

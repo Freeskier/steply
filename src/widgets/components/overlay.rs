@@ -1,20 +1,20 @@
 use crate::runtime::event::OverlayLifecycle;
 use crate::runtime::event::WidgetEvent;
 use crate::terminal::{KeyCode, KeyEvent};
-use crate::widgets::base::ModalBase;
+use crate::widgets::base::OverlayBase;
 use crate::widgets::node::{Node, find_node_mut};
 use crate::widgets::traits::{
     DrawOutput, Drawable, FocusMode, InteractionResult, Interactive, OverlayMode, OverlayPlacement,
     OverlayRenderMode, RenderContext, TextAction,
 };
 
-pub struct Modal {
-    base: ModalBase,
+pub struct Overlay {
+    base: OverlayBase,
     nodes: Vec<Node>,
     group_focus_id: Option<String>,
 }
 
-impl Modal {
+impl Overlay {
     pub fn new(
         id: impl Into<String>,
         label: impl Into<String>,
@@ -22,7 +22,7 @@ impl Modal {
         nodes: Vec<Node>,
     ) -> Self {
         Self {
-            base: ModalBase::new(id, label, placement),
+            base: OverlayBase::new(id, label, placement),
             nodes,
             group_focus_id: None,
         }
@@ -74,7 +74,7 @@ impl Modal {
     }
 }
 
-impl Drawable for Modal {
+impl Drawable for Overlay {
     fn id(&self) -> &str {
         self.base.id()
     }
@@ -84,7 +84,7 @@ impl Drawable for Modal {
     }
 }
 
-impl Interactive for Modal {
+impl Interactive for Overlay {
     fn focus_mode(&self) -> FocusMode {
         self.base.focus_mode()
     }

@@ -13,10 +13,24 @@ pub enum OverlayLifecycle {
 }
 
 #[derive(Debug, Clone)]
+pub struct ValueChange {
+    pub target: NodeId,
+    pub value: Value,
+}
+
+impl ValueChange {
+    pub fn new(target: impl Into<NodeId>, value: Value) -> Self {
+        Self {
+            target: target.into(),
+            value,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
 pub enum WidgetEvent {
-    ValueProduced {
-        target: NodeId,
-        value: Value,
+    ValueChanged {
+        change: ValueChange,
     },
     ClearInlineError {
         id: NodeId,

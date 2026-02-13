@@ -6,14 +6,14 @@ use crate::terminal::{KeyCode, KeyEvent, KeyModifiers};
 use crate::ui::span::Span;
 use crate::ui::style::{Color, Style};
 use crate::widgets::base::ComponentBase;
-use crate::widgets::inputs::input::Input;
+use crate::widgets::inputs::{text::TextInput, text_edit};
 use crate::widgets::traits::{
     DrawOutput, Drawable, FocusMode, InteractionResult, Interactive, RenderContext, TextAction,
 };
 
 pub struct SearchableSelect {
     base: ComponentBase,
-    query: Input,
+    query: TextInput,
     source_options: Vec<String>,
     list: SelectList,
     focus: SearchFocus,
@@ -25,7 +25,7 @@ impl SearchableSelect {
         let label = label.into();
         let mut component = Self {
             base: ComponentBase::new(id.clone(), label.clone()),
-            query: Input::new(format!("{id}__query"), label),
+            query: TextInput::new(format!("{id}__query"), label),
             source_options: options.clone(),
             list: SelectList::from_strings(format!("{id}__list"), "", options)
                 .with_show_label(false),
@@ -90,10 +90,10 @@ impl SearchableSelect {
     }
 
     fn query_value(&self) -> String {
-        match self.query.value() {
-            Some(Value::Text(text)) => text,
-            _ => String::new(),
-        }
+        self.query
+            .value()
+            .and_then(|value| value.to_text_scalar())
+            .unwrap_or_default()
     }
 
     fn set_query_value(&mut self, value: String) {
@@ -112,7 +112,7 @@ impl SearchableSelect {
         let Some(state) = self.query.text_editing() else {
             return InteractionResult::ignored();
         };
-        if !delete_char(state.value, state.cursor) {
+        if !text_edit::delete_char(state.value, state.cursor) {
             return InteractionResult::ignored();
         }
         self.recompute();
@@ -239,21 +239,19 @@ impl Interactive for SearchableSelect {
     }
 
     fn set_value(&mut self, value: Value) {
-        match value.clone() {
-            Value::Text(text) => {
-                self.set_query_value(text.clone());
-                self.recompute();
-                self.list.set_value(Value::Text(text));
-            }
-            Value::List(_) => self.list.set_value(value),
-            _ => {}
+        if let Some(text) = value.to_text_scalar() {
+            self.set_query_value(text.clone());
+            self.recompute();
+            self.list.set_value(Value::Text(text));
+        } else if value.as_list().is_some() {
+            self.list.set_value(value);
         }
     }
 
     fn on_event(&mut self, event: &WidgetEvent) -> InteractionResult {
         match event {
-            WidgetEvent::ValueProduced { target, value } if target.as_str() == self.base.id() => {
-                self.set_value(value.clone());
+            WidgetEvent::ValueChanged { change } if change.target.as_str() == self.base.id() => {
+                self.set_value(change.value.clone());
                 InteractionResult::handled()
             }
             _ => {
@@ -275,31 +273,6 @@ impl Interactive for SearchableSelect {
         }
         None
     }
-}
-
-fn delete_char(value: &mut String, cursor: &mut usize) -> bool {
-    let pos = (*cursor).min(value.chars().count());
-    let len = value.chars().count();
-    if pos >= len {
-        *cursor = pos;
-        return false;
-    }
-
-    let byte_pos = byte_index_at_char(value.as_str(), pos);
-    value.remove(byte_pos);
-    *cursor = pos;
-    true
-}
-
-fn byte_index_at_char(value: &str, char_idx: usize) -> usize {
-    if char_idx == 0 {
-        return 0;
-    }
-    value
-        .char_indices()
-        .nth(char_idx)
-        .map(|(idx, _)| idx)
-        .unwrap_or(value.len())
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

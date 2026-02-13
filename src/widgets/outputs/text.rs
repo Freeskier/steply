@@ -1,11 +1,11 @@
 use crate::widgets::traits::{DrawOutput, Drawable, RenderContext, RenderNode};
 
-pub struct Text {
+pub struct TextOutput {
     id: String,
     text: String,
 }
 
-impl Text {
+impl TextOutput {
     pub fn new(id: impl Into<String>, text: impl Into<String>) -> Self {
         Self {
             id: id.into(),
@@ -14,7 +14,7 @@ impl Text {
     }
 }
 
-impl Drawable for Text {
+impl Drawable for TextOutput {
     fn id(&self) -> &str {
         &self.id
     }
@@ -24,4 +24,4 @@ impl Drawable for Text {
     }
 }
 
-impl RenderNode for Text {}
+impl RenderNode for TextOutput {}

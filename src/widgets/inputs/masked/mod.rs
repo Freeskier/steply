@@ -180,7 +180,7 @@ impl MaskedInput {
             return false;
         };
         let mut next_cursor = cursor;
-        let changed = delete_char(&mut segment.value, &mut next_cursor);
+        let changed = text_edit::delete_char(&mut segment.value, &mut next_cursor);
         self.cursor_offset = next_cursor;
         changed
     }
@@ -397,12 +397,10 @@ impl Interactive for MaskedInput {
     }
 
     fn set_value(&mut self, value: Value) {
-        match value {
-            Value::Text(text) => {
-                let _ = self.set_from_text(text.as_str());
-            }
-            Value::None => self.clear_segments(),
-            _ => {}
+        if let Some(text) = value.as_text() {
+            let _ = self.set_from_text(text);
+        } else if matches!(value, Value::None) {
+            self.clear_segments();
         }
         self.clamp_cursor();
     }
@@ -435,30 +433,4 @@ impl Interactive for MaskedInput {
             row: 0,
         })
     }
-}
-
-fn delete_char(value: &mut String, cursor: &mut usize) -> bool {
-    let pos = text_edit::clamp_cursor(*cursor, value.as_str());
-    let len = text_edit::char_count(value.as_str());
-    if pos >= len {
-        *cursor = pos;
-        return false;
-    }
-
-    let byte_pos = byte_index_at_char(value.as_str(), pos);
-    value.remove(byte_pos);
-    *cursor = pos;
-    true
-}
-
-fn byte_index_at_char(value: &str, char_idx: usize) -> usize {
-    if char_idx == 0 {
-        return 0;
-    }
-
-    value
-        .char_indices()
-        .nth(char_idx)
-        .map(|(idx, _)| idx)
-        .unwrap_or(value.len())
 }

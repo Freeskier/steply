@@ -1,3 +1,4 @@
+use crate::core::NodeId;
 use crate::task::spec::TaskId;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -17,7 +18,7 @@ pub enum TaskTrigger {
         step_id: String,
     },
     OnNodeValueChanged {
-        node_id: String,
+        node_id: NodeId,
         debounce_ms: u64,
     },
     OnInterval {
@@ -49,7 +50,7 @@ impl TaskSubscription {
 
     pub fn on_node_value_changed(
         task_id: impl Into<TaskId>,
-        node_id: impl Into<String>,
+        node_id: impl Into<NodeId>,
         debounce_ms: u64,
     ) -> Self {
         Self::new(

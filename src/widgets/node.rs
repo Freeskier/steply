@@ -98,13 +98,7 @@ impl Node {
     pub fn on_tick(&mut self) -> InteractionResult {
         match self {
             Self::Input(w) | Self::Component(w) => w.on_tick(),
-            Self::Output(w) => {
-                if w.on_tick() {
-                    InteractionResult::handled()
-                } else {
-                    InteractionResult::ignored()
-                }
-            }
+            Self::Output(w) => w.on_tick(),
         }
     }
 

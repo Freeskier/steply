@@ -24,6 +24,20 @@ pub fn backspace_char(value: &mut String, cursor: &mut usize) -> bool {
     true
 }
 
+pub fn delete_char(value: &mut String, cursor: &mut usize) -> bool {
+    let pos = clamp_cursor(*cursor, value);
+    let len = char_count(value);
+    if pos >= len {
+        *cursor = pos;
+        return false;
+    }
+
+    let byte_pos = byte_index_at_char(value, pos);
+    value.remove(byte_pos);
+    *cursor = pos;
+    true
+}
+
 pub fn move_left(cursor: &mut usize, value: &str) -> bool {
     let pos = clamp_cursor(*cursor, value);
     if pos == 0 {
@@ -128,7 +142,7 @@ fn is_separator(ch: char) -> bool {
     ch.is_whitespace() || matches!(ch, '.' | '/' | ',' | '-' | '@' | '_' | ':')
 }
 
-fn byte_index_at_char(value: &str, char_idx: usize) -> usize {
+pub fn byte_index_at_char(value: &str, char_idx: usize) -> usize {
     if char_idx == 0 {
         return 0;
     }

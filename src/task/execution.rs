@@ -2,6 +2,8 @@ use crate::core::value::Value;
 use crate::task::policy::ConcurrencyPolicy;
 use crate::task::spec::{TaskAssign, TaskId, TaskKind, TaskParse, TaskSpec};
 use std::process::{Command, Stdio};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
 #[derive(Debug, Clone)]
@@ -52,6 +54,26 @@ pub struct TaskInvocation {
     pub spec: TaskSpec,
     pub run_id: u64,
     pub fingerprint: Option<u64>,
+    pub cancel_token: TaskCancelToken,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct TaskCancelToken {
+    cancelled: Arc<AtomicBool>,
+}
+
+impl TaskCancelToken {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn cancel(&self) {
+        self.cancelled.store(true, Ordering::Relaxed);
+    }
+
+    pub fn is_cancelled(&self) -> bool {
+        self.cancelled.load(Ordering::Relaxed)
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -65,6 +87,7 @@ pub struct TaskCompletion {
     pub stdout: String,
     pub stderr: String,
     pub error: Option<String>,
+    pub cancelled: bool,
 }
 
 pub fn execute_invocation(invocation: TaskInvocation) -> TaskCompletion {
@@ -96,6 +119,7 @@ pub fn execute_invocation(invocation: TaskInvocation) -> TaskCompletion {
                 stdout: String::new(),
                 stderr: String::new(),
                 error: Some(format!("spawn failed: {err}")),
+                cancelled: false,
             };
         }
     };
@@ -103,6 +127,23 @@ pub fn execute_invocation(invocation: TaskInvocation) -> TaskCompletion {
     let timeout = Duration::from_millis(timeout_ms.max(1));
     let started_at = Instant::now();
     loop {
+        if invocation.cancel_token.is_cancelled() {
+            let _ = child.kill();
+            let _ = child.wait();
+            return TaskCompletion {
+                task_id,
+                run_id: invocation.run_id,
+                assign,
+                concurrency_policy,
+                value: None,
+                status_code: None,
+                stdout: String::new(),
+                stderr: String::new(),
+                error: Some("cancelled".to_string()),
+                cancelled: true,
+            };
+        }
+
         match child.try_wait() {
             Ok(Some(_status)) => break,
             Ok(None) => {
@@ -119,6 +160,7 @@ pub fn execute_invocation(invocation: TaskInvocation) -> TaskCompletion {
                         stdout: String::new(),
                         stderr: String::new(),
                         error: Some(format!("timeout after {}ms", timeout_ms.max(1))),
+                        cancelled: false,
                     };
                 }
                 std::thread::sleep(Duration::from_millis(10));
@@ -134,6 +176,7 @@ pub fn execute_invocation(invocation: TaskInvocation) -> TaskCompletion {
                     stdout: String::new(),
                     stderr: String::new(),
                     error: Some(format!("wait failed: {err}")),
+                    cancelled: false,
                 };
             }
         }
@@ -152,6 +195,7 @@ pub fn execute_invocation(invocation: TaskInvocation) -> TaskCompletion {
                 stdout: String::new(),
                 stderr: String::new(),
                 error: Some(format!("read output failed: {err}")),
+                cancelled: false,
             };
         }
     };
@@ -186,6 +230,7 @@ pub fn execute_invocation(invocation: TaskInvocation) -> TaskCompletion {
         stdout,
         stderr,
         error: status_error.or(parse_error),
+        cancelled: false,
     }
 }
 
@@ -202,7 +247,7 @@ fn parse_value(parse: TaskParse, stdout: &str) -> Result<Value, String> {
                 .lines()
                 .map(str::trim)
                 .filter(|line| !line.is_empty())
-                .map(ToOwned::to_owned)
+                .map(|line| Value::Text(line.to_string()))
                 .collect::<Vec<_>>();
             Ok(Value::List(lines))
         }
@@ -226,7 +271,7 @@ fn parse_number(value: &str) -> Result<Value, String> {
         .trim_matches('%');
 
     if let Ok(number) = first.parse::<f64>() {
-        return Ok(Value::Float(number));
+        return Ok(Value::Number(number));
     }
 
     Err(format!("number parse error: '{first}'"))

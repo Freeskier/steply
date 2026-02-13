@@ -363,11 +363,11 @@ impl Interactive for ColorInput {
     }
 
     fn set_value(&mut self, value: Value) {
-        if let Value::Text(text) = value {
-            if let Some(rgb) = parse_hex(text.as_str()) {
-                self.rgb = rgb;
-                self.reset_edit_buffer();
-            }
+        if let Some(text) = value.as_text()
+            && let Some(rgb) = parse_hex(text)
+        {
+            self.rgb = rgb;
+            self.reset_edit_buffer();
         }
     }
 

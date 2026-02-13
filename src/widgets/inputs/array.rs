@@ -140,7 +140,7 @@ impl ArrayInput {
         self.ensure_invariants();
 
         let mut cursor = self.cursor;
-        if delete_char(self.active_item_mut(), &mut cursor) {
+        if text_edit::delete_char(self.active_item_mut(), &mut cursor) {
             self.cursor = cursor;
             return true;
         }
@@ -325,23 +325,27 @@ impl Interactive for ArrayInput {
                 .iter()
                 .map(|item| item.trim().to_string())
                 .filter(|item| !item.is_empty())
+                .map(Value::Text)
                 .collect::<Vec<_>>(),
         ))
     }
 
     fn set_value(&mut self, value: Value) {
-        match value {
-            Value::List(items) => self.replace_items(items),
-            Value::Text(text) => {
-                let parts = text
-                    .split(&[',', ';'][..])
-                    .map(|part| part.trim().to_string())
-                    .filter(|part| !part.is_empty())
-                    .collect::<Vec<_>>();
-                self.replace_items(parts);
-            }
-            Value::None => self.replace_items(Vec::new()),
-            _ => {}
+        if let Some(items) = value.to_text_list() {
+            self.replace_items(items);
+            return;
+        }
+        if let Some(text) = value.as_text() {
+            let parts = text
+                .split(&[',', ';'][..])
+                .map(|part| part.trim().to_string())
+                .filter(|part| !part.is_empty())
+                .collect::<Vec<_>>();
+            self.replace_items(parts);
+            return;
+        }
+        if matches!(value, Value::None) {
+            self.replace_items(Vec::new());
         }
     }
 
@@ -366,31 +370,6 @@ impl Interactive for ArrayInput {
             row: 0,
         })
     }
-}
-
-fn delete_char(value: &mut String, cursor: &mut usize) -> bool {
-    let pos = text_edit::clamp_cursor(*cursor, value.as_str());
-    let len = text_edit::char_count(value.as_str());
-    if pos >= len {
-        *cursor = pos;
-        return false;
-    }
-
-    let start = byte_index_at_char(value.as_str(), pos);
-    value.remove(start);
-    *cursor = pos;
-    true
-}
-
-fn byte_index_at_char(value: &str, char_idx: usize) -> usize {
-    if char_idx == 0 {
-        return 0;
-    }
-    value
-        .char_indices()
-        .nth(char_idx)
-        .map(|(idx, _)| idx)
-        .unwrap_or(value.len())
 }
 
 fn width_of_char_prefix(value: &str, chars: usize) -> usize {

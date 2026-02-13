@@ -86,10 +86,10 @@ impl Interactive for CheckboxInput {
     }
 
     fn set_value(&mut self, value: Value) {
-        match value {
-            Value::Bool(flag) => self.checked = flag,
-            Value::Text(text) => self.set_from_text(&text),
-            _ => {}
+        if let Some(flag) = value.to_bool() {
+            self.checked = flag;
+        } else if let Some(text) = value.as_text() {
+            self.set_from_text(text);
         }
     }
 

@@ -1,7 +1,7 @@
 use crate::core::value::Value;
 use crate::ui::span::Span;
 use crate::ui::style::{Color, Style};
-use crate::widgets::traits::{DrawOutput, Drawable, RenderContext, RenderNode};
+use crate::widgets::traits::{DrawOutput, Drawable, InteractionResult, RenderContext, RenderNode};
 use std::time::{Duration, Instant};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -231,32 +231,28 @@ impl Drawable for ProgressOutput {
 
 impl RenderNode for ProgressOutput {
     fn set_value(&mut self, value: Value) {
-        match value {
-            Value::Float(number) => self.set_target(number),
-            Value::Text(text) => {
-                if let Ok(number) = text.trim().trim_matches('%').parse::<f64>() {
-                    self.set_target(number);
-                }
-            }
-            Value::List(values) => {
-                if let Some(last) = values.last()
-                    && let Ok(number) = last.trim().trim_matches('%').parse::<f64>()
-                {
-                    self.set_target(number);
-                }
-            }
-            Value::Bool(flag) => self.set_target(if flag { self.max } else { self.min }),
-            Value::None => self.set_target(self.min),
+        if let Some(number) = value.to_number() {
+            self.set_target(number);
+            return;
+        }
+        if let Some(last) = value.list_last()
+            && let Some(number) = last.to_number()
+        {
+            self.set_target(number);
+            return;
+        }
+        if matches!(value, Value::None) {
+            self.set_target(self.min);
         }
     }
 
-    fn on_tick(&mut self) -> bool {
+    fn on_tick(&mut self) -> InteractionResult {
         if matches!(self.transition, ProgressTransition::Immediate) {
-            return false;
+            return InteractionResult::ignored();
         }
 
         let Some(animation) = self.animation else {
-            return false;
+            return InteractionResult::ignored();
         };
 
         let elapsed = animation.started_at.elapsed();
@@ -268,11 +264,11 @@ impl RenderNode for ProgressOutput {
         if t >= 1.0 {
             self.animation = None;
         }
-        true
+        InteractionResult::handled()
     }
 
     fn value(&self) -> Option<Value> {
-        Some(Value::Float(self.target_value))
+        Some(Value::Number(self.target_value))
     }
 }
 

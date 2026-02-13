@@ -63,8 +63,22 @@ impl Renderer {
     }
 
     pub fn render(&self, state: &AppState, terminal_size: TerminalSize) -> RenderFrame {
-        let mut frame = build_base_frame(state, terminal_size, self.config);
+        let mut frame = self.render_steps_pass(state, terminal_size);
+        self.apply_overlay_pass(state, terminal_size, &mut frame);
+        self.finalize_cursor_pass(terminal_size, &mut frame);
+        frame
+    }
 
+    fn render_steps_pass(&self, state: &AppState, terminal_size: TerminalSize) -> RenderFrame {
+        build_base_frame(state, terminal_size, self.config)
+    }
+
+    fn apply_overlay_pass(
+        &self,
+        state: &AppState,
+        terminal_size: TerminalSize,
+        frame: &mut RenderFrame,
+    ) {
         let overlay_ids = state.overlay_stack_ids();
         let overlay_count = overlay_ids.len();
         for (idx, overlay_id) in overlay_ids.iter().enumerate() {
@@ -80,17 +94,19 @@ impl Renderer {
             } else {
                 None
             };
-            apply_overlay(
-                state,
-                terminal_size,
-                nodes,
-                placement,
-                focused_id,
-                &mut frame,
-            );
+            apply_overlay(state, terminal_size, nodes, placement, focused_id, frame);
         }
+    }
 
-        frame
+    fn finalize_cursor_pass(&self, terminal_size: TerminalSize, frame: &mut RenderFrame) {
+        if let Some(cursor) = frame.cursor.as_mut() {
+            if terminal_size.width > 0 {
+                cursor.col = cursor.col.min(terminal_size.width.saturating_sub(1));
+            }
+            if terminal_size.height > 0 {
+                cursor.row = cursor.row.min(terminal_size.height.saturating_sub(1));
+            }
+        }
     }
 }
 
@@ -108,6 +124,13 @@ fn build_base_frame(
     let mut frame = RenderFrame::default();
     let current_idx = state.current_step_index();
     let steps = state.steps();
+    if steps.is_empty() {
+        frame.lines.push(vec![Span::styled(
+            "No steps configured.",
+            Style::new().color(Color::Red).bold(),
+        )]);
+        return frame;
+    }
     let blocking_overlay = state.has_blocking_overlay();
 
     for (idx, step) in steps.iter().enumerate().take(current_idx.saturating_add(1)) {

@@ -91,9 +91,7 @@ impl AppState {
                 } else {
                     ErrorVisibility::Hidden
                 };
-                self.runtime
-                    .validation
-                    .set_error(id.to_string(), error, visibility);
+                self.runtime.validation.set_error(id, error, visibility);
                 if reveal {
                     self.runtime
                         .pending_scheduler
@@ -111,9 +109,9 @@ impl AppState {
     }
 
     pub(super) fn prune_validation_for_active_nodes(&mut self) {
-        let mut ids = Vec::new();
+        let mut ids = Vec::<NodeId>::new();
         walk_nodes(self.active_nodes(), NodeWalkScope::Visible, &mut |node| {
-            ids.push(node.id().to_string())
+            ids.push(node.id().into())
         });
         self.runtime.validation.clear_for_ids(&ids);
         self.runtime.validation.clear_step_errors();

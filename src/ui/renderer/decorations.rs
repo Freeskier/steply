@@ -70,14 +70,15 @@ pub(super) fn inline_modal_separator_line(
         return vec![Span::new("").no_wrap()];
     }
 
-    let mut rule = String::with_capacity(total_width);
-    rule.push('◆');
-    rule.push(' ');
-    rule.push(' ');
-
+    let mut chars = vec!['━'; total_width];
+    chars[0] = '◆';
     if total_width > 1 {
-        rule.push_str(&"━".repeat(total_width - 3));
+        chars[1] = ' ';
     }
+    if total_width > 2 {
+        chars[2] = ' ';
+    }
+    let rule = chars.into_iter().collect::<String>();
 
     vec![Span::styled(rule, Style::new().color(Color::DarkGrey)).no_wrap()]
 }

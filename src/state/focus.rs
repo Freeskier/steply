@@ -67,15 +67,13 @@ impl FocusState {
 
 fn collect_targets(nodes: &[Node], out: &mut Vec<FocusTarget>) {
     for node in nodes {
-        if node.is_focusable_leaf_or_group() {
+        if node.is_focusable() {
             out.push(FocusTarget {
                 id: node.id().into(),
             });
             continue;
         }
-
-        if let Some(children) = node.visible_children() {
-            collect_targets(children, out);
-        }
+        // Output nodes have no children; Components are Leaf/Group themselves.
+        // Nothing else needs recursion here.
     }
 }

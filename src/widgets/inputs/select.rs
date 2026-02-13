@@ -2,14 +2,14 @@ use crate::core::value::Value;
 use crate::terminal::{KeyCode, KeyEvent};
 use crate::ui::span::Span;
 use crate::ui::style::Style;
-use crate::widgets::base::InputBase;
+use crate::widgets::base::WidgetBase;
 use crate::widgets::traits::{
-    DrawOutput, Drawable, FocusMode, InteractionResult, Interactive, RenderContext,
+    DrawOutput, Drawable, FocusMode, InteractionResult, Interactive, RenderContext, ValidationMode,
 };
 use crate::widgets::validators::Validator;
 
 pub struct SelectInput {
-    base: InputBase,
+    base: WidgetBase,
     options: Vec<String>,
     selected: usize,
     submit_target: Option<String>,
@@ -19,7 +19,7 @@ pub struct SelectInput {
 impl SelectInput {
     pub fn new(id: impl Into<String>, label: impl Into<String>, options: Vec<String>) -> Self {
         Self {
-            base: InputBase::new(id, label),
+            base: WidgetBase::new(id, label),
             options,
             selected: 0,
             submit_target: None,
@@ -88,11 +88,10 @@ impl Drawable for SelectInput {
     }
 
     fn draw(&self, ctx: &RenderContext) -> DrawOutput {
-        let line = self.base.line_state(ctx);
-
+        let prefix = self.base.input_prefix(ctx);
         DrawOutput {
             lines: vec![vec![
-                Span::new(line.prefix).no_wrap(),
+                Span::new(prefix).no_wrap(),
                 Span::styled(self.selected_text().to_string(), Style::default()).no_wrap(),
             ]],
         }
@@ -138,10 +137,8 @@ impl Interactive for SelectInput {
         }
     }
 
-    fn validate_submit(&self) -> Result<(), String> {
-        for validator in &self.validators {
-            validator(self.selected_text())?;
-        }
-        Ok(())
+    fn validate(&self, _mode: ValidationMode) -> Result<(), String> {
+        use crate::widgets::validators::run_validators;
+        run_validators(&self.validators, self.selected_text())
     }
 }

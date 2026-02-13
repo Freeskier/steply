@@ -3,14 +3,14 @@ use crate::runtime::event::{ValueChange, WidgetEvent};
 use crate::terminal::{KeyCode, KeyEvent};
 use crate::ui::span::Span;
 use crate::ui::style::{Color, Style};
-use crate::widgets::base::InputBase;
+use crate::widgets::base::WidgetBase;
 use crate::widgets::traits::{
-    DrawOutput, Drawable, FocusMode, InteractionResult, Interactive, RenderContext,
+    DrawOutput, Drawable, FocusMode, InteractionResult, Interactive, RenderContext, ValidationMode,
 };
-use crate::widgets::validators::Validator;
+use crate::widgets::validators::{Validator, run_validators};
 
 pub struct SliderInput {
-    base: InputBase,
+    base: WidgetBase,
     min: i64,
     max: i64,
     step: i64,
@@ -26,7 +26,7 @@ impl SliderInput {
         let min_value = min.min(max);
         let max_value = min.max(max);
         Self {
-            base: InputBase::new(id, label),
+            base: WidgetBase::new(id, label),
             min: min_value,
             max: max_value,
             step: 1,
@@ -64,11 +64,7 @@ impl SliderInput {
     }
 
     fn clamp_value(&mut self) {
-        if self.value < self.min {
-            self.value = self.min;
-        } else if self.value > self.max {
-            self.value = self.max;
-        }
+        self.value = self.value.clamp(self.min, self.max);
     }
 
     fn shift(&mut self, delta: i64) {
@@ -106,13 +102,11 @@ impl Drawable for SliderInput {
     }
 
     fn draw(&self, ctx: &RenderContext) -> DrawOutput {
-        let line = self.base.line_state(ctx);
-
-        let value_style = Style::default();
+        let prefix = self.base.input_prefix(ctx);
+        let knob_position = self.track_position();
         let active_track_style = Style::new().color(Color::Green);
 
-        let knob_position = self.track_position();
-        let mut spans = vec![Span::new(line.prefix).no_wrap(), Span::new("‹").no_wrap()];
+        let mut spans = vec![Span::new(prefix).no_wrap(), Span::new("‹").no_wrap()];
         for idx in 0..self.track_len {
             let symbol = if idx == knob_position { '◈' } else { '—' };
             let span = if idx <= knob_position {
@@ -123,7 +117,7 @@ impl Drawable for SliderInput {
             spans.push(span);
         }
         spans.push(Span::new("› ").no_wrap());
-        spans.push(Span::styled(self.value.to_string(), value_style).no_wrap());
+        spans.push(Span::styled(self.value.to_string(), Style::default()).no_wrap());
         if let Some(unit) = &self.unit {
             spans.push(Span::new(" ").no_wrap());
             spans.push(Span::styled(unit.clone(), Style::new().color(Color::DarkGrey)).no_wrap());
@@ -176,11 +170,7 @@ impl Interactive for SliderInput {
         }
     }
 
-    fn validate_submit(&self) -> Result<(), String> {
-        let value_text = self.value.to_string();
-        for validator in &self.validators {
-            validator(value_text.as_str())?;
-        }
-        Ok(())
+    fn validate(&self, _mode: ValidationMode) -> Result<(), String> {
+        run_validators(&self.validators, self.value.to_string().as_str())
     }
 }

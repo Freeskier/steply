@@ -7,7 +7,8 @@ use crate::runtime::event::WidgetEvent;
 use crate::terminal::{KeyCode, KeyEvent, KeyModifiers};
 use crate::ui::span::Span;
 use crate::ui::style::{Color, Style};
-use crate::widgets::base::ComponentBase;
+use crate::widgets::base::WidgetBase;
+use crate::widgets::node::{Component, Node};
 use crate::widgets::traits::{
     DrawOutput, Drawable, FocusMode, InteractionResult, Interactive, RenderContext,
 };
@@ -20,7 +21,7 @@ use state::{
 pub use model::{SelectMode, SelectOption};
 
 pub struct SelectList {
-    base: ComponentBase,
+    base: WidgetBase,
     options: Vec<SelectOption>,
     mode: SelectMode,
     selected: Vec<usize>,
@@ -38,7 +39,7 @@ impl SelectList {
         options: Vec<SelectOption>,
     ) -> Self {
         Self {
-            base: ComponentBase::new(id, label),
+            base: WidgetBase::new(id, label),
             options,
             mode: SelectMode::Single,
             selected: Vec::new(),
@@ -306,6 +307,16 @@ impl SelectList {
         }
 
         lines
+    }
+}
+
+impl Component for SelectList {
+    fn children(&self) -> &[Node] {
+        &[]
+    }
+
+    fn children_mut(&mut self) -> &mut [Node] {
+        &mut []
     }
 }
 

@@ -18,14 +18,14 @@ impl AppState {
             .task_subscriptions
             .iter()
             .enumerate()
-            .filter(|(_, subscription)| subscription.enabled)
-            .filter_map(|(index, subscription)| match &subscription.trigger {
+            .filter(|(_, sub)| sub.enabled)
+            .filter_map(|(index, sub)| match &sub.trigger {
                 TaskTrigger::OnInterval {
                     every_ms,
                     only_when_step_active,
                 } => Some((
-                    subscription.task_id.to_string(),
-                    interval_key(subscription.task_id.as_str(), index),
+                    sub.task_id.to_string(),
+                    interval_key(sub.task_id.as_str(), index),
                     (*every_ms).max(1),
                     *only_when_step_active,
                 )),
@@ -45,12 +45,12 @@ impl AppState {
     }
 
     pub(super) fn cancel_interval_tasks(&mut self) {
-        for (index, subscription) in self.runtime.task_subscriptions.iter().enumerate() {
-            if let TaskTrigger::OnInterval { .. } = subscription.trigger {
+        for (index, sub) in self.runtime.task_subscriptions.iter().enumerate() {
+            if let TaskTrigger::OnInterval { .. } = sub.trigger {
                 self.runtime
                     .pending_scheduler
                     .push(SchedulerCommand::Cancel {
-                        key: interval_key(subscription.task_id.as_str(), index),
+                        key: interval_key(sub.task_id.as_str(), index),
                     });
             }
         }
@@ -69,7 +69,6 @@ impl AppState {
         else {
             return false;
         };
-
         if !spec.enabled {
             return false;
         }
@@ -99,7 +98,7 @@ impl AppState {
                     .runtime
                     .task_runs
                     .get(spec.id.as_str())
-                    .is_some_and(|run_state| run_state.is_running())
+                    .is_some_and(|s| s.is_running())
                 {
                     return false;
                 }
@@ -109,7 +108,7 @@ impl AppState {
                     .runtime
                     .task_runs
                     .get(spec.id.as_str())
-                    .is_some_and(|run_state| run_state.is_running())
+                    .is_some_and(|s| s.is_running())
                 {
                     self.enqueue_task_request(spec.id.clone(), request);
                     return false;
@@ -145,11 +144,7 @@ impl AppState {
             self.start_queued_task_if_any(completion.task_id.as_str());
         }
 
-        if stale_restart_completion {
-            return false;
-        }
-
-        if completion.cancelled {
+        if stale_restart_completion || completion.cancelled {
             return false;
         }
 
@@ -167,57 +162,37 @@ impl AppState {
     }
 
     pub(super) fn trigger_flow_start_tasks(&mut self) {
-        self.trigger_for(|trigger| matches!(trigger, TaskTrigger::OnFlowStart), None);
+        self.trigger_for(|t| matches!(t, TaskTrigger::OnFlowStart), None);
     }
 
     pub(super) fn trigger_flow_end_tasks(&mut self) {
-        self.trigger_for(|trigger| matches!(trigger, TaskTrigger::OnFlowEnd), None);
+        self.trigger_for(|t| matches!(t, TaskTrigger::OnFlowEnd), None);
     }
 
     pub(super) fn trigger_step_enter_tasks(&mut self, step_id: &str) {
         self.trigger_for(
-            |trigger| {
-                matches!(
-                    trigger,
-                    TaskTrigger::OnStepEnter { step_id: configured } if configured == step_id
-                )
-            },
+            |t| matches!(t, TaskTrigger::OnStepEnter { step_id: s } if s == step_id),
             None,
         );
     }
 
     pub(super) fn trigger_step_exit_tasks(&mut self, step_id: &str) {
         self.trigger_for(
-            |trigger| {
-                matches!(
-                    trigger,
-                    TaskTrigger::OnStepExit { step_id: configured } if configured == step_id
-                )
-            },
+            |t| matches!(t, TaskTrigger::OnStepExit { step_id: s } if s == step_id),
             None,
         );
     }
 
     pub(super) fn trigger_submit_before_tasks(&mut self, step_id: &str) {
         self.trigger_for(
-            |trigger| {
-                matches!(
-                    trigger,
-                    TaskTrigger::OnSubmitBefore { step_id: configured } if configured == step_id
-                )
-            },
+            |t| matches!(t, TaskTrigger::OnSubmitBefore { step_id: s } if s == step_id),
             None,
         );
     }
 
     pub(super) fn trigger_submit_after_tasks(&mut self, step_id: &str) {
         self.trigger_for(
-            |trigger| {
-                matches!(
-                    trigger,
-                    TaskTrigger::OnSubmitAfter { step_id: configured } if configured == step_id
-                )
-            },
+            |t| matches!(t, TaskTrigger::OnSubmitAfter { step_id: s } if s == step_id),
             None,
         );
     }
@@ -229,23 +204,22 @@ impl AppState {
             .runtime
             .task_subscriptions
             .iter()
-            .filter(|subscription| subscription.enabled)
-            .filter_map(|subscription| match &subscription.trigger {
+            .filter(|sub| sub.enabled)
+            .filter_map(|sub| match &sub.trigger {
                 TaskTrigger::OnNodeValueChanged {
-                    node_id: configured,
+                    node_id: n,
                     debounce_ms,
-                } if configured.as_str() == node_id => Some((subscription.clone(), *debounce_ms)),
+                } if n.as_str() == node_id => Some((sub.clone(), *debounce_ms)),
                 _ => None,
             })
             .collect::<Vec<_>>();
 
-        for (subscription, debounce_ms) in subscriptions {
-            let request = TaskRequest::new(subscription.task_id).with_fingerprint(fingerprint);
+        for (sub, debounce_ms) in subscriptions {
+            let request = TaskRequest::new(sub.task_id).with_fingerprint(fingerprint);
             if debounce_ms == 0 {
                 let _ = self.request_task_run(request);
                 continue;
             }
-
             self.runtime
                 .pending_scheduler
                 .push(SchedulerCommand::Debounce {
@@ -261,14 +235,14 @@ impl AppState {
             .runtime
             .task_subscriptions
             .iter()
-            .filter(|subscription| subscription.enabled)
-            .filter(|subscription| predicate(&subscription.trigger))
-            .map(|subscription| subscription.task_id.clone())
+            .filter(|sub| sub.enabled)
+            .filter(|sub| predicate(&sub.trigger))
+            .map(|sub| sub.task_id.clone())
             .collect::<Vec<_>>();
 
         for task_id in matched {
             let request = match fingerprint {
-                Some(fingerprint) => TaskRequest::new(task_id).with_fingerprint(fingerprint),
+                Some(fp) => TaskRequest::new(task_id).with_fingerprint(fp),
                 None => TaskRequest::new(task_id),
             };
             let _ = self.request_task_run(request);
@@ -327,7 +301,6 @@ impl AppState {
         let run_id = run_state.next_run_id();
         run_state.on_started(run_id, now, fingerprint);
         self.register_running_cancel_token(spec.id.clone(), run_id, cancel_token.clone());
-
         self.runtime.pending_task_invocations.push(TaskInvocation {
             spec,
             run_id,
@@ -337,14 +310,13 @@ impl AppState {
     }
 
     fn enqueue_task_request(&mut self, task_id: TaskId, request: TaskRequest) {
-        const MAX_QUEUED_TASKS_PER_ID: usize = 128;
-
+        const MAX_QUEUED: usize = 128;
         let queue = self
             .runtime
             .queued_task_requests
             .entry(task_id)
             .or_default();
-        if queue.len() >= MAX_QUEUED_TASKS_PER_ID {
+        if queue.len() >= MAX_QUEUED {
             queue.remove(0);
         }
         queue.push(request);
@@ -357,14 +329,12 @@ impl AppState {
         let Some(request) = queue.first().cloned() else {
             return;
         };
-
         queue.remove(0);
         if !queue.is_empty() {
             self.runtime
                 .queued_task_requests
                 .insert(TaskId::from(task_id), queue);
         }
-
         let _ = self.request_task_run(request);
     }
 
@@ -385,20 +355,17 @@ impl AppState {
         let Some(tokens) = self.runtime.running_task_cancellations.get_mut(task_id) else {
             return;
         };
-
-        tokens.retain(|(current_run_id, _)| *current_run_id != run_id);
+        tokens.retain(|(id, _)| *id != run_id);
         if tokens.is_empty() {
             self.runtime.running_task_cancellations.remove(task_id);
         }
     }
 
     fn cancel_running_task(&mut self, task_id: &str) {
-        let Some(tokens) = self.runtime.running_task_cancellations.get(task_id) else {
-            return;
-        };
-
-        for (_, token) in tokens {
-            token.cancel();
+        if let Some(tokens) = self.runtime.running_task_cancellations.get(task_id) {
+            for (_, token) in tokens {
+                token.cancel();
+            }
         }
     }
 
@@ -428,33 +395,31 @@ fn fingerprint_value(node_id: &str, value: &Value) -> u64 {
 
 fn hash_value(hasher: &mut DefaultHasher, value: &Value) {
     match value {
-        Value::None => {
-            0u8.hash(hasher);
-        }
-        Value::Text(text) => {
+        Value::None => 0u8.hash(hasher),
+        Value::Text(t) => {
             1u8.hash(hasher);
-            text.hash(hasher);
+            t.hash(hasher);
         }
-        Value::Bool(flag) => {
+        Value::Bool(b) => {
             2u8.hash(hasher);
-            flag.hash(hasher);
+            b.hash(hasher);
         }
-        Value::Number(number) => {
+        Value::Number(n) => {
             3u8.hash(hasher);
-            number.to_bits().hash(hasher);
+            n.to_bits().hash(hasher);
         }
-        Value::List(values) => {
+        Value::List(vs) => {
             4u8.hash(hasher);
-            values.len().hash(hasher);
-            for nested in values {
-                hash_value(hasher, nested);
+            vs.len().hash(hasher);
+            for v in vs {
+                hash_value(hasher, v);
             }
         }
-        Value::Object(value) => {
+        Value::Object(m) => {
             5u8.hash(hasher);
-            for (key, nested) in value {
-                key.hash(hasher);
-                hash_value(hasher, nested);
+            for (k, v) in m {
+                k.hash(hasher);
+                hash_value(hasher, v);
             }
         }
     }

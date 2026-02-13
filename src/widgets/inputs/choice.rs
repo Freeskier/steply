@@ -2,14 +2,14 @@ use crate::core::value::Value;
 use crate::terminal::{KeyCode, KeyEvent};
 use crate::ui::span::Span;
 use crate::ui::style::{Color, Style};
-use crate::widgets::base::InputBase;
+use crate::widgets::base::WidgetBase;
 use crate::widgets::traits::{
-    DrawOutput, Drawable, FocusMode, InteractionResult, Interactive, RenderContext,
+    DrawOutput, Drawable, FocusMode, InteractionResult, Interactive, RenderContext, ValidationMode,
 };
-use crate::widgets::validators::Validator;
+use crate::widgets::validators::{Validator, run_validators};
 
 pub struct ChoiceInput {
-    base: InputBase,
+    base: WidgetBase,
     options: Vec<String>,
     selected: usize,
     show_bullets: bool,
@@ -20,7 +20,7 @@ pub struct ChoiceInput {
 impl ChoiceInput {
     pub fn new(id: impl Into<String>, label: impl Into<String>, options: Vec<String>) -> Self {
         Self {
-            base: InputBase::new(id, label),
+            base: WidgetBase::new(id, label),
             options,
             selected: 0,
             show_bullets: true,
@@ -64,21 +64,16 @@ impl ChoiceInput {
         if self.options.is_empty() {
             return false;
         }
-        let len = self.options.len();
-        self.selected = (self.selected + 1) % len;
+        self.selected = (self.selected + 1) % self.options.len();
         true
     }
 
     fn select_by_letter(&mut self, ch: char) -> bool {
-        if self.options.is_empty() {
-            return false;
-        }
         let needle = ch.to_ascii_lowercase();
-        if let Some((index, _)) = self.options.iter().enumerate().find(|(_, option)| {
-            option
-                .chars()
+        if let Some(index) = self.options.iter().position(|opt| {
+            opt.chars()
                 .next()
-                .map(|first| first.to_ascii_lowercase() == needle)
+                .map(|c| c.to_ascii_lowercase() == needle)
                 .unwrap_or(false)
         }) {
             self.selected = index;
@@ -94,17 +89,14 @@ impl Drawable for ChoiceInput {
     }
 
     fn draw(&self, ctx: &RenderContext) -> DrawOutput {
-        let line = self.base.line_state(ctx);
-
         let active_style = Style::new().color(Color::Cyan).bold();
         let inactive_style = Style::new().color(Color::DarkGrey);
 
-        let mut spans = vec![Span::new(line.prefix).no_wrap()];
+        let mut spans = vec![Span::new(self.base.input_prefix(ctx)).no_wrap()];
         for (index, option) in self.options.iter().enumerate() {
             if index > 0 {
                 spans.push(Span::new(" / ").no_wrap());
             }
-
             if self.show_bullets {
                 if index == self.selected {
                     spans
@@ -114,7 +106,6 @@ impl Drawable for ChoiceInput {
                 }
                 spans.push(Span::new(" ").no_wrap());
             }
-
             let style = if index == self.selected {
                 active_style
             } else {
@@ -136,21 +127,24 @@ impl Interactive for ChoiceInput {
         match key.code {
             KeyCode::Left | KeyCode::Up => {
                 if self.move_prev() {
-                    return InteractionResult::handled();
+                    InteractionResult::handled()
+                } else {
+                    InteractionResult::ignored()
                 }
-                InteractionResult::ignored()
             }
             KeyCode::Right | KeyCode::Down => {
                 if self.move_next() {
-                    return InteractionResult::handled();
+                    InteractionResult::handled()
+                } else {
+                    InteractionResult::ignored()
                 }
-                InteractionResult::ignored()
             }
             KeyCode::Char(ch) => {
                 if self.select_by_letter(ch) {
-                    return InteractionResult::handled();
+                    InteractionResult::handled()
+                } else {
+                    InteractionResult::ignored()
                 }
-                InteractionResult::ignored()
             }
             KeyCode::Enter => InteractionResult::submit_or_produce(
                 self.submit_target.as_deref(),
@@ -165,17 +159,14 @@ impl Interactive for ChoiceInput {
     }
 
     fn set_value(&mut self, value: Value) {
-        if let Some(text) = value.to_text_scalar() {
-            if let Some(pos) = self.options.iter().position(|option| option == &text) {
-                self.selected = pos;
-            }
+        if let Some(text) = value.to_text_scalar()
+            && let Some(pos) = self.options.iter().position(|opt| opt == &text)
+        {
+            self.selected = pos;
         }
     }
 
-    fn validate_submit(&self) -> Result<(), String> {
-        for validator in &self.validators {
-            validator(self.selected_text())?;
-        }
-        Ok(())
+    fn validate(&self, _mode: ValidationMode) -> Result<(), String> {
+        run_validators(&self.validators, self.selected_text())
     }
 }

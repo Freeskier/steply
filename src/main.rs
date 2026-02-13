@@ -1,5 +1,5 @@
 use steply_v2::runtime::Runtime;
-use steply_v2::state::app_state::AppState;
+use steply_v2::state::app::AppState;
 use steply_v2::state::demo::{build_demo_flow, build_demo_tasks};
 use steply_v2::terminal::Terminal;
 

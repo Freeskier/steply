@@ -28,34 +28,8 @@ impl Overlay {
         }
     }
 
-    pub fn open(&mut self) {
-        self.base.open();
-        self.group_focus_id = first_focusable_id(self.nodes.as_slice());
-    }
-
-    pub fn close(&mut self) {
-        self.group_focus_id = None;
-        self.base.close();
-    }
-
-    pub fn id(&self) -> &str {
-        self.base.id()
-    }
-
-    pub fn label(&self) -> &str {
-        self.base.label()
-    }
-
     pub fn placement(&self) -> OverlayPlacement {
         self.base.placement()
-    }
-
-    pub fn nodes(&self) -> &[Node] {
-        self.nodes.as_slice()
-    }
-
-    pub fn nodes_mut(&mut self) -> &mut [Node] {
-        self.nodes.as_mut_slice()
     }
 
     pub fn with_focus_mode(mut self, focus_mode: FocusMode) -> Self {
@@ -71,6 +45,16 @@ impl Overlay {
     pub fn with_render_mode(mut self, render_mode: OverlayRenderMode) -> Self {
         self.base.set_render_mode(render_mode);
         self
+    }
+}
+
+impl crate::widgets::node::Component for Overlay {
+    fn children(&self) -> &[Node] {
+        &self.nodes
+    }
+
+    fn children_mut(&mut self) -> &mut [Node] {
+        &mut self.nodes
     }
 }
 
@@ -94,12 +78,12 @@ impl Interactive for Overlay {
     }
 
     fn overlay_open(&mut self, _saved_focus_id: Option<String>) -> bool {
-        self.open();
+        self.group_focus_id = first_focusable_id(&self.nodes);
         true
     }
 
     fn overlay_close(&mut self) -> Option<String> {
-        self.close();
+        self.group_focus_id = None;
         None
     }
 
@@ -109,7 +93,7 @@ impl Interactive for Overlay {
 
     fn on_key(&mut self, key: KeyEvent) -> InteractionResult {
         if self.base.focus_mode() == FocusMode::Group {
-            let focusable = focusable_ids(self.nodes.as_slice());
+            let focusable = focusable_ids(&self.nodes);
             if focusable.is_empty() {
                 return InteractionResult::ignored();
             }
@@ -117,7 +101,7 @@ impl Interactive for Overlay {
             if self
                 .group_focus_id
                 .as_deref()
-                .is_none_or(|id| !focusable.iter().any(|candidate| candidate == id))
+                .is_none_or(|id| !focusable.iter().any(|c| c == id))
             {
                 self.group_focus_id = Some(focusable[0].clone());
             }
@@ -125,7 +109,7 @@ impl Interactive for Overlay {
             let current_idx = self
                 .group_focus_id
                 .as_deref()
-                .and_then(|id| focusable.iter().position(|candidate| candidate == id))
+                .and_then(|id| focusable.iter().position(|c| c == id))
                 .unwrap_or(0);
 
             match key.code {
@@ -142,8 +126,8 @@ impl Interactive for Overlay {
                 _ => {}
             }
 
-            if let Some(focus_id) = self.group_focus_id.as_deref()
-                && let Some(node) = find_node_mut(self.nodes.as_mut_slice(), focus_id)
+            if let Some(focus_id) = self.group_focus_id.clone()
+                && let Some(node) = find_node_mut(&mut self.nodes, &focus_id)
             {
                 return node.on_key(key);
             }
@@ -156,8 +140,8 @@ impl Interactive for Overlay {
             return InteractionResult::ignored();
         }
 
-        if let Some(focus_id) = self.group_focus_id.as_deref()
-            && let Some(node) = find_node_mut(self.nodes.as_mut_slice(), focus_id)
+        if let Some(focus_id) = self.group_focus_id.clone()
+            && let Some(node) = find_node_mut(&mut self.nodes, &focus_id)
         {
             return node.on_text_action(action);
         }
@@ -174,7 +158,7 @@ impl Interactive for Overlay {
         if let WidgetEvent::OverlayLifecycle { phase, .. } = event {
             match phase {
                 OverlayLifecycle::BeforeOpen | OverlayLifecycle::Opened => {
-                    self.group_focus_id = first_focusable_id(self.nodes.as_slice());
+                    self.group_focus_id = first_focusable_id(&self.nodes);
                 }
                 OverlayLifecycle::BeforeClose
                 | OverlayLifecycle::Closed
@@ -185,12 +169,9 @@ impl Interactive for Overlay {
         }
 
         if let WidgetEvent::RequestFocus { target } = event {
-            let focusable = focusable_ids(self.nodes.as_slice());
-            if focusable
-                .iter()
-                .any(|candidate| candidate == target.as_str())
-            {
-                self.group_focus_id = Some(target.as_str().to_string());
+            let focusable = focusable_ids(&self.nodes);
+            if focusable.iter().any(|c| c == target.as_str()) {
+                self.group_focus_id = Some(target.to_string());
                 return InteractionResult::handled();
             }
         }
@@ -201,27 +182,11 @@ impl Interactive for Overlay {
             InteractionResult::ignored()
         };
 
-        for node in self.nodes_mut() {
+        for node in &mut self.nodes {
             merged.merge(node.on_event(event));
         }
 
         merged
-    }
-
-    fn visible_children(&self) -> Option<&[Node]> {
-        None
-    }
-
-    fn visible_children_mut(&mut self) -> Option<&mut [Node]> {
-        None
-    }
-
-    fn persistent_children(&self) -> Option<&[Node]> {
-        Some(self.nodes())
-    }
-
-    fn persistent_children_mut(&mut self) -> Option<&mut [Node]> {
-        Some(self.nodes_mut())
     }
 }
 
@@ -237,7 +202,7 @@ fn focusable_ids(nodes: &[Node]) -> Vec<String> {
 
 fn collect_focusable_ids(nodes: &[Node], out: &mut Vec<String>) {
     for node in nodes {
-        if node.is_focusable_leaf_or_group() {
+        if node.is_focusable() {
             out.push(node.id().to_string());
             continue;
         }

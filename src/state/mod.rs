@@ -1,4 +1,4 @@
-pub mod app_state;
+pub mod app;
 pub mod demo;
 pub mod flow;
 pub mod focus;

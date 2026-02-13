@@ -1,6 +1,8 @@
 use crate::core::NodeId;
 use crate::runtime::scheduler::SchedulerCommand;
 use crate::state::flow::Flow;
+use crate::state::focus::FocusState;
+use crate::state::overlay::OverlayState;
 use crate::state::step::Step;
 use crate::state::store::ValueStore;
 use crate::state::validation::ValidationState;
@@ -10,22 +12,13 @@ use crate::task::{
 use crate::widgets::node::{Node, NodeWalkScope, find_overlay, find_overlay_mut, walk_nodes};
 use crate::widgets::node_index::NodeIndex;
 use crate::widgets::traits::{FocusMode, OverlayMode, OverlayPlacement};
-use focus_engine::FocusEngine;
-use overlay_engine::OverlayEngine;
+use completion::CompletionSession;
 use std::collections::HashMap;
-
-#[derive(Debug, Clone)]
-pub(crate) struct CompletionSession {
-    pub owner_id: NodeId,
-    pub matches: Vec<String>,
-    pub index: usize,
-    pub start: usize,
-}
 
 #[derive(Default)]
 struct UiState {
-    overlays: OverlayEngine,
-    focus: FocusEngine,
+    overlays: OverlayState,
+    focus: FocusState,
     active_node_index: NodeIndex,
     completion_session: Option<CompletionSession>,
 }
@@ -190,7 +183,6 @@ impl AppState {
                 {
                     return children;
                 }
-
                 return self.scratch_nodes.as_mut_slice();
             }
 
@@ -304,9 +296,7 @@ impl AppState {
 }
 
 mod completion;
-mod focus_engine;
 mod navigation;
-mod overlay_engine;
 mod overlay_runtime;
 mod task_runtime;
 mod validation_runtime;

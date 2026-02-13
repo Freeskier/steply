@@ -2,11 +2,11 @@ use crate::core::value::Value;
 use crate::terminal::{CursorPos, KeyCode, KeyEvent, KeyModifiers};
 use crate::ui::span::Span;
 use crate::ui::style::{Color, Style};
-use crate::widgets::base::InputBase;
+use crate::widgets::base::WidgetBase;
 use crate::widgets::traits::{
-    DrawOutput, Drawable, FocusMode, InteractionResult, Interactive, RenderContext,
+    DrawOutput, Drawable, FocusMode, InteractionResult, Interactive, RenderContext, ValidationMode,
 };
-use crate::widgets::validators::Validator;
+use crate::widgets::validators::{Validator, run_validators};
 use unicode_width::UnicodeWidthStr;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -46,7 +46,7 @@ impl Channel {
 }
 
 pub struct ColorInput {
-    base: InputBase,
+    base: WidgetBase,
     rgb: [u8; 3],
     mode: ColorMode,
     channel: Channel,
@@ -60,7 +60,7 @@ pub struct ColorInput {
 impl ColorInput {
     pub fn new(id: impl Into<String>, label: impl Into<String>) -> Self {
         Self {
-            base: InputBase::new(id, label),
+            base: WidgetBase::new(id, label),
             rgb: [0, 0, 0],
             mode: ColorMode::Hex,
             channel: Channel::First,
@@ -290,10 +290,10 @@ impl Drawable for ColorInput {
     }
 
     fn draw(&self, ctx: &RenderContext) -> DrawOutput {
-        let line = self.base.line_state(ctx);
-
-        let (parts, _) = self.render_parts(line.focused);
-        let mut spans = vec![Span::new(line.prefix).no_wrap()];
+        let focused = self.base.is_focused(ctx);
+        let prefix = self.base.input_prefix(ctx);
+        let (parts, _) = self.render_parts(focused);
+        let mut spans = vec![Span::new(prefix).no_wrap()];
         spans.extend(parts);
         DrawOutput { lines: vec![spans] }
     }
@@ -371,16 +371,12 @@ impl Interactive for ColorInput {
         }
     }
 
-    fn validate_submit(&self) -> Result<(), String> {
-        let hex = rgb_to_hex(self.rgb);
-        for validator in &self.validators {
-            validator(hex.as_str())?;
-        }
-        Ok(())
+    fn validate(&self, _mode: ValidationMode) -> Result<(), String> {
+        run_validators(&self.validators, rgb_to_hex(self.rgb).as_str())
     }
 
     fn cursor_pos(&self) -> Option<CursorPos> {
-        let prefix = format!("{} {}: ", self.base.focus_marker(true), self.base.label());
+        let prefix = self.base.input_prefix_focused();
         let (_, local) = self.render_parts(true);
         Some(CursorPos {
             col: (UnicodeWidthStr::width(prefix.as_str()) + local) as u16,

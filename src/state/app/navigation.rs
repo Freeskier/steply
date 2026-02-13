@@ -1,9 +1,10 @@
 use super::{AppState, completion::CompletionStartResult};
 use crate::runtime::event::WidgetEvent;
 use crate::terminal::{KeyCode, KeyEvent, KeyModifiers};
-use crate::widgets::node::{NodeWalkScope, find_node, find_node_mut, walk_nodes, walk_nodes_mut};
-use crate::widgets::node_index::node_at_path_mut;
-use crate::widgets::traits::{FocusMode, InteractionResult, TextAction};
+use crate::widgets::node::{
+    Node, NodeWalkScope, find_node, find_node_mut, walk_nodes, walk_nodes_mut,
+};
+use crate::widgets::traits::{FocusMode, InteractionResult, TextAction, ValidationMode};
 
 impl AppState {
     pub fn dispatch_key_to_focused(&mut self, key: KeyEvent) -> InteractionResult {
@@ -32,22 +33,7 @@ impl AppState {
         }
 
         let result = {
-            let path = self
-                .ui
-                .active_node_index
-                .visible_path(&focused_id)
-                .map(ToOwned::to_owned);
-            let nodes = self.active_nodes_mut();
-            let node = if let Some(path) = path.as_ref() {
-                if let Some(node) = node_at_path_mut(nodes, path, NodeWalkScope::Visible) {
-                    Some(node)
-                } else {
-                    find_node_mut(nodes, &focused_id)
-                }
-            } else {
-                find_node_mut(nodes, &focused_id)
-            };
-            let Some(node) = node else {
+            let Some(node) = self.find_focused_node_mut(&focused_id) else {
                 return InteractionResult::ignored();
             };
             node.on_key(key)
@@ -55,7 +41,7 @@ impl AppState {
 
         if result.handled {
             self.clear_completion_session();
-            self.validate_focused(false);
+            self.validate_focused_live();
             self.clear_step_errors();
         }
         result
@@ -67,22 +53,7 @@ impl AppState {
         };
 
         let result = {
-            let path = self
-                .ui
-                .active_node_index
-                .visible_path(&focused_id)
-                .map(ToOwned::to_owned);
-            let nodes = self.active_nodes_mut();
-            let node = if let Some(path) = path.as_ref() {
-                if let Some(node) = node_at_path_mut(nodes, path, NodeWalkScope::Visible) {
-                    Some(node)
-                } else {
-                    find_node_mut(nodes, &focused_id)
-                }
-            } else {
-                find_node_mut(nodes, &focused_id)
-            };
-            let Some(node) = node else {
+            let Some(node) = self.find_focused_node_mut(&focused_id) else {
                 return InteractionResult::ignored();
             };
             node.on_text_action(action)
@@ -90,7 +61,7 @@ impl AppState {
 
         if result.handled {
             self.clear_completion_session();
-            self.validate_focused(false);
+            self.validate_focused_live();
             self.clear_step_errors();
         }
         result
@@ -152,27 +123,12 @@ impl AppState {
 
     pub fn submit_focused(&mut self) -> Option<InteractionResult> {
         let focused_id = self.ui.focus.current_id()?.to_string();
-        let path = self
-            .ui
-            .active_node_index
-            .visible_path(&focused_id)
-            .map(ToOwned::to_owned);
-        let nodes = self.active_nodes_mut();
-        let node = if let Some(path) = path.as_ref() {
-            if let Some(node) = node_at_path_mut(nodes, path, NodeWalkScope::Visible) {
-                Some(node)
-            } else {
-                find_node_mut(nodes, &focused_id)
-            }
-        } else {
-            find_node_mut(nodes, &focused_id)
-        }?;
+        let node = self.find_focused_node_mut(&focused_id)?;
         Some(node.on_event(&WidgetEvent::RequestSubmit))
     }
 
     pub fn tick_all_nodes(&mut self) -> InteractionResult {
         let mut merged = InteractionResult::ignored();
-
         for step in self.flow.steps_mut() {
             walk_nodes_mut(
                 step.nodes.as_mut_slice(),
@@ -180,7 +136,6 @@ impl AppState {
                 &mut |node| merged.merge(node.on_tick()),
             );
         }
-
         merged
     }
 
@@ -233,7 +188,7 @@ impl AppState {
         {
             return;
         }
-        self.validate_focused(false);
+        self.validate_focused_live();
         self.ui.focus.next();
     }
 
@@ -244,7 +199,7 @@ impl AppState {
         {
             return;
         }
-        self.validate_focused(false);
+        self.validate_focused_live();
         self.ui.focus.prev();
     }
 
@@ -256,17 +211,9 @@ impl AppState {
         self.clear_completion_session();
         self.ui.active_node_index =
             crate::widgets::node_index::NodeIndex::build(self.active_nodes());
-        self.ui.focus =
-            crate::state::app_state::focus_engine::FocusEngine::from_nodes(self.active_nodes());
+        self.ui.focus = crate::state::focus::FocusState::from_nodes(self.active_nodes());
         if let Some(id) = target {
             self.ui.focus.set_focus_by_id(id);
-            if self.ui.focus.current_id().is_none() {
-                self.ui.active_node_index =
-                    crate::widgets::node_index::NodeIndex::build(self.active_nodes());
-                self.ui.focus = crate::state::app_state::focus_engine::FocusEngine::from_nodes(
-                    self.active_nodes(),
-                );
-            }
         }
         if prune_validation {
             self.prune_validation_for_active_nodes();
@@ -281,7 +228,7 @@ impl AppState {
         self.clear_completion_session();
         let submit_step_id = self.current_step_id().to_string();
         self.trigger_submit_before_tasks(submit_step_id.as_str());
-        if !self.validate_current_step(true) {
+        if !self.validate_current_step(ValidationMode::Submit) {
             self.focus_first_invalid_on_current_step();
             return;
         }
@@ -321,5 +268,11 @@ impl AppState {
         if let Some(id) = first_invalid {
             self.ui.focus.set_focus_by_id(&id);
         }
+    }
+
+    /// Find the focused node by id via a tree search.
+    fn find_focused_node_mut<'a>(&'a mut self, focused_id: &str) -> Option<&'a mut Node> {
+        let nodes = self.active_nodes_mut();
+        find_node_mut(nodes, focused_id)
     }
 }

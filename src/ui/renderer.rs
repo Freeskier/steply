@@ -1,4 +1,4 @@
-use crate::state::app_state::AppState;
+use crate::state::app::AppState;
 use crate::state::step::StepStatus;
 use crate::terminal::{CursorPos, TerminalSize};
 use crate::ui::layout::Layout;
@@ -100,11 +100,21 @@ impl Renderer {
 
     fn finalize_cursor_pass(&self, terminal_size: TerminalSize, frame: &mut RenderFrame) {
         if let Some(cursor) = frame.cursor.as_mut() {
+            // Clamp column within terminal width.
             if terminal_size.width > 0 {
                 cursor.col = cursor.col.min(terminal_size.width.saturating_sub(1));
             }
-            if terminal_size.height > 0 {
-                cursor.row = cursor.row.min(terminal_size.height.saturating_sub(1));
+            // If the cursor row would be outside the rendered area (e.g. the
+            // UI is taller than the terminal), hide it entirely rather than
+            // clamping it to a wrong position.
+            let max_row = frame
+                .lines
+                .len()
+                .saturating_sub(1)
+                .min(terminal_size.height.saturating_sub(1) as usize)
+                as u16;
+            if cursor.row > max_row {
+                frame.cursor = None;
             }
         }
     }

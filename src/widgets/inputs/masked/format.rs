@@ -2,7 +2,6 @@ use super::model::{MaskToken, SegmentKind, SegmentRole};
 use crate::ui::span::Span;
 use crate::ui::style::{Color, Style};
 use crate::widgets::inputs::text_edit;
-use unicode_width::UnicodeWidthStr;
 
 pub(super) fn token_accepts(kind: SegmentKind, ch: char) -> bool {
     match kind {
@@ -243,12 +242,4 @@ fn days_in_month(year: Option<i64>, month: i64) -> i64 {
         },
         _ => 0,
     }
-}
-
-#[allow(dead_code)]
-fn spans_width(spans: &[Span]) -> usize {
-    spans
-        .iter()
-        .map(|span| UnicodeWidthStr::width(span.text.as_str()))
-        .sum()
 }

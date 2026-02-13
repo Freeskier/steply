@@ -5,14 +5,15 @@ use crate::runtime::event::WidgetEvent;
 use crate::terminal::{KeyCode, KeyEvent, KeyModifiers};
 use crate::ui::span::Span;
 use crate::ui::style::{Color, Style};
-use crate::widgets::base::ComponentBase;
+use crate::widgets::base::WidgetBase;
 use crate::widgets::inputs::{text::TextInput, text_edit};
+use crate::widgets::node::{Component, Node};
 use crate::widgets::traits::{
     DrawOutput, Drawable, FocusMode, InteractionResult, Interactive, RenderContext, TextAction,
 };
 
 pub struct SearchableSelect {
-    base: ComponentBase,
+    base: WidgetBase,
     query: TextInput,
     source_options: Vec<String>,
     list: SelectList,
@@ -24,7 +25,7 @@ impl SearchableSelect {
         let id = id.into();
         let label = label.into();
         let mut component = Self {
-            base: ComponentBase::new(id.clone(), label.clone()),
+            base: WidgetBase::new(id.clone(), label.clone()),
             query: TextInput::new(format!("{id}__query"), label),
             source_options: options.clone(),
             list: SelectList::from_strings(format!("{id}__list"), "", options)
@@ -127,6 +128,19 @@ impl SearchableSelect {
             invalid_hidden: ctx.invalid_hidden.clone(),
             completion_menus: ctx.completion_menus.clone(),
         }
+    }
+}
+
+// SearchableSelect owns query and list as typed fields. They are internal
+// implementation details — validation is handled by the component itself via
+// validate(), so children() returns empty.
+impl Component for SearchableSelect {
+    fn children(&self) -> &[Node] {
+        &[]
+    }
+
+    fn children_mut(&mut self) -> &mut [Node] {
+        &mut []
     }
 }
 

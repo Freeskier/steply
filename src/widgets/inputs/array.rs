@@ -3,15 +3,16 @@ use crate::core::value::Value;
 use crate::terminal::{CursorPos, KeyCode, KeyEvent};
 use crate::ui::span::Span;
 use crate::ui::style::{Color, Style};
-use crate::widgets::base::InputBase;
+use crate::widgets::base::WidgetBase;
 use crate::widgets::traits::{
     DrawOutput, Drawable, FocusMode, InteractionResult, Interactive, RenderContext, TextAction,
+    ValidationMode,
 };
-use crate::widgets::validators::Validator;
+use crate::widgets::validators::{Validator, run_validators};
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
 pub struct ArrayInput {
-    base: InputBase,
+    base: WidgetBase,
     items: Vec<String>,
     active: usize,
     cursor: usize,
@@ -21,7 +22,7 @@ pub struct ArrayInput {
 impl ArrayInput {
     pub fn new(id: impl Into<String>, label: impl Into<String>) -> Self {
         Self {
-            base: InputBase::new(id, label),
+            base: WidgetBase::new(id, label),
             items: vec![String::new()],
             active: 0,
             cursor: 0,
@@ -254,10 +255,10 @@ impl Drawable for ArrayInput {
     }
 
     fn draw(&self, ctx: &RenderContext) -> DrawOutput {
-        let line = self.base.line_state(ctx);
-
-        let (content, _) = self.build_content(line.focused);
-        let mut spans = vec![Span::new(line.prefix).no_wrap()];
+        let focused = self.base.is_focused(ctx);
+        let prefix = self.base.input_prefix(ctx);
+        let (content, _) = self.build_content(focused);
+        let mut spans = vec![Span::new(prefix).no_wrap()];
         spans.extend(content);
         DrawOutput { lines: vec![spans] }
     }
@@ -349,21 +350,18 @@ impl Interactive for ArrayInput {
         }
     }
 
-    fn validate_submit(&self) -> Result<(), String> {
+    fn validate(&self, _mode: ValidationMode) -> Result<(), String> {
         for item in &self.items {
             let trimmed = item.trim();
-            if trimmed.is_empty() {
-                continue;
-            }
-            for validator in &self.validators {
-                validator(trimmed)?;
+            if !trimmed.is_empty() {
+                run_validators(&self.validators, trimmed)?;
             }
         }
         Ok(())
     }
 
     fn cursor_pos(&self) -> Option<CursorPos> {
-        let prefix = format!("{} {}: ", self.base.focus_marker(true), self.base.label());
+        let prefix = self.base.input_prefix_focused();
         let (_, cursor_offset) = self.build_content(true);
         Some(CursorPos {
             col: (UnicodeWidthStr::width(prefix.as_str()) + cursor_offset) as u16,

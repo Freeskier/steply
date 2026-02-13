@@ -1,11 +1,10 @@
-pub mod effect;
-pub mod reducer;
 pub mod search;
 pub mod value;
 
 use std::borrow::Borrow;
 use std::fmt;
 
+/// A strongly-typed string identifier for widget nodes.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct NodeId(String);
 

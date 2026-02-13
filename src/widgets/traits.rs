@@ -3,20 +3,29 @@ use crate::runtime::event::{ValueChange, WidgetEvent};
 use crate::terminal::{CursorPos, KeyEvent, TerminalSize};
 use crate::ui::span::{Span, SpanLine};
 use crate::widgets::inputs::text_edit;
-use crate::widgets::node::Node;
 use std::collections::{HashMap, HashSet};
+
+// ---------------------------------------------------------------------------
+// Focus & overlay modes
+// ---------------------------------------------------------------------------
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FocusMode {
+    /// Node does not participate in focus cycling.
     None,
+    /// A single focusable leaf (text input, button, checkbox, …).
     Leaf,
+    /// A component that manages focus internally among its children.
     Group,
+    /// A container that owns persistent children but defers focus to them.
     Container,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OverlayMode {
+    /// Overlay blocks all other focus/input (modal).
     Exclusive,
+    /// Overlay shares focus with the base layer.
     Shared,
 }
 
@@ -52,6 +61,27 @@ impl OverlayPlacement {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Validation
+// ---------------------------------------------------------------------------
+
+/// Controls how strictly a widget validates its current value.
+///
+/// - `Live`   — called on every keystroke; partial / in-progress input is
+///              acceptable (e.g. a masked date field while the user is still
+///              typing).
+/// - `Submit` — called when the user presses Enter or the step advances;
+///              the value must be complete and valid.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ValidationMode {
+    Live,
+    Submit,
+}
+
+// ---------------------------------------------------------------------------
+// Render context & output
+// ---------------------------------------------------------------------------
+
 #[derive(Debug, Clone)]
 pub struct CompletionMenu {
     pub matches: Vec<String>,
@@ -62,7 +92,9 @@ pub struct CompletionMenu {
 pub struct RenderContext {
     pub focused_id: Option<String>,
     pub terminal_size: TerminalSize,
+    /// Nodes whose validation error should be shown inline.
     pub visible_errors: HashMap<String, String>,
+    /// Nodes that failed validation but the error is not yet revealed.
     pub invalid_hidden: HashSet<String>,
     pub completion_menus: HashMap<String, CompletionMenu>,
 }
@@ -78,15 +110,23 @@ impl DrawOutput {
             lines: lines
                 .into_iter()
                 .map(|line| vec![Span::new(line).no_wrap()])
-                .collect::<Vec<_>>(),
+                .collect(),
         }
     }
 }
+
+// ---------------------------------------------------------------------------
+// Drawable — every node can draw itself
+// ---------------------------------------------------------------------------
 
 pub trait Drawable: Send {
     fn id(&self) -> &str;
     fn draw(&self, ctx: &RenderContext) -> DrawOutput;
 }
+
+// ---------------------------------------------------------------------------
+// InteractionResult
+// ---------------------------------------------------------------------------
 
 #[derive(Debug, Clone, Default)]
 pub struct InteractionResult {
@@ -144,6 +184,10 @@ impl InteractionResult {
     }
 }
 
+// ---------------------------------------------------------------------------
+// TextAction & TextEditState
+// ---------------------------------------------------------------------------
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TextAction {
     DeleteWordLeft,
@@ -162,7 +206,7 @@ pub struct CompletionState<'a> {
 }
 
 impl TextAction {
-    fn apply(self, state: &mut TextEditState<'_>) -> bool {
+    pub(crate) fn apply(self, state: &mut TextEditState<'_>) -> bool {
         match self {
             Self::DeleteWordLeft => text_edit::delete_word_left(state.value, state.cursor),
             Self::DeleteWordRight => text_edit::delete_word_right(state.value, state.cursor),
@@ -170,8 +214,14 @@ impl TextAction {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Interactive — input nodes
+// ---------------------------------------------------------------------------
+
 pub trait Interactive: Send {
     fn focus_mode(&self) -> FocusMode;
+
+    // --- overlay lifecycle (optional) ---
 
     fn overlay_placement(&self) -> Option<OverlayPlacement> {
         None
@@ -186,7 +236,10 @@ pub trait Interactive: Send {
         OverlayMode::Exclusive
     }
 
+    // --- input handling ---
+
     fn on_key(&mut self, key: KeyEvent) -> InteractionResult;
+
     fn text_editing(&mut self) -> Option<TextEditState<'_>> {
         None
     }
@@ -202,9 +255,11 @@ pub trait Interactive: Send {
             InteractionResult::ignored()
         }
     }
+
     fn completion(&mut self) -> Option<CompletionState<'_>> {
         None
     }
+
     fn on_event(&mut self, _event: &WidgetEvent) -> InteractionResult {
         InteractionResult::ignored()
     }
@@ -215,49 +270,45 @@ pub trait Interactive: Send {
         None
     }
 
+    // --- value ---
+
     fn value(&self) -> Option<Value> {
         None
     }
     fn set_value(&mut self, _value: Value) {}
-    fn validate(&self) -> Result<(), String> {
-        self.validate_submit()
-    }
-    fn validate_live(&self) -> Result<(), String> {
-        self.validate_submit()
-    }
-    fn validate_submit(&self) -> Result<(), String> {
+
+    // --- validation ---
+
+    /// Validate the current value.
+    ///
+    /// `Live` mode is called on every keystroke; partial input is acceptable.
+    /// `Submit` mode is called on step submission; the value must be complete.
+    ///
+    /// Most widgets ignore `mode` and apply the same rules regardless.
+    fn validate(&self, _mode: ValidationMode) -> Result<(), String> {
         Ok(())
-    }
-
-    fn visible_children(&self) -> Option<&[Node]> {
-        None
-    }
-    fn visible_children_mut(&mut self) -> Option<&mut [Node]> {
-        None
-    }
-
-    fn persistent_children(&self) -> Option<&[Node]> {
-        self.visible_children()
-    }
-    fn persistent_children_mut(&mut self) -> Option<&mut [Node]> {
-        self.visible_children_mut()
     }
 }
 
+// ---------------------------------------------------------------------------
+// InteractiveNode — combined bound used in Node
+// ---------------------------------------------------------------------------
+
 pub trait InteractiveNode: Drawable + Interactive {}
 impl<T> InteractiveNode for T where T: Drawable + Interactive {}
+
+// ---------------------------------------------------------------------------
+// RenderNode — output nodes
+// ---------------------------------------------------------------------------
 
 pub trait RenderNode: Drawable {
     fn value(&self) -> Option<Value> {
         None
     }
-
     fn set_value(&mut self, _value: Value) {}
-
     fn on_tick(&mut self) -> InteractionResult {
         InteractionResult::ignored()
     }
-
     fn validate(&self) -> Result<(), String> {
         Ok(())
     }

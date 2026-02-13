@@ -4,14 +4,14 @@ use crate::task::{TaskId, TaskRequest};
 use crate::terminal::{KeyCode, KeyEvent};
 use crate::ui::span::Span;
 use crate::ui::style::{Color, Style};
-use crate::widgets::base::InputBase;
+use crate::widgets::base::WidgetBase;
 use crate::widgets::traits::{
-    DrawOutput, Drawable, FocusMode, InteractionResult, Interactive, RenderContext,
+    DrawOutput, Drawable, FocusMode, InteractionResult, Interactive, RenderContext, ValidationMode,
 };
-use crate::widgets::validators::Validator;
+use crate::widgets::validators::{Validator, run_validators};
 
 pub struct ButtonInput {
-    base: InputBase,
+    base: WidgetBase,
     text: String,
     clicks: i64,
     validators: Vec<Validator>,
@@ -22,7 +22,7 @@ impl ButtonInput {
     pub fn new(id: impl Into<String>, label: impl Into<String>) -> Self {
         let label = label.into();
         Self {
-            base: InputBase::new(id, label.clone()),
+            base: WidgetBase::new(id, label.clone()),
             text: label,
             clicks: 0,
             validators: Vec::new(),
@@ -57,15 +57,13 @@ impl Drawable for ButtonInput {
     }
 
     fn draw(&self, ctx: &RenderContext) -> DrawOutput {
-        let line = self.base.line_state(ctx);
-
+        let focused = self.base.is_focused(ctx);
         let label = if self.text.is_empty() {
-            " ".to_string()
+            " "
         } else {
-            self.text.clone()
+            &self.text
         };
-
-        let value_style = if line.focused {
+        let style = if focused {
             Style::new()
                 .color(Color::White)
                 .background(Color::Blue)
@@ -76,8 +74,8 @@ impl Drawable for ButtonInput {
 
         DrawOutput {
             lines: vec![vec![
-                Span::new(line.prefix).no_wrap(),
-                Span::styled(label, value_style).no_wrap(),
+                Span::new(self.base.input_prefix(ctx)).no_wrap(),
+                Span::styled(label, style).no_wrap(),
             ]],
         }
     }
@@ -92,10 +90,8 @@ impl Interactive for ButtonInput {
         match key.code {
             KeyCode::Enter | KeyCode::Char(' ') => {
                 self.clicks = self.clicks.saturating_add(1);
-                if let Some(task_request) = self.task_request.clone() {
-                    return InteractionResult::with_event(WidgetEvent::TaskRequested {
-                        request: task_request,
-                    });
+                if let Some(request) = self.task_request.clone() {
+                    return InteractionResult::with_event(WidgetEvent::TaskRequested { request });
                 }
                 InteractionResult::handled()
             }
@@ -113,11 +109,7 @@ impl Interactive for ButtonInput {
         }
     }
 
-    fn validate_submit(&self) -> Result<(), String> {
-        let text_value = self.clicks.to_string();
-        for validator in &self.validators {
-            validator(text_value.as_str())?;
-        }
-        Ok(())
+    fn validate(&self, _mode: ValidationMode) -> Result<(), String> {
+        run_validators(&self.validators, &self.clicks.to_string())
     }
 }

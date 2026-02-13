@@ -18,7 +18,6 @@ impl AppState {
             );
             out
         };
-
         for (id, value) in values {
             self.apply_value_change(id, value);
         }
@@ -63,7 +62,10 @@ impl AppState {
     fn apply_value_to_step(&mut self, id: &str, value: Value) {
         if let Some(node) = find_node_mut(self.flow.current_step_mut().nodes.as_mut_slice(), id) {
             node.set_value(value);
-            if node.validate_live().is_ok() {
+            if node
+                .validate(crate::widgets::traits::ValidationMode::Live)
+                .is_ok()
+            {
                 self.runtime.validation.clear_error(id);
             }
         }

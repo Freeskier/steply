@@ -137,6 +137,21 @@ impl ProgressOutput {
     fn set_target(&mut self, target: f64) {
         let target = self.clamp(target);
         self.target_value = target;
+
+        // Advance the current animation to now before starting a new one, so
+        // that rapid updates (held key) continue from the current visual
+        // position rather than always restarting from a stale display_value.
+        if let Some(animation) = self.animation {
+            let elapsed = animation.started_at.elapsed();
+            let duration = animation.duration.as_secs_f64().max(f64::EPSILON);
+            let t = (elapsed.as_secs_f64() / duration).clamp(0.0, 1.0);
+            let eased = apply_easing(t, animation.easing);
+            self.display_value = animation.from + (animation.to - animation.from) * eased;
+            if t >= 1.0 {
+                self.animation = None;
+            }
+        }
+
         if (self.display_value - target).abs() < f64::EPSILON {
             self.animation = None;
             return;

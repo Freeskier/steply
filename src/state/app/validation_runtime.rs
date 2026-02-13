@@ -7,20 +7,26 @@ use crate::state::validation::{
 };
 use crate::widgets::node::Node;
 use crate::widgets::node::{NodeWalkScope, walk_nodes};
+use crate::widgets::traits::ValidationMode;
 use std::collections::HashMap;
 use std::time::Duration;
 
 const ERROR_INLINE_TTL: Duration = Duration::from_secs(2);
 
 impl AppState {
-    pub(super) fn validate_focused(&mut self, reveal: bool) -> bool {
+    /// Validate the currently focused node with `Live` mode (keystrokes).
+    pub(super) fn validate_focused_live(&mut self) -> bool {
+        self.validate_focused(ValidationMode::Live)
+    }
+
+    fn validate_focused(&mut self, mode: ValidationMode) -> bool {
         let Some(id) = self.ui.focus.current_id().map(|id| id.to_string()) else {
             return true;
         };
-        self.validate_in_active_nodes(&id, reveal)
+        self.validate_in_active_nodes(&id, mode)
     }
 
-    pub(super) fn validate_current_step(&mut self, reveal: bool) -> bool {
+    pub(super) fn validate_current_step(&mut self, mode: ValidationMode) -> bool {
         self.runtime.validation.clear_step_errors();
 
         let validations = {
@@ -29,12 +35,7 @@ impl AppState {
                 self.flow.current_step().nodes.as_slice(),
                 NodeWalkScope::Persistent,
                 &mut |node| {
-                    let result = if reveal {
-                        node.validate_submit()
-                    } else {
-                        node.validate_live()
-                    };
-                    out.push((node.id().to_string(), result));
+                    out.push((node.id().to_string(), node.validate(mode)));
                 },
             );
             out
@@ -42,40 +43,35 @@ impl AppState {
 
         let mut valid = true;
         for (id, result) in validations {
-            if !self.apply_validation_result(&id, Some(result), reveal) {
+            if !self.apply_validation_result(&id, Some(result), mode) {
                 valid = false;
             }
         }
 
-        if !self.apply_step_validators(reveal) {
+        if !self.apply_step_validators(mode) {
             valid = false;
         }
 
         valid
     }
 
-    fn validate_in_active_nodes(&mut self, id: &str, reveal: bool) -> bool {
-        let mut validation_result: Option<Result<(), String>> = None;
+    fn validate_in_active_nodes(&mut self, id: &str, mode: ValidationMode) -> bool {
+        let mut result: Option<Result<(), String>> = None;
         walk_nodes(self.active_nodes(), NodeWalkScope::Visible, &mut |node| {
-            if validation_result.is_none() && node.id() == id {
-                let result = if reveal {
-                    node.validate_submit()
-                } else {
-                    node.validate_live()
-                };
-                validation_result = Some(result);
+            if result.is_none() && node.id() == id {
+                result = Some(node.validate(mode));
             }
         });
-        self.apply_validation_result(id, validation_result, reveal)
+        self.apply_validation_result(id, result, mode)
     }
 
     fn apply_validation_result(
         &mut self,
         id: &str,
-        validation_result: Option<Result<(), String>>,
-        reveal: bool,
+        result: Option<Result<(), String>>,
+        mode: ValidationMode,
     ) -> bool {
-        match validation_result {
+        match result {
             Some(Ok(())) | None => {
                 self.runtime.validation.clear_error(id);
                 self.runtime
@@ -86,13 +82,13 @@ impl AppState {
                 true
             }
             Some(Err(error)) => {
-                let visibility = if reveal {
+                let visibility = if mode == ValidationMode::Submit {
                     ErrorVisibility::Inline
                 } else {
                     ErrorVisibility::Hidden
                 };
                 self.runtime.validation.set_error(id, error, visibility);
-                if reveal {
+                if mode == ValidationMode::Submit {
                     self.runtime
                         .pending_scheduler
                         .push(SchedulerCommand::Debounce {
@@ -121,7 +117,7 @@ impl AppState {
         self.runtime.pending_scheduler.drain(..).collect()
     }
 
-    fn apply_step_validators(&mut self, reveal: bool) -> bool {
+    fn apply_step_validators(&mut self, mode: ValidationMode) -> bool {
         let issues = {
             let step = self.flow.current_step();
             if step.validators.is_empty() {
@@ -143,21 +139,20 @@ impl AppState {
         for issue in issues {
             match issue.target {
                 ValidationTarget::Node(id) => {
-                    if !self.apply_validation_result(id.as_str(), Some(Err(issue.message)), reveal)
-                    {
+                    if !self.apply_validation_result(id.as_str(), Some(Err(issue.message)), mode) {
                         valid = false;
                     }
                 }
                 ValidationTarget::Step => {
                     valid = false;
-                    if reveal {
+                    if mode == ValidationMode::Submit {
                         step_errors.push(issue.message);
                     }
                 }
             }
         }
 
-        if reveal {
+        if mode == ValidationMode::Submit {
             self.runtime.validation.set_step_errors(step_errors);
         }
 

@@ -2,14 +2,14 @@ use crate::core::value::Value;
 use crate::terminal::{KeyCode, KeyEvent};
 use crate::ui::span::Span;
 use crate::ui::style::{Color, Style};
-use crate::widgets::base::InputBase;
+use crate::widgets::base::WidgetBase;
 use crate::widgets::traits::{
-    DrawOutput, Drawable, FocusMode, InteractionResult, Interactive, RenderContext,
+    DrawOutput, Drawable, FocusMode, InteractionResult, Interactive, RenderContext, ValidationMode,
 };
-use crate::widgets::validators::Validator;
+use crate::widgets::validators::{Validator, run_validators};
 
 pub struct CheckboxInput {
-    base: InputBase,
+    base: WidgetBase,
     checked: bool,
     validators: Vec<Validator>,
 }
@@ -17,7 +17,7 @@ pub struct CheckboxInput {
 impl CheckboxInput {
     pub fn new(id: impl Into<String>, label: impl Into<String>) -> Self {
         Self {
-            base: InputBase::new(id, label),
+            base: WidgetBase::new(id, label),
             checked: false,
             validators: Vec::new(),
         }
@@ -33,12 +33,8 @@ impl CheckboxInput {
         self
     }
 
-    fn value_text(&self) -> &'static str {
+    fn value_str(&self) -> &'static str {
         if self.checked { "true" } else { "false" }
-    }
-
-    fn set_from_text(&mut self, text: &str) {
-        self.checked = matches!(text.to_ascii_lowercase().as_str(), "true" | "1" | "yes");
     }
 }
 
@@ -48,18 +44,16 @@ impl Drawable for CheckboxInput {
     }
 
     fn draw(&self, ctx: &RenderContext) -> DrawOutput {
-        let line = self.base.line_state(ctx);
-
-        let (value_text, value_style) = if self.checked {
-            ("✓".to_string(), Style::new().color(Color::Green))
+        let (symbol, style) = if self.checked {
+            ("✓", Style::new().color(Color::Green))
         } else {
-            ("✗".to_string(), Style::new().color(Color::Red))
+            ("✗", Style::new().color(Color::Red))
         };
 
         DrawOutput {
             lines: vec![vec![
-                Span::new(line.prefix).no_wrap(),
-                Span::styled(value_text, value_style).no_wrap(),
+                Span::new(self.base.input_prefix(ctx)).no_wrap(),
+                Span::styled(symbol, style).no_wrap(),
             ]],
         }
     }
@@ -89,14 +83,11 @@ impl Interactive for CheckboxInput {
         if let Some(flag) = value.to_bool() {
             self.checked = flag;
         } else if let Some(text) = value.as_text() {
-            self.set_from_text(text);
+            self.checked = matches!(text.to_ascii_lowercase().as_str(), "true" | "1" | "yes");
         }
     }
 
-    fn validate_submit(&self) -> Result<(), String> {
-        for validator in &self.validators {
-            validator(self.value_text())?;
-        }
-        Ok(())
+    fn validate(&self, _mode: ValidationMode) -> Result<(), String> {
+        run_validators(&self.validators, self.value_str())
     }
 }

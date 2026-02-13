@@ -5,19 +5,19 @@ mod parser;
 use crate::core::value::Value;
 use crate::terminal::{CursorPos, KeyCode, KeyEvent};
 use crate::ui::span::Span;
-use crate::widgets::base::InputBase;
+use crate::widgets::base::WidgetBase;
 use crate::widgets::inputs::text_edit;
 use crate::widgets::traits::{
-    DrawOutput, Drawable, FocusMode, InteractionResult, Interactive, RenderContext,
+    DrawOutput, Drawable, FocusMode, InteractionResult, Interactive, RenderContext, ValidationMode,
 };
-use crate::widgets::validators::Validator;
+use crate::widgets::validators::{Validator, run_validators};
 use model::{MaskToken, SegmentKind};
 use unicode_width::UnicodeWidthStr;
 
 const INVALID_MASK_MESSAGE: &str = "Invalid or incomplete value";
 
 pub struct MaskedInput {
-    base: InputBase,
+    base: WidgetBase,
     tokens: Vec<MaskToken>,
     cursor_token: usize,
     cursor_offset: usize,
@@ -30,7 +30,7 @@ impl MaskedInput {
         let tokens = parser::parse_mask(mask.into().as_str());
         let cursor_token = format::first_segment_pos(tokens.as_slice()).unwrap_or(0);
         Self {
-            base: InputBase::new(id, label),
+            base: WidgetBase::new(id, label),
             tokens,
             cursor_token,
             cursor_offset: 0,
@@ -322,10 +322,9 @@ impl Drawable for MaskedInput {
     }
 
     fn draw(&self, ctx: &RenderContext) -> DrawOutput {
-        let line_state = self.base.line_state(ctx);
-        let mut line = vec![Span::new(line_state.prefix).no_wrap()];
+        let prefix = self.base.input_prefix(ctx);
+        let mut line = vec![Span::new(prefix).no_wrap()];
         line.extend(format::render_spans(self.tokens.as_slice()));
-
         DrawOutput { lines: vec![line] }
     }
 }
@@ -405,24 +404,13 @@ impl Interactive for MaskedInput {
         self.clamp_cursor();
     }
 
-    fn validate_live(&self) -> Result<(), String> {
+    fn validate(&self, _mode: ValidationMode) -> Result<(), String> {
         let value = self.validated_value()?;
-        for validator in &self.validators {
-            validator(value.as_str())?;
-        }
-        Ok(())
-    }
-
-    fn validate_submit(&self) -> Result<(), String> {
-        let value = self.validated_value()?;
-        for validator in &self.validators {
-            validator(value.as_str())?;
-        }
-        Ok(())
+        run_validators(&self.validators, value.as_str())
     }
 
     fn cursor_pos(&self) -> Option<CursorPos> {
-        let prefix = format!("{} {}: ", self.base.focus_marker(true), self.base.label());
+        let prefix = self.base.input_prefix_focused();
         let local_offset = format::cursor_offset(
             self.tokens.as_slice(),
             self.cursor_token,

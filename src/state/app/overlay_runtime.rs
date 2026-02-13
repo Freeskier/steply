@@ -21,11 +21,11 @@ impl AppState {
                 return;
             };
 
-            Self::emit_overlay_lifecycle_event(overlay, overlay_id, OverlayLifecycle::BeforeClose);
+            Self::emit_overlay_lifecycle(overlay, overlay_id, OverlayLifecycle::BeforeClose);
             let restored = overlay
                 .overlay_close()
                 .or_else(|| entry.focus_before_open.map(|id| id.into_inner()));
-            Self::emit_overlay_lifecycle_event(overlay, overlay_id, OverlayLifecycle::Closed);
+            Self::emit_overlay_lifecycle(overlay, overlay_id, OverlayLifecycle::Closed);
             (restored, Some(overlay_id.to_string()))
         };
 
@@ -34,11 +34,7 @@ impl AppState {
         if let Some(overlay_id) = closed_overlay_id {
             let nodes = self.flow.current_step_mut().nodes.as_mut_slice();
             if let Some(overlay) = find_overlay_mut(nodes, &overlay_id) {
-                Self::emit_overlay_lifecycle_event(
-                    overlay,
-                    &overlay_id,
-                    OverlayLifecycle::AfterClose,
-                );
+                Self::emit_overlay_lifecycle(overlay, &overlay_id, OverlayLifecycle::AfterClose);
             }
         }
     }
@@ -66,10 +62,10 @@ impl AppState {
             let Some(overlay) = find_overlay_mut(nodes, overlay_id) else {
                 return false;
             };
-            Self::emit_overlay_lifecycle_event(overlay, overlay_id, OverlayLifecycle::BeforeOpen);
+            Self::emit_overlay_lifecycle(overlay, overlay_id, OverlayLifecycle::BeforeOpen);
             let opened = overlay.overlay_open(saved_focus_id.as_ref().map(NodeId::to_string));
             if opened {
-                Self::emit_overlay_lifecycle_event(overlay, overlay_id, OverlayLifecycle::Opened);
+                Self::emit_overlay_lifecycle(overlay, overlay_id, OverlayLifecycle::Opened);
             }
             (opened, overlay.focus_mode(), overlay.overlay_mode())
         };
@@ -90,7 +86,7 @@ impl AppState {
         opened
     }
 
-    fn emit_overlay_lifecycle_event(
+    fn emit_overlay_lifecycle(
         overlay: &mut crate::widgets::node::Node,
         overlay_id: &str,
         phase: OverlayLifecycle,

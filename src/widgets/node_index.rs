@@ -68,8 +68,14 @@ fn node_at_path_slice_mut<'a>(
         return Some(node);
     }
 
+    // Use the new scope-aware children accessor from Node.
+    // For Visible scope, components never expose children (they draw themselves).
+    // For Persistent scope, component children are always accessible.
     let children = match scope {
-        NodeWalkScope::Visible => node.visible_children_mut()?,
+        NodeWalkScope::Visible => match node {
+            Node::Component(_) => return None,
+            _ => return None,
+        },
         NodeWalkScope::Persistent => node.persistent_children_mut()?,
     };
     node_at_path_slice_mut(children, rest, scope)
@@ -85,8 +91,10 @@ fn collect_paths(
         path.push(index);
         out.insert(node.id().into(), path.clone());
 
+        // For Visible scope: don't descend into components (they draw themselves).
+        // For Persistent scope: descend into component children.
         let children = match scope {
-            NodeWalkScope::Visible => node.visible_children(),
+            NodeWalkScope::Visible => None,
             NodeWalkScope::Persistent => node.persistent_children(),
         };
         if let Some(children) = children {

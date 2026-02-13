@@ -4,7 +4,6 @@ pub mod checkbox;
 pub mod choice;
 pub mod color;
 pub mod masked;
-pub mod password;
 pub mod select;
 pub mod slider;
 pub mod text;

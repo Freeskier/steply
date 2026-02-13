@@ -4,18 +4,34 @@ use crate::runtime::event::WidgetEvent;
 use crate::terminal::{CursorPos, KeyCode, KeyEvent};
 use crate::ui::span::Span;
 use crate::ui::style::{Color, Style};
-use crate::widgets::base::InputBase;
+use crate::widgets::base::WidgetBase;
 use crate::widgets::traits::{
     CompletionState, DrawOutput, Drawable, FocusMode, InteractionResult, Interactive,
-    RenderContext, TextEditState,
+    RenderContext, TextEditState, ValidationMode,
 };
-use crate::widgets::validators::Validator;
+use crate::widgets::validators::{Validator, run_validators};
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
+/// Display mode for a text input field.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum TextMode {
+    /// Plain visible text with optional completion support.
+    #[default]
+    Plain,
+    /// Value is masked with `*` characters. Word-deletion is disabled
+    /// (Ctrl+W / Alt+D) since the cursor points at a placeholder, not a real
+    /// word boundary.
+    Password,
+    /// Value is fully hidden (displayed as spaces). The cursor does not move —
+    /// it is always shown at the start of the input area.
+    Secret,
+}
+
 pub struct TextInput {
-    base: InputBase,
+    base: WidgetBase,
     value: String,
     cursor: usize,
+    mode: TextMode,
     submit_target: Option<String>,
     validators: Vec<Validator>,
     completion_items: Vec<String>,
@@ -24,13 +40,19 @@ pub struct TextInput {
 impl TextInput {
     pub fn new(id: impl Into<String>, label: impl Into<String>) -> Self {
         Self {
-            base: InputBase::new(id, label),
+            base: WidgetBase::new(id, label),
             value: String::new(),
             cursor: 0,
+            mode: TextMode::Plain,
             submit_target: None,
             validators: Vec::new(),
             completion_items: Vec::new(),
         }
+    }
+
+    pub fn with_mode(mut self, mode: TextMode) -> Self {
+        self.mode = mode;
+        self
     }
 
     pub fn with_submit_target(mut self, target: impl Into<String>) -> Self {
@@ -55,6 +77,15 @@ impl TextInput {
     pub fn completion_items_mut(&mut self) -> &mut Vec<String> {
         &mut self.completion_items
     }
+
+    fn display_value(&self) -> String {
+        let len = text_edit::char_count(&self.value);
+        match self.mode {
+            TextMode::Plain => self.value.clone(),
+            TextMode::Password => "*".repeat(len),
+            TextMode::Secret => " ".repeat(len),
+        }
+    }
 }
 
 impl Drawable for TextInput {
@@ -63,40 +94,29 @@ impl Drawable for TextInput {
     }
 
     fn draw(&self, ctx: &RenderContext) -> DrawOutput {
-        let line = self.base.line_state(ctx);
+        let prefix = self.base.input_prefix(ctx);
+        let focused = self.base.is_focused(ctx);
 
         let mut first_line = vec![
-            Span::new(line.prefix).no_wrap(),
-            Span::styled(self.value.clone(), Style::default()).no_wrap(),
+            Span::new(prefix).no_wrap(),
+            Span::styled(self.display_value(), Style::default()).no_wrap(),
         ];
 
-        let mut lines = Vec::new();
-        if line.focused
+        // Completion ghost text — only in Plain mode
+        if self.mode == TextMode::Plain
+            && focused
             && let Some(menu) = ctx.completion_menus.get(self.base.id())
             && let Some(selected) = menu.matches.get(menu.selected)
-            && let Some(suffix) = completion_suffix(selected, self.value.as_str(), self.cursor)
+            && let Some(suffix) = completion_suffix(selected, &self.value, self.cursor)
             && !suffix.is_empty()
         {
             first_line.push(Span::styled(suffix, Style::new().color(Color::DarkGrey)).no_wrap());
         }
-        lines.push(first_line);
 
-        DrawOutput { lines }
+        DrawOutput {
+            lines: vec![first_line],
+        }
     }
-}
-
-fn completion_suffix(selected: &str, value: &str, cursor: usize) -> Option<String> {
-    let (_, token) = text_edit::completion_prefix(value, cursor)?;
-    if token.is_empty() {
-        return None;
-    }
-
-    if !selected.to_lowercase().starts_with(&token.to_lowercase()) {
-        return None;
-    }
-
-    let token_len = token.chars().count();
-    Some(selected.chars().skip(token_len).collect())
 }
 
 impl Interactive for TextInput {
@@ -116,17 +136,32 @@ impl Interactive for TextInput {
                 }
                 InteractionResult::ignored()
             }
-            KeyCode::Left => {
+            KeyCode::Delete => {
+                if text_edit::delete_char(&mut self.value, &mut self.cursor) {
+                    return InteractionResult::handled();
+                }
+                InteractionResult::ignored()
+            }
+            // Cursor movement — disabled in Secret mode
+            KeyCode::Left if self.mode != TextMode::Secret => {
                 if text_edit::move_left(&mut self.cursor, &self.value) {
                     return InteractionResult::handled();
                 }
                 InteractionResult::ignored()
             }
-            KeyCode::Right => {
+            KeyCode::Right if self.mode != TextMode::Secret => {
                 if text_edit::move_right(&mut self.cursor, &self.value) {
                     return InteractionResult::handled();
                 }
                 InteractionResult::ignored()
+            }
+            KeyCode::Home if self.mode != TextMode::Secret => {
+                self.cursor = 0;
+                InteractionResult::handled()
+            }
+            KeyCode::End if self.mode != TextMode::Secret => {
+                self.cursor = text_edit::char_count(&self.value);
+                InteractionResult::handled()
             }
             KeyCode::Enter => InteractionResult::submit_or_produce(
                 self.submit_target.as_deref(),
@@ -137,6 +172,11 @@ impl Interactive for TextInput {
     }
 
     fn text_editing(&mut self) -> Option<TextEditState<'_>> {
+        // Password/Secret: word-deletion is disabled. Return None so that
+        // on_text_action (Ctrl+W / Alt+D) is a no-op for these modes.
+        if self.mode != TextMode::Plain {
+            return None;
+        }
         Some(TextEditState {
             value: &mut self.value,
             cursor: &mut self.cursor,
@@ -144,6 +184,10 @@ impl Interactive for TextInput {
     }
 
     fn completion(&mut self) -> Option<CompletionState<'_>> {
+        // Completion only makes sense for plain text
+        if self.mode != TextMode::Plain {
+            return None;
+        }
         Some(CompletionState {
             value: &mut self.value,
             cursor: &mut self.cursor,
@@ -176,26 +220,45 @@ impl Interactive for TextInput {
         }
     }
 
-    fn validate_submit(&self) -> Result<(), String> {
-        for validator in &self.validators {
-            validator(&self.value)?;
-        }
-        Ok(())
+    fn validate(&self, _mode: ValidationMode) -> Result<(), String> {
+        run_validators(&self.validators, &self.value)
     }
 
     fn cursor_pos(&self) -> Option<CursorPos> {
-        let prefix = format!("{} {}: ", self.base.focus_marker(true), self.base.label());
-        let mut value_width = 0usize;
-        for ch in self
-            .value
-            .chars()
-            .take(text_edit::clamp_cursor(self.cursor, &self.value))
-        {
-            value_width = value_width.saturating_add(UnicodeWidthChar::width(ch).unwrap_or(0));
-        }
-        Some(CursorPos {
-            col: (UnicodeWidthStr::width(prefix.as_str()) + value_width) as u16,
-            row: 0,
-        })
+        let prefix = self.base.input_prefix_focused();
+        let prefix_width = UnicodeWidthStr::width(prefix.as_str()) as u16;
+
+        let col = match self.mode {
+            // Secret: cursor always at the start of the value area
+            TextMode::Secret => prefix_width,
+            // Password: cursor tracks char position but each char is 1-wide (*)
+            TextMode::Password => {
+                prefix_width + text_edit::clamp_cursor(self.cursor, &self.value) as u16
+            }
+            // Plain: cursor tracks unicode width
+            TextMode::Plain => {
+                let value_width: usize = self
+                    .value
+                    .chars()
+                    .take(text_edit::clamp_cursor(self.cursor, &self.value))
+                    .map(|ch| UnicodeWidthChar::width(ch).unwrap_or(0))
+                    .sum();
+                prefix_width + value_width as u16
+            }
+        };
+
+        Some(CursorPos { col, row: 0 })
     }
+}
+
+fn completion_suffix(selected: &str, value: &str, cursor: usize) -> Option<String> {
+    let (_, token) = text_edit::completion_prefix(value, cursor)?;
+    if token.is_empty() {
+        return None;
+    }
+    if !selected.to_lowercase().starts_with(&token.to_lowercase()) {
+        return None;
+    }
+    let token_len = token.chars().count();
+    Some(selected.chars().skip(token_len).collect())
 }

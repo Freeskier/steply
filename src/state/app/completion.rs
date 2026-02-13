@@ -1,7 +1,15 @@
-use super::{AppState, CompletionSession};
+use super::AppState;
 use crate::core::NodeId;
 use crate::widgets::inputs::text_edit;
 use crate::widgets::node::find_node_mut;
+
+#[derive(Debug, Clone)]
+pub(super) struct CompletionSession {
+    pub owner_id: NodeId,
+    pub matches: Vec<String>,
+    pub index: usize,
+    pub start: usize,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum CompletionStartResult {
@@ -21,7 +29,6 @@ impl AppState {
         if session.owner_id.as_str() != focused {
             return None;
         }
-
         Some((
             session.owner_id.to_string(),
             session.matches.clone(),
@@ -33,7 +40,6 @@ impl AppState {
         let Some(session) = self.ui.completion_session.as_ref() else {
             return false;
         };
-
         self.ui
             .focus
             .current_id()
@@ -75,7 +81,6 @@ impl AppState {
             let Some(state) = node.completion() else {
                 return false;
             };
-
             text_edit::replace_completion_prefix(
                 state.value,
                 state.cursor,
@@ -87,7 +92,7 @@ impl AppState {
 
         self.clear_completion_session();
         if updated {
-            self.validate_focused(false);
+            self.validate_focused_live();
             self.clear_step_errors();
         }
         updated
@@ -166,12 +171,12 @@ impl AppState {
             }
             CompletionStartResult::ExpandedToSingle => {
                 self.clear_completion_session();
-                self.validate_focused(false);
+                self.validate_focused_live();
                 self.clear_step_errors();
                 CompletionStartResult::ExpandedToSingle
             }
             CompletionStartResult::OpenedMenu => {
-                self.validate_focused(false);
+                self.validate_focused_live();
                 self.clear_step_errors();
                 CompletionStartResult::OpenedMenu
             }
@@ -183,7 +188,6 @@ fn completion_matches(items: &[String], prefix: &str) -> Vec<String> {
     if prefix.is_empty() {
         return Vec::new();
     }
-
     let prefix_lower = prefix.to_lowercase();
     let mut out = Vec::new();
     for item in items {
@@ -198,10 +202,8 @@ fn longest_common_prefix(items: &[String]) -> String {
     let Some(first) = items.first() else {
         return String::new();
     };
-
     let first_chars: Vec<char> = first.chars().collect();
     let mut prefix_len = first_chars.len();
-
     for item in &items[1..] {
         let item_chars: Vec<char> = item.chars().collect();
         let mut common = 0usize;
@@ -216,6 +218,5 @@ fn longest_common_prefix(items: &[String]) -> String {
             break;
         }
     }
-
     first_chars.into_iter().take(prefix_len).collect()
 }

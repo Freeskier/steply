@@ -1,10 +1,10 @@
-use crate::core::effect::Effect;
-use crate::core::reducer::Reducer;
+use crate::runtime::effect::Effect;
 use crate::runtime::event::{AppEvent, WidgetEvent};
 use crate::runtime::intent::Intent;
 use crate::runtime::key_bindings::KeyBindings;
+use crate::runtime::reducer::Reducer;
 use crate::runtime::scheduler::Scheduler;
-use crate::state::app_state::AppState;
+use crate::state::app::AppState;
 use crate::task::TaskExecutor;
 use crate::terminal::{Terminal, TerminalEvent};
 use crate::ui::renderer::{Renderer, RendererConfig};
@@ -31,11 +31,6 @@ impl Runtime {
         key_bindings: KeyBindings,
     ) -> Self {
         Self::with_parts(state, terminal, key_bindings, Renderer::default())
-    }
-
-    pub fn with_renderer(mut self, renderer: Renderer) -> Self {
-        self.renderer = renderer;
-        self
     }
 
     pub fn with_renderer_config(mut self, config: RendererConfig) -> Self {
@@ -68,7 +63,7 @@ impl Runtime {
 
             while !self.state.should_exit() {
                 self.process_scheduled_events()?;
-                self.process_task_events()?;
+                self.process_task_completions()?;
                 self.flush_pending_task_invocations();
 
                 let now = Instant::now();
@@ -92,7 +87,7 @@ impl Runtime {
         Ok(())
     }
 
-    fn process_task_events(&mut self) -> io::Result<()> {
+    fn process_task_completions(&mut self) -> io::Result<()> {
         for completion in self.task_executor.drain_ready() {
             self.dispatch_app_event(AppEvent::Widget(WidgetEvent::TaskCompleted { completion }))?;
         }
@@ -114,8 +109,8 @@ impl Runtime {
             }
             AppEvent::Terminal(TerminalEvent::Tick) => self.process_intent(Intent::Tick),
             AppEvent::Intent(intent) => self.process_intent(intent),
-            AppEvent::Widget(widget_event) => {
-                if self.apply_widget_event(widget_event) {
+            AppEvent::Widget(event) => {
+                if self.apply_widget_event(event) {
                     self.render()?;
                 }
                 Ok(())

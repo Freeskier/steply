@@ -5,7 +5,7 @@ use super::overlay_geometry::{
     FloatingOverlayGeometry, InlineOverlayGeometry, OverlayGeometry, resolve_overlay_geometry,
 };
 use super::{RenderFrame, StepVisualStatus, draw_nodes, render_context_for_nodes};
-use crate::state::app_state::AppState;
+use crate::state::app::AppState;
 use crate::terminal::{CursorPos, TerminalSize};
 use crate::ui::layout::Layout;
 use crate::ui::span::{Span, SpanLine};

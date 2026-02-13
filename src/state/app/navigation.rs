@@ -14,18 +14,25 @@ impl AppState {
 
         if self.has_completion_for_focused() {
             match key.code {
-                KeyCode::Up => {
-                    if self.cycle_completion_for_focused(true) {
-                        return InteractionResult::handled();
-                    }
+                // Right arrow accepts ghost only when cursor is at end of input
+                KeyCode::Right if self.cursor_at_end_for_focused() => {
+                    self.accept_completion_for_focused();
+                    self.validate_focused_live();
+                    self.clear_step_errors();
+                    self.try_update_ghost_for_focused();
+                    return InteractionResult::handled();
                 }
-                KeyCode::Down => {
-                    if self.cycle_completion_for_focused(false) {
-                        return InteractionResult::handled();
-                    }
-                }
+                // Enter accepts the ghost completion (blocks submit)
                 KeyCode::Enter => {
                     self.accept_completion_for_focused();
+                    self.validate_focused_live();
+                    self.clear_step_errors();
+                    self.try_update_ghost_for_focused();
+                    return InteractionResult::handled();
+                }
+                // Esc dismisses ghost without clearing input
+                KeyCode::Esc => {
+                    self.clear_completion_session();
                     return InteractionResult::handled();
                 }
                 _ => {}
@@ -40,9 +47,10 @@ impl AppState {
         };
 
         if result.handled {
-            self.clear_completion_session();
             self.validate_focused_live();
             self.clear_step_errors();
+            // After any handled keypress, refresh ghost completion instead of clearing
+            self.try_update_ghost_for_focused();
         }
         result
     }
@@ -60,23 +68,25 @@ impl AppState {
         };
 
         if result.handled {
-            self.clear_completion_session();
             self.validate_focused_live();
             self.clear_step_errors();
+            // Refresh ghost after word-delete etc.
+            self.try_update_ghost_for_focused();
         }
         result
     }
 
     pub fn handle_tab_forward(&mut self) -> InteractionResult {
-        if self.accept_completion_for_focused() {
-            self.focus_next();
+        if self.has_completion_for_focused() {
+            // Tab cycles forward through ghost options
+            self.cycle_completion_for_focused(false);
             return InteractionResult::handled();
         }
 
         match self.try_start_completion_for_focused(false) {
             CompletionStartResult::OpenedMenu => return InteractionResult::handled(),
             CompletionStartResult::ExpandedToSingle => {
-                self.focus_next();
+                self.try_update_ghost_for_focused();
                 return InteractionResult::handled();
             }
             CompletionStartResult::None => {}
@@ -95,15 +105,16 @@ impl AppState {
     }
 
     pub fn handle_tab_backward(&mut self) -> InteractionResult {
-        if self.accept_completion_for_focused() {
-            self.focus_prev();
+        if self.has_completion_for_focused() {
+            // Shift+Tab cycles backward through ghost options
+            self.cycle_completion_for_focused(true);
             return InteractionResult::handled();
         }
 
         match self.try_start_completion_for_focused(true) {
             CompletionStartResult::OpenedMenu => return InteractionResult::handled(),
             CompletionStartResult::ExpandedToSingle => {
-                self.focus_prev();
+                self.try_update_ghost_for_focused();
                 return InteractionResult::handled();
             }
             CompletionStartResult::None => {}

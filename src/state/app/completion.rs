@@ -36,6 +36,21 @@ impl AppState {
         ))
     }
 
+    /// Returns true if the focused widget's cursor is at the end of its value.
+    pub(crate) fn cursor_at_end_for_focused(&mut self) -> bool {
+        let Some(focused_id) = self.ui.focus.current_id().map(ToOwned::to_owned) else {
+            return false;
+        };
+        let nodes = self.active_nodes_mut();
+        let Some(node) = find_node_mut(nodes, &focused_id) else {
+            return false;
+        };
+        let Some(state) = node.completion() else {
+            return false;
+        };
+        *state.cursor >= text_edit::char_count(state.value.as_str())
+    }
+
     pub(crate) fn has_completion_for_focused(&self) -> bool {
         let Some(session) = self.ui.completion_session.as_ref() else {
             return false;
@@ -117,6 +132,50 @@ impl AppState {
             (session.index + 1) % session.matches.len()
         };
         true
+    }
+
+    /// Called after each keypress: silently open/update a ghost completion session
+    /// without modifying the input value. Shows ghost text for the first match.
+    pub(super) fn try_update_ghost_for_focused(&mut self) {
+        let Some(focused_id) = self.ui.focus.current_id().map(ToOwned::to_owned) else {
+            self.clear_completion_session();
+            return;
+        };
+
+        let result = (|| -> Option<CompletionSession> {
+            let nodes = self.active_nodes_mut();
+            let node = find_node_mut(nodes, &focused_id)?;
+            let state = node.completion()?;
+
+            let (start, token) = text_edit::completion_prefix(state.value.as_str(), *state.cursor)?;
+            if token.is_empty() {
+                return None;
+            }
+            let matches = completion_matches(state.candidates, &token);
+            // Only show ghost if the first match is strictly longer than the typed token
+            let first = matches.first()?;
+            if first == &token {
+                return None;
+            }
+
+            // Preserve current cycle index if session is already open for same owner+start
+            let index = self
+                .ui
+                .completion_session
+                .as_ref()
+                .filter(|s| s.owner_id.as_str() == focused_id && s.start == start)
+                .map(|s| s.index.min(matches.len().saturating_sub(1)))
+                .unwrap_or(0);
+
+            Some(CompletionSession {
+                owner_id: NodeId::from(focused_id.as_str()),
+                matches,
+                index,
+                start,
+            })
+        })();
+
+        self.ui.completion_session = result;
     }
 
     pub(super) fn try_start_completion_for_focused(

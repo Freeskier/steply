@@ -1,6 +1,7 @@
 use crate::state::flow::Flow;
 use crate::state::step::Step;
 use crate::task::{TaskSpec, TaskSubscription};
+use crate::widgets::components::file_browser::FileBrowserInput;
 use crate::widgets::components::searchable_select::SearchableSelect;
 use crate::widgets::components::select_list::SelectList;
 use crate::widgets::components::select_list::SelectMode;
@@ -44,7 +45,8 @@ fn step_text_inputs() -> Step {
             Node::Input(Box::new(
                 TextInput::new("txt_name", "Full name")
                     .with_validator(validators::required("Name is required"))
-                    .with_validator(validators::min_length(2, "At least 2 characters")),
+                    .with_validator(validators::min_length(2, "At least 2 characters"))
+                    .with_completion_items(vec!["test".to_string(), "teflon".to_string()]),
             )),
             Node::Input(Box::new(
                 TextInput::new("txt_user", "Username")
@@ -274,7 +276,33 @@ fn step_color() -> Step {
     .with_hint("Tab between R/G/B channels  •  type hex or adjust with Up/Down")
 }
 
-// ── Step 7: Summary + button ─────────────────────────────────────────────────
+// ── Step 7: File browser ─────────────────────────────────────────────────────
+
+fn step_file_browser() -> Step {
+    Step::new(
+        "step_file_browser",
+        "File browser",
+        vec![
+            Node::Output(Box::new(TextOutput::new(
+                "fb_intro",
+                "Type a path directly (Tab for completion) or press Ctrl+Space to open the browser.",
+            ))),
+            Node::Component(Box::new(
+                FileBrowserInput::new("fb_any", "Any file")
+                    .with_validator(validators::required("Path is required")),
+            )),
+            Node::Component(Box::new(
+                FileBrowserInput::new("fb_rust", "Rust file")
+                    .with_ext_filter(&["rs"])
+                    .with_hide_hidden(false)
+                    .with_recursive(true),
+            )),
+        ],
+    )
+    .with_hint("Tab → path completion  •  Ctrl+Space → browser  •  ← → navigate dirs  •  Enter → select")
+}
+
+// ── Step 8: Summary + button ─────────────────────────────────────────────────
 
 fn step_finish() -> Step {
     Step::new(
@@ -297,7 +325,8 @@ fn step_finish() -> Step {
 
 pub fn build_demo_flow() -> Flow {
     Flow::new(vec![
-        // step_text_inputs(),
+        step_file_browser(),
+        step_text_inputs(),
         step_structured_inputs(),
         step_selection(),
         step_toggles(),

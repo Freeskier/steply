@@ -1,0 +1,529 @@
+mod cache;
+mod model;
+mod parser;
+mod scanner;
+mod search;
+
+pub use model::EntryFilter;
+
+use std::collections::HashSet;
+use std::path::{Path, PathBuf};
+use std::time::{Duration, Instant};
+
+use crate::core::value::Value;
+use crate::runtime::event::WidgetEvent;
+use crate::terminal::{CursorPos, KeyCode, KeyEvent, KeyModifiers};
+use crate::ui::span::Span;
+use crate::ui::style::{Color, Style};
+use crate::widgets::base::WidgetBase;
+use crate::widgets::components::select_list::{SelectList, SelectMode};
+use crate::widgets::inputs::text::TextInput;
+use crate::widgets::node::{Component, Node};
+use crate::widgets::traits::{
+    CompletionState, DrawOutput, Drawable, FocusMode, InteractionResult, Interactive,
+    RenderContext, TextEditState, ValidationMode,
+};
+use crate::widgets::validators::{Validator, run_validators};
+
+use cache::{CacheKey, ScanCache};
+use model::EntryFilter as EF;
+use parser::parse_input;
+use scanner::{ScanRequest, ScannerHandle};
+use search::ScanResult;
+
+const DEBOUNCE_MS: u64 = 150;
+const SPINNER_FRAMES: &[char] = &['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
+
+/// A file-browser input: text field with path completion + Ctrl+Space inline list.
+pub struct FileBrowserInput {
+    base: WidgetBase,
+
+    // Sub-widgets
+    text: TextInput,
+    list: SelectList,
+
+    // Config
+    cwd: PathBuf,
+    recursive: bool,
+    hide_hidden: bool,
+    entry_filter: EF,
+    ext_filter: Option<HashSet<String>>,
+    show_relative: bool,
+    submit_target: Option<String>,
+    validators: Vec<Validator>,
+
+    // Async scan
+    scanner: ScannerHandle,
+    cache: ScanCache,
+    last_scan_result: Option<ScanResult>,
+
+    // Debounce
+    debounce_deadline: Option<Instant>,
+
+    // Inline browser state
+    overlay_open: bool,
+    browse_dir: PathBuf,
+
+    // Spinner
+    spinner_frame: usize,
+    scanning: bool,
+}
+
+impl FileBrowserInput {
+    pub fn new(id: impl Into<String>, label: impl Into<String>) -> Self {
+        let id = id.into();
+        let label = label.into();
+        let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("/"));
+
+        let text = TextInput::new(format!("{id}__text"), label.clone());
+        let list = SelectList::from_strings(format!("{id}__list"), "", vec![])
+            .with_mode(SelectMode::List)
+            .with_show_label(false)
+            .with_max_visible(12);
+
+        Self {
+            base: WidgetBase::new(id, label),
+            text,
+            list,
+            browse_dir: cwd.clone(),
+            cwd,
+            recursive: false,
+            hide_hidden: true,
+            entry_filter: EF::All,
+            ext_filter: None,
+            show_relative: false,
+            submit_target: None,
+            validators: Vec::new(),
+            scanner: ScannerHandle::new(),
+            cache: ScanCache::new(),
+            last_scan_result: None,
+            debounce_deadline: None,
+            overlay_open: false,
+            spinner_frame: 0,
+            scanning: false,
+        }
+    }
+
+    // ── Builder ──────────────────────────────────────────────────────────────
+
+    pub fn with_cwd(mut self, cwd: impl Into<PathBuf>) -> Self {
+        let p = cwd.into();
+        self.browse_dir = p.clone();
+        self.cwd = p;
+        self
+    }
+
+    pub fn with_recursive(mut self, recursive: bool) -> Self {
+        self.recursive = recursive;
+        self
+    }
+
+    pub fn with_hide_hidden(mut self, hide: bool) -> Self {
+        self.hide_hidden = hide;
+        self
+    }
+
+    pub fn with_entry_filter(mut self, filter: EF) -> Self {
+        self.entry_filter = filter;
+        self
+    }
+
+    pub fn with_ext_filter(mut self, exts: &[&str]) -> Self {
+        self.ext_filter = Some(
+            exts.iter()
+                .map(|e| e.trim_start_matches('.').to_ascii_lowercase())
+                .collect(),
+        );
+        self
+    }
+
+    pub fn with_show_relative(mut self, show: bool) -> Self {
+        self.show_relative = show;
+        self
+    }
+
+    pub fn with_max_visible(mut self, n: usize) -> Self {
+        self.list.set_max_visible(n);
+        self
+    }
+
+    pub fn with_submit_target(mut self, target: impl Into<String>) -> Self {
+        self.submit_target = Some(target.into());
+        self
+    }
+
+    pub fn with_validator(mut self, validator: Validator) -> Self {
+        self.validators.push(validator);
+        self
+    }
+
+    // ── Helpers ──────────────────────────────────────────────────────────────
+
+    fn current_input(&self) -> String {
+        self.text
+            .value()
+            .and_then(|v| v.to_text_scalar())
+            .unwrap_or_default()
+    }
+
+    fn spinner_char(&self) -> char {
+        SPINNER_FRAMES[self.spinner_frame % SPINNER_FRAMES.len()]
+    }
+
+    fn make_key(&self, dir: &Path, query: &str) -> CacheKey {
+        // `**` in a glob pattern implies recursive even if self.recursive is false
+        let recursive = self.recursive || query.contains("**");
+        CacheKey {
+            dir: dir.to_path_buf(),
+            query: query.to_string(),
+            recursive,
+            hide_hidden: self.hide_hidden,
+            entry_filter: self.entry_filter,
+        }
+    }
+
+    fn submit_scan(&mut self, dir: PathBuf, query: String, is_glob: bool, recursive: bool) {
+        // `**` in a glob pattern implies recursive traversal
+        let recursive = recursive || (is_glob && query.contains("**"));
+        let key = self.make_key(&dir, &query);
+        if let Some(result) = self.cache.get(&key).cloned() {
+            self.apply_result(result);
+            return;
+        }
+        if self.cache.is_in_flight(&key) {
+            return;
+        }
+        self.scanning = true;
+        self.cache.mark_in_flight(key.clone());
+        self.scanner.submit(ScanRequest {
+            key,
+            dir,
+            query,
+            recursive,
+            hide_hidden: self.hide_hidden,
+            entry_filter: self.entry_filter,
+            ext_filter: self.ext_filter.clone(),
+            is_glob,
+            show_relative: self.show_relative,
+        });
+    }
+
+    fn apply_result(&mut self, result: ScanResult) {
+        self.scanning = false;
+        self.text
+            .set_completion_items(result.completion_items.clone());
+        self.list.set_options(result.options.clone());
+        self.last_scan_result = Some(result);
+    }
+
+    fn poll_scanner(&mut self) -> bool {
+        let results = self.scanner.try_recv_all();
+        if results.is_empty() {
+            return false;
+        }
+        let current_key = {
+            let parsed = parse_input(&self.current_input(), &self.cwd);
+            self.make_key(&parsed.view_dir, &parsed.query)
+        };
+        let browse_key = self.make_key(&self.browse_dir.clone(), "");
+        let mut changed = false;
+        for (key, result) in results {
+            self.cache.insert(key.clone(), result.clone());
+            if key == current_key || (self.overlay_open && key == browse_key) {
+                self.apply_result(result);
+                changed = true;
+            }
+        }
+        changed
+    }
+
+    fn flush_debounce(&mut self) -> bool {
+        let Some(deadline) = self.debounce_deadline else {
+            return false;
+        };
+        if Instant::now() < deadline {
+            return false;
+        }
+        self.debounce_deadline = None;
+        let parsed = parse_input(&self.current_input(), &self.cwd);
+        self.submit_scan(
+            parsed.view_dir,
+            parsed.query,
+            parsed.is_glob,
+            self.recursive,
+        );
+        true
+    }
+
+    fn schedule_scan(&mut self) {
+        self.debounce_deadline = Some(Instant::now() + Duration::from_millis(DEBOUNCE_MS));
+    }
+
+    fn browse_into(&mut self, dir: PathBuf) {
+        self.browse_dir = dir.clone();
+        self.list.set_options(vec![]);
+        // Update text input to show the new directory path (relative to cwd if possible)
+        let path_str = if let Ok(rel) = dir.strip_prefix(&self.cwd) {
+            let s = rel.to_string_lossy();
+            if s.is_empty() {
+                String::new()
+            } else {
+                format!("{}/", s)
+            }
+        } else {
+            format!("{}/", dir.to_string_lossy())
+        };
+        self.text.set_value(Value::Text(path_str));
+        self.submit_scan(dir, String::new(), false, false);
+    }
+
+    fn open_browser(&mut self) -> InteractionResult {
+        self.overlay_open = true;
+        // Sync browse_dir from current text input value
+        let parsed = parse_input(&self.current_input(), &self.cwd);
+        self.browse_dir = parsed.view_dir.clone();
+        self.submit_scan(parsed.view_dir, String::new(), false, false);
+        InteractionResult::handled()
+    }
+
+    fn close_browser(&mut self) -> InteractionResult {
+        self.overlay_open = false;
+        InteractionResult::handled()
+    }
+
+    /// Returns the `FileEntry` at the current active list index, if any.
+    fn active_entry(&self) -> Option<&model::FileEntry> {
+        let idx = self.list.active_index();
+        self.last_scan_result.as_ref()?.entries.get(idx)
+    }
+
+    fn handle_browser_key(&mut self, key: KeyEvent) -> InteractionResult {
+        match key.code {
+            KeyCode::Esc => self.close_browser(),
+
+            KeyCode::Enter => {
+                let entry = self.active_entry().cloned();
+                let Some(entry) = entry else {
+                    return InteractionResult::handled();
+                };
+                if entry.is_dir {
+                    self.browse_into((*entry.path).clone());
+                } else {
+                    self.text
+                        .set_value(Value::Text(entry.path.to_string_lossy().to_string()));
+                    return self.close_browser();
+                }
+                InteractionResult::handled()
+            }
+
+            KeyCode::Right => {
+                let entry = self.active_entry().cloned();
+                if let Some(entry) = entry {
+                    if entry.is_dir {
+                        self.browse_into((*entry.path).clone());
+                        return InteractionResult::handled();
+                    }
+                }
+                InteractionResult::ignored()
+            }
+
+            KeyCode::Left => {
+                if let Some(parent) = self.browse_dir.parent().map(Path::to_path_buf) {
+                    self.browse_into(parent);
+                    return InteractionResult::handled();
+                }
+                InteractionResult::ignored()
+            }
+
+            KeyCode::Up | KeyCode::Down => self.list.on_key(key),
+
+            // All other keys (chars, backspace, delete, left/right cursor) → text input
+            _ => {
+                let prev = self.current_input();
+                let result = self.text.on_key(key);
+                if self.current_input() != prev {
+                    self.schedule_scan();
+                }
+                result
+            }
+        }
+    }
+
+    fn child_ctx(&self, ctx: &RenderContext, focused_id: Option<String>) -> RenderContext {
+        // Remap completion menu keyed under our own id to the inner text widget's id,
+        // so TextInput::draw() finds it when rendering ghost text.
+        let mut completion_menus = ctx.completion_menus.clone();
+        if let Some(menu) = completion_menus.remove(self.base.id()) {
+            completion_menus.insert(self.text.id().to_string(), menu);
+        }
+        RenderContext {
+            focused_id,
+            terminal_size: ctx.terminal_size,
+            visible_errors: ctx.visible_errors.clone(),
+            invalid_hidden: ctx.invalid_hidden.clone(),
+            completion_menus,
+        }
+    }
+}
+
+// ── Component ────────────────────────────────────────────────────────────────
+
+impl Component for FileBrowserInput {
+    fn children(&self) -> &[Node] {
+        &[]
+    }
+    fn children_mut(&mut self) -> &mut [Node] {
+        &mut []
+    }
+}
+
+// ── Drawable ─────────────────────────────────────────────────────────────────
+
+impl Drawable for FileBrowserInput {
+    fn id(&self) -> &str {
+        self.base.id()
+    }
+
+    fn draw(&self, ctx: &RenderContext) -> DrawOutput {
+        let focused = ctx
+            .focused_id
+            .as_deref()
+            .is_some_and(|id| id == self.base.id());
+
+        // Always pass focus through to inner TextInput so completion ghost text renders
+        let text_ctx = self.child_ctx(
+            ctx,
+            if focused {
+                Some(self.text.id().to_string())
+            } else {
+                None
+            },
+        );
+        let mut lines = self.text.draw(&text_ctx).lines;
+
+        if focused {
+            if self.overlay_open {
+                // Inline list — pass list's own ID as focused so the ❯ cursor renders
+                let list_id = self.list.id().to_string();
+                let list_ctx = self.child_ctx(ctx, Some(list_id));
+                lines.extend(self.list.draw(&list_ctx).lines);
+
+                let hint = if self.scanning {
+                    format!("  {} scanning…", self.spinner_char())
+                } else {
+                    "  ← → dirs  Enter select  Esc close".to_string()
+                };
+                lines.push(vec![
+                    Span::styled(hint, Style::new().color(Color::DarkGrey)).no_wrap(),
+                ]);
+            } else {
+                let hint = if self.scanning {
+                    format!("  {} scanning…", self.spinner_char())
+                } else {
+                    "  Ctrl+Space to browse".to_string()
+                };
+                lines.push(vec![
+                    Span::styled(hint, Style::new().color(Color::DarkGrey)).no_wrap(),
+                ]);
+            }
+        }
+
+        DrawOutput { lines }
+    }
+}
+
+// ── Interactive ───────────────────────────────────────────────────────────────
+
+impl Interactive for FileBrowserInput {
+    fn focus_mode(&self) -> FocusMode {
+        FocusMode::Leaf
+    }
+
+    fn on_key(&mut self, key: KeyEvent) -> InteractionResult {
+        // Ctrl+Space → open inline browser
+        if key.code == KeyCode::Char(' ') && key.modifiers.contains(KeyModifiers::CONTROL) {
+            return self.open_browser();
+        }
+
+        // Browser open: route to browser key handler
+        if self.overlay_open {
+            return self.handle_browser_key(key);
+        }
+
+        // Enter → submit
+        if key.code == KeyCode::Enter {
+            return InteractionResult::submit_or_produce(
+                self.submit_target.as_deref(),
+                Value::Text(self.current_input()),
+            );
+        }
+
+        // Normal text input
+        let prev = self.current_input();
+        let result = self.text.on_key(key);
+        if self.current_input() != prev {
+            self.schedule_scan();
+        }
+        result
+    }
+
+    fn text_editing(&mut self) -> Option<TextEditState<'_>> {
+        // Delegate so Ctrl+W / Alt+D work on the inner text field
+        self.text.text_editing()
+    }
+
+    fn on_text_edited(&mut self) {
+        // Called after Ctrl+W / Alt+D mutates the inner text — trigger a scan
+        self.schedule_scan();
+    }
+
+    fn completion(&mut self) -> Option<CompletionState<'_>> {
+        // Delegate so Tab-completion uses inner TextInput's value + completion_items
+        self.text.completion()
+    }
+
+    fn on_tick(&mut self) -> InteractionResult {
+        if self.scanning {
+            self.spinner_frame = self.spinner_frame.wrapping_add(1);
+        }
+        let scanner_changed = self.poll_scanner();
+        let debounce_fired = self.flush_debounce();
+        if scanner_changed || debounce_fired || self.scanning {
+            InteractionResult::handled()
+        } else {
+            InteractionResult::ignored()
+        }
+    }
+
+    fn on_event(&mut self, event: &WidgetEvent) -> InteractionResult {
+        match event {
+            WidgetEvent::ValueChanged { change } if change.target.as_str() == self.base.id() => {
+                if let Some(text) = change.value.to_text_scalar() {
+                    self.text.set_value(Value::Text(text));
+                    self.schedule_scan();
+                }
+                InteractionResult::handled()
+            }
+            _ => self.text.on_event(event),
+        }
+    }
+
+    fn value(&self) -> Option<Value> {
+        Some(Value::Text(self.current_input()))
+    }
+
+    fn set_value(&mut self, value: Value) {
+        if let Some(text) = value.to_text_scalar() {
+            self.text.set_value(Value::Text(text));
+            self.schedule_scan();
+        }
+    }
+
+    fn validate(&self, _mode: ValidationMode) -> Result<(), String> {
+        run_validators(&self.validators, &self.current_input())
+    }
+
+    fn cursor_pos(&self) -> Option<CursorPos> {
+        self.text.cursor_pos()
+    }
+}

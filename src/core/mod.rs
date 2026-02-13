@@ -1,5 +1,6 @@
 pub mod effect;
 pub mod reducer;
+pub mod search;
 pub mod value;
 
 use std::borrow::Borrow;

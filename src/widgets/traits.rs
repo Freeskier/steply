@@ -124,6 +124,20 @@ impl InteractionResult {
         }
     }
 
+    pub fn submit_requested() -> Self {
+        Self::with_event(WidgetEvent::RequestSubmit)
+    }
+
+    pub fn submit_or_produce(target: Option<&str>, value: Value) -> Self {
+        if let Some(target) = target {
+            return Self::with_event(WidgetEvent::ValueProduced {
+                target: target.into(),
+                value,
+            });
+        }
+        Self::submit_requested()
+    }
+
     pub fn merge(&mut self, other: Self) {
         self.handled |= other.handled;
         self.request_render |= other.request_render;

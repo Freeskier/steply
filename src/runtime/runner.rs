@@ -1,10 +1,11 @@
 use crate::core::effect::Effect;
 use crate::core::reducer::Reducer;
-use crate::runtime::command::Command;
 use crate::runtime::event::{AppEvent, WidgetEvent};
+use crate::runtime::intent::Intent;
 use crate::runtime::key_bindings::KeyBindings;
 use crate::runtime::scheduler::Scheduler;
 use crate::state::app_state::AppState;
+use crate::task::TaskExecutor;
 use crate::terminal::{Terminal, TerminalEvent};
 use crate::ui::renderer::{Renderer, RendererConfig};
 use std::io;
@@ -14,6 +15,7 @@ pub struct Runtime {
     state: AppState,
     terminal: Terminal,
     scheduler: Scheduler,
+    task_executor: TaskExecutor,
     key_bindings: KeyBindings,
     renderer: Renderer,
 }
@@ -51,6 +53,7 @@ impl Runtime {
             state,
             terminal,
             scheduler: Scheduler::new(),
+            task_executor: TaskExecutor::new(),
             key_bindings,
             renderer,
         }
@@ -60,10 +63,13 @@ impl Runtime {
         self.terminal.enter()?;
 
         let run_result = (|| -> io::Result<()> {
+            self.flush_pending_task_invocations();
             self.render()?;
 
             while !self.state.should_exit() {
                 self.process_scheduled_events()?;
+                self.process_task_events()?;
+                self.flush_pending_task_invocations();
 
                 let now = Instant::now();
                 let timeout = self.scheduler.poll_timeout(now, Duration::from_millis(120));
@@ -86,6 +92,13 @@ impl Runtime {
         Ok(())
     }
 
+    fn process_task_events(&mut self) -> io::Result<()> {
+        for completion in self.task_executor.drain_ready() {
+            self.dispatch_app_event(AppEvent::Widget(WidgetEvent::TaskCompleted { completion }))?;
+        }
+        Ok(())
+    }
+
     fn dispatch_app_event(&mut self, event: AppEvent) -> io::Result<()> {
         match event {
             AppEvent::Terminal(TerminalEvent::Resize(size)) => {
@@ -93,14 +106,14 @@ impl Runtime {
                 self.render()
             }
             AppEvent::Terminal(TerminalEvent::Key(key)) => {
-                let command = self
+                let intent = self
                     .key_bindings
                     .resolve(key)
-                    .unwrap_or(Command::InputKey(key));
-                self.process_command(command)
+                    .unwrap_or(Intent::InputKey(key));
+                self.process_intent(intent)
             }
-            AppEvent::Terminal(TerminalEvent::Tick) => self.process_command(Command::Tick),
-            AppEvent::Command(command) => self.process_command(command),
+            AppEvent::Terminal(TerminalEvent::Tick) => self.process_intent(Intent::Tick),
+            AppEvent::Intent(intent) => self.process_intent(intent),
             AppEvent::Widget(widget_event) => {
                 if self.apply_widget_event(widget_event) {
                     self.render()?;
@@ -110,8 +123,8 @@ impl Runtime {
         }
     }
 
-    fn process_command(&mut self, command: Command) -> io::Result<()> {
-        let effects = Reducer::reduce(&mut self.state, command);
+    fn process_intent(&mut self, intent: Intent) -> io::Result<()> {
+        let effects = Reducer::reduce(&mut self.state, intent);
         self.apply_effects(effects)
     }
 
@@ -140,7 +153,15 @@ impl Runtime {
     }
 
     fn apply_widget_event(&mut self, event: WidgetEvent) -> bool {
-        self.state.handle_widget_event(event)
+        let render_requested = self.state.handle_widget_event(event);
+        self.flush_pending_task_invocations();
+        render_requested
+    }
+
+    fn flush_pending_task_invocations(&mut self) {
+        for invocation in self.state.take_pending_task_invocations() {
+            self.task_executor.spawn(invocation);
+        }
     }
 
     fn render(&mut self) -> io::Result<()> {

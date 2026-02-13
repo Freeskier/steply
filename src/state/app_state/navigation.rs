@@ -176,6 +176,8 @@ impl AppState {
                 true
             }
             WidgetEvent::OverlayLifecycle { .. } => false,
+            WidgetEvent::TaskRequested { request } => self.request_task_run(request),
+            WidgetEvent::TaskCompleted { completion } => self.complete_task_run(completion),
             WidgetEvent::RequestRender => true,
         }
     }
@@ -226,19 +228,27 @@ impl AppState {
 
     fn handle_step_submit(&mut self) {
         self.clear_completion_session();
+        let submit_step_id = self.current_step_id().to_string();
+        self.trigger_submit_before_tasks(submit_step_id.as_str());
         if !self.validate_current_step(true) {
             self.focus_first_invalid_on_current_step();
             return;
         }
 
+        let previous_step_id = self.current_step_id().to_string();
+        self.trigger_step_exit_tasks(previous_step_id.as_str());
         self.sync_current_step_values_to_store();
+        self.trigger_submit_after_tasks(previous_step_id.as_str());
 
         if self.flow.advance() {
             self.ui.overlays.clear();
             self.hydrate_current_step_from_store();
             self.rebuild_focus();
+            let current_step_id = self.current_step_id().to_string();
+            self.trigger_step_enter_tasks(current_step_id.as_str());
         } else {
             self.ui.overlays.clear();
+            self.trigger_flow_end_tasks();
             self.flow.complete_current();
             self.request_exit();
         }

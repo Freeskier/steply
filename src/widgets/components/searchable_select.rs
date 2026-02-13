@@ -1,0 +1,309 @@
+use super::select_list::{SelectList, SelectMode, SelectOption};
+use crate::core::search::fuzzy::ranked_matches;
+use crate::core::value::Value;
+use crate::runtime::event::WidgetEvent;
+use crate::terminal::{KeyCode, KeyEvent, KeyModifiers};
+use crate::ui::span::Span;
+use crate::ui::style::{Color, Style};
+use crate::widgets::base::ComponentBase;
+use crate::widgets::inputs::input::Input;
+use crate::widgets::traits::{
+    DrawOutput, Drawable, FocusMode, InteractionResult, Interactive, RenderContext, TextAction,
+};
+
+pub struct SearchableSelect {
+    base: ComponentBase,
+    query: Input,
+    source_options: Vec<String>,
+    list: SelectList,
+    focus: SearchFocus,
+}
+
+impl SearchableSelect {
+    pub fn new(id: impl Into<String>, label: impl Into<String>, options: Vec<String>) -> Self {
+        let id = id.into();
+        let label = label.into();
+        let mut component = Self {
+            base: ComponentBase::new(id.clone(), label.clone()),
+            query: Input::new(format!("{id}__query"), label),
+            source_options: options.clone(),
+            list: SelectList::from_strings(format!("{id}__list"), "", options)
+                .with_show_label(false),
+            focus: SearchFocus::Query,
+        };
+        component.recompute();
+        component
+    }
+
+    pub fn with_mode(mut self, mode: SelectMode) -> Self {
+        self.list.set_mode(mode);
+        self
+    }
+
+    pub fn with_max_visible(mut self, max_visible: usize) -> Self {
+        self.list.set_max_visible(max_visible);
+        self
+    }
+
+    pub fn with_submit_target(mut self, target: impl Into<String>) -> Self {
+        self.list.set_submit_target(Some(target.into()));
+        self
+    }
+
+    pub fn with_options(mut self, options: Vec<String>) -> Self {
+        self.set_options(options);
+        self
+    }
+
+    pub fn set_options(&mut self, options: Vec<String>) {
+        self.source_options = options;
+        self.recompute();
+    }
+
+    fn recompute(&mut self) {
+        let query_value = self.query_value();
+        let query = query_value.trim();
+        if query.is_empty() {
+            self.list.set_options(
+                self.source_options
+                    .iter()
+                    .cloned()
+                    .map(SelectOption::plain)
+                    .collect(),
+            );
+            return;
+        }
+
+        let matches = ranked_matches(query, self.source_options.as_slice());
+        let options = matches
+            .into_iter()
+            .filter_map(|entry| {
+                self.source_options
+                    .get(entry.index)
+                    .map(|text| SelectOption::Highlighted {
+                        text: text.clone(),
+                        highlights: entry.ranges,
+                    })
+            })
+            .collect::<Vec<_>>();
+        self.list.set_options(options);
+    }
+
+    fn query_value(&self) -> String {
+        match self.query.value() {
+            Some(Value::Text(text)) => text,
+            _ => String::new(),
+        }
+    }
+
+    fn set_query_value(&mut self, value: String) {
+        self.query.set_value(Value::Text(value));
+    }
+
+    fn handle_query_key(&mut self, key: KeyEvent) -> InteractionResult {
+        let result = self.query.on_key(key);
+        if result.handled {
+            self.recompute();
+        }
+        result
+    }
+
+    fn handle_delete_query_char(&mut self) -> InteractionResult {
+        let Some(state) = self.query.text_editing() else {
+            return InteractionResult::ignored();
+        };
+        if !delete_char(state.value, state.cursor) {
+            return InteractionResult::ignored();
+        }
+        self.recompute();
+        InteractionResult::handled()
+    }
+
+    fn child_context(&self, ctx: &RenderContext, focused_id: Option<String>) -> RenderContext {
+        RenderContext {
+            focused_id,
+            terminal_size: ctx.terminal_size,
+            visible_errors: ctx.visible_errors.clone(),
+            invalid_hidden: ctx.invalid_hidden.clone(),
+            completion_menus: ctx.completion_menus.clone(),
+        }
+    }
+}
+
+impl Drawable for SearchableSelect {
+    fn id(&self) -> &str {
+        self.base.id()
+    }
+
+    fn draw(&self, ctx: &RenderContext) -> DrawOutput {
+        let focused = ctx
+            .focused_id
+            .as_deref()
+            .is_some_and(|id| id == self.base.id());
+        let query_ctx = self.child_context(
+            ctx,
+            if focused && self.focus == SearchFocus::Query {
+                Some(self.query.id().to_string())
+            } else {
+                None
+            },
+        );
+        let list_ctx = self.child_context(
+            ctx,
+            if focused && self.focus == SearchFocus::List {
+                Some(self.list.id().to_string())
+            } else {
+                None
+            },
+        );
+
+        let mut lines = self.query.draw(&query_ctx).lines;
+
+        if focused && self.query_value().is_empty() {
+            lines.push(vec![
+                Span::styled(
+                    "  Type to filter. Up/Down navigate.",
+                    Style::new().color(Color::DarkGrey),
+                )
+                .no_wrap(),
+            ]);
+        }
+
+        lines.extend(self.list.draw(&list_ctx).lines);
+        DrawOutput { lines }
+    }
+}
+
+impl Interactive for SearchableSelect {
+    fn focus_mode(&self) -> FocusMode {
+        FocusMode::Group
+    }
+
+    fn on_key(&mut self, key: KeyEvent) -> InteractionResult {
+        if key.modifiers != KeyModifiers::NONE {
+            return InteractionResult::ignored();
+        }
+
+        match key.code {
+            KeyCode::Up | KeyCode::Down => {
+                self.focus = SearchFocus::List;
+                self.list.on_key(key)
+            }
+            KeyCode::Enter => {
+                if self.list.is_empty() {
+                    return InteractionResult::handled();
+                }
+                self.list.on_key(key)
+            }
+            KeyCode::Char(' ') => {
+                if self.focus == SearchFocus::List {
+                    return self.list.on_key(key);
+                }
+                self.focus = SearchFocus::Query;
+                self.handle_query_key(key)
+            }
+            KeyCode::Char(ch) => {
+                if ch.is_control() {
+                    return InteractionResult::ignored();
+                }
+                self.focus = SearchFocus::Query;
+                self.handle_query_key(key)
+            }
+            KeyCode::Backspace => {
+                self.focus = SearchFocus::Query;
+                self.handle_query_key(key)
+            }
+            KeyCode::Delete => {
+                self.focus = SearchFocus::Query;
+                self.handle_delete_query_char()
+            }
+            KeyCode::Left | KeyCode::Right => {
+                self.focus = SearchFocus::Query;
+                self.handle_query_key(key)
+            }
+            _ => InteractionResult::ignored(),
+        }
+    }
+
+    fn on_text_action(&mut self, action: TextAction) -> InteractionResult {
+        self.focus = SearchFocus::Query;
+        let result = self.query.on_text_action(action);
+        if result.handled {
+            self.recompute();
+        }
+        result
+    }
+
+    fn value(&self) -> Option<Value> {
+        self.list.value()
+    }
+
+    fn set_value(&mut self, value: Value) {
+        match value.clone() {
+            Value::Text(text) => {
+                self.set_query_value(text.clone());
+                self.recompute();
+                self.list.set_value(Value::Text(text));
+            }
+            Value::List(_) => self.list.set_value(value),
+            _ => {}
+        }
+    }
+
+    fn on_event(&mut self, event: &WidgetEvent) -> InteractionResult {
+        match event {
+            WidgetEvent::ValueProduced { target, value } if target.as_str() == self.base.id() => {
+                self.set_value(value.clone());
+                InteractionResult::handled()
+            }
+            _ => {
+                let mut merged = InteractionResult::ignored();
+                let query_result = self.query.on_event(event);
+                if query_result.handled {
+                    self.recompute();
+                }
+                merged.merge(query_result);
+                merged.merge(self.list.on_event(event));
+                merged
+            }
+        }
+    }
+
+    fn cursor_pos(&self) -> Option<crate::terminal::CursorPos> {
+        if self.focus == SearchFocus::Query {
+            return self.query.cursor_pos();
+        }
+        None
+    }
+}
+
+fn delete_char(value: &mut String, cursor: &mut usize) -> bool {
+    let pos = (*cursor).min(value.chars().count());
+    let len = value.chars().count();
+    if pos >= len {
+        *cursor = pos;
+        return false;
+    }
+
+    let byte_pos = byte_index_at_char(value.as_str(), pos);
+    value.remove(byte_pos);
+    *cursor = pos;
+    true
+}
+
+fn byte_index_at_char(value: &str, char_idx: usize) -> usize {
+    if char_idx == 0 {
+        return 0;
+    }
+    value
+        .char_indices()
+        .nth(char_idx)
+        .map(|(idx, _)| idx)
+        .unwrap_or(value.len())
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SearchFocus {
+    Query,
+    List,
+}

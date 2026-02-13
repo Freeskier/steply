@@ -1,27 +1,31 @@
 use super::text_edit;
 use crate::core::value::Value;
-use crate::runtime::event::WidgetEvent;
 use crate::terminal::{CursorPos, KeyCode, KeyEvent};
 use crate::ui::span::Span;
-use crate::ui::style::{Color, Style};
+use crate::ui::style::Style;
 use crate::widgets::base::InputBase;
 use crate::widgets::traits::{
-    CompletionState, DrawOutput, Drawable, FocusMode, InteractionResult, Interactive,
-    RenderContext, TextEditState,
+    DrawOutput, Drawable, FocusMode, InteractionResult, Interactive, RenderContext, TextEditState,
 };
 use crate::widgets::validators::Validator;
-use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
+use unicode_width::UnicodeWidthStr;
 
-pub struct Input {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PasswordRenderMode {
+    Stars,
+    Hidden,
+}
+
+pub struct PasswordInput {
     base: InputBase,
     value: String,
     cursor: usize,
     submit_target: Option<String>,
     validators: Vec<Validator>,
-    completion_items: Vec<String>,
+    render_mode: PasswordRenderMode,
 }
 
-impl Input {
+impl PasswordInput {
     pub fn new(id: impl Into<String>, label: impl Into<String>) -> Self {
         Self {
             base: InputBase::new(id, label),
@@ -29,7 +33,7 @@ impl Input {
             cursor: 0,
             submit_target: None,
             validators: Vec::new(),
-            completion_items: Vec::new(),
+            render_mode: PasswordRenderMode::Stars,
         }
     }
 
@@ -43,21 +47,21 @@ impl Input {
         self
     }
 
-    pub fn with_completion_items(mut self, items: Vec<String>) -> Self {
-        self.completion_items = items;
+    pub fn with_render_mode(mut self, render_mode: PasswordRenderMode) -> Self {
+        self.render_mode = render_mode;
         self
     }
 
-    pub fn set_completion_items(&mut self, items: Vec<String>) {
-        self.completion_items = items;
-    }
-
-    pub fn completion_items_mut(&mut self) -> &mut Vec<String> {
-        &mut self.completion_items
+    fn masked_value(&self) -> String {
+        let len = text_edit::char_count(&self.value);
+        match self.render_mode {
+            PasswordRenderMode::Stars => "*".repeat(len),
+            PasswordRenderMode::Hidden => " ".repeat(len),
+        }
     }
 }
 
-impl Drawable for Input {
+impl Drawable for PasswordInput {
     fn id(&self) -> &str {
         self.base.id()
     }
@@ -65,41 +69,18 @@ impl Drawable for Input {
     fn draw(&self, ctx: &RenderContext) -> DrawOutput {
         let line = self.base.line_state(ctx);
 
-        let mut first_line = vec![
-            Span::new(line.prefix).no_wrap(),
-            Span::styled(self.value.clone(), Style::default()).no_wrap(),
-        ];
+        let masked = self.masked_value();
 
-        let mut lines = Vec::new();
-        if line.focused
-            && let Some(menu) = ctx.completion_menus.get(self.base.id())
-            && let Some(selected) = menu.matches.get(menu.selected)
-            && let Some(suffix) = completion_suffix(selected, self.value.as_str(), self.cursor)
-            && !suffix.is_empty()
-        {
-            first_line.push(Span::styled(suffix, Style::new().color(Color::DarkGrey)).no_wrap());
+        DrawOutput {
+            lines: vec![vec![
+                Span::new(line.prefix).no_wrap(),
+                Span::styled(masked, Style::default()).no_wrap(),
+            ]],
         }
-        lines.push(first_line);
-
-        DrawOutput { lines }
     }
 }
 
-fn completion_suffix(selected: &str, value: &str, cursor: usize) -> Option<String> {
-    let (_, token) = text_edit::completion_prefix(value, cursor)?;
-    if token.is_empty() {
-        return None;
-    }
-
-    if !selected.to_lowercase().starts_with(&token.to_lowercase()) {
-        return None;
-    }
-
-    let token_len = token.chars().count();
-    Some(selected.chars().skip(token_len).collect())
-}
-
-impl Interactive for Input {
+impl Interactive for PasswordInput {
     fn focus_mode(&self) -> FocusMode {
         FocusMode::Leaf
     }
@@ -143,28 +124,6 @@ impl Interactive for Input {
         })
     }
 
-    fn completion(&mut self) -> Option<CompletionState<'_>> {
-        Some(CompletionState {
-            value: &mut self.value,
-            cursor: &mut self.cursor,
-            candidates: self.completion_items.as_slice(),
-        })
-    }
-
-    fn on_event(&mut self, event: &WidgetEvent) -> InteractionResult {
-        match event {
-            WidgetEvent::ValueProduced { target, value } if target.as_str() == self.base.id() => {
-                if let Value::Text(v) = value {
-                    self.value = v.clone();
-                    self.cursor = text_edit::char_count(&self.value);
-                    return InteractionResult::handled();
-                }
-                InteractionResult::ignored()
-            }
-            _ => InteractionResult::ignored(),
-        }
-    }
-
     fn value(&self) -> Option<Value> {
         Some(Value::Text(self.value.clone()))
     }
@@ -185,16 +144,9 @@ impl Interactive for Input {
 
     fn cursor_pos(&self) -> Option<CursorPos> {
         let prefix = format!("{} {}: ", self.base.focus_marker(true), self.base.label());
-        let mut value_width = 0usize;
-        for ch in self
-            .value
-            .chars()
-            .take(text_edit::clamp_cursor(self.cursor, &self.value))
-        {
-            value_width = value_width.saturating_add(UnicodeWidthChar::width(ch).unwrap_or(0));
-        }
         Some(CursorPos {
-            col: (UnicodeWidthStr::width(prefix.as_str()) + value_width) as u16,
+            col: (UnicodeWidthStr::width(prefix.as_str())
+                + text_edit::clamp_cursor(self.cursor, &self.value)) as u16,
             row: 0,
         })
     }

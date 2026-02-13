@@ -1,18 +1,18 @@
 use crate::core::effect::Effect;
-use crate::runtime::command::Command;
 use crate::runtime::event::WidgetEvent;
+use crate::runtime::intent::Intent;
 use crate::state::app_state::AppState;
 
 pub struct Reducer;
 
 impl Reducer {
-    pub fn reduce(state: &mut AppState, command: Command) -> Vec<Effect> {
-        let mut effects = match command {
-            Command::Exit => {
+    pub fn reduce(state: &mut AppState, intent: Intent) -> Vec<Effect> {
+        let mut effects = match intent {
+            Intent::Exit => {
                 state.request_exit();
                 vec![Effect::RequestRender]
             }
-            Command::Cancel => {
+            Intent::Cancel => {
                 if state.cancel_completion_for_focused() {
                     // Esc first closes completion UI before closing overlays/exiting app.
                 } else if state.has_active_overlay() {
@@ -22,7 +22,7 @@ impl Reducer {
                 }
                 vec![Effect::RequestRender]
             }
-            Command::Submit => {
+            Intent::Submit => {
                 if let Some(result) = state.submit_focused() {
                     let mut effects = Self::effects_from_widget_events(result.events);
                     if result.request_render {
@@ -33,7 +33,7 @@ impl Reducer {
                     vec![Effect::RequestRender]
                 }
             }
-            Command::NextFocus => {
+            Intent::NextFocus => {
                 let result = state.handle_tab_forward();
                 let mut effects = Self::effects_from_widget_events(result.events);
                 if result.request_render {
@@ -41,7 +41,7 @@ impl Reducer {
                 }
                 effects
             }
-            Command::PrevFocus => {
+            Intent::PrevFocus => {
                 let result = state.handle_tab_backward();
                 let mut effects = Self::effects_from_widget_events(result.events);
                 if result.request_render {
@@ -49,7 +49,7 @@ impl Reducer {
                 }
                 effects
             }
-            Command::InputKey(key) => {
+            Intent::InputKey(key) => {
                 let result = state.dispatch_key_to_focused(key);
                 let mut effects = Self::effects_from_widget_events(result.events);
                 if result.request_render {
@@ -57,7 +57,7 @@ impl Reducer {
                 }
                 effects
             }
-            Command::TextAction(action) => {
+            Intent::TextAction(action) => {
                 let result = state.dispatch_text_action_to_focused(action);
                 let mut effects = Self::effects_from_widget_events(result.events);
                 if result.request_render {
@@ -65,25 +65,25 @@ impl Reducer {
                 }
                 effects
             }
-            Command::OpenOverlay(overlay_id) => {
+            Intent::OpenOverlay(overlay_id) => {
                 vec![Effect::EmitWidget(WidgetEvent::OpenOverlay { overlay_id })]
             }
-            Command::OpenOverlayAtIndex(index) => {
+            Intent::OpenOverlayAtIndex(index) => {
                 if state.open_overlay_by_index(index) {
                     vec![Effect::RequestRender]
                 } else {
                     vec![]
                 }
             }
-            Command::OpenOverlayShortcut => {
+            Intent::OpenOverlayShortcut => {
                 if state.open_default_overlay() {
                     vec![Effect::RequestRender]
                 } else {
                     vec![]
                 }
             }
-            Command::CloseOverlay => vec![Effect::EmitWidget(WidgetEvent::CloseOverlay)],
-            Command::Tick => {
+            Intent::CloseOverlay => vec![Effect::EmitWidget(WidgetEvent::CloseOverlay)],
+            Intent::Tick => {
                 let result = state.tick_all_nodes();
                 let mut effects = Self::effects_from_widget_events(result.events);
                 if result.request_render {
@@ -91,7 +91,7 @@ impl Reducer {
                 }
                 effects
             }
-            Command::Noop => vec![],
+            Intent::Noop => vec![],
         };
 
         effects.extend(

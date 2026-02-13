@@ -6,8 +6,10 @@ use crate::state::overlay::OverlayState;
 use crate::state::step::Step;
 use crate::state::store::ValueStore;
 use crate::state::validation::ValidationState;
+use crate::task::{TaskId, TaskInvocation, TaskRunState, TaskSpec, TaskSubscription};
 use crate::widgets::node::{Node, NodeWalkScope, find_overlay, find_overlay_mut, walk_nodes};
 use crate::widgets::traits::{FocusMode, OverlayMode, OverlayPlacement};
+use std::collections::HashMap;
 
 #[derive(Debug, Clone)]
 pub(crate) struct CompletionSession {
@@ -33,6 +35,10 @@ struct DataState {
 struct RuntimeState {
     validation: ValidationState,
     pending_scheduler: Vec<SchedulerCommand>,
+    pending_task_invocations: Vec<TaskInvocation>,
+    task_runs: HashMap<TaskId, TaskRunState>,
+    task_specs: HashMap<TaskId, TaskSpec>,
+    task_subscriptions: Vec<TaskSubscription>,
 }
 
 pub struct AppState {
@@ -45,14 +51,37 @@ pub struct AppState {
 
 impl AppState {
     pub fn new(flow: Flow) -> Self {
+        Self::with_tasks(flow, Vec::new(), Vec::new())
+    }
+
+    pub fn with_tasks(
+        flow: Flow,
+        task_specs: Vec<TaskSpec>,
+        task_subscriptions: Vec<TaskSubscription>,
+    ) -> Self {
+        let mut spec_map = HashMap::<TaskId, TaskSpec>::new();
+        for spec in task_specs {
+            spec_map.insert(spec.id.clone(), spec);
+        }
+
         let mut state = Self {
             flow,
             ui: UiState::default(),
             data: DataState::default(),
-            runtime: RuntimeState::default(),
+            runtime: RuntimeState {
+                validation: ValidationState::default(),
+                pending_scheduler: Vec::new(),
+                pending_task_invocations: Vec::new(),
+                task_runs: HashMap::new(),
+                task_specs: spec_map,
+                task_subscriptions,
+            },
             should_exit: false,
         };
         state.rebuild_focus();
+        state.trigger_flow_start_tasks();
+        let current_step_id = state.current_step_id().to_string();
+        state.trigger_step_enter_tasks(current_step_id.as_str());
         state
     }
 
@@ -217,5 +246,6 @@ impl AppState {
 mod completion;
 mod navigation;
 mod overlay_runtime;
+mod task_runtime;
 mod validation_runtime;
 mod value_sync;

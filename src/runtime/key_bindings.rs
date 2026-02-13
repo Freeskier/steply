@@ -1,4 +1,4 @@
-use crate::runtime::command::Command;
+use crate::runtime::intent::Intent;
 use crate::terminal::{KeyCode, KeyEvent, KeyModifiers};
 use crate::widgets::traits::TextAction;
 use std::collections::HashMap;
@@ -36,7 +36,7 @@ impl KeyBinding {
 
 #[derive(Default)]
 pub struct KeyBindings {
-    bindings: HashMap<KeyBinding, Command>,
+    bindings: HashMap<KeyBinding, Intent>,
 }
 
 impl KeyBindings {
@@ -46,66 +46,66 @@ impl KeyBindings {
         manager
     }
 
-    pub fn bind(&mut self, key: KeyBinding, command: Command) {
-        self.bindings.insert(key, command);
+    pub fn bind(&mut self, key: KeyBinding, intent: Intent) {
+        self.bindings.insert(key, intent);
     }
 
     pub fn unbind(&mut self, key: &KeyBinding) {
         self.bindings.remove(key);
     }
 
-    pub fn resolve(&self, event: KeyEvent) -> Option<Command> {
+    pub fn resolve(&self, event: KeyEvent) -> Option<Intent> {
         self.bindings.get(&KeyBinding::from_event(event)).cloned()
     }
 
     fn install_defaults(&mut self) {
-        self.bind(KeyBinding::ctrl(KeyCode::Char('c')), Command::Exit);
+        self.bind(KeyBinding::ctrl(KeyCode::Char('c')), Intent::Exit);
         self.bind(
             KeyBinding::ctrl(KeyCode::Char('o')),
-            Command::OpenOverlayShortcut,
+            Intent::OpenOverlayShortcut,
         );
         self.bind(
             KeyBinding::ctrl(KeyCode::Char('1')),
-            Command::OpenOverlayAtIndex(0),
+            Intent::OpenOverlayAtIndex(0),
         );
         self.bind(
             KeyBinding::ctrl(KeyCode::Char('2')),
-            Command::OpenOverlayAtIndex(1),
+            Intent::OpenOverlayAtIndex(1),
         );
         self.bind(
             KeyBinding::ctrl(KeyCode::Char('3')),
-            Command::OpenOverlayAtIndex(2),
+            Intent::OpenOverlayAtIndex(2),
         );
 
         self.bind(
             KeyBinding::alt(KeyCode::Char('1')),
-            Command::OpenOverlayAtIndex(0),
+            Intent::OpenOverlayAtIndex(0),
         );
         self.bind(
             KeyBinding::alt(KeyCode::Char('2')),
-            Command::OpenOverlayAtIndex(1),
+            Intent::OpenOverlayAtIndex(1),
         );
         self.bind(
             KeyBinding::alt(KeyCode::Char('3')),
-            Command::OpenOverlayAtIndex(2),
+            Intent::OpenOverlayAtIndex(2),
         );
-        self.bind(KeyBinding::key(KeyCode::Esc), Command::Cancel);
-        self.bind(KeyBinding::key(KeyCode::Tab), Command::NextFocus);
+        self.bind(KeyBinding::key(KeyCode::Esc), Intent::Cancel);
+        self.bind(KeyBinding::key(KeyCode::Tab), Intent::NextFocus);
         self.bind(
             KeyBinding::new(KeyCode::BackTab, KeyModifiers::SHIFT),
-            Command::PrevFocus,
+            Intent::PrevFocus,
         );
         self.bind(
             KeyBinding::ctrl(KeyCode::Backspace),
-            Command::TextAction(TextAction::DeleteWordLeft),
+            Intent::TextAction(TextAction::DeleteWordLeft),
         );
         self.bind(
             KeyBinding::ctrl(KeyCode::Char('w')),
-            Command::TextAction(TextAction::DeleteWordLeft),
+            Intent::TextAction(TextAction::DeleteWordLeft),
         );
         self.bind(
             KeyBinding::ctrl(KeyCode::Delete),
-            Command::TextAction(TextAction::DeleteWordRight),
+            Intent::TextAction(TextAction::DeleteWordRight),
         );
     }
 }

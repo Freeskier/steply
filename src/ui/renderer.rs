@@ -5,7 +5,7 @@ use crate::ui::layout::Layout;
 use crate::ui::span::{Span, SpanLine};
 use crate::ui::style::{Color, Style};
 use crate::widgets::node::{Node, NodeWalkScope, walk_nodes};
-use crate::widgets::traits::{CompletionMenu, RenderContext};
+use crate::widgets::traits::{CompletionMenu, DrawOutput, RenderContext};
 use std::collections::{HashMap, HashSet};
 
 mod decorations;
@@ -269,7 +269,8 @@ fn draw_nodes(
     track_cursor: bool,
 ) {
     for node in nodes {
-        let out = node.draw(ctx);
+        let mut out = node.draw(ctx);
+        apply_input_validation_overlay(node, ctx, &mut out);
         if track_cursor
             && cursor.is_none()
             && ctx
@@ -285,6 +286,41 @@ fn draw_nodes(
         }
         *row_offset = row_offset.saturating_add(out.lines.len() as u16);
         lines.extend(out.lines);
+    }
+}
+
+fn apply_input_validation_overlay(node: &Node, ctx: &RenderContext, out: &mut DrawOutput) {
+    if !matches!(node, Node::Input(_)) {
+        return;
+    }
+
+    if let Some(error) = ctx.visible_errors.get(node.id()) {
+        let prefix = out
+            .lines
+            .first()
+            .and_then(|line| line.first())
+            .map(|span| span.text.clone())
+            .unwrap_or_default();
+        out.lines = vec![vec![
+            Span::new(prefix).no_wrap(),
+            Span::styled(
+                format!("✗ {}", error),
+                Style::new().color(Color::Red).bold(),
+            )
+            .no_wrap(),
+        ]];
+        return;
+    }
+
+    if ctx.invalid_hidden.contains(node.id()) {
+        for (line_idx, line) in out.lines.iter_mut().enumerate() {
+            for (span_idx, span) in line.iter_mut().enumerate() {
+                if line_idx == 0 && span_idx == 0 {
+                    continue;
+                }
+                span.style.color = Some(Color::Red);
+            }
+        }
     }
 }
 

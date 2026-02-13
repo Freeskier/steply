@@ -1,2 +1,11 @@
+pub mod array;
+pub mod button;
+pub mod checkbox;
+pub mod choice;
+pub mod color;
 pub mod input;
+pub mod masked;
+pub mod password;
+pub mod select;
+pub mod slider;
 pub(crate) mod text_edit;

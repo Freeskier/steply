@@ -1,5 +1,11 @@
 use crate::widgets::traits::OverlayPlacement;
-use crate::widgets::traits::{FocusMode, OverlayMode, OverlayRenderMode};
+use crate::widgets::traits::{FocusMode, OverlayMode, OverlayRenderMode, RenderContext};
+
+#[derive(Debug, Clone)]
+pub struct InputLineState {
+    pub focused: bool,
+    pub prefix: String,
+}
 
 #[derive(Debug, Clone)]
 pub struct InputBase {
@@ -29,6 +35,13 @@ impl InputBase {
 
     pub fn prefixed_label(&self, focused: bool) -> String {
         format!("{} {}", self.focus_marker(focused), self.label)
+    }
+
+    pub fn line_state(&self, ctx: &RenderContext) -> InputLineState {
+        let focused = ctx.focused_id.as_deref().is_some_and(|id| id == self.id());
+        let prefix = format!("{} {}: ", self.focus_marker(focused), self.label());
+
+        InputLineState { focused, prefix }
     }
 }
 

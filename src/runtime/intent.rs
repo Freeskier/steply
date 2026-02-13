@@ -3,7 +3,7 @@ use crate::terminal::KeyEvent;
 use crate::widgets::traits::TextAction;
 
 #[derive(Debug, Clone)]
-pub enum Command {
+pub enum Intent {
     Exit,
     Cancel,
     Submit,

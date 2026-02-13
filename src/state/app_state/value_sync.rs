@@ -29,8 +29,16 @@ impl AppState {
     }
 
     fn write_value_direct(&mut self, id: &str, value: Value) {
+        let changed = self
+            .data
+            .store
+            .get(id)
+            .is_none_or(|current| current != &value);
         self.data.store.set(id.to_string(), value.clone());
         self.apply_value_to_step(id, value);
+        if changed && let Some(updated) = self.data.store.get(id).cloned() {
+            self.trigger_node_value_changed_tasks(id, &updated);
+        }
     }
 
     pub(super) fn hydrate_current_step_from_store(&mut self) {

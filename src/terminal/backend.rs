@@ -25,6 +25,8 @@ pub enum KeyCode {
     Esc,
     Backspace,
     Delete,
+    Home,
+    End,
     Left,
     Right,
     Up,
@@ -280,6 +282,7 @@ fn map_color(color: Color) -> CrosstermColor {
         Color::Magenta => CrosstermColor::DarkMagenta,
         Color::Cyan => CrosstermColor::DarkCyan,
         Color::White => CrosstermColor::White,
+        Color::Rgb(r, g, b) => CrosstermColor::Rgb { r, g, b },
     }
 }
 
@@ -299,6 +302,8 @@ fn map_key_code(code: CrosstermKeyCode) -> KeyCode {
         CrosstermKeyCode::Esc => KeyCode::Esc,
         CrosstermKeyCode::Backspace => KeyCode::Backspace,
         CrosstermKeyCode::Delete => KeyCode::Delete,
+        CrosstermKeyCode::Home => KeyCode::Home,
+        CrosstermKeyCode::End => KeyCode::End,
         CrosstermKeyCode::Left => KeyCode::Left,
         CrosstermKeyCode::Right => KeyCode::Right,
         CrosstermKeyCode::Up => KeyCode::Up,

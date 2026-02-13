@@ -1,4 +1,5 @@
 use crate::core::value::Value;
+use crate::runtime::event::WidgetEvent;
 use crate::terminal::{KeyCode, KeyEvent};
 use crate::ui::span::Span;
 use crate::ui::style::{Color, Style};
@@ -16,6 +17,7 @@ pub struct SliderInput {
     value: i64,
     track_len: usize,
     unit: Option<String>,
+    change_target: Option<String>,
     validators: Vec<Validator>,
 }
 
@@ -31,6 +33,7 @@ impl SliderInput {
             value: min_value,
             track_len: 15,
             unit: None,
+            change_target: None,
             validators: Vec::new(),
         }
     }
@@ -50,6 +53,11 @@ impl SliderInput {
         self
     }
 
+    pub fn with_change_target(mut self, target: impl Into<String>) -> Self {
+        self.change_target = Some(target.into());
+        self
+    }
+
     pub fn with_validator(mut self, validator: Validator) -> Self {
         self.validators.push(validator);
         self
@@ -66,6 +74,19 @@ impl SliderInput {
     fn shift(&mut self, delta: i64) {
         self.value = self.value.saturating_add(delta);
         self.clamp_value();
+    }
+
+    fn value_changed_result(&self, previous: i64) -> InteractionResult {
+        if self.value == previous {
+            return InteractionResult::ignored();
+        }
+        if let Some(target) = &self.change_target {
+            return InteractionResult::with_event(WidgetEvent::ValueProduced {
+                target: target.clone().into(),
+                value: Value::Float(self.value as f64),
+            });
+        }
+        InteractionResult::handled()
     }
 
     fn track_position(&self) -> usize {
@@ -121,20 +142,24 @@ impl Interactive for SliderInput {
     fn on_key(&mut self, key: KeyEvent) -> InteractionResult {
         match key.code {
             KeyCode::Left => {
+                let previous = self.value;
                 self.shift(-self.step);
-                InteractionResult::handled()
+                self.value_changed_result(previous)
             }
             KeyCode::Right => {
+                let previous = self.value;
                 self.shift(self.step);
-                InteractionResult::handled()
+                self.value_changed_result(previous)
             }
             KeyCode::Home => {
+                let previous = self.value;
                 self.value = self.min;
-                InteractionResult::handled()
+                self.value_changed_result(previous)
             }
             KeyCode::End => {
+                let previous = self.value;
                 self.value = self.max;
-                InteractionResult::handled()
+                self.value_changed_result(previous)
             }
             KeyCode::Enter => InteractionResult::submit_requested(),
             _ => InteractionResult::ignored(),
@@ -142,18 +167,18 @@ impl Interactive for SliderInput {
     }
 
     fn value(&self) -> Option<Value> {
-        Some(Value::Number(self.value))
+        Some(Value::Float(self.value as f64))
     }
 
     fn set_value(&mut self, value: Value) {
         match value {
-            Value::Number(number) => {
-                self.value = number;
+            Value::Float(number) => {
+                self.value = number.round() as i64;
                 self.clamp_value();
             }
             Value::Text(text) => {
-                if let Ok(number) = text.parse::<i64>() {
-                    self.value = number;
+                if let Ok(number) = text.parse::<f64>() {
+                    self.value = number.round() as i64;
                     self.clamp_value();
                 }
             }

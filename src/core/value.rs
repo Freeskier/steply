@@ -1,9 +1,9 @@
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Value {
     None,
     Text(String),
     Bool(bool),
-    Number(i64),
+    Float(f64),
     List(Vec<String>),
 }
 

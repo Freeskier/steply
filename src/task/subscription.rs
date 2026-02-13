@@ -61,6 +61,20 @@ impl TaskSubscription {
         )
     }
 
+    pub fn on_interval(
+        task_id: impl Into<TaskId>,
+        every_ms: u64,
+        only_when_step_active: bool,
+    ) -> Self {
+        Self::new(
+            task_id,
+            TaskTrigger::OnInterval {
+                every_ms: every_ms.max(1),
+                only_when_step_active,
+            },
+        )
+    }
+
     pub fn with_enabled(mut self, enabled: bool) -> Self {
         self.enabled = enabled;
         self

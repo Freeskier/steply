@@ -2,6 +2,7 @@ use super::AppState;
 use crate::core::value::Value;
 use crate::runtime::event::{AppEvent, WidgetEvent};
 use crate::runtime::scheduler::SchedulerCommand;
+use crate::state::step::StepStatus;
 use crate::task::{
     ConcurrencyPolicy, TaskAssign, TaskCompletion, TaskInvocation, TaskRequest, TaskTrigger,
 };
@@ -10,6 +11,50 @@ use std::hash::{Hash, Hasher};
 use std::time::{Duration, Instant};
 
 impl AppState {
+    pub(super) fn bootstrap_interval_tasks(&mut self) {
+        let intervals = self
+            .runtime
+            .task_subscriptions
+            .iter()
+            .enumerate()
+            .filter(|(_, subscription)| subscription.enabled)
+            .filter_map(|(index, subscription)| match &subscription.trigger {
+                TaskTrigger::OnInterval {
+                    every_ms,
+                    only_when_step_active,
+                } => Some((
+                    subscription.task_id.to_string(),
+                    interval_key(subscription.task_id.as_str(), index),
+                    (*every_ms).max(1),
+                    *only_when_step_active,
+                )),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+
+        for (task_id, key, every_ms, only_when_step_active) in intervals {
+            self.schedule_interval_request(
+                task_id.as_str(),
+                key,
+                every_ms,
+                only_when_step_active,
+                true,
+            );
+        }
+    }
+
+    pub(super) fn cancel_interval_tasks(&mut self) {
+        for (index, subscription) in self.runtime.task_subscriptions.iter().enumerate() {
+            if let TaskTrigger::OnInterval { .. } = subscription.trigger {
+                self.runtime
+                    .pending_scheduler
+                    .push(SchedulerCommand::Cancel {
+                        key: interval_key(subscription.task_id.as_str(), index),
+                    });
+            }
+        }
+    }
+
     pub fn take_pending_task_invocations(&mut self) -> Vec<TaskInvocation> {
         self.runtime.pending_task_invocations.drain(..).collect()
     }
@@ -26,6 +71,16 @@ impl AppState {
 
         if !spec.enabled {
             return false;
+        }
+
+        if let Some(interval) = request.interval.as_ref() {
+            self.schedule_interval_request(
+                spec.id.as_str(),
+                interval.key.clone(),
+                interval.every_ms,
+                interval.only_when_step_active,
+                false,
+            );
         }
 
         let now = Instant::now();
@@ -187,15 +242,89 @@ impl AppState {
             let _ = self.request_task_run(request);
         }
     }
+
+    fn schedule_interval_request(
+        &mut self,
+        task_id: &str,
+        key: String,
+        every_ms: u64,
+        only_when_step_active: bool,
+        immediate: bool,
+    ) {
+        if !self.should_schedule_interval(only_when_step_active) {
+            self.runtime
+                .pending_scheduler
+                .push(SchedulerCommand::Cancel { key });
+            return;
+        }
+
+        let request = TaskRequest::new(task_id.to_string()).with_interval(
+            key.clone(),
+            every_ms,
+            only_when_step_active,
+        );
+        let event = AppEvent::Widget(WidgetEvent::TaskRequested { request });
+        if immediate {
+            self.runtime
+                .pending_scheduler
+                .push(SchedulerCommand::EmitNow(event));
+        } else {
+            self.runtime
+                .pending_scheduler
+                .push(SchedulerCommand::EmitAfter {
+                    key,
+                    delay: Duration::from_millis(every_ms.max(1)),
+                    event,
+                });
+        }
+    }
+
+    fn should_schedule_interval(&self, only_when_step_active: bool) -> bool {
+        if self.should_exit {
+            return false;
+        }
+        if !only_when_step_active {
+            return true;
+        }
+        !self.flow.is_empty() && self.flow.current_status() == StepStatus::Active
+    }
 }
 
 fn node_change_debounce_key(node_id: &str, task_id: &str) -> String {
     format!("task:on-node-value:{node_id}:{task_id}")
 }
 
+fn interval_key(task_id: &str, index: usize) -> String {
+    format!("task:on-interval:{task_id}:{index}")
+}
+
 fn fingerprint_value(node_id: &str, value: &Value) -> u64 {
     let mut hasher = DefaultHasher::new();
     node_id.hash(&mut hasher);
-    value.hash(&mut hasher);
+    hash_value(&mut hasher, value);
     hasher.finish()
+}
+
+fn hash_value(hasher: &mut DefaultHasher, value: &Value) {
+    match value {
+        Value::None => {
+            0u8.hash(hasher);
+        }
+        Value::Text(text) => {
+            1u8.hash(hasher);
+            text.hash(hasher);
+        }
+        Value::Bool(flag) => {
+            2u8.hash(hasher);
+            flag.hash(hasher);
+        }
+        Value::Float(number) => {
+            3u8.hash(hasher);
+            number.to_bits().hash(hasher);
+        }
+        Value::List(values) => {
+            4u8.hash(hasher);
+            values.hash(hasher);
+        }
+    }
 }

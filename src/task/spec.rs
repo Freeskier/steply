@@ -67,6 +67,7 @@ pub enum TaskKind {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TaskParse {
     RawText,
+    Number,
     Json,
     Lines,
     Regex { pattern: String, group: usize },

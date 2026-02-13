@@ -82,6 +82,7 @@ impl AppState {
         state.trigger_flow_start_tasks();
         let current_step_id = state.current_step_id().to_string();
         state.trigger_step_enter_tasks(current_step_id.as_str());
+        state.bootstrap_interval_tasks();
         state
     }
 
@@ -119,6 +120,7 @@ impl AppState {
 
     pub fn request_exit(&mut self) {
         self.should_exit = true;
+        self.cancel_interval_tasks();
     }
 
     pub fn active_nodes(&self) -> &[Node] {

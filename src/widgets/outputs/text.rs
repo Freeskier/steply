@@ -1,4 +1,4 @@
-use crate::widgets::traits::{DrawOutput, Drawable, RenderContext};
+use crate::widgets::traits::{DrawOutput, Drawable, RenderContext, RenderNode};
 
 pub struct Text {
     id: String,
@@ -23,3 +23,5 @@ impl Drawable for Text {
         DrawOutput::plain_lines(vec![self.text.clone()])
     }
 }
+
+impl RenderNode for Text {}

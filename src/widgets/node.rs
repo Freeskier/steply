@@ -98,7 +98,13 @@ impl Node {
     pub fn on_tick(&mut self) -> InteractionResult {
         match self {
             Self::Input(w) | Self::Component(w) => w.on_tick(),
-            Self::Output(_) => InteractionResult::ignored(),
+            Self::Output(w) => {
+                if w.on_tick() {
+                    InteractionResult::handled()
+                } else {
+                    InteractionResult::ignored()
+                }
+            }
         }
     }
 
@@ -112,14 +118,14 @@ impl Node {
     pub fn set_value(&mut self, value: Value) {
         match self {
             Self::Input(w) | Self::Component(w) => w.set_value(value),
-            Self::Output(_) => {}
+            Self::Output(w) => w.set_value(value),
         }
     }
 
     pub fn value(&self) -> Option<Value> {
         match self {
             Self::Input(w) | Self::Component(w) => w.value(),
-            Self::Output(_) => None,
+            Self::Output(w) => w.value(),
         }
     }
 
@@ -137,7 +143,7 @@ impl Node {
     pub fn validate_submit(&self) -> Result<(), String> {
         match self {
             Self::Input(w) | Self::Component(w) => w.validate_submit(),
-            Self::Output(_) => Ok(()),
+            Self::Output(w) => w.validate(),
         }
     }
 

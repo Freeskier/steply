@@ -248,5 +248,18 @@ pub trait Interactive: Send {
 pub trait InteractiveNode: Drawable + Interactive {}
 impl<T> InteractiveNode for T where T: Drawable + Interactive {}
 
-pub trait RenderNode: Drawable {}
-impl<T> RenderNode for T where T: Drawable {}
+pub trait RenderNode: Drawable {
+    fn value(&self) -> Option<Value> {
+        None
+    }
+
+    fn set_value(&mut self, _value: Value) {}
+
+    fn on_tick(&mut self) -> bool {
+        false
+    }
+
+    fn validate(&self) -> Result<(), String> {
+        Ok(())
+    }
+}

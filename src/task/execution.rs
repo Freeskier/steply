@@ -8,6 +8,14 @@ use std::time::{Duration, Instant};
 pub struct TaskRequest {
     pub task_id: TaskId,
     pub fingerprint: Option<u64>,
+    pub interval: Option<TaskIntervalRequest>,
+}
+
+#[derive(Debug, Clone)]
+pub struct TaskIntervalRequest {
+    pub key: String,
+    pub every_ms: u64,
+    pub only_when_step_active: bool,
 }
 
 impl TaskRequest {
@@ -15,11 +23,26 @@ impl TaskRequest {
         Self {
             task_id: task_id.into(),
             fingerprint: None,
+            interval: None,
         }
     }
 
     pub fn with_fingerprint(mut self, fingerprint: u64) -> Self {
         self.fingerprint = Some(fingerprint);
+        self
+    }
+
+    pub fn with_interval(
+        mut self,
+        key: impl Into<String>,
+        every_ms: u64,
+        only_when_step_active: bool,
+    ) -> Self {
+        self.interval = Some(TaskIntervalRequest {
+            key: key.into(),
+            every_ms: every_ms.max(1),
+            only_when_step_active,
+        });
         self
     }
 }
@@ -170,6 +193,7 @@ fn parse_value(parse: TaskParse, stdout: &str) -> Result<Value, String> {
     let normalized = normalize_text(stdout);
 
     match parse {
+        TaskParse::Number => parse_number(normalized),
         TaskParse::RawText | TaskParse::Json | TaskParse::Regex { .. } => {
             Ok(Value::Text(normalized.to_string()))
         }
@@ -187,4 +211,23 @@ fn parse_value(parse: TaskParse, stdout: &str) -> Result<Value, String> {
 
 fn normalize_text(value: &str) -> &str {
     value.trim_end_matches(['\r', '\n'])
+}
+
+fn parse_number(value: &str) -> Result<Value, String> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return Err("number parse error: empty output".to_string());
+    }
+
+    let first = trimmed
+        .split_whitespace()
+        .next()
+        .unwrap_or_default()
+        .trim_matches('%');
+
+    if let Ok(number) = first.parse::<f64>() {
+        return Ok(Value::Float(number));
+    }
+
+    Err(format!("number parse error: '{first}'"))
 }

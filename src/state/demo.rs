@@ -5,6 +5,7 @@ use crate::widgets::components::file_browser::FileBrowserInput;
 use crate::widgets::components::searchable_select::SearchableSelect;
 use crate::widgets::components::select_list::SelectList;
 use crate::widgets::components::select_list::SelectMode;
+use crate::widgets::components::tree_view::{TreeNode, TreeView};
 use crate::widgets::inputs::array::ArrayInput;
 use crate::widgets::inputs::button::ButtonInput;
 use crate::widgets::inputs::checkbox::CheckboxInput;
@@ -289,7 +290,8 @@ fn step_file_browser() -> Step {
             ))),
             Node::Component(Box::new(
                 FileBrowserInput::new("fb_any", "Any file")
-                    .with_validator(validators::required("Path is required")),
+                    .with_validator(validators::required("Path is required"))
+                    .with_browser_mode(crate::widgets::components::file_browser::BrowserMode::Tree),
             )),
             Node::Component(Box::new(
                 FileBrowserInput::new("fb_rust", "Rust file")
@@ -302,7 +304,49 @@ fn step_file_browser() -> Step {
     .with_hint("Tab → path completion  •  Ctrl+Space → browser  •  ← → navigate dirs  •  Enter → select")
 }
 
-// ── Step 8: Summary + button ─────────────────────────────────────────────────
+// ── Step 8: Tree view ────────────────────────────────────────────────────────
+
+fn step_tree_view() -> Step {
+    // Build a small sample tree: project structure
+    //  src/
+    //    main.rs
+    //    lib.rs
+    //    widgets/
+    //      mod.rs
+    //      button.rs
+    //  tests/
+    //    integration.rs
+    //  Cargo.toml
+
+    let nodes: Vec<TreeNode<String>> = vec![
+        TreeNode::new("src/".into(), 0, true).expanded(),
+        TreeNode::new("main.rs".into(), 1, false),
+        TreeNode::new("lib.rs".into(), 1, false),
+        TreeNode::new("widgets/".into(), 1, true),
+        TreeNode::new("mod.rs".into(), 2, false),
+        TreeNode::new("button.rs".into(), 2, false),
+        TreeNode::new("tests/".into(), 0, true).expanded(),
+        TreeNode::new("integration.rs".into(), 1, false),
+        TreeNode::new("Cargo.toml".into(), 0, false),
+    ];
+
+    Step::new(
+        "step_tree",
+        "Tree view",
+        vec![
+            Node::Output(Box::new(crate::widgets::outputs::text::TextOutput::new(
+                "tree_intro",
+                "Navigate a collapsible tree. Expand/collapse folders with → and ←.",
+            ))),
+            Node::Component(Box::new(
+                TreeView::new("tree_files", "Project files", nodes).with_max_visible(3),
+            )),
+        ],
+    )
+    .with_hint("↑/↓ → navigate  •  → expand  •  ← collapse/jump to parent  •  Enter → select")
+}
+
+// ── Step 9: Summary + button ─────────────────────────────────────────────────
 
 fn step_finish() -> Step {
     Step::new(
@@ -326,6 +370,7 @@ fn step_finish() -> Step {
 pub fn build_demo_flow() -> Flow {
     Flow::new(vec![
         step_file_browser(),
+        step_tree_view(),
         step_text_inputs(),
         step_structured_inputs(),
         step_selection(),

@@ -103,11 +103,3 @@ fn split_dir_query(path: &str) -> (&str, String) {
         None => ("", path.to_string()),
     }
 }
-
-/// Split a path string by `/` or `\`, skipping empty segments.
-pub fn split_segments(path: &str) -> Vec<String> {
-    path.split(['/', '\\'])
-        .filter(|s| !s.is_empty())
-        .map(String::from)
-        .collect()
-}

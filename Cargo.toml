@@ -5,4 +5,5 @@ edition = "2024"
 
 [dependencies]
 crossterm = "0.29"
+globset = "0.4.18"
 unicode-width = "0.2"

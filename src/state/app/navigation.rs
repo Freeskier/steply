@@ -147,6 +147,10 @@ impl AppState {
                 &mut |node| merged.merge(node.on_tick()),
             );
         }
+        // If any widget updated (e.g. file browser scan returned), refresh ghost completion
+        if merged.handled {
+            self.try_update_ghost_for_focused();
+        }
         merged
     }
 

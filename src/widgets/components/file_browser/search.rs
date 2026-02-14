@@ -3,14 +3,16 @@
 use std::path::Path;
 use std::time::{Duration, SystemTime};
 
+use globset::{Glob, GlobSetBuilder};
+
 use crate::core::search::fuzzy;
 use crate::ui::style::{Color, Style};
 use crate::widgets::components::select_list::SelectOption;
 
-use super::model::{FileEntry, entry_sort};
-use super::parser::split_segments;
+use super::DisplayMode;
+use super::model::{FileEntry, build_entry, entry_sort};
 
-const MAX_MATCHES: usize = 5000;
+const MAX_MATCHES: usize = 200;
 const RELATIVE_PREFIX_MAX: usize = 24;
 
 /// Processed result ready to feed into the SelectList and completion items.
@@ -20,6 +22,8 @@ pub struct ScanResult {
     pub options: Vec<SelectOption>,
     /// Plain names / relative paths for TextInput completion.
     pub completion_items: Vec<String>,
+    /// Total matches before truncation (> entries.len() means results were cut off).
+    pub total_matches: usize,
 }
 
 // ── Public search entry points ───────────────────────────────────────────────
@@ -28,12 +32,12 @@ pub struct ScanResult {
 pub fn fuzzy_search(
     entries: &[FileEntry],
     query: &str,
-    display_root: Option<&Path>,
-    show_relative: bool,
+    root: &Path,
+    mode: DisplayMode,
 ) -> ScanResult {
     let query = query.trim();
     if query.is_empty() {
-        return plain_result(entries, display_root, show_relative);
+        return plain_result(entries, root, mode);
     }
 
     let indices = prefilter(entries, query).unwrap_or_else(|| (0..entries.len()).collect());
@@ -42,12 +46,14 @@ pub fn fuzzy_search(
             entries: Vec::new(),
             options: Vec::new(),
             completion_items: Vec::new(),
+            total_matches: 0,
         };
     }
 
     let candidate_names: Vec<String> = indices.iter().map(|&i| entries[i].name.clone()).collect();
 
     let mut matches = fuzzy::ranked_matches(query, &candidate_names);
+    let total_matches = matches.len();
     matches.truncate(MAX_MATCHES);
 
     let mut matched_entries: Vec<FileEntry> = Vec::with_capacity(matches.len());
@@ -62,62 +68,114 @@ pub fn fuzzy_search(
         }
     }
 
-    build_result(matched_entries, matched_ranges, display_root, show_relative)
+    build_result(matched_entries, matched_ranges, root, mode, total_matches)
 }
 
 /// Glob-match `pattern` against `entries`, returning a `ScanResult`.
 pub fn glob_search(
     entries: &[FileEntry],
     pattern: &str,
-    display_root: Option<&Path>,
-    show_relative: bool,
+    root: &Path,
+    mode: DisplayMode,
 ) -> ScanResult {
-    let normalized = pattern.replace('\\', "/");
-    let pattern_segments = split_segments(&normalized);
-    let use_path = normalized.contains('/');
-    let name_pattern = pattern_segments.last().map(String::as_str).unwrap_or("");
-    let literal = longest_literal_chunk(name_pattern);
+    let matcher = build_glob_matcher(pattern);
+    let use_path = pattern.contains('/');
 
     let mut matched_entries: Vec<FileEntry> = entries
         .iter()
         .filter(|entry| {
-            if let Some(lit) = &literal {
-                if !entry.name.contains(lit.as_str()) {
-                    return false;
-                }
-            }
             let target = if use_path {
-                relative_path_str(entry, display_root)
+                entry
+                    .path
+                    .strip_prefix(root)
+                    .map(|r| r.to_string_lossy().replace('\\', "/"))
+                    .unwrap_or_else(|_| entry.name.clone())
             } else {
                 entry.name.clone()
             };
-            glob_match_path_segments(&pattern_segments, &target)
+            matcher.as_ref().is_some_and(|gs| gs.is_match(&target))
         })
         .cloned()
         .collect();
 
-    sort_glob_results(&mut matched_entries, name_pattern, display_root);
+    let total_matches = matched_entries.len();
+    matched_entries.truncate(MAX_MATCHES);
+    matched_entries.sort_by(entry_sort);
 
+    let literal = glob_literal_chunk(pattern);
     let ranges: Vec<Vec<(usize, usize)>> = matched_entries
         .iter()
-        .map(|e| glob_highlights(name_pattern, &e.name))
+        .map(|e| literal_highlights(&literal, &e.name))
         .collect();
 
-    build_result(matched_entries, ranges, display_root, show_relative)
+    build_result(matched_entries, ranges, root, mode, total_matches)
 }
 
 /// Plain listing with no filter.
-pub fn plain_result(
-    entries: &[FileEntry],
-    display_root: Option<&Path>,
-    show_relative: bool,
-) -> ScanResult {
-    build_result(
-        entries.to_vec(),
-        vec![vec![]; entries.len()],
-        display_root,
-        show_relative,
-    )
+pub fn plain_result(entries: &[FileEntry], root: &Path, mode: DisplayMode) -> ScanResult {
+    let total = entries.len();
+    let truncated: Vec<FileEntry> = entries.iter().take(MAX_MATCHES).cloned().collect();
+    let n = truncated.len();
+    build_result(truncated, vec![vec![]; n], root, mode, total)
+}
+
+// ── Recursive glob scan ──────────────────────────────────────────────────────
+
+/// Walk `dir` recursively, collecting entries whose relative path matches `pattern`.
+pub fn list_dir_recursive_glob(dir: &Path, hide_hidden: bool, pattern: &str) -> Vec<FileEntry> {
+    // Normalize `**.ext` → `**/*.ext`
+    let normalized =
+        if pattern.starts_with("**") && !pattern.starts_with("**/") && pattern.len() > 2 {
+            format!("**/*{}", &pattern[2..])
+        } else {
+            pattern.to_string()
+        };
+
+    let matcher = build_glob_matcher(&normalized);
+    let mut entries = Vec::new();
+    walk_dir_recursive(dir, dir, hide_hidden, &matcher, &mut entries);
+    entries.sort_by(entry_sort);
+    entries
+}
+
+fn walk_dir_recursive(
+    root: &Path,
+    dir: &Path,
+    hide_hidden: bool,
+    matcher: &Option<globset::GlobSet>,
+    entries: &mut Vec<FileEntry>,
+) {
+    let Ok(rd) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for entry in rd.flatten() {
+        let path = entry.path();
+        let name = entry.file_name().to_string_lossy().to_string();
+        if hide_hidden && name.starts_with('.') {
+            continue;
+        }
+        let is_dir = entry.file_type().map(|t| t.is_dir()).unwrap_or(false);
+        let meta = entry.metadata().ok();
+
+        // Compute relative path from root for matching
+        let rel = path
+            .strip_prefix(root)
+            .map(|r| r.to_string_lossy().replace('\\', "/"))
+            .unwrap_or_else(|_| name.clone());
+
+        let matches = match matcher {
+            Some(gs) => gs.is_match(&rel),
+            None => false,
+        };
+
+        if matches {
+            entries.push(build_entry(name.clone(), path.clone(), is_dir, meta));
+        }
+
+        if is_dir {
+            walk_dir_recursive(root, &path, hide_hidden, matcher, entries);
+        }
+    }
 }
 
 // ── Internal build helpers ───────────────────────────────────────────────────
@@ -125,49 +183,40 @@ pub fn plain_result(
 fn build_result(
     entries: Vec<FileEntry>,
     ranges: Vec<Vec<(usize, usize)>>,
-    display_root: Option<&Path>,
-    show_relative: bool,
+    root: &Path,
+    mode: DisplayMode,
+    total_matches: usize,
 ) -> ScanResult {
     let options = entries
         .iter()
         .zip(ranges.iter())
-        .map(|(entry, hl)| entry_option(entry, hl, display_root, show_relative))
+        .map(|(entry, hl)| entry_option(entry, hl, root, mode))
         .collect();
 
     let completion_items = entries
         .iter()
-        .map(|e| {
-            if show_relative {
-                if let Some(root) = display_root {
-                    if let Ok(rel) = e.path.strip_prefix(root) {
-                        return rel.to_string_lossy().to_string();
-                    }
-                }
-            }
-            e.name.clone()
-        })
+        .map(|e| display_text(e, root, mode))
         .collect();
 
     ScanResult {
+        total_matches,
         entries,
         options,
         completion_items,
     }
 }
 
-/// Build a `SelectOption` for a single entry with optional fuzzy/glob highlights.
 fn entry_option(
     entry: &FileEntry,
     highlights: &[(usize, usize)],
-    display_root: Option<&Path>,
-    show_relative: bool,
+    root: &Path,
+    mode: DisplayMode,
 ) -> SelectOption {
     let dir_style = Style::new().color(Color::Blue).bold();
     let prefix_style = Style::new().color(Color::DarkGrey);
 
-    // Relative path prefix (e.g. "src/foo/")
-    if show_relative {
-        if let Some(root) = display_root {
+    match mode {
+        DisplayMode::Relative => {
             if let Some(prefix) = relative_prefix(&entry.path, root) {
                 let name = entry.name.clone();
                 let name_start = prefix.chars().count();
@@ -186,9 +235,26 @@ fn entry_option(
                 };
             }
         }
+        DisplayMode::Full => {
+            let full = entry.path.to_string_lossy().to_string();
+            let name_start = full.len().saturating_sub(entry.name.len());
+            let name_style = if entry.is_dir {
+                dir_style
+            } else {
+                Style::default()
+            };
+            return SelectOption::Split {
+                text: full,
+                name_start,
+                highlights: highlights.to_vec(),
+                prefix_style,
+                name_style,
+            };
+        }
+        DisplayMode::Name => {}
     }
 
-    // No prefix — plain name, optionally styled for dirs
+    // Name mode (or Relative with no prefix — file is at root level)
     if entry.is_dir {
         SelectOption::Styled {
             text: entry.name.clone(),
@@ -205,146 +271,75 @@ fn entry_option(
     }
 }
 
-// ── Glob helpers (ported from legacy) ───────────────────────────────────────
-
-pub fn glob_match_path_segments(pattern_segments: &[String], target: &str) -> bool {
-    let target_segments = split_segments(target);
-    glob_match_segments(pattern_segments, &target_segments)
+/// The string used for completion items, matching what's shown in the list.
+fn display_text(entry: &FileEntry, root: &Path, mode: DisplayMode) -> String {
+    match mode {
+        DisplayMode::Full => entry.path.to_string_lossy().to_string(),
+        DisplayMode::Relative => entry
+            .path
+            .strip_prefix(root)
+            .map(|r| r.to_string_lossy().to_string())
+            .unwrap_or_else(|_| entry.name.clone()),
+        DisplayMode::Name => entry.name.clone(),
+    }
 }
 
-fn glob_match_segments(pattern: &[String], target: &[String]) -> bool {
-    if pattern.is_empty() {
-        return target.is_empty();
+// ── Glob helpers ─────────────────────────────────────────────────────────────
+
+fn build_glob_matcher(pattern: &str) -> Option<globset::GlobSet> {
+    let mut builder = GlobSetBuilder::new();
+    // Add the pattern as-is; also add `**/pattern` so a bare `*.rs` matches in subdirs
+    // when called from recursive walk (rel path is just the filename at depth 0).
+    if let Ok(g) = Glob::new(pattern) {
+        builder.add(g);
+    } else {
+        return None;
     }
-    let head = &pattern[0];
-    if head == "**" {
-        if glob_match_segments(&pattern[1..], target) {
-            return true;
-        }
-        if !target.is_empty() {
-            return glob_match_segments(pattern, &target[1..]);
-        }
-        return false;
-    }
-    if target.is_empty() {
-        return false;
-    }
-    if !glob_match_segment(head, &target[0]) {
-        return false;
-    }
-    glob_match_segments(&pattern[1..], &target[1..])
+    builder.build().ok()
 }
 
-fn glob_match_segment(pattern: &str, text: &str) -> bool {
-    let p: Vec<char> = pattern.chars().collect();
-    let t: Vec<char> = text.chars().collect();
-    let mut pi = 0;
-    let mut ti = 0;
-    let mut star_idx: Option<usize> = None;
-    let mut match_idx = 0;
-    while ti < t.len() {
-        if pi < p.len() && (p[pi] == '?' || p[pi] == t[ti]) {
-            pi += 1;
-            ti += 1;
-        } else if pi < p.len() && p[pi] == '*' {
-            star_idx = Some(pi);
-            match_idx = ti;
-            pi += 1;
-        } else if let Some(star) = star_idx {
-            pi = star + 1;
-            match_idx += 1;
-            ti = match_idx;
-        } else {
-            return false;
-        }
-    }
-    while pi < p.len() && p[pi] == '*' {
-        pi += 1;
-    }
-    pi == p.len()
-}
-
-fn sort_glob_results(
-    entries: &mut Vec<FileEntry>,
-    name_pattern: &str,
-    display_root: Option<&Path>,
-) {
-    let scores: Vec<usize> = entries
-        .iter()
-        .map(|e| glob_score(name_pattern, &e.name))
-        .collect();
-    let depths: Vec<usize> = entries
-        .iter()
-        .map(|e| glob_depth(e, display_root))
-        .collect();
-    let mut indices: Vec<usize> = (0..entries.len()).collect();
-    indices.sort_by(|&a, &b| {
-        scores[b]
-            .cmp(&scores[a])
-            .then(depths[a].cmp(&depths[b]))
-            .then(entries[a].name_lower.cmp(&entries[b].name_lower))
-    });
-    let sorted: Vec<FileEntry> = indices.iter().map(|&i| entries[i].clone()).collect();
-    *entries = sorted;
-}
-
-fn glob_score(pattern: &str, name: &str) -> usize {
-    glob_highlights(pattern, name)
-        .iter()
-        .map(|(s, e)| e.saturating_sub(*s))
-        .sum()
-}
-
-fn glob_depth(entry: &FileEntry, display_root: Option<&Path>) -> usize {
-    let rel = relative_path_str(entry, display_root);
-    split_segments(&rel).len()
-}
-
-fn glob_highlights(pattern: &str, name: &str) -> Vec<(usize, usize)> {
-    let literals = glob_literal_chunks(pattern);
-    let best = literals
-        .into_iter()
-        .max_by_key(|s| s.len())
-        .unwrap_or_default();
-    if best.is_empty() {
-        return Vec::new();
-    }
-    let name_chars: Vec<char> = name.chars().collect();
-    let best_chars: Vec<char> = best.chars().collect();
-    if best_chars.len() > name_chars.len() {
-        return Vec::new();
-    }
-    for start in 0..=(name_chars.len() - best_chars.len()) {
-        if name_chars[start..start + best_chars.len()] == best_chars[..] {
-            return vec![(start, start + best_chars.len())];
-        }
-    }
-    Vec::new()
-}
-
-fn glob_literal_chunks(pattern: &str) -> Vec<String> {
-    let mut chunks = Vec::new();
+/// Extract the longest literal chunk from a glob pattern for highlight hints.
+fn glob_literal_chunk(pattern: &str) -> Option<String> {
+    let mut chunks: Vec<String> = Vec::new();
     let mut cur = String::new();
     for ch in pattern.chars() {
-        if ch == '*' || ch == '?' {
+        if matches!(ch, '*' | '?' | '[' | ']') {
             if !cur.is_empty() {
                 chunks.push(cur.clone());
                 cur.clear();
             }
-        } else {
+        } else if ch != '/' {
             cur.push(ch);
         }
     }
     if !cur.is_empty() {
         chunks.push(cur);
     }
-    chunks
+    chunks.into_iter().max_by_key(|s| s.len())
 }
 
-fn longest_literal_chunk(pattern: &str) -> Option<String> {
-    glob_literal_chunks(pattern)
-        .into_iter()
-        .max_by_key(|s| s.len())
+fn literal_highlights(literal: &Option<String>, name: &str) -> Vec<(usize, usize)> {
+    let Some(lit) = literal else {
+        return Vec::new();
+    };
+    if lit.is_empty() {
+        return Vec::new();
+    }
+    let name_chars: Vec<char> = name.chars().collect();
+    let lit_chars: Vec<char> = lit.chars().collect();
+    if lit_chars.len() > name_chars.len() {
+        return Vec::new();
+    }
+    for start in 0..=(name_chars.len() - lit_chars.len()) {
+        if name_chars[start..start + lit_chars.len()]
+            .iter()
+            .zip(lit_chars.iter())
+            .all(|(a, b)| a.eq_ignore_ascii_case(b))
+        {
+            return vec![(start, start + lit_chars.len())];
+        }
+    }
+    Vec::new()
 }
 
 // ── Path display helpers ─────────────────────────────────────────────────────
@@ -395,7 +390,7 @@ fn elide_middle(text: &str, max_len: usize) -> String {
     format!("{}...{}", head, tail)
 }
 
-// ── Prefilter (fast candidate reduction before fuzzy scoring) ────────────────
+// ── Prefilter ────────────────────────────────────────────────────────────────
 
 fn prefilter(entries: &[FileEntry], query: &str) -> Option<Vec<usize>> {
     if query.contains('/') || query.contains('\\') {
@@ -487,87 +482,5 @@ pub fn format_age(modified: SystemTime) -> String {
         format!("{}mo", secs / (86400 * 30))
     } else {
         format!("{}y", secs / (86400 * 365))
-    }
-}
-
-// ── Recursive glob scan ──────────────────────────────────────────────────────
-
-pub fn list_dir_recursive_glob(
-    dir: &std::path::Path,
-    hide_hidden: bool,
-    pattern: &str,
-) -> Vec<FileEntry> {
-    let mut entries = Vec::new();
-    let normalized = pattern.replace('\\', "/");
-    // Normalize `**.ext` → `**/*.ext` so `**` is always its own segment
-    let normalized =
-        if normalized.starts_with("**") && !normalized.starts_with("**/") && normalized.len() > 2 {
-            format!("**/*{}", &normalized[2..])
-        } else {
-            normalized
-        };
-    let pattern_segments = split_segments(&normalized);
-    let name_pattern = pattern_segments.last().map(String::as_str).unwrap_or("");
-    let literal = longest_literal_chunk(name_pattern);
-    // `**` can appear as its own segment OR embedded (e.g. `foo/**bar`)
-    let has_double_star = pattern_segments.iter().any(|s| s.contains("**"));
-    let mut rel = Vec::new();
-    list_dir_recursive_glob_inner(
-        dir,
-        &pattern_segments,
-        hide_hidden,
-        literal.as_deref(),
-        has_double_star,
-        &mut rel,
-        &mut entries,
-    );
-    entries.sort_by(entry_sort);
-    entries
-}
-
-fn list_dir_recursive_glob_inner(
-    dir: &std::path::Path,
-    pattern_segments: &[String],
-    hide_hidden: bool,
-    literal: Option<&str>,
-    has_double_star: bool,
-    rel_segments: &mut Vec<String>,
-    entries: &mut Vec<FileEntry>,
-) {
-    use super::model::build_entry;
-    let Ok(rd) = std::fs::read_dir(dir) else {
-        return;
-    };
-    for entry in rd.flatten() {
-        let path = entry.path();
-        let is_dir = entry.file_type().map(|t| t.is_dir()).unwrap_or(false);
-        let name = entry.file_name().to_string_lossy().to_string();
-        if hide_hidden && name.starts_with('.') {
-            continue;
-        }
-        let meta = entry.metadata().ok();
-        rel_segments.push(name.clone());
-
-        if !has_double_star && rel_segments.len() > pattern_segments.len() {
-            rel_segments.pop();
-            continue;
-        }
-
-        let literal_ok = literal.map(|lit| name.contains(lit)).unwrap_or(true);
-        if literal_ok && glob_match_segments(pattern_segments, rel_segments) {
-            entries.push(build_entry(name, path.clone(), is_dir, meta));
-        }
-        if is_dir {
-            list_dir_recursive_glob_inner(
-                &path,
-                pattern_segments,
-                hide_hidden,
-                literal,
-                has_double_star,
-                rel_segments,
-                entries,
-            );
-        }
-        rel_segments.pop();
     }
 }

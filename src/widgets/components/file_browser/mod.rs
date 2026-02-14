@@ -6,6 +6,18 @@ mod search;
 
 pub use model::EntryFilter;
 
+/// Controls how file paths are displayed in the inline list.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum DisplayMode {
+    /// Show the full absolute path (e.g. `/home/user/projects/src/main.rs`)
+    Full,
+    /// Show path relative to cwd (e.g. `src/main.rs`) — default
+    #[default]
+    Relative,
+    /// Show only the file/folder name (e.g. `main.rs`)
+    Name,
+}
+
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
@@ -16,7 +28,7 @@ use crate::terminal::{CursorPos, KeyCode, KeyEvent, KeyModifiers};
 use crate::ui::span::Span;
 use crate::ui::style::{Color, Style};
 use crate::widgets::base::WidgetBase;
-use crate::widgets::components::select_list::{SelectList, SelectMode};
+use crate::widgets::components::select_list::{SelectList, SelectMode, SelectOption};
 use crate::widgets::inputs::text::TextInput;
 use crate::widgets::node::{Component, Node};
 use crate::widgets::traits::{
@@ -48,7 +60,7 @@ pub struct FileBrowserInput {
     hide_hidden: bool,
     entry_filter: EF,
     ext_filter: Option<HashSet<String>>,
-    show_relative: bool,
+    display_mode: DisplayMode,
     submit_target: Option<String>,
     validators: Vec<Validator>,
 
@@ -91,7 +103,7 @@ impl FileBrowserInput {
             hide_hidden: true,
             entry_filter: EF::All,
             ext_filter: None,
-            show_relative: false,
+            display_mode: DisplayMode::Relative,
             submit_target: None,
             validators: Vec::new(),
             scanner: ScannerHandle::new(),
@@ -137,8 +149,8 @@ impl FileBrowserInput {
         self
     }
 
-    pub fn with_show_relative(mut self, show: bool) -> Self {
-        self.show_relative = show;
+    pub fn with_display_mode(mut self, mode: DisplayMode) -> Self {
+        self.display_mode = mode;
         self
     }
 
@@ -204,7 +216,7 @@ impl FileBrowserInput {
             entry_filter: self.entry_filter,
             ext_filter: self.ext_filter.clone(),
             is_glob,
-            show_relative: self.show_relative,
+            display_mode: self.display_mode,
         });
     }
 
@@ -212,7 +224,22 @@ impl FileBrowserInput {
         self.scanning = false;
         self.text
             .set_completion_items(result.completion_items.clone());
-        self.list.set_options(result.options.clone());
+
+        // When browser is open and not at root, prepend `..` as a navigation option
+        let options = if self.overlay_open && self.browse_dir.parent().is_some() {
+            let mut opts = Vec::with_capacity(result.options.len() + 1);
+            opts.push(SelectOption::Styled {
+                text: "..".to_string(),
+                highlights: vec![],
+                style: crate::ui::style::Style::new().color(crate::ui::style::Color::DarkGrey),
+            });
+            opts.extend(result.options.clone());
+            opts
+        } else {
+            result.options.clone()
+        };
+
+        self.list.set_options(options);
         self.last_scan_result = Some(result);
     }
 
@@ -291,10 +318,18 @@ impl FileBrowserInput {
         InteractionResult::handled()
     }
 
+    /// Returns true when `..` is prepended to the list (browser open, not at root).
+    fn has_dotdot(&self) -> bool {
+        self.overlay_open && self.browse_dir.parent().is_some()
+    }
+
     /// Returns the `FileEntry` at the current active list index, if any.
+    /// Returns `None` when `..` is selected (handled separately as parent nav).
     fn active_entry(&self) -> Option<&model::FileEntry> {
         let idx = self.list.active_index();
-        self.last_scan_result.as_ref()?.entries.get(idx)
+        let entries = &self.last_scan_result.as_ref()?.entries;
+        let offset = if self.has_dotdot() { 1 } else { 0 };
+        idx.checked_sub(offset).and_then(|i| entries.get(i))
     }
 
     fn handle_browser_key(&mut self, key: KeyEvent) -> InteractionResult {
@@ -302,6 +337,13 @@ impl FileBrowserInput {
             KeyCode::Esc => self.close_browser(),
 
             KeyCode::Enter => {
+                // `..` selected → go to parent
+                if self.has_dotdot() && self.list.active_index() == 0 {
+                    if let Some(parent) = self.browse_dir.parent().map(Path::to_path_buf) {
+                        self.browse_into(parent);
+                    }
+                    return InteractionResult::handled();
+                }
                 let entry = self.active_entry().cloned();
                 let Some(entry) = entry else {
                     return InteractionResult::handled();
@@ -317,6 +359,13 @@ impl FileBrowserInput {
             }
 
             KeyCode::Right => {
+                // `..` selected → go to parent
+                if self.has_dotdot() && self.list.active_index() == 0 {
+                    if let Some(parent) = self.browse_dir.parent().map(Path::to_path_buf) {
+                        self.browse_into(parent);
+                        return InteractionResult::handled();
+                    }
+                }
                 let entry = self.active_entry().cloned();
                 if let Some(entry) = entry {
                     if entry.is_dir {
@@ -407,6 +456,21 @@ impl Drawable for FileBrowserInput {
                 let list_id = self.list.id().to_string();
                 let list_ctx = self.child_ctx(ctx, Some(list_id));
                 lines.extend(self.list.draw(&list_ctx).lines);
+
+                // Show truncation notice if results were cut off
+                if let Some(result) = &self.last_scan_result {
+                    let shown = result.entries.len();
+                    let total = result.total_matches;
+                    if total > shown {
+                        lines.push(vec![
+                            Span::styled(
+                                format!("  … {} more (refine query to narrow down)", total - shown),
+                                Style::new().color(Color::DarkGrey),
+                            )
+                            .no_wrap(),
+                        ]);
+                    }
+                }
 
                 let hint = if self.scanning {
                     format!("  {} scanning…", self.spinner_char())

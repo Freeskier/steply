@@ -3,6 +3,7 @@ use std::path::PathBuf;
 use std::sync::mpsc::{self, Receiver, Sender, TryRecvError};
 use std::thread;
 
+use super::DisplayMode;
 use super::cache::CacheKey;
 use super::model::{EntryFilter, filter_entries, list_dir, list_dir_recursive};
 use super::search::{ScanResult, fuzzy_search, glob_search, list_dir_recursive_glob, plain_result};
@@ -16,7 +17,7 @@ pub struct ScanRequest {
     pub entry_filter: EntryFilter,
     pub ext_filter: Option<HashSet<String>>,
     pub is_glob: bool,
-    pub show_relative: bool,
+    pub display_mode: DisplayMode,
 }
 
 /// Handle to the background scanner thread.
@@ -72,11 +73,11 @@ fn worker(rx: Receiver<ScanRequest>, tx: Sender<(CacheKey, ScanResult)>) {
         let entries = filter_entries(entries, req.entry_filter, req.ext_filter.as_ref());
 
         let result = if req.is_glob {
-            glob_search(&entries, &req.query, Some(&display_root), req.show_relative)
+            glob_search(&entries, &req.query, &display_root, req.display_mode)
         } else if req.query.is_empty() {
-            plain_result(&entries, Some(&display_root), req.show_relative)
+            plain_result(&entries, &display_root, req.display_mode)
         } else {
-            fuzzy_search(&entries, &req.query, Some(&display_root), req.show_relative)
+            fuzzy_search(&entries, &req.query, &display_root, req.display_mode)
         };
 
         let _ = tx.send((req.key, result));

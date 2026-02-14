@@ -8,15 +8,14 @@ use crate::terminal::{KeyCode, KeyEvent, KeyModifiers};
 use crate::ui::span::Span;
 use crate::ui::style::{Color, Style};
 use crate::widgets::base::WidgetBase;
+use crate::widgets::components::scroll::ScrollState;
 use crate::widgets::node::{Component, Node};
 use crate::widgets::traits::{
     DrawOutput, Drawable, FocusMode, InteractionResult, Interactive, RenderContext,
 };
 use model::option_text;
-use render::{footer_line, render_option_spans};
-use state::{
-    apply_options_preserving_selection, clamp_active, ensure_visible, marker_symbol, visible_range,
-};
+use render::render_option_spans;
+use state::{apply_options_preserving_selection, marker_symbol};
 
 pub use model::{SelectMode, SelectOption};
 
@@ -26,8 +25,7 @@ pub struct SelectList {
     mode: SelectMode,
     selected: Vec<usize>,
     active_index: usize,
-    scroll_offset: usize,
-    max_visible: Option<usize>,
+    scroll: ScrollState,
     submit_target: Option<String>,
     show_label: bool,
 }
@@ -44,8 +42,7 @@ impl SelectList {
             mode: SelectMode::Single,
             selected: Vec::new(),
             active_index: 0,
-            scroll_offset: 0,
-            max_visible: None,
+            scroll: ScrollState::new(None),
             submit_target: None,
             show_label: true,
         }
@@ -86,19 +83,15 @@ impl SelectList {
     }
 
     pub fn set_max_visible(&mut self, max_visible: usize) {
-        if max_visible == 0 {
-            self.max_visible = None;
+        self.scroll.max_visible = if max_visible == 0 {
+            None
         } else {
-            self.max_visible = Some(max_visible);
-        }
-        self.scroll_offset = 0;
-        clamp_active(&mut self.active_index, self.options.len());
-        ensure_visible(
-            &mut self.scroll_offset,
-            self.max_visible,
-            self.active_index,
-            self.options.len(),
-        );
+            Some(max_visible)
+        };
+        self.scroll.offset = 0;
+        ScrollState::clamp_active(&mut self.active_index, self.options.len());
+        self.scroll
+            .ensure_visible(self.active_index, self.options.len());
     }
 
     pub fn with_options(mut self, options: Vec<SelectOption>) -> Self {
@@ -111,16 +104,12 @@ impl SelectList {
             &mut self.options,
             &mut self.selected,
             &mut self.active_index,
-            &mut self.scroll_offset,
+            &mut self.scroll.offset,
             self.mode,
             options,
         );
-        ensure_visible(
-            &mut self.scroll_offset,
-            self.max_visible,
-            self.active_index,
-            self.options.len(),
-        );
+        self.scroll
+            .ensure_visible(self.active_index, self.options.len());
     }
 
     pub fn with_selected(mut self, selected: Vec<usize>) -> Self {
@@ -201,12 +190,8 @@ impl SelectList {
             return false;
         }
         self.active_index = next;
-        ensure_visible(
-            &mut self.scroll_offset,
-            self.max_visible,
-            self.active_index,
-            self.options.len(),
-        );
+        self.scroll
+            .ensure_visible(self.active_index, self.options.len());
         true
     }
 
@@ -226,7 +211,9 @@ impl SelectList {
         let cursor_style = Style::new().color(Color::Yellow);
         let highlight_style = Style::new().color(Color::Yellow).bold();
 
-        let (start, end) = visible_range(self.scroll_offset, self.max_visible, self.options.len());
+        let total = self.options.len();
+        let (start, end) = self.scroll.visible_range(total);
+
         for (index, option) in self
             .options
             .iter()
@@ -289,21 +276,10 @@ impl SelectList {
             lines.push(spans);
         }
 
-        if let Some(max_visible) = self.max_visible {
-            let total = self.options.len();
-            if total > max_visible {
-                let shown_start = start + 1;
-                let shown_end = end;
-                let can_scroll_up = shown_start > 1;
-                let can_scroll_down = shown_end < total;
-                lines.push(footer_line(
-                    shown_start,
-                    shown_end,
-                    total,
-                    can_scroll_up,
-                    can_scroll_down,
-                ));
-            }
+        if let Some(text) = self.scroll.footer(total) {
+            lines.push(vec![
+                Span::styled(text, Style::new().color(Color::DarkGrey)).no_wrap(),
+            ]);
         }
 
         lines
@@ -438,13 +414,9 @@ impl Interactive for SelectList {
             }
         }
 
-        clamp_active(&mut self.active_index, self.options.len());
-        ensure_visible(
-            &mut self.scroll_offset,
-            self.max_visible,
-            self.active_index,
-            self.options.len(),
-        );
+        ScrollState::clamp_active(&mut self.active_index, self.options.len());
+        self.scroll
+            .ensure_visible(self.active_index, self.options.len());
     }
 
     fn on_event(&mut self, event: &WidgetEvent) -> InteractionResult {

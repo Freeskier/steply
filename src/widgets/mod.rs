@@ -4,5 +4,6 @@ pub mod inputs;
 pub mod node;
 pub mod node_index;
 pub mod outputs;
+pub mod shared;
 pub mod traits;
 pub mod validators;

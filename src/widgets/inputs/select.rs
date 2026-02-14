@@ -92,7 +92,7 @@ impl Drawable for SelectInput {
         DrawOutput {
             lines: vec![vec![
                 Span::new(prefix).no_wrap(),
-                Span::styled(self.selected_text().to_string(), Style::default()).no_wrap(),
+                Span::styled(format!("‹ {} ›", self.selected_text()), Style::default()).no_wrap(),
             ]],
         }
     }

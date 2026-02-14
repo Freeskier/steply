@@ -1,6 +1,6 @@
 use super::model::SelectOption;
-use crate::ui::span::{Span, SpanLine};
-use crate::ui::style::{Color, Style};
+use crate::ui::span::Span;
+use crate::ui::style::Style;
 use crate::widgets::inputs::text_edit;
 
 pub(super) fn render_option_spans(
@@ -92,23 +92,6 @@ pub(super) fn render_option_spans(
             spans
         }
     }
-}
-
-pub(super) fn footer_line(
-    start: usize,
-    end: usize,
-    total: usize,
-    can_scroll_up: bool,
-    can_scroll_down: bool,
-) -> SpanLine {
-    let indicator = match (can_scroll_up, can_scroll_down) {
-        (true, true) => " ↑↓",
-        (true, false) => " ↑",
-        (false, true) => " ↓",
-        (false, false) => "",
-    };
-    let text = format!("[{}-{} of {}]{}", start, end, total, indicator);
-    vec![Span::styled(text, Style::new().color(Color::DarkGrey)).no_wrap()]
 }
 
 fn render_text_spans(

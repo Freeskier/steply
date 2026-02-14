@@ -2,6 +2,7 @@ use super::model::{MaskToken, SegmentKind, SegmentRole};
 use crate::ui::span::Span;
 use crate::ui::style::{Color, Style};
 use crate::widgets::inputs::text_edit;
+use crate::widgets::shared::calendar;
 
 pub(super) fn token_accepts(kind: SegmentKind, ch: char) -> bool {
     match kind {
@@ -171,8 +172,12 @@ pub(super) fn is_complete(tokens: &[MaskToken]) -> bool {
     }
 
     if let (Some(month), Some(day)) = (month, day) {
-        let max_day = days_in_month(year, month);
-        if max_day == 0 || day < 1 || day > max_day {
+        let y = year.unwrap_or(2000) as i32;
+        if month < 1 || month > 12 {
+            return false;
+        }
+        let max_day = calendar::days_in_month(y, month as u8) as i64;
+        if day < 1 || day > max_day {
             return false;
         }
     }
@@ -224,22 +229,5 @@ fn role_placeholder(role: SegmentRole) -> &'static str {
         SegmentRole::Hour => "hh",
         SegmentRole::Minute => "mm",
         SegmentRole::Second => "ss",
-    }
-}
-
-fn is_leap_year(year: i64) -> bool {
-    (year % 4 == 0 && year % 100 != 0) || (year % 400 == 0)
-}
-
-fn days_in_month(year: Option<i64>, month: i64) -> i64 {
-    match month {
-        1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
-        4 | 6 | 9 | 11 => 30,
-        2 => match year {
-            Some(y) if is_leap_year(y) => 29,
-            Some(_) => 28,
-            None => 29,
-        },
-        _ => 0,
     }
 }

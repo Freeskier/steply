@@ -21,7 +21,6 @@ pub(super) fn parse_mask(mask: &str) -> Vec<MaskToken> {
             } else {
                 kind
             };
-
             tokens.push(MaskToken::Segment(SegmentSpec {
                 kind: resolved_kind,
                 min_len,
@@ -144,11 +143,8 @@ fn parse_quantifier(
 
     let (min_len, max_len) = if len_part.contains(',') {
         let parts: Vec<&str> = len_part.split(',').collect();
-        let min_len = parts
-            .first()
-            .and_then(|item| item.parse::<usize>().ok())
-            .unwrap_or(0);
-        let max_len = parts.get(1).and_then(|item| item.parse::<usize>().ok());
+        let min_len = parts.first().and_then(|s| s.parse().ok()).unwrap_or(0);
+        let max_len = parts.get(1).and_then(|s| s.parse().ok());
         (min_len, max_len)
     } else {
         let len = len_part.parse::<usize>().unwrap_or(1);

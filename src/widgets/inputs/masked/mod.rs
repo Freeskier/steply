@@ -303,6 +303,20 @@ impl MaskedInput {
         true
     }
 
+    /// Renders only the mask spans (no label/prefix). Used by composite widgets.
+    pub fn render_spans(&self) -> Vec<Span> {
+        format::render_spans(self.tokens.as_slice())
+    }
+
+    /// Column offset of the cursor within the mask spans (no prefix). Used by composite widgets.
+    pub fn cursor_col(&self) -> usize {
+        format::cursor_offset(
+            self.tokens.as_slice(),
+            self.cursor_token,
+            self.cursor_offset,
+        )
+    }
+
     fn validated_value(&self) -> Result<String, String> {
         if !format::has_any_segment_input(self.tokens.as_slice()) {
             return Ok(String::new());

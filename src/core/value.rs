@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use indexmap::IndexMap;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Value {
@@ -7,7 +7,7 @@ pub enum Value {
     Bool(bool),
     Number(f64),
     List(Vec<Value>),
-    Object(BTreeMap<String, Value>),
+    Object(IndexMap<String, Value>),
 }
 
 impl Value {
@@ -101,6 +101,54 @@ impl Value {
             _ => None,
         }
     }
+
+    // ── JSON ──────────────────────────────────────────────────────────────────
+
+    /// Parse a JSON string into a `Value`.
+    pub fn from_json(s: &str) -> Result<Self, String> {
+        let jv: serde_json::Value = serde_json::from_str(s).map_err(|e| e.to_string())?;
+        Ok(Self::from_serde(jv))
+    }
+
+    /// Serialize to a compact JSON string.
+    pub fn to_json(&self) -> String {
+        serde_json::to_string(&self.to_serde()).unwrap_or_else(|_| "null".to_string())
+    }
+
+    /// Serialize to a pretty-printed JSON string.
+    pub fn to_json_pretty(&self) -> String {
+        serde_json::to_string_pretty(&self.to_serde()).unwrap_or_else(|_| "null".to_string())
+    }
+
+    fn from_serde(jv: serde_json::Value) -> Self {
+        match jv {
+            serde_json::Value::Null => Self::None,
+            serde_json::Value::Bool(b) => Self::Bool(b),
+            serde_json::Value::Number(n) => Self::Number(n.as_f64().unwrap_or(0.0)),
+            serde_json::Value::String(s) => Self::Text(s),
+            serde_json::Value::Array(arr) => {
+                Self::List(arr.into_iter().map(Self::from_serde).collect())
+            }
+            serde_json::Value::Object(map) => Self::Object(
+                map.into_iter()
+                    .map(|(k, v)| (k, Self::from_serde(v)))
+                    .collect(),
+            ),
+        }
+    }
+
+    fn to_serde(&self) -> serde_json::Value {
+        match self {
+            Self::None => serde_json::Value::Null,
+            Self::Bool(b) => serde_json::Value::Bool(*b),
+            Self::Number(n) => serde_json::json!(n),
+            Self::Text(s) => serde_json::Value::String(s.clone()),
+            Self::List(arr) => serde_json::Value::Array(arr.iter().map(|v| v.to_serde()).collect()),
+            Self::Object(map) => serde_json::Value::Object(
+                map.iter().map(|(k, v)| (k.clone(), v.to_serde())).collect(),
+            ),
+        }
+    }
 }
 
 fn parse_number_text(value: &str) -> Option<f64> {
@@ -111,7 +159,6 @@ fn parse_number_text(value: &str) -> Option<f64> {
     if let Ok(number) = trimmed.parse::<f64>() {
         return Some(number);
     }
-
     trimmed
         .split_whitespace()
         .next()

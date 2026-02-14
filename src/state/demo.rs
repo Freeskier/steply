@@ -1,7 +1,10 @@
+use crate::core::value::Value;
 use crate::state::flow::Flow;
 use crate::state::step::Step;
 use crate::task::{TaskSpec, TaskSubscription};
+use crate::widgets::components::calendar::{Calendar, CalendarMode};
 use crate::widgets::components::file_browser::FileBrowserInput;
+use crate::widgets::components::object_editor::ObjectEditor;
 use crate::widgets::components::searchable_select::SearchableSelect;
 use crate::widgets::components::select_list::SelectList;
 use crate::widgets::components::select_list::SelectMode;
@@ -17,11 +20,25 @@ use crate::widgets::inputs::slider::SliderInput;
 use crate::widgets::inputs::text::{TextInput, TextMode};
 use crate::widgets::node::Node;
 use crate::widgets::outputs::chart::{ChartOutput, ChartRenderMode};
+use crate::widgets::outputs::diff::DiffOutput;
 use crate::widgets::outputs::progress::{
     Easing, ProgressOutput, ProgressStyle, ProgressTransition,
 };
 use crate::widgets::outputs::text::TextOutput;
 use crate::widgets::validators;
+
+// ── Calendar input ────────────────────────────────────────────────────────────
+
+fn step_calendar() -> Step {
+    Step::new(
+        "step_calendar",
+        "Calendar input",
+        vec![Node::Component(Box::new(
+            Calendar::new("cal_dt", "Date").with_mode(CalendarMode::DateTime),
+        ))],
+    )
+    .with_hint("Tab → month/year/grid  •  ←→ change  •  ↑↓ navigate  •  Enter select")
+}
 
 // ── Step 1: Text inputs ──────────────────────────────────────────────────────
 
@@ -346,7 +363,102 @@ fn step_tree_view() -> Step {
     .with_hint("↑/↓ → navigate  •  → expand  •  ← collapse/jump to parent  •  Enter → select")
 }
 
-// ── Step 9: Summary + button ─────────────────────────────────────────────────
+// ── Step 9: Object editor ────────────────────────────────────────────────────
+
+fn step_object_editor() -> Step {
+    let value = Value::from_json(
+        r#"{
+        "name": "Alice",
+        "age": 30,
+        "active": true,
+        "address": {
+            "city": "Warsaw",
+            "zip": "00-001"
+        },
+        "tags": ["rust", "tui", "cli"]
+    }"#,
+    )
+    .unwrap_or(Value::Object(Default::default()));
+
+    Step::new(
+        "step_object_editor",
+        "Object editor",
+        vec![
+            Node::Output(Box::new(TextOutput::new(
+                "obj_intro",
+                "Edit a structured value. Navigate with ↑/↓, edit with Enter/Tab, insert with i, delete with d, move with m.",
+            ))),
+            Node::Component(Box::new(
+                ObjectEditor::new("obj_main", "Config")
+                    .with_value(value)
+                    .with_max_visible(12),
+            )),
+        ],
+    )
+    .with_hint("↑/↓ → navigate  •  Enter/Tab → edit  •  i → insert  •  d → delete  •  m → move")
+}
+
+// ── Step 10: Diff output ─────────────────────────────────────────────────────
+
+fn step_diff() -> Step {
+    let old = r#"fn main() {
+    let name = "Alice";
+    let age = 30;
+    println!("Hello, {}!", name);
+    println!("Age: {}", age);
+}
+
+fn greet(name: &str) {
+    println!("Hi {}!", name);
+}
+
+fn farewell(name: &str) {
+    println!("Bye {}!", name);
+}
+
+#[cfg(test)]
+mod tests {
+    fn test_greet() {
+        assert!(true);
+    }
+}"#;
+
+    let new = r#"fn main() {
+    let name = "Bob";
+    let age = 30;
+    println!("Hello, {}!", name);
+}
+
+fn greet(name: &str, msg: &str) {
+    println!("{}: {}!", name, msg);
+}
+
+fn farewell(name: &str) {
+    println!("Bye {}!", name);
+}
+
+#[cfg(test)]
+mod tests {
+    fn test_greet() {
+        assert!(true);
+    }
+
+    fn test_farewell() {
+        assert!(true);
+    }
+}"#;
+
+    Step::new(
+        "step_diff",
+        "Diff viewer",
+        vec![Node::Component(Box::new(
+            DiffOutput::new("diff_main", "main.rs", old, new).with_max_visible(18),
+        ))],
+    )
+    .with_hint("↑↓ navigate  Tab next chunk  Shift+Tab prev  Enter expand gap")
+}
+
+// ── Step 11: Summary + button ─────────────────────────────────────────────────
 
 fn step_finish() -> Step {
     Step::new(
@@ -369,6 +481,9 @@ fn step_finish() -> Step {
 
 pub fn build_demo_flow() -> Flow {
     Flow::new(vec![
+        step_calendar(),
+        step_diff(),
+        step_object_editor(),
         step_file_browser(),
         step_tree_view(),
         step_text_inputs(),

@@ -6,11 +6,12 @@ use crate::terminal::{KeyCode, KeyEvent, KeyModifiers};
 use crate::ui::span::Span;
 use crate::ui::style::{Color, Style};
 use crate::widgets::base::WidgetBase;
+use crate::widgets::components::scroll::ScrollState;
 use crate::widgets::node::{Component, Node};
 use crate::widgets::traits::{
     DrawOutput, Drawable, FocusMode, InteractionResult, Interactive, RenderContext,
 };
-use state::{clamp_active, ensure_visible, rebuild_visible, visible_range};
+use state::rebuild_visible;
 
 pub trait TreeItemLabel: Send + 'static {
     fn label(&self) -> &str;
@@ -59,8 +60,7 @@ pub struct TreeView<T: TreeItemLabel> {
     nodes: Vec<TreeNode<T>>,
     visible: Vec<usize>,
     active_index: usize,
-    scroll_offset: usize,
-    max_visible: Option<usize>,
+    scroll: ScrollState,
     submit_target: Option<String>,
     show_label: bool,
     /// node_idx pending a lazy-load scan (shows ⟳ icon while loading).
@@ -74,8 +74,7 @@ impl<T: TreeItemLabel> TreeView<T> {
             nodes,
             visible: Vec::new(),
             active_index: 0,
-            scroll_offset: 0,
-            max_visible: None,
+            scroll: ScrollState::new(None),
             submit_target: None,
             show_label: true,
             pending_expand: None,
@@ -85,7 +84,7 @@ impl<T: TreeItemLabel> TreeView<T> {
     }
 
     pub fn with_max_visible(mut self, max_visible: usize) -> Self {
-        self.max_visible = if max_visible == 0 {
+        self.scroll.max_visible = if max_visible == 0 {
             None
         } else {
             Some(max_visible)
@@ -97,6 +96,21 @@ impl<T: TreeItemLabel> TreeView<T> {
     pub fn with_submit_target(mut self, target: impl Into<String>) -> Self {
         self.submit_target = Some(target.into());
         self
+    }
+
+    /// Returns (start, end) of the currently visible window into the visible list.
+    pub fn visible_range(&self) -> (usize, usize) {
+        self.scroll.visible_range(self.visible.len())
+    }
+
+    /// The active index within the visible list (not nodes[]).
+    pub fn active_visible_index(&self) -> usize {
+        self.active_index
+    }
+
+    /// The visible list: indices into nodes[].
+    pub fn visible(&self) -> &[usize] {
+        &self.visible
     }
 
     pub fn with_show_label(mut self, show_label: bool) -> Self {
@@ -162,13 +176,9 @@ impl<T: TreeItemLabel> TreeView<T> {
 
     fn rebuild(&mut self) {
         self.visible = rebuild_visible(&self.nodes);
-        clamp_active(&mut self.active_index, self.visible.len());
-        ensure_visible(
-            &mut self.scroll_offset,
-            self.max_visible,
-            self.active_index,
-            self.visible.len(),
-        );
+        ScrollState::clamp_active(&mut self.active_index, self.visible.len());
+        self.scroll
+            .ensure_visible(self.active_index, self.visible.len());
     }
 
     pub fn move_active(&mut self, delta: isize) -> bool {
@@ -182,12 +192,8 @@ impl<T: TreeItemLabel> TreeView<T> {
             return false;
         }
         self.active_index = next;
-        ensure_visible(
-            &mut self.scroll_offset,
-            self.max_visible,
-            self.active_index,
-            self.visible.len(),
-        );
+        self.scroll
+            .ensure_visible(self.active_index, self.visible.len());
         true
     }
 
@@ -227,15 +233,10 @@ impl<T: TreeItemLabel> TreeView<T> {
             .find(|&i| self.nodes[i].depth == target_depth);
 
         if let Some(parent_node_idx) = parent_node_idx {
-            // Find the position of parent in visible[]
             if let Some(pos) = self.visible.iter().position(|&i| i == parent_node_idx) {
                 self.active_index = pos;
-                ensure_visible(
-                    &mut self.scroll_offset,
-                    self.max_visible,
-                    self.active_index,
-                    self.visible.len(),
-                );
+                self.scroll
+                    .ensure_visible(self.active_index, self.visible.len());
                 return true;
             }
         }
@@ -246,7 +247,7 @@ impl<T: TreeItemLabel> TreeView<T> {
     pub fn render_lines(&self, focused: bool) -> Vec<Vec<Span>> {
         let mut lines = Vec::new();
         let total = self.visible.len();
-        let (start, end) = visible_range(self.scroll_offset, self.max_visible, total);
+        let (start, end) = self.scroll.visible_range(total);
 
         let inactive_style = Style::new().color(Color::DarkGrey);
         let cursor_style = Style::new().color(Color::Yellow);
@@ -301,24 +302,10 @@ impl<T: TreeItemLabel> TreeView<T> {
             lines.push(vec![cursor_span, indent_span, icon_span, label_span]);
         }
 
-        // Footer if scrollable
-        if let Some(max_visible) = self.max_visible {
-            if total > max_visible {
-                let shown_start = start + 1;
-                let shown_end = end;
-                let can_scroll_up = shown_start > 1;
-                let can_scroll_down = shown_end < total;
-                let indicator = match (can_scroll_up, can_scroll_down) {
-                    (true, true) => " ↑↓",
-                    (true, false) => " ↑",
-                    (false, true) => " ↓",
-                    (false, false) => "",
-                };
-                let text = format!("[{}-{} of {}]{}", shown_start, shown_end, total, indicator);
-                lines.push(vec![
-                    Span::styled(text, Style::new().color(Color::DarkGrey)).no_wrap(),
-                ]);
-            }
+        if let Some(text) = self.scroll.footer(total) {
+            lines.push(vec![
+                Span::styled(text, Style::new().color(Color::DarkGrey)).no_wrap(),
+            ]);
         }
 
         lines
@@ -417,12 +404,8 @@ impl<T: TreeItemLabel> Interactive for TreeView<T> {
             .position(|&idx| self.nodes[idx].item.label() == text.as_str())
         {
             self.active_index = pos;
-            ensure_visible(
-                &mut self.scroll_offset,
-                self.max_visible,
-                self.active_index,
-                self.visible.len(),
-            );
+            self.scroll
+                .ensure_visible(self.active_index, self.visible.len());
         }
     }
 

@@ -8,6 +8,7 @@ use crate::widgets::components::object_editor::ObjectEditor;
 use crate::widgets::components::searchable_select::SearchableSelect;
 use crate::widgets::components::select_list::SelectList;
 use crate::widgets::components::select_list::SelectMode;
+use crate::widgets::components::snippet::Snippet;
 use crate::widgets::components::tree_view::{TreeNode, TreeView};
 use crate::widgets::inputs::array::ArrayInput;
 use crate::widgets::inputs::button::ButtonInput;
@@ -26,6 +27,39 @@ use crate::widgets::outputs::progress::{
 };
 use crate::widgets::outputs::text::TextOutput;
 use crate::widgets::validators;
+
+// ── Snippet ───────────────────────────────────────────────────────────────────
+
+fn step_snippet() -> Step {
+    Step::new(
+        "step_snippet",
+        "Snippet",
+        vec![Node::Component(Box::new(
+            Snippet::new(
+                "snip",
+                "Snippet",
+                "  Connect to <ip> on port <port>\n  as user <user> since <date> <port>",
+            )
+            .with_input(Node::Input(Box::new(MaskedInput::new(
+                "ip",
+                "IP",
+                "###.###.###.###",
+            ))))
+            .with_input(Node::Input(Box::new(MaskedInput::new(
+                "port",
+                "Port",
+                "#{1,5:1-65535}",
+            ))))
+            .with_input(Node::Input(Box::new(TextInput::new("user", "User"))))
+            .with_input(Node::Input(Box::new(MaskedInput::new(
+                "date",
+                "Date",
+                "DD/MM/YYYY",
+            )))),
+        ))],
+    )
+    .with_hint("Tab → next field  •  Shift+Tab → prev  •  Enter → next/submit")
+}
 
 // ── Calendar input ────────────────────────────────────────────────────────────
 
@@ -481,6 +515,7 @@ fn step_finish() -> Step {
 
 pub fn build_demo_flow() -> Flow {
     Flow::new(vec![
+        step_snippet(),
         step_calendar(),
         step_diff(),
         step_object_editor(),

@@ -1,14 +1,14 @@
 use crate::core::value::Value;
 use crate::state::flow::Flow;
 use crate::state::step::{Step, StepNavigation};
-use crate::task::{TaskSpec, TaskSubscription, TaskTrigger};
+use crate::task::{TaskAssign, TaskParse, TaskSpec, TaskSubscription, TaskTrigger};
 use crate::widgets::components::calendar::{Calendar, CalendarMode};
 use crate::widgets::components::file_browser::FileBrowserInput;
 use crate::widgets::components::object_editor::ObjectEditor;
-use crate::widgets::components::searchable_select::SearchableSelect;
 use crate::widgets::components::select_list::SelectList;
-use crate::widgets::components::select_list::SelectMode;
+use crate::widgets::components::select_list::{SelectMode, SelectOption};
 use crate::widgets::components::snippet::Snippet;
+use crate::widgets::components::table::{Table, TableStyle};
 use crate::widgets::components::tree_view::{TreeNode, TreeView};
 use crate::widgets::inputs::array::ArrayInput;
 use crate::widgets::inputs::button::ButtonInput;
@@ -28,6 +28,53 @@ use crate::widgets::outputs::progress::{
 use crate::widgets::outputs::task_log::{TaskLog, TaskLogStep};
 use crate::widgets::outputs::text::TextOutput;
 use crate::widgets::validators;
+
+// ── Snippet ───────────────────────────────────────────────────────────────────
+
+fn step_pokemon_search() -> Step {
+    Step::new(
+        "step_pokemon",
+        "Pokemon search (PokeAPI)",
+        vec![
+            Node::Output(Box::new(TextOutput::new(
+                "poke_intro",
+                "Type a query to fetch Pokemon list from PokeAPI. Results refresh automatically.",
+            ))),
+            Node::Input(Box::new(
+                TextInput::new("poke_query", "Query").with_change_target("poke_query_value"),
+            )),
+            Node::Component(Box::new(
+                SelectList::new("poke_results", "Results", vec![])
+                    .with_mode(SelectMode::List)
+                    .with_max_visible(10),
+            )),
+        ],
+    )
+    .with_hint("Type in Query  •  Ctrl+F inside Results for local fuzzy filter")
+}
+
+// ── Snippet ───────────────────────────────────────────────────────────────────
+
+fn step_table() -> Step {
+    Step::new(
+        "step_table",
+        "Table",
+        vec![Node::Component(Box::new(
+            Table::new("tbl_targets", "Deployment targets")
+                .with_style(TableStyle::Grid)
+                .column("Tags", ArrayInput::new)
+                .column("Name", TextInput::new)
+                .column("Port", |id, header| {
+                    MaskedInput::new(id, header, "#{1,5:1-65535}")
+                })
+                .column("Weight", |id, header| {
+                    SliderInput::new(id, header, 0, 100).with_step(5)
+                })
+                .with_initial_rows(2),
+        ))],
+    )
+    .with_hint("↑/↓ rows  •  Tab/Shift+Tab columns  •  Header: Enter/Space sort  •  + Add record")
+}
 
 // ── Snippet ───────────────────────────────────────────────────────────────────
 
@@ -152,24 +199,41 @@ fn step_structured_inputs() -> Step {
     .with_hint("Masked: type digits, cursor skips separators  •  Array: Enter → add, Del → remove")
 }
 
-// ── Step 3: Choice + Select + SearchableSelect ───────────────────────────────
+// ── Step 3: Choice + Select + SelectList (fuzzy filter) ──────────────────────
 
 fn step_selection() -> Step {
     let languages = vec![
-        "Rust",
-        "Go",
-        "Python",
-        "TypeScript",
-        "Zig",
-        "Haskell",
-        "OCaml",
-        "C",
-        "C++",
-        "Kotlin",
-    ]
-    .into_iter()
-    .map(String::from)
-    .collect::<Vec<_>>();
+        SelectOption::detailed(
+            "rust",
+            "Rust",
+            "Systems language focused on safety and performance",
+        ),
+        SelectOption::detailed(
+            "go",
+            "Go",
+            "Simple concurrency model and fast compile times",
+        ),
+        SelectOption::detailed(
+            "python",
+            "Python",
+            "General-purpose scripting with rich ecosystem",
+        ),
+        SelectOption::detailed(
+            "typescript",
+            "TypeScript",
+            "Typed superset of JavaScript for large front-end apps",
+        ),
+        SelectOption::detailed(
+            "zig",
+            "Zig",
+            "Low-level language with explicit memory control",
+        ),
+        SelectOption::detailed(
+            "kotlin",
+            "Kotlin",
+            "Modern JVM language with concise syntax",
+        ),
+    ];
 
     let editors = vec!["Neovim", "Emacs", "VS Code", "Helix", "Sublime", "Zed"]
         .into_iter()
@@ -199,13 +263,13 @@ fn step_selection() -> Step {
                     .with_validator(validators::required("Pick an editor")),
             )),
             Node::Component(Box::new(
-                SearchableSelect::new("ss_lang", "Language (searchable)", languages)
+                SelectList::new("ss_lang", "Language", languages)
                     .with_mode(SelectMode::Single)
-                    .with_max_visible(6),
+                    .with_max_visible(8),
             )),
         ],
     )
-    .with_hint("Choice: Up/Down  •  Select: Up/Down  •  SearchableSelect: type to filter")
+    .with_hint("Choice: Up/Down  •  Select: Up/Down  •  SelectList: Ctrl+F filter fuzzy")
 }
 
 // ── Step 4: Checkbox + multi-select list ─────────────────────────────────────
@@ -596,6 +660,9 @@ fn step_back_destructive() -> Step {
 
 pub fn build_demo_flow() -> Flow {
     Flow::new(vec![
+        step_pokemon_search(),
+        step_selection(),
+        step_table(),
         step_back_allowed(),
         step_back_reset(),
         step_back_destructive(),
@@ -608,7 +675,6 @@ pub fn build_demo_flow() -> Flow {
         step_tree_view(),
         step_text_inputs(),
         step_structured_inputs(),
-        step_selection(),
         step_toggles(),
         step_outputs(),
         step_color(),
@@ -618,6 +684,55 @@ pub fn build_demo_flow() -> Flow {
 
 pub fn build_demo_tasks() -> (Vec<TaskSpec>, Vec<TaskSubscription>) {
     let specs = vec![
+        TaskSpec::exec(
+            "poke_search",
+            "python3",
+            vec![
+                "-c".into(),
+                r#"
+import json
+import sys
+import urllib.parse
+import urllib.request
+
+query = (sys.argv[1] if len(sys.argv) > 1 else "").strip().lower()
+if not query:
+    print("[]")
+    raise SystemExit(0)
+
+url = "https://pokeapi.co/api/v2/pokemon?limit=2000"
+    req = urllib.request.Request(
+        url,
+        headers={
+            "User-Agent": "steply-demo/1.0 (+https://pokeapi.co)",
+            "Accept": "application/json",
+        },
+    )
+    with urllib.request.urlopen(req, timeout=8) as response:
+    payload = json.load(response)
+
+out = []
+for entry in payload.get("results", []):
+    name = entry.get("name", "")
+    if query in name:
+        out.append({
+            "value": name,
+            "title": name.replace("-", " ").title(),
+            "description": entry.get("url", ""),
+        })
+    if len(out) >= 25:
+        break
+
+print(json.dumps(out))
+"#
+                .into(),
+                "${poke_query_value}".into(),
+            ],
+        )
+        .with_timeout_ms(12_000)
+        .with_parse(TaskParse::Json)
+        .with_assign(TaskAssign::SetValue("poke_results".into())),
+
         TaskSpec::exec(
             "tlog_prepare",
             "bash",
@@ -718,12 +833,15 @@ echo '[verify] All checks passed.'
         .with_timeout_ms(30_000),
     ];
 
-    let subs = vec![TaskSubscription::new(
-        "tlog_prepare",
-        TaskTrigger::OnStepEnter {
-            step_id: "step_task_log".into(),
-        },
-    )];
+    let subs = vec![
+        TaskSubscription::on_node_value_changed("poke_search", "poke_query_value", 250),
+        TaskSubscription::new(
+            "tlog_prepare",
+            TaskTrigger::OnStepEnter {
+                step_id: "step_task_log".into(),
+            },
+        ),
+    ];
 
     (specs, subs)
 }

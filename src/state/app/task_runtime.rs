@@ -5,7 +5,7 @@ use crate::runtime::scheduler::SchedulerCommand;
 use crate::state::step::StepStatus;
 use crate::task::{
     ConcurrencyPolicy, TaskAssign, TaskCancelToken, TaskCompletion, TaskId, TaskInvocation,
-    TaskRequest, TaskSpec, TaskTrigger,
+    TaskKind, TaskRequest, TaskSpec, TaskTrigger,
 };
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
@@ -130,7 +130,8 @@ impl AppState {
             ConcurrencyPolicy::Parallel => {}
         }
 
-        self.start_task_invocation(spec, request.fingerprint, now);
+        let invocation_spec = self.resolve_task_spec_templates(spec);
+        self.start_task_invocation(invocation_spec, request.fingerprint, now);
         TaskStartResult::Started
     }
 
@@ -320,6 +321,45 @@ impl AppState {
         });
     }
 
+    fn resolve_task_spec_templates(&self, mut spec: TaskSpec) -> TaskSpec {
+        let TaskKind::Exec { program, args, .. } = &mut spec.kind;
+        *program = self.interpolate_store_vars(program);
+        for arg in args {
+            *arg = self.interpolate_store_vars(arg.as_str());
+        }
+        spec
+    }
+
+    fn interpolate_store_vars(&self, template: &str) -> String {
+        let chars = template.chars().collect::<Vec<_>>();
+        let mut out = String::new();
+        let mut idx = 0usize;
+        while idx < chars.len() {
+            if chars[idx] == '$' && idx + 1 < chars.len() && chars[idx + 1] == '{' {
+                let mut end = idx + 2;
+                while end < chars.len() && chars[end] != '}' {
+                    end += 1;
+                }
+                if end < chars.len() && chars[end] == '}' {
+                    let key = chars[idx + 2..end].iter().collect::<String>();
+                    let value = self
+                        .data
+                        .store
+                        .get(key.as_str())
+                        .map(value_to_task_arg)
+                        .unwrap_or_default();
+                    out.push_str(value.as_str());
+                    idx = end + 1;
+                    continue;
+                }
+            }
+
+            out.push(chars[idx]);
+            idx += 1;
+        }
+        out
+    }
+
     fn enqueue_task_request(&mut self, task_id: TaskId, request: TaskRequest) {
         const MAX_QUEUED: usize = 128;
         let queue = self
@@ -402,6 +442,10 @@ fn fingerprint_value(node_id: &str, value: &Value) -> u64 {
     node_id.hash(&mut hasher);
     hash_value(&mut hasher, value);
     hasher.finish()
+}
+
+fn value_to_task_arg(value: &Value) -> String {
+    value.to_text_scalar().unwrap_or_else(|| value.to_json())
 }
 
 fn hash_value(hasher: &mut DefaultHasher, value: &Value) {

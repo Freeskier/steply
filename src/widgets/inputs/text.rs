@@ -1,12 +1,13 @@
 use super::text_edit;
 use crate::core::value::Value;
+use crate::runtime::event::{ValueChange, WidgetAction};
 use crate::terminal::{CursorPos, KeyCode, KeyEvent};
 use crate::ui::span::Span;
 use crate::ui::style::{Color, Style};
 use crate::widgets::base::WidgetBase;
 use crate::widgets::traits::{
     CompletionState, DrawOutput, Drawable, FocusMode, InteractionResult, Interactive,
-    RenderContext, TextEditState, ValidationMode,
+    RenderContext, TextAction, TextEditState, ValidationMode,
 };
 use crate::widgets::validators::{Validator, run_validators};
 use unicode_width::UnicodeWidthChar;
@@ -32,6 +33,7 @@ pub struct TextInput {
     cursor: usize,
     mode: TextMode,
     submit_target: Option<String>,
+    change_target: Option<String>,
     validators: Vec<Validator>,
     completion_items: Vec<String>,
 }
@@ -44,6 +46,7 @@ impl TextInput {
             cursor: 0,
             mode: TextMode::Plain,
             submit_target: None,
+            change_target: None,
             validators: Vec::new(),
             completion_items: Vec::new(),
         }
@@ -56,6 +59,11 @@ impl TextInput {
 
     pub fn with_submit_target(mut self, target: impl Into<String>) -> Self {
         self.submit_target = Some(target.into());
+        self
+    }
+
+    pub fn with_change_target(mut self, target: impl Into<String>) -> Self {
+        self.change_target = Some(target.into());
         self
     }
 
@@ -84,6 +92,15 @@ impl TextInput {
             TextMode::Password => "*".repeat(len),
             TextMode::Secret => " ".repeat(len),
         }
+    }
+
+    fn edited_result(&self) -> InteractionResult {
+        if let Some(target) = &self.change_target {
+            return InteractionResult::with_action(WidgetAction::ValueChanged {
+                change: ValueChange::new(target.clone(), Value::Text(self.value.clone())),
+            });
+        }
+        InteractionResult::handled()
     }
 }
 
@@ -127,17 +144,17 @@ impl Interactive for TextInput {
         match key.code {
             KeyCode::Char(ch) => {
                 text_edit::insert_char(&mut self.value, &mut self.cursor, ch);
-                InteractionResult::handled()
+                self.edited_result()
             }
             KeyCode::Backspace => {
                 if text_edit::backspace_char(&mut self.value, &mut self.cursor) {
-                    return InteractionResult::handled();
+                    return self.edited_result();
                 }
                 InteractionResult::ignored()
             }
             KeyCode::Delete => {
                 if text_edit::delete_char(&mut self.value, &mut self.cursor) {
-                    return InteractionResult::handled();
+                    return self.edited_result();
                 }
                 InteractionResult::ignored()
             }
@@ -192,6 +209,17 @@ impl Interactive for TextInput {
             cursor: &mut self.cursor,
             candidates: self.completion_items.as_slice(),
         })
+    }
+
+    fn on_text_action(&mut self, action: TextAction) -> InteractionResult {
+        let Some(mut state) = self.text_editing() else {
+            return InteractionResult::ignored();
+        };
+        if action.apply(&mut state) {
+            self.on_text_edited();
+            return self.edited_result();
+        }
+        InteractionResult::ignored()
     }
 
     fn value(&self) -> Option<Value> {

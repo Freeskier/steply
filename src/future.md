@@ -9,6 +9,7 @@ components:
 - searchlist
 - -async select
 - kalendarz
+- textarea
 
 outputs:
 - text diff
@@ -26,3 +27,4 @@ common:
 - pager (scrollable)
 - filter
 - multiline input
+- -HELP?

@@ -1,28 +1,62 @@
 use super::model::SelectOption;
-use crate::ui::span::Span;
+use crate::ui::span::{Span, SpanLine};
 use crate::ui::style::Style;
 use crate::widgets::inputs::text_edit;
 
-pub(super) fn render_option_spans(
+pub(super) fn render_option_lines(
     option: &SelectOption,
     base_style: Style,
     highlight_style: Style,
-) -> Vec<Span> {
+) -> Vec<SpanLine> {
     match option {
-        SelectOption::Plain(text) => vec![Span::styled(text.clone(), base_style).no_wrap()],
+        SelectOption::Plain(text) => {
+            vec![vec![Span::styled(text.clone(), base_style).no_wrap()]]
+        }
+        SelectOption::Detailed {
+            title,
+            description,
+            title_highlights,
+            description_highlights,
+            title_style,
+            description_style,
+            ..
+        } => {
+            let title_base = merge_style(base_style, *title_style);
+            let description_base = merge_style_no_inherit(base_style, *description_style);
+            let mut lines = vec![render_text_spans(
+                title.as_str(),
+                title_highlights,
+                title_base,
+                highlight_style,
+            )];
+            if !description.is_empty() {
+                lines.push(render_text_spans(
+                    description.as_str(),
+                    description_highlights,
+                    description_base,
+                    highlight_style,
+                ));
+            }
+            lines
+        }
         SelectOption::Highlighted { text, highlights } => {
-            render_text_spans(text.as_str(), highlights, base_style, highlight_style)
+            vec![render_text_spans(
+                text.as_str(),
+                highlights,
+                base_style,
+                highlight_style,
+            )]
         }
         SelectOption::Styled {
             text,
             highlights,
             style,
-        } => render_text_spans(
+        } => vec![render_text_spans(
             text.as_str(),
             highlights,
             merge_style(base_style, *style),
             highlight_style,
-        ),
+        )],
         SelectOption::Split {
             text,
             name_start,
@@ -41,7 +75,7 @@ pub(super) fn render_option_spans(
                 merge_style(base_style, *name_style),
                 highlight_style,
             ));
-            spans
+            vec![spans]
         }
         SelectOption::Suffix {
             text,
@@ -60,7 +94,7 @@ pub(super) fn render_option_spans(
             if !suffix.is_empty() {
                 spans.push(Span::styled(suffix, merge_style(base_style, *suffix_style)));
             }
-            spans
+            vec![spans]
         }
         SelectOption::SplitSuffix {
             text,
@@ -89,7 +123,7 @@ pub(super) fn render_option_spans(
             if !suffix.is_empty() {
                 spans.push(Span::styled(suffix, merge_style(base_style, *suffix_style)));
             }
-            spans
+            vec![spans]
         }
     }
 }
@@ -158,5 +192,14 @@ fn merge_style(base: Style, extra: Style) -> Style {
         background: extra.background.or(base.background),
         bold: base.bold || extra.bold,
         strikethrough: base.strikethrough || extra.strikethrough,
+    }
+}
+
+fn merge_style_no_inherit(base: Style, extra: Style) -> Style {
+    Style {
+        color: extra.color.or(base.color),
+        background: extra.background.or(base.background),
+        bold: extra.bold,
+        strikethrough: extra.strikethrough,
     }
 }

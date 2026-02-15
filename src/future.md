@@ -18,7 +18,7 @@ outputs:
 - spinner z outputem logów (może też być kilka STEPS[1/n], coś jak docker)
 - kopiowanie do schowka
 - paste aware różnych formatów
-
+- repeater
 
 
 common:

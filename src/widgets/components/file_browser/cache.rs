@@ -43,9 +43,4 @@ impl ScanCache {
     pub fn mark_in_flight(&mut self, key: CacheKey) {
         self.in_flight = Some(key);
     }
-
-    #[allow(dead_code)]
-    pub fn clear_in_flight(&mut self) {
-        self.in_flight = None;
-    }
 }

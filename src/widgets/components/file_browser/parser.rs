@@ -54,11 +54,11 @@ pub fn parse_input(raw: &str, cwd: &Path) -> ParsedInput {
 
 /// Expand `~` at the start of a path to the home directory.
 fn expand_home(path: &str) -> String {
-    if path == "~" || path.starts_with("~/") || path.starts_with("~\\") {
-        if let Some(home) = home_dir() {
-            let rest = &path[1..];
-            return format!("{}{}", home.to_string_lossy(), rest);
-        }
+    if (path == "~" || path.starts_with("~/") || path.starts_with("~\\"))
+        && let Some(home) = home_dir()
+    {
+        let rest = &path[1..];
+        return format!("{}{}", home.to_string_lossy(), rest);
     }
     path.to_string()
 }

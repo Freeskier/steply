@@ -1,10 +1,7 @@
-#![allow(dead_code)]
-
 use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::time::SystemTime;
 
 #[derive(Debug, Clone)]
 pub struct FileEntry {
@@ -13,8 +10,6 @@ pub struct FileEntry {
     pub ext_lower: Option<String>,
     pub path: Arc<PathBuf>,
     pub is_dir: bool,
-    pub size: Option<u64>,
-    pub modified: Option<SystemTime>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -24,12 +19,7 @@ pub enum EntryFilter {
     DirsOnly,
 }
 
-pub fn build_entry(
-    name: String,
-    path: PathBuf,
-    is_dir: bool,
-    metadata: Option<fs::Metadata>,
-) -> FileEntry {
+pub fn build_entry(name: String, path: PathBuf, is_dir: bool) -> FileEntry {
     let name_lower = name.to_ascii_lowercase();
     let ext_lower = if is_dir {
         None
@@ -38,18 +28,12 @@ pub fn build_entry(
             .map(|(_, ext)| ext.trim_start_matches('.').to_ascii_lowercase())
             .filter(|ext| !ext.is_empty())
     };
-    let size = metadata
-        .as_ref()
-        .and_then(|m| if is_dir { None } else { Some(m.len()) });
-    let modified = metadata.and_then(|m| m.modified().ok());
     FileEntry {
         name,
         name_lower,
         ext_lower,
         path: Arc::new(path),
         is_dir,
-        size,
-        modified,
     }
 }
 
@@ -63,8 +47,7 @@ pub fn list_dir(dir: &Path, hide_hidden: bool) -> Vec<FileEntry> {
             if hide_hidden && name.starts_with('.') {
                 continue;
             }
-            let meta = entry.metadata().ok();
-            entries.push(build_entry(name, path, is_dir, meta));
+            entries.push(build_entry(name, path, is_dir));
         }
     }
     entries.sort_by(entry_sort);
@@ -87,8 +70,7 @@ fn list_dir_recursive_inner(dir: &Path, entries: &mut Vec<FileEntry>, hide_hidde
         if hide_hidden && name.starts_with('.') {
             continue;
         }
-        let meta = entry.metadata().ok();
-        entries.push(build_entry(name, path.clone(), is_dir, meta));
+        entries.push(build_entry(name, path.clone(), is_dir));
         if is_dir {
             list_dir_recursive_inner(&path, entries, hide_hidden);
         }

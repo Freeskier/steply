@@ -1,7 +1,4 @@
-#![allow(dead_code)]
-
 use std::path::Path;
-use std::time::{Duration, SystemTime};
 
 use globset::{Glob, GlobSetBuilder};
 
@@ -60,11 +57,11 @@ pub fn fuzzy_search(
     let mut matched_ranges: Vec<Vec<(usize, usize)>> = Vec::with_capacity(matches.len());
 
     for m in &matches {
-        if let Some(&ei) = indices.get(m.index) {
-            if let Some(entry) = entries.get(ei) {
-                matched_entries.push(entry.clone());
-                matched_ranges.push(m.ranges.clone());
-            }
+        if let Some(&ei) = indices.get(m.index)
+            && let Some(entry) = entries.get(ei)
+        {
+            matched_entries.push(entry.clone());
+            matched_ranges.push(m.ranges.clone());
         }
     }
 
@@ -155,7 +152,6 @@ fn walk_dir_recursive(
             continue;
         }
         let is_dir = entry.file_type().map(|t| t.is_dir()).unwrap_or(false);
-        let meta = entry.metadata().ok();
 
         // Compute relative path from root for matching
         let rel = path
@@ -169,7 +165,7 @@ fn walk_dir_recursive(
         };
 
         if matches {
-            entries.push(build_entry(name.clone(), path.clone(), is_dir, meta));
+            entries.push(build_entry(name.clone(), path.clone(), is_dir));
         }
 
         if is_dir {
@@ -288,13 +284,20 @@ fn display_text(entry: &FileEntry, root: &Path, mode: DisplayMode) -> String {
 
 fn build_glob_matcher(pattern: &str) -> Option<globset::GlobSet> {
     let mut builder = GlobSetBuilder::new();
-    // Add the pattern as-is; also add `**/pattern` so a bare `*.rs` matches in subdirs
-    // when called from recursive walk (rel path is just the filename at depth 0).
-    if let Ok(g) = Glob::new(pattern) {
-        builder.add(g);
-    } else {
-        return None;
+
+    // Always include the user pattern as-is.
+    builder.add(Glob::new(pattern).ok()?);
+
+    // For patterns without an explicit path segment, also include a recursive
+    // variant so `*.rs` matches both `main.rs` and `src/main.rs` when scanning
+    // recursively.
+    if !pattern.contains('/') {
+        let recursive = format!("**/{pattern}");
+        if let Ok(glob) = Glob::new(recursive.as_str()) {
+            builder.add(glob);
+        }
     }
+
     builder.build().ok()
 }
 
@@ -344,16 +347,7 @@ fn literal_highlights(literal: &Option<String>, name: &str) -> Vec<(usize, usize
 
 // ── Path display helpers ─────────────────────────────────────────────────────
 
-fn relative_path_str(entry: &FileEntry, display_root: Option<&Path>) -> String {
-    if let Some(root) = display_root {
-        if let Ok(rel) = entry.path.strip_prefix(root) {
-            return rel.to_string_lossy().replace('\\', "/");
-        }
-    }
-    entry.name.clone()
-}
-
-fn relative_prefix(path: &std::path::PathBuf, root: &Path) -> Option<String> {
+fn relative_prefix(path: &Path, root: &Path) -> Option<String> {
     let rel = path.strip_prefix(root).ok()?;
     let parent = rel.parent()?;
     let s = parent.to_string_lossy().to_string();
@@ -441,46 +435,4 @@ fn prefilter(entries: &[FileEntry], query: &str) -> Option<Vec<usize>> {
         return if v.is_empty() { None } else { Some(v) };
     }
     None
-}
-
-// ── Formatting helpers ───────────────────────────────────────────────────────
-
-pub fn format_size(size: u64) -> String {
-    const UNITS: [&str; 5] = ["B", "K", "M", "G", "T"];
-    let mut value = size as f64;
-    let mut unit = UNITS[0];
-    for next in UNITS.iter().skip(1) {
-        if value < 1024.0 {
-            break;
-        }
-        value /= 1024.0;
-        unit = next;
-    }
-    if unit == "B" {
-        format!("{}B", size)
-    } else if value >= 10.0 {
-        format!("{:.0}{}", value, unit)
-    } else {
-        format!("{:.1}{}", value, unit)
-    }
-}
-
-pub fn format_age(modified: SystemTime) -> String {
-    let delta = SystemTime::now()
-        .duration_since(modified)
-        .unwrap_or(Duration::ZERO);
-    let secs = delta.as_secs();
-    if secs < 60 {
-        format!("{}s", secs)
-    } else if secs < 3600 {
-        format!("{}m", secs / 60)
-    } else if secs < 86400 {
-        format!("{}h", secs / 3600)
-    } else if secs < 86400 * 30 {
-        format!("{}d", secs / 86400)
-    } else if secs < 86400 * 365 {
-        format!("{}mo", secs / (86400 * 30))
-    } else {
-        format!("{}y", secs / (86400 * 365))
-    }
 }

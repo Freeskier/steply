@@ -27,17 +27,27 @@ impl ValueChange {
     }
 }
 
+/// Actions emitted by widgets in `InteractionResult`.
+/// These flow upward from widgets to the runtime.
 #[derive(Debug, Clone)]
-pub enum WidgetEvent {
-    ValueChanged {
-        change: ValueChange,
-    },
-    ClearInlineError {
-        id: NodeId,
-    },
+pub enum WidgetAction {
+    ValueChanged { change: ValueChange },
+    RequestSubmit,
+    RequestFocus { target: NodeId },
+    TaskRequested { request: TaskRequest },
+}
+
+/// Events dispatched by the runtime to widgets or handled internally.
+/// These flow downward from the runtime to widgets, or are handled
+/// entirely within the runtime layer.
+#[derive(Debug, Clone)]
+pub enum SystemEvent {
     RequestSubmit,
     RequestFocus {
         target: NodeId,
+    },
+    ClearInlineError {
+        id: NodeId,
     },
     OpenOverlay {
         overlay_id: NodeId,
@@ -57,12 +67,12 @@ pub enum WidgetEvent {
     TaskCompleted {
         completion: TaskCompletion,
     },
-    RequestRender,
 }
 
 #[derive(Debug, Clone)]
 pub enum AppEvent {
     Terminal(TerminalEvent),
     Intent(Intent),
-    Widget(WidgetEvent),
+    Action(WidgetAction),
+    System(SystemEvent),
 }

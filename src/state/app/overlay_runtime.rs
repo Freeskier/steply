@@ -1,6 +1,6 @@
 use super::AppState;
 use crate::core::NodeId;
-use crate::runtime::event::{OverlayLifecycle, WidgetEvent};
+use crate::runtime::event::{OverlayLifecycle, SystemEvent};
 use crate::state::overlay::OverlayEntry;
 use crate::widgets::node::find_overlay_mut;
 use crate::widgets::traits::{FocusMode, OverlayMode};
@@ -91,7 +91,7 @@ impl AppState {
         overlay_id: &str,
         phase: OverlayLifecycle,
     ) {
-        let _ = overlay.on_event(&WidgetEvent::OverlayLifecycle {
+        let _ = overlay.on_system_event(&SystemEvent::OverlayLifecycle {
             overlay_id: NodeId::from(overlay_id),
             phase,
         });

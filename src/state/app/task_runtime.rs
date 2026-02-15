@@ -1,6 +1,6 @@
 use super::AppState;
 use crate::core::value::Value;
-use crate::runtime::event::{AppEvent, WidgetEvent};
+use crate::runtime::event::{AppEvent, SystemEvent};
 use crate::runtime::scheduler::SchedulerCommand;
 use crate::state::step::StepStatus;
 use crate::task::{
@@ -10,6 +10,16 @@ use crate::task::{
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 use std::time::{Duration, Instant};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TaskStartResult {
+    Started,
+    Queued,
+    SpecNotFound,
+    Disabled,
+    Skipped,
+    Dropped,
+}
 
 impl AppState {
     pub(super) fn bootstrap_interval_tasks(&mut self) {
@@ -60,17 +70,17 @@ impl AppState {
         self.runtime.pending_task_invocations.drain(..).collect()
     }
 
-    pub(super) fn request_task_run(&mut self, request: TaskRequest) -> bool {
+    pub(super) fn request_task_run(&mut self, request: TaskRequest) -> TaskStartResult {
         let Some(spec) = self
             .runtime
             .task_specs
             .get(request.task_id.as_str())
             .cloned()
         else {
-            return false;
+            return TaskStartResult::SpecNotFound;
         };
         if !spec.enabled {
-            return false;
+            return TaskStartResult::Disabled;
         }
 
         if let Some(interval) = request.interval.as_ref() {
@@ -89,7 +99,7 @@ impl AppState {
             run_state.should_start(spec.rerun_policy, now, request.fingerprint)
         };
         if !should_start {
-            return false;
+            return TaskStartResult::Skipped;
         }
 
         match spec.concurrency_policy {
@@ -100,7 +110,7 @@ impl AppState {
                     .get(spec.id.as_str())
                     .is_some_and(|s| s.is_running())
                 {
-                    return false;
+                    return TaskStartResult::Dropped;
                 }
             }
             ConcurrencyPolicy::Queue => {
@@ -111,7 +121,7 @@ impl AppState {
                     .is_some_and(|s| s.is_running())
                 {
                     self.enqueue_task_request(spec.id.clone(), request);
-                    return false;
+                    return TaskStartResult::Queued;
                 }
             }
             ConcurrencyPolicy::Restart => {
@@ -121,7 +131,7 @@ impl AppState {
         }
 
         self.start_task_invocation(spec, request.fingerprint, now);
-        false
+        TaskStartResult::Started
     }
 
     pub(super) fn complete_task_run(&mut self, completion: TaskCompletion) -> bool {
@@ -154,7 +164,7 @@ impl AppState {
 
         match completion.assign {
             TaskAssign::Ignore => true,
-            TaskAssign::StorePath(path) | TaskAssign::WidgetValue(path) => {
+            TaskAssign::SetValue(path) => {
                 self.apply_value_change(path, value);
                 true
             }
@@ -225,7 +235,7 @@ impl AppState {
                 .push(SchedulerCommand::Debounce {
                     key: node_change_debounce_key(node_id, request.task_id.as_str()),
                     delay: Duration::from_millis(debounce_ms),
-                    event: AppEvent::Widget(WidgetEvent::TaskRequested { request }),
+                    event: AppEvent::System(SystemEvent::TaskRequested { request }),
                 });
         }
     }
@@ -269,7 +279,7 @@ impl AppState {
             every_ms,
             only_when_step_active,
         );
-        let event = AppEvent::Widget(WidgetEvent::TaskRequested { request });
+        let event = AppEvent::System(SystemEvent::TaskRequested { request });
         if immediate {
             self.runtime
                 .pending_scheduler

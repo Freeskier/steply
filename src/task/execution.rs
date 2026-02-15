@@ -132,8 +132,8 @@ pub fn execute_invocation(invocation: TaskInvocation) -> TaskCompletion {
     let stdout_reader = child.stdout.take().map(BufReader::new);
     let log_tx = invocation.log_tx.clone();
     let (lines_tx, lines_rx) = std::sync::mpsc::channel::<String>();
-    if let Some(reader) = stdout_reader {
-        std::thread::spawn(move || {
+    let reader_handle = if let Some(reader) = stdout_reader {
+        Some(std::thread::spawn(move || {
             for line in reader.lines() {
                 let line = line.unwrap_or_default();
                 if let Some(ref tx) = log_tx {
@@ -141,8 +141,10 @@ pub fn execute_invocation(invocation: TaskInvocation) -> TaskCompletion {
                 }
                 let _ = lines_tx.send(line);
             }
-        });
-    }
+        }))
+    } else {
+        None
+    };
 
     let timeout = Duration::from_millis(timeout_ms.max(1));
     let started_at = Instant::now();
@@ -202,6 +204,10 @@ pub fn execute_invocation(invocation: TaskInvocation) -> TaskCompletion {
         }
     };
 
+    // Wait for the reader thread to finish draining the pipe before collecting.
+    if let Some(handle) = reader_handle {
+        let _ = handle.join();
+    }
     let stdout: String = lines_rx.try_iter().collect::<Vec<_>>().join("\n");
 
     let stderr = child
@@ -252,9 +258,9 @@ fn parse_value(parse: TaskParse, stdout: &str) -> Result<Value, String> {
 
     match parse {
         TaskParse::Number => parse_number(normalized),
-        TaskParse::RawText | TaskParse::Json | TaskParse::Regex { .. } => {
-            Ok(Value::Text(normalized.to_string()))
-        }
+        TaskParse::RawText => Ok(Value::Text(normalized.to_string())),
+        TaskParse::Json => Value::from_json(normalized),
+        TaskParse::Regex { pattern, group } => parse_regex(normalized, &pattern, group),
         TaskParse::Lines => {
             let lines = normalized
                 .lines()
@@ -288,4 +294,16 @@ fn parse_number(value: &str) -> Result<Value, String> {
     }
 
     Err(format!("number parse error: '{first}'"))
+}
+
+fn parse_regex(value: &str, pattern: &str, group: usize) -> Result<Value, String> {
+    let re = regex::Regex::new(pattern).map_err(|e| format!("bad regex: {e}"))?;
+    let caps = re
+        .captures(value)
+        .ok_or_else(|| format!("no match for /{pattern}/"))?;
+    let matched = caps
+        .get(group)
+        .ok_or_else(|| format!("no group {group} in match"))?
+        .as_str();
+    Ok(Value::Text(matched.to_string()))
 }

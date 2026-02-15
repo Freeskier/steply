@@ -16,7 +16,7 @@ use completion::CompletionSession;
 use std::collections::HashMap;
 
 #[derive(Default)]
-struct UiState {
+struct ViewState {
     overlays: OverlayState,
     focus: FocusState,
     active_node_index: NodeIndex,
@@ -42,12 +42,12 @@ struct RuntimeState {
 
 pub struct AppState {
     flow: Flow,
-    ui: UiState,
+    ui: ViewState,
     data: DataState,
     runtime: RuntimeState,
     scratch_nodes: Vec<Node>,
     should_exit: bool,
-    pub pending_back_confirm: Option<String>,
+    pending_back_confirm: Option<String>,
 }
 
 impl AppState {
@@ -67,7 +67,7 @@ impl AppState {
 
         let mut state = Self {
             flow,
-            ui: UiState::default(),
+            ui: ViewState::default(),
             data: DataState::default(),
             runtime: RuntimeState {
                 validation: ValidationState::default(),
@@ -136,6 +136,10 @@ impl AppState {
         self.should_exit
     }
 
+    pub fn back_confirm(&self) -> Option<&str> {
+        self.pending_back_confirm.as_deref()
+    }
+
     pub fn request_exit(&mut self) {
         self.should_exit = true;
         if self.flow.current_status() == crate::state::step::StepStatus::Active {
@@ -191,10 +195,25 @@ impl AppState {
                 return self.scratch_nodes.as_mut_slice();
             }
 
-            self.ui.overlays.clear();
             return self.flow.current_step_mut().nodes.as_mut_slice();
         }
         self.flow.current_step_mut().nodes.as_mut_slice()
+    }
+
+    pub fn clean_broken_overlays(&mut self) {
+        let Some(entry) = self.ui.overlays.active_blocking().cloned() else {
+            return;
+        };
+        if entry.focus_mode == FocusMode::Group {
+            return;
+        }
+        let has_children =
+            find_overlay(self.flow.current_step().nodes.as_slice(), entry.id.as_str())
+                .and_then(Node::persistent_children)
+                .is_some();
+        if !has_children {
+            self.ui.overlays.clear();
+        }
     }
 
     pub fn has_active_overlay(&self) -> bool {
@@ -281,6 +300,10 @@ impl AppState {
             return &[];
         }
         self.flow.current_step().nodes.as_slice()
+    }
+
+    pub fn validation_state(&self) -> &ValidationState {
+        &self.runtime.validation
     }
 
     pub fn visible_error(&self, id: &str) -> Option<&str> {

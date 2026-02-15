@@ -3,7 +3,7 @@ use std::collections::HashSet;
 use indexmap::IndexMap;
 
 use crate::core::value::Value;
-use crate::runtime::event::WidgetEvent;
+
 use crate::terminal::{CursorPos, KeyCode, KeyEvent, KeyModifiers};
 use crate::ui::span::Span;
 use crate::ui::style::{Color, Style};
@@ -986,16 +986,6 @@ impl Interactive for ObjectEditor {
     }
     fn cursor_pos(&self) -> Option<CursorPos> {
         None
-    }
-
-    fn on_event(&mut self, event: &WidgetEvent) -> InteractionResult {
-        match event {
-            WidgetEvent::ValueChanged { change } if change.target.as_str() == self.base.id() => {
-                self.set_value(change.value.clone());
-                InteractionResult::handled()
-            }
-            _ => InteractionResult::ignored(),
-        }
     }
 }
 

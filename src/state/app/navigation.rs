@@ -1,5 +1,5 @@
 use super::{AppState, completion::CompletionStartResult};
-use crate::runtime::event::WidgetEvent;
+use crate::runtime::event::{SystemEvent, WidgetAction};
 use crate::state::step::StepNavigation;
 use crate::terminal::{KeyCode, KeyEvent, KeyModifiers};
 use crate::widgets::node::{
@@ -17,18 +17,12 @@ impl AppState {
             match key.code {
                 // Right arrow accepts ghost only when cursor is at end of input
                 KeyCode::Right if self.cursor_at_end_for_focused() => {
-                    self.accept_completion_for_focused();
-                    self.validate_focused_live();
-                    self.clear_step_errors();
-                    self.try_update_ghost_for_focused();
+                    self.accept_and_refresh_completion();
                     return InteractionResult::handled();
                 }
                 // Enter accepts the ghost completion (blocks submit)
                 KeyCode::Enter => {
-                    self.accept_completion_for_focused();
-                    self.validate_focused_live();
-                    self.clear_step_errors();
-                    self.try_update_ghost_for_focused();
+                    self.accept_and_refresh_completion();
                     return InteractionResult::handled();
                 }
                 // Esc dismisses ghost without clearing input
@@ -40,6 +34,7 @@ impl AppState {
             }
         }
 
+        self.clean_broken_overlays();
         let result = {
             let Some(node) = self.find_focused_node_mut(&focused_id) else {
                 return InteractionResult::ignored();
@@ -48,10 +43,7 @@ impl AppState {
         };
 
         if result.handled {
-            self.validate_focused_live();
-            self.clear_step_errors();
-            // After any handled keypress, refresh ghost completion instead of clearing
-            self.try_update_ghost_for_focused();
+            self.refresh_after_input();
         }
         result
     }
@@ -61,6 +53,7 @@ impl AppState {
             return InteractionResult::ignored();
         };
 
+        self.clean_broken_overlays();
         let result = {
             let Some(node) = self.find_focused_node_mut(&focused_id) else {
                 return InteractionResult::ignored();
@@ -69,10 +62,7 @@ impl AppState {
         };
 
         if result.handled {
-            self.validate_focused_live();
-            self.clear_step_errors();
-            // Refresh ghost after word-delete etc.
-            self.try_update_ghost_for_focused();
+            self.refresh_after_input();
         }
         result
     }
@@ -136,7 +126,7 @@ impl AppState {
     pub fn submit_focused(&mut self) -> Option<InteractionResult> {
         let focused_id = self.ui.focus.current_id()?.to_string();
         let node = self.find_focused_node_mut(&focused_id)?;
-        Some(node.on_event(&WidgetEvent::RequestSubmit))
+        Some(node.on_system_event(&SystemEvent::RequestSubmit))
     }
 
     pub fn tick_all_nodes(&mut self) -> InteractionResult {
@@ -155,72 +145,107 @@ impl AppState {
         merged
     }
 
-    pub fn handle_widget_event(&mut self, event: WidgetEvent) -> bool {
-        match event {
-            WidgetEvent::ValueChanged { change } => {
+    pub fn handle_action(&mut self, action: WidgetAction) -> InteractionResult {
+        match action {
+            WidgetAction::ValueChanged { change } => {
                 self.apply_value_change(change.target, change.value);
                 self.clear_completion_session();
                 self.clear_step_errors();
-                true
+                InteractionResult::handled()
             }
-            WidgetEvent::ClearInlineError { id } => {
-                self.runtime.validation.clear_error(id.as_str());
-                true
-            }
-            WidgetEvent::RequestSubmit => {
+            WidgetAction::RequestSubmit => {
                 if self.has_blocking_overlay() {
                     self.close_overlay();
                 } else {
                     self.handle_step_submit();
                 }
-                true
+                InteractionResult::handled()
             }
-            WidgetEvent::RequestFocus { target } => {
+            WidgetAction::RequestFocus { target } => {
                 if !self.ui.active_node_index.has_visible(target.as_str())
                     && find_node(self.active_nodes(), target.as_str()).is_none()
                 {
-                    return false;
+                    return InteractionResult::ignored();
                 }
                 self.clear_completion_session();
                 self.ui.focus.set_focus_by_id(target.as_str());
-                true
-            }
-            WidgetEvent::OpenOverlay { overlay_id } => self.open_overlay_by_id(overlay_id.as_str()),
-            WidgetEvent::CloseOverlay => {
-                self.close_overlay();
-                true
-            }
-            WidgetEvent::OverlayLifecycle { .. } => false,
-            WidgetEvent::TaskRequested { request } => self.request_task_run(request),
-            WidgetEvent::TaskLogLine { .. } => {
-                let result = self.broadcast_event_to_nodes(&event);
+                // Broadcast to components (e.g. overlay group focus tracking)
+                let focus_event = SystemEvent::RequestFocus { target };
+                let result = self.broadcast_system_event(&focus_event);
                 self.process_broadcast_result(result);
-                true
+                InteractionResult::handled()
             }
-            WidgetEvent::TaskCompleted { ref completion } => {
-                let result = self.broadcast_event_to_nodes(&event);
-                self.process_broadcast_result(result);
-                self.complete_task_run(completion.clone())
+            WidgetAction::TaskRequested { request } => {
+                self.request_task_run(request);
+                InteractionResult::handled()
             }
-            WidgetEvent::RequestRender => true,
         }
     }
 
-    fn broadcast_event_to_nodes(&mut self, event: &WidgetEvent) -> InteractionResult {
+    pub fn handle_system_event(&mut self, event: SystemEvent) -> InteractionResult {
+        match event {
+            SystemEvent::ClearInlineError { id } => {
+                self.runtime.validation.clear_error(id.as_str());
+                InteractionResult::handled()
+            }
+            SystemEvent::OpenOverlay { overlay_id } => {
+                if self.open_overlay_by_id(overlay_id.as_str()) {
+                    InteractionResult::handled()
+                } else {
+                    InteractionResult::ignored()
+                }
+            }
+            SystemEvent::CloseOverlay => {
+                self.close_overlay();
+                InteractionResult::handled()
+            }
+            SystemEvent::OverlayLifecycle { .. } | SystemEvent::RequestFocus { .. } => {
+                InteractionResult::ignored()
+            }
+            SystemEvent::TaskRequested { request } => {
+                self.request_task_run(request);
+                InteractionResult::handled()
+            }
+            SystemEvent::TaskLogLine { .. } => {
+                let result = self.broadcast_system_event(&event);
+                self.process_broadcast_result(result);
+                InteractionResult::handled()
+            }
+            SystemEvent::TaskCompleted { ref completion } => {
+                let result = self.broadcast_system_event(&event);
+                self.process_broadcast_result(result);
+                if self.complete_task_run(completion.clone()) {
+                    InteractionResult::handled()
+                } else {
+                    InteractionResult::ignored()
+                }
+            }
+            SystemEvent::RequestSubmit => {
+                if self.has_blocking_overlay() {
+                    self.close_overlay();
+                } else {
+                    self.handle_step_submit();
+                }
+                InteractionResult::handled()
+            }
+        }
+    }
+
+    fn broadcast_system_event(&mut self, event: &SystemEvent) -> InteractionResult {
         let mut merged = InteractionResult::ignored();
         for step in self.flow.steps_mut() {
             walk_nodes_mut(
                 step.nodes.as_mut_slice(),
                 NodeWalkScope::Persistent,
-                &mut |node| merged.merge(node.on_event(event)),
+                &mut |node| merged.merge(node.on_system_event(event)),
             );
         }
         merged
     }
 
     fn process_broadcast_result(&mut self, result: InteractionResult) {
-        for event in result.events {
-            let _ = self.handle_widget_event(event);
+        for action in result.actions {
+            let _ = self.handle_action(action);
         }
     }
 
@@ -367,6 +392,19 @@ impl AppState {
         if let Some(id) = first_invalid {
             self.ui.focus.set_focus_by_id(&id);
         }
+    }
+
+    /// Accept the current ghost completion and refresh validation/ghost state.
+    fn accept_and_refresh_completion(&mut self) {
+        self.accept_completion_for_focused();
+        self.refresh_after_input();
+    }
+
+    /// Validate focused widget, clear step errors, and refresh ghost completion.
+    fn refresh_after_input(&mut self) {
+        self.validate_focused_live();
+        self.clear_step_errors();
+        self.try_update_ghost_for_focused();
     }
 
     /// Find the focused node by id via a tree search.

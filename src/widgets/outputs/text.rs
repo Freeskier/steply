@@ -1,4 +1,4 @@
-use crate::widgets::traits::{DrawOutput, Drawable, RenderContext, RenderNode};
+use crate::widgets::traits::{DrawOutput, Drawable, OutputNode, RenderContext};
 
 pub struct TextOutput {
     id: String,
@@ -24,4 +24,4 @@ impl Drawable for TextOutput {
     }
 }
 
-impl RenderNode for TextOutput {}
+impl OutputNode for TextOutput {}

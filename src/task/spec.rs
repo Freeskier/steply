@@ -82,8 +82,7 @@ impl Default for TaskParse {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TaskAssign {
     Ignore,
-    StorePath(String),
-    WidgetValue(String),
+    SetValue(String),
 }
 
 impl Default for TaskAssign {

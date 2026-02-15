@@ -41,7 +41,7 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use crate::core::value::Value;
-use crate::runtime::event::WidgetEvent;
+
 use crate::terminal::{CursorPos, KeyCode, KeyEvent, KeyModifiers};
 use crate::ui::span::Span;
 use crate::ui::style::{Color, Style};
@@ -833,19 +833,6 @@ impl Interactive for FileBrowserInput {
             InteractionResult::handled()
         } else {
             InteractionResult::ignored()
-        }
-    }
-
-    fn on_event(&mut self, event: &WidgetEvent) -> InteractionResult {
-        match event {
-            WidgetEvent::ValueChanged { change } if change.target.as_str() == self.base.id() => {
-                if let Some(text) = change.value.to_text_scalar() {
-                    self.text.set_value(Value::Text(text));
-                    self.schedule_scan();
-                }
-                InteractionResult::handled()
-            }
-            _ => self.text.on_event(event),
         }
     }
 

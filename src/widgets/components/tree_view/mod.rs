@@ -1,7 +1,7 @@
 mod state;
 
 use crate::core::value::Value;
-use crate::runtime::event::WidgetEvent;
+
 use crate::terminal::{KeyCode, KeyEvent, KeyModifiers};
 use crate::ui::span::Span;
 use crate::ui::style::{Color, Style};
@@ -406,16 +406,6 @@ impl<T: TreeItemLabel> Interactive for TreeView<T> {
             self.active_index = pos;
             self.scroll
                 .ensure_visible(self.active_index, self.visible.len());
-        }
-    }
-
-    fn on_event(&mut self, event: &WidgetEvent) -> InteractionResult {
-        match event {
-            WidgetEvent::ValueChanged { change } if change.target.as_str() == self.base.id() => {
-                self.set_value(change.value.clone());
-                InteractionResult::handled()
-            }
-            _ => InteractionResult::ignored(),
         }
     }
 }

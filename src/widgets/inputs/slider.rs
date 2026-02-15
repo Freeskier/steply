@@ -1,5 +1,5 @@
 use crate::core::value::Value;
-use crate::runtime::event::{ValueChange, WidgetEvent};
+use crate::runtime::event::{ValueChange, WidgetAction};
 use crate::terminal::{KeyCode, KeyEvent};
 use crate::ui::span::Span;
 use crate::ui::style::{Color, Style};
@@ -77,7 +77,7 @@ impl SliderInput {
             return InteractionResult::ignored();
         }
         if let Some(target) = &self.change_target {
-            return InteractionResult::with_event(WidgetEvent::ValueChanged {
+            return InteractionResult::with_action(WidgetAction::ValueChanged {
                 change: ValueChange::new(target.clone(), Value::Number(self.value as f64)),
             });
         }

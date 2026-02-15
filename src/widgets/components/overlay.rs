@@ -1,5 +1,4 @@
-use crate::runtime::event::OverlayLifecycle;
-use crate::runtime::event::WidgetEvent;
+use crate::runtime::event::{OverlayLifecycle, SystemEvent};
 use crate::terminal::{KeyCode, KeyEvent};
 use crate::widgets::base::OverlayBase;
 use crate::widgets::node::{Node, find_node_mut};
@@ -149,13 +148,13 @@ impl Interactive for Overlay {
         InteractionResult::ignored()
     }
 
-    fn on_event(&mut self, event: &WidgetEvent) -> InteractionResult {
+    fn on_system_event(&mut self, event: &SystemEvent) -> InteractionResult {
         let targeted_lifecycle = matches!(
             event,
-            WidgetEvent::OverlayLifecycle { overlay_id, .. } if overlay_id.as_str() == self.base.id()
+            SystemEvent::OverlayLifecycle { overlay_id, .. } if overlay_id.as_str() == self.base.id()
         );
 
-        if let WidgetEvent::OverlayLifecycle { phase, .. } = event {
+        if let SystemEvent::OverlayLifecycle { phase, .. } = event {
             match phase {
                 OverlayLifecycle::BeforeOpen | OverlayLifecycle::Opened => {
                     self.group_focus_id = first_focusable_id(&self.nodes);
@@ -168,7 +167,7 @@ impl Interactive for Overlay {
             }
         }
 
-        if let WidgetEvent::RequestFocus { target } = event {
+        if let SystemEvent::RequestFocus { target } = event {
             let focusable = focusable_ids(&self.nodes);
             if focusable.iter().any(|c| c == target.as_str()) {
                 self.group_focus_id = Some(target.to_string());
@@ -183,7 +182,7 @@ impl Interactive for Overlay {
         };
 
         for node in &mut self.nodes {
-            merged.merge(node.on_event(event));
+            merged.merge(node.on_system_event(event));
         }
 
         merged

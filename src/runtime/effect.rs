@@ -1,9 +1,10 @@
-use crate::runtime::event::WidgetEvent;
+use crate::runtime::event::{SystemEvent, WidgetAction};
 use crate::runtime::scheduler::SchedulerCommand;
 
 #[derive(Debug, Clone)]
 pub enum Effect {
-    EmitWidget(WidgetEvent),
+    Action(WidgetAction),
+    System(SystemEvent),
     Schedule(SchedulerCommand),
     RequestRender,
 }

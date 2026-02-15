@@ -1,7 +1,7 @@
 use super::select_list::{SelectList, SelectMode, SelectOption};
 use crate::core::search::fuzzy::ranked_matches;
 use crate::core::value::Value;
-use crate::runtime::event::WidgetEvent;
+
 use crate::terminal::{KeyCode, KeyEvent, KeyModifiers};
 use crate::ui::span::Span;
 use crate::ui::style::{Color, Style};
@@ -259,25 +259,6 @@ impl Interactive for SearchableSelect {
             self.list.set_value(Value::Text(text));
         } else if value.as_list().is_some() {
             self.list.set_value(value);
-        }
-    }
-
-    fn on_event(&mut self, event: &WidgetEvent) -> InteractionResult {
-        match event {
-            WidgetEvent::ValueChanged { change } if change.target.as_str() == self.base.id() => {
-                self.set_value(change.value.clone());
-                InteractionResult::handled()
-            }
-            _ => {
-                let mut merged = InteractionResult::ignored();
-                let query_result = self.query.on_event(event);
-                if query_result.handled {
-                    self.recompute();
-                }
-                merged.merge(query_result);
-                merged.merge(self.list.on_event(event));
-                merged
-            }
         }
     }
 

@@ -1,9 +1,9 @@
 use crate::core::value::Value;
-use crate::runtime::event::WidgetEvent;
+use crate::runtime::event::SystemEvent;
 use crate::terminal::{CursorPos, KeyEvent};
 use crate::widgets::traits::{
-    CompletionState, DrawOutput, FocusMode, InteractionResult, InteractiveNode, OverlayMode,
-    OverlayPlacement, RenderContext, RenderNode, TextAction, ValidationMode,
+    CompletionState, DrawOutput, FocusMode, InteractionResult, InteractiveNode, OutputNode,
+    OverlayMode, OverlayPlacement, RenderContext, TextAction, ValidationMode,
 };
 
 // ---------------------------------------------------------------------------
@@ -48,7 +48,7 @@ pub enum Node {
     /// A composite component that owns and manages its own child nodes.
     Component(Box<dyn Component>),
     /// A non-interactive output (text, progress bar, chart, …).
-    Output(Box<dyn RenderNode>),
+    Output(Box<dyn OutputNode>),
 }
 
 // ---------------------------------------------------------------------------
@@ -144,11 +144,11 @@ impl Node {
         }
     }
 
-    pub fn on_event(&mut self, event: &WidgetEvent) -> InteractionResult {
+    pub fn on_system_event(&mut self, event: &SystemEvent) -> InteractionResult {
         match self {
-            Self::Input(w) => w.on_event(event),
-            Self::Component(w) => w.on_event(event),
-            Self::Output(w) => w.on_event(event),
+            Self::Input(w) => w.on_system_event(event),
+            Self::Component(w) => w.on_system_event(event),
+            Self::Output(w) => w.on_system_event(event),
         }
     }
 

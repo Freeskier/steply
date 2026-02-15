@@ -1,3 +1,67 @@
+/// Combined cursor position + scroll state for navigable lists.
+///
+/// Encapsulates the common pattern of `active: usize` + `ScrollState` with
+/// wrapping navigation, clamping, and visible-range delegation.
+#[derive(Debug, Clone)]
+pub struct CursorNav {
+    active: usize,
+    scroll: ScrollState,
+}
+
+impl CursorNav {
+    pub fn new(max_visible: Option<usize>) -> Self {
+        Self {
+            active: 0,
+            scroll: ScrollState::new(max_visible),
+        }
+    }
+
+    pub fn active(&self) -> usize {
+        self.active
+    }
+
+    pub fn set_max_visible(&mut self, n: usize) {
+        self.scroll.max_visible = Some(n);
+    }
+
+    /// Move cursor by `delta` with wrapping. Returns the new active index.
+    pub fn move_by(&mut self, delta: isize, total: usize) -> usize {
+        if total == 0 {
+            self.active = 0;
+            return 0;
+        }
+        let len = total as isize;
+        self.active = ((self.active as isize + delta + len) % len) as usize;
+        self.scroll.ensure_visible(self.active, total);
+        self.active
+    }
+
+    /// Set cursor to an exact position, clamping to `[0, total)`.
+    pub fn set_active(&mut self, idx: usize, total: usize) {
+        self.active = idx;
+        ScrollState::clamp_active(&mut self.active, total);
+        self.scroll.ensure_visible(self.active, total);
+    }
+
+    /// Clamp cursor after the backing list changed size.
+    pub fn clamp(&mut self, total: usize) {
+        ScrollState::clamp_active(&mut self.active, total);
+        self.scroll.ensure_visible(self.active, total);
+    }
+
+    pub fn visible_range(&self, total: usize) -> (usize, usize) {
+        self.scroll.visible_range(total)
+    }
+
+    pub fn footer(&self, total: usize) -> Option<String> {
+        self.scroll.footer(total)
+    }
+
+    pub fn ensure_visible(&mut self, total: usize) {
+        self.scroll.ensure_visible(self.active, total);
+    }
+}
+
 /// Shared scroll state used by list/tree components.
 #[derive(Debug, Clone, Default)]
 pub struct ScrollState {

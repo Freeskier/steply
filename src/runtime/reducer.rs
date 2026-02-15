@@ -1,7 +1,8 @@
 use crate::runtime::effect::Effect;
-use crate::runtime::event::WidgetEvent;
+use crate::runtime::event::SystemEvent;
 use crate::runtime::intent::Intent;
 use crate::state::app::AppState;
+use crate::widgets::traits::InteractionResult;
 
 pub struct Reducer;
 
@@ -17,7 +18,7 @@ impl Reducer {
                 vec![Effect::RequestRender]
             }
             Intent::Cancel => {
-                if state.pending_back_confirm.is_some() {
+                if state.back_confirm().is_some() {
                     state.cancel_back_confirm();
                 } else if state.cancel_completion_for_focused() {
                     // Esc first closes the completion menu before closing overlays or exiting.
@@ -29,54 +30,24 @@ impl Reducer {
                 vec![Effect::RequestRender]
             }
             Intent::Submit => {
-                if state.pending_back_confirm.is_some() {
+                if state.back_confirm().is_some() {
                     state.confirm_back();
                     return vec![Effect::RequestRender];
                 }
                 if let Some(result) = state.submit_focused() {
-                    let mut effects = effects_from_widget_events(result.events);
-                    if result.request_render {
-                        effects.push(Effect::RequestRender);
-                    }
-                    effects
+                    collect_effects(result)
                 } else {
                     vec![Effect::RequestRender]
                 }
             }
-            Intent::NextFocus => {
-                let result = state.handle_tab_forward();
-                let mut effects = effects_from_widget_events(result.events);
-                if result.request_render {
-                    effects.push(Effect::RequestRender);
-                }
-                effects
-            }
-            Intent::PrevFocus => {
-                let result = state.handle_tab_backward();
-                let mut effects = effects_from_widget_events(result.events);
-                if result.request_render {
-                    effects.push(Effect::RequestRender);
-                }
-                effects
-            }
-            Intent::InputKey(key) => {
-                let result = state.dispatch_key_to_focused(key);
-                let mut effects = effects_from_widget_events(result.events);
-                if result.request_render {
-                    effects.push(Effect::RequestRender);
-                }
-                effects
-            }
+            Intent::NextFocus => collect_effects(state.handle_tab_forward()),
+            Intent::PrevFocus => collect_effects(state.handle_tab_backward()),
+            Intent::InputKey(key) => collect_effects(state.dispatch_key_to_focused(key)),
             Intent::TextAction(action) => {
-                let result = state.dispatch_text_action_to_focused(action);
-                let mut effects = effects_from_widget_events(result.events);
-                if result.request_render {
-                    effects.push(Effect::RequestRender);
-                }
-                effects
+                collect_effects(state.dispatch_text_action_to_focused(action))
             }
             Intent::OpenOverlay(overlay_id) => {
-                vec![Effect::EmitWidget(WidgetEvent::OpenOverlay { overlay_id })]
+                vec![Effect::System(SystemEvent::OpenOverlay { overlay_id })]
             }
             Intent::OpenOverlayAtIndex(index) => {
                 if state.open_overlay_by_index(index) {
@@ -92,15 +63,8 @@ impl Reducer {
                     vec![]
                 }
             }
-            Intent::CloseOverlay => vec![Effect::EmitWidget(WidgetEvent::CloseOverlay)],
-            Intent::Tick => {
-                let result = state.tick_all_nodes();
-                let mut effects = effects_from_widget_events(result.events);
-                if result.request_render {
-                    effects.push(Effect::RequestRender);
-                }
-                effects
-            }
+            Intent::CloseOverlay => vec![Effect::System(SystemEvent::CloseOverlay)],
+            Intent::Tick => collect_effects(state.tick_all_nodes()),
             Intent::Noop => vec![],
         };
 
@@ -115,6 +79,10 @@ impl Reducer {
     }
 }
 
-fn effects_from_widget_events(events: Vec<WidgetEvent>) -> Vec<Effect> {
-    events.into_iter().map(Effect::EmitWidget).collect()
+fn collect_effects(result: InteractionResult) -> Vec<Effect> {
+    let mut effects: Vec<Effect> = result.actions.into_iter().map(Effect::Action).collect();
+    if result.request_render {
+        effects.push(Effect::RequestRender);
+    }
+    effects
 }

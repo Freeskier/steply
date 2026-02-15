@@ -1,5 +1,5 @@
 use crate::core::value::Value;
-use crate::runtime::event::{ValueChange, WidgetEvent};
+use crate::runtime::event::{SystemEvent, ValueChange, WidgetAction};
 use crate::terminal::{CursorPos, KeyEvent, TerminalSize};
 use crate::ui::span::{Span, SpanLine};
 use crate::widgets::inputs::text_edit;
@@ -135,7 +135,7 @@ pub trait Drawable: Send {
 pub struct InteractionResult {
     pub handled: bool,
     pub request_render: bool,
-    pub events: Vec<WidgetEvent>,
+    pub actions: Vec<WidgetAction>,
 }
 
 impl InteractionResult {
@@ -147,7 +147,7 @@ impl InteractionResult {
         Self {
             handled: true,
             request_render: false,
-            events: Vec::new(),
+            actions: Vec::new(),
         }
     }
 
@@ -155,25 +155,25 @@ impl InteractionResult {
         Self {
             handled: true,
             request_render: true,
-            events: Vec::new(),
+            actions: Vec::new(),
         }
     }
 
-    pub fn with_event(event: WidgetEvent) -> Self {
+    pub fn with_action(action: WidgetAction) -> Self {
         Self {
             handled: true,
             request_render: true,
-            events: vec![event],
+            actions: vec![action],
         }
     }
 
     pub fn submit_requested() -> Self {
-        Self::with_event(WidgetEvent::RequestSubmit)
+        Self::with_action(WidgetAction::RequestSubmit)
     }
 
     pub fn submit_or_produce(target: Option<&str>, value: Value) -> Self {
         if let Some(target) = target {
-            return Self::with_event(WidgetEvent::ValueChanged {
+            return Self::with_action(WidgetAction::ValueChanged {
                 change: ValueChange::new(target, value),
             });
         }
@@ -183,7 +183,7 @@ impl InteractionResult {
     pub fn merge(&mut self, other: Self) {
         self.handled |= other.handled;
         self.request_render |= other.request_render;
-        self.events.extend(other.events);
+        self.actions.extend(other.actions);
     }
 }
 
@@ -263,7 +263,7 @@ pub trait Interactive: Send {
         None
     }
 
-    fn on_event(&mut self, _event: &WidgetEvent) -> InteractionResult {
+    fn on_system_event(&mut self, _event: &SystemEvent) -> InteractionResult {
         InteractionResult::ignored()
     }
     fn on_tick(&mut self) -> InteractionResult {
@@ -301,10 +301,10 @@ pub trait InteractiveNode: Drawable + Interactive {}
 impl<T> InteractiveNode for T where T: Drawable + Interactive {}
 
 // ---------------------------------------------------------------------------
-// RenderNode — output nodes
+// OutputNode — output nodes
 // ---------------------------------------------------------------------------
 
-pub trait RenderNode: Drawable {
+pub trait OutputNode: Drawable {
     fn value(&self) -> Option<Value> {
         None
     }
@@ -312,7 +312,7 @@ pub trait RenderNode: Drawable {
     fn on_tick(&mut self) -> InteractionResult {
         InteractionResult::ignored()
     }
-    fn on_event(&mut self, _event: &WidgetEvent) -> InteractionResult {
+    fn on_system_event(&mut self, _event: &SystemEvent) -> InteractionResult {
         InteractionResult::ignored()
     }
     fn validate(&self) -> Result<(), String> {

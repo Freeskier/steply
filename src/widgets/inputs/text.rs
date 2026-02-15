@@ -1,6 +1,5 @@
 use super::text_edit;
 use crate::core::value::Value;
-use crate::runtime::event::WidgetEvent;
 use crate::terminal::{CursorPos, KeyCode, KeyEvent};
 use crate::ui::span::Span;
 use crate::ui::style::{Color, Style};
@@ -193,20 +192,6 @@ impl Interactive for TextInput {
             cursor: &mut self.cursor,
             candidates: self.completion_items.as_slice(),
         })
-    }
-
-    fn on_event(&mut self, event: &WidgetEvent) -> InteractionResult {
-        match event {
-            WidgetEvent::ValueChanged { change } if change.target.as_str() == self.base.id() => {
-                if let Value::Text(v) = &change.value {
-                    self.value = v.clone();
-                    self.cursor = text_edit::char_count(&self.value);
-                    return InteractionResult::handled();
-                }
-                InteractionResult::ignored()
-            }
-            _ => InteractionResult::ignored(),
-        }
     }
 
     fn value(&self) -> Option<Value> {

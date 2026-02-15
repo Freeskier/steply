@@ -1,7 +1,8 @@
-use crate::state::app::AppState;
 use crate::state::step::StepStatus;
+use crate::state::validation::ValidationState;
 use crate::terminal::{CursorPos, TerminalSize};
 use crate::ui::layout::Layout;
+use crate::ui::render_view::{CompletionSnapshot, RenderView};
 use crate::ui::span::{Span, SpanLine};
 use crate::ui::style::{Color, Style};
 use crate::widgets::node::{Node, NodeWalkScope, walk_nodes};
@@ -62,50 +63,49 @@ impl Renderer {
         Self { config }
     }
 
-    pub fn render(&self, state: &AppState, terminal_size: TerminalSize) -> RenderFrame {
-        let mut frame = self.render_steps_pass(state, terminal_size);
-        self.apply_overlay_pass(state, terminal_size, &mut frame);
-        self.apply_back_confirm_pass(state, terminal_size, &mut frame);
+    pub fn render(&self, view: &RenderView, terminal_size: TerminalSize) -> RenderFrame {
+        let mut frame = self.render_steps_pass(view, terminal_size);
+        self.apply_overlay_pass(view, terminal_size, &mut frame);
+        self.apply_back_confirm_pass(view.back_confirm, terminal_size, &mut frame);
         self.finalize_cursor_pass(terminal_size, &mut frame);
         frame
     }
 
-    fn render_steps_pass(&self, state: &AppState, terminal_size: TerminalSize) -> RenderFrame {
-        build_base_frame(state, terminal_size, self.config)
+    fn render_steps_pass(&self, view: &RenderView, terminal_size: TerminalSize) -> RenderFrame {
+        build_base_frame(view, terminal_size, self.config)
     }
 
     fn apply_overlay_pass(
         &self,
-        state: &AppState,
+        view: &RenderView,
         terminal_size: TerminalSize,
         frame: &mut RenderFrame,
     ) {
-        let overlay_ids = state.overlay_stack_ids();
-        let overlay_count = overlay_ids.len();
-        for (idx, overlay_id) in overlay_ids.iter().enumerate() {
-            let Some(overlay) = state.overlay_by_id(overlay_id) else {
-                continue;
-            };
-            let Some(placement) = overlay.overlay_placement() else {
-                continue;
-            };
-            let nodes = overlay.persistent_children().unwrap_or(&[]);
-            let focused_id = if idx + 1 == overlay_count {
-                state.focused_id()
+        for overlay_view in &view.overlays {
+            let focused_id = if overlay_view.is_topmost {
+                view.focused_id
             } else {
                 None
             };
-            apply_overlay(state, terminal_size, nodes, placement, focused_id, frame);
+            apply_overlay(
+                view.validation,
+                view.completion.as_ref(),
+                terminal_size,
+                overlay_view.nodes,
+                overlay_view.placement,
+                focused_id,
+                frame,
+            );
         }
     }
 
     fn apply_back_confirm_pass(
         &self,
-        state: &AppState,
+        warning: Option<&str>,
         terminal_size: TerminalSize,
         frame: &mut RenderFrame,
     ) {
-        let Some(warning) = state.pending_back_confirm.as_deref() else {
+        let Some(warning) = warning else {
             return;
         };
         let width: u16 = 50;
@@ -174,13 +174,13 @@ impl Default for Renderer {
 }
 
 fn build_base_frame(
-    state: &AppState,
+    view: &RenderView,
     terminal_size: TerminalSize,
     config: RendererConfig,
 ) -> RenderFrame {
     let mut frame = RenderFrame::default();
-    let current_idx = state.current_step_index();
-    let steps = state.steps();
+    let current_idx = view.current_step_index;
+    let steps = view.steps;
     if steps.is_empty() {
         frame.lines.push(vec![Span::styled(
             "No steps configured.",
@@ -188,10 +188,10 @@ fn build_base_frame(
         )]);
         return frame;
     }
-    let blocking_overlay = state.has_blocking_overlay();
+    let blocking_overlay = view.has_blocking_overlay;
 
     for (idx, step) in steps.iter().enumerate().take(current_idx.saturating_add(1)) {
-        let status = StepVisualStatus::from(state.step_status_at(idx));
+        let status = StepVisualStatus::from(view.step_statuses[idx]);
 
         let mut block_lines = Vec::<SpanLine>::new();
         let mut block_cursor: Option<CursorPos> = None;
@@ -223,7 +223,7 @@ fn build_base_frame(
         }
 
         if status == StepVisualStatus::Active {
-            for error in state.current_step_errors() {
+            for error in view.step_errors {
                 block_lines.push(vec![Span::styled(
                     format!("✗ {}", error),
                     Style::new().color(Color::Red).bold(),
@@ -233,12 +233,13 @@ fn build_base_frame(
         }
 
         let focused_id = if status == StepVisualStatus::Active && !blocking_overlay {
-            state.focused_id()
+            view.focused_id
         } else {
             None
         };
         let ctx = render_context_for_nodes(
-            state,
+            view.validation,
+            view.completion.as_ref(),
             terminal_size,
             status,
             step.nodes.as_slice(),
@@ -320,7 +321,8 @@ fn build_base_frame(
 }
 
 fn render_context_for_nodes(
-    state: &AppState,
+    validation: &ValidationState,
+    completion: Option<&CompletionSnapshot>,
     terminal_size: TerminalSize,
     status: StepVisualStatus,
     nodes: &[Node],
@@ -340,15 +342,21 @@ fn render_context_for_nodes(
     let mut invalid_hidden = HashSet::<String>::new();
     let mut completion_menus = HashMap::<String, CompletionMenu>::new();
     walk_nodes(nodes, NodeWalkScope::Visible, &mut |node| {
-        if let Some(error) = state.visible_error(node.id()) {
+        if let Some(error) = validation.visible_error(node.id()) {
             visible_errors.insert(node.id().to_string(), error.to_string());
-        } else if state.is_hidden_invalid(node.id()) {
+        } else if validation.is_hidden_invalid(node.id()) {
             invalid_hidden.insert(node.id().to_string());
         }
     });
 
-    if let Some((owner, matches, selected)) = state.completion_snapshot() {
-        completion_menus.insert(owner, CompletionMenu { matches, selected });
+    if let Some(snap) = completion {
+        completion_menus.insert(
+            snap.owner.clone(),
+            CompletionMenu {
+                matches: snap.matches.clone(),
+                selected: snap.selected,
+            },
+        );
     }
 
     RenderContext {

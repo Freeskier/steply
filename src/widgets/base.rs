@@ -39,13 +39,11 @@ impl WidgetBase {
 
 /// Provides identity and placement configuration for overlay components.
 ///
-/// Keep as a separate type from `WidgetBase` because overlays have additional
-/// state (placement, focus mode, overlay mode) that plain inputs do not need.
-/// This acts as a reusable template for custom overlay implementations.
+/// Composes `WidgetBase` for identity (id + label) and adds overlay-specific
+/// state (placement, focus mode, overlay mode).
 #[derive(Debug, Clone)]
 pub struct OverlayBase {
-    id: String,
-    label: String,
+    base: WidgetBase,
     placement: OverlayPlacement,
     focus_mode: FocusMode,
     overlay_mode: OverlayMode,
@@ -58,8 +56,7 @@ impl OverlayBase {
         placement: OverlayPlacement,
     ) -> Self {
         Self {
-            id: id.into(),
-            label: label.into(),
+            base: WidgetBase::new(id, label),
             placement,
             focus_mode: FocusMode::Container,
             overlay_mode: OverlayMode::Exclusive,
@@ -67,11 +64,11 @@ impl OverlayBase {
     }
 
     pub fn id(&self) -> &str {
-        &self.id
+        self.base.id()
     }
 
     pub fn label(&self) -> &str {
-        &self.label
+        self.base.label()
     }
 
     pub fn placement(&self) -> OverlayPlacement {

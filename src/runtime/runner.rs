@@ -1,5 +1,5 @@
 use crate::runtime::effect::Effect;
-use crate::runtime::event::{AppEvent, WidgetEvent};
+use crate::runtime::event::{AppEvent, SystemEvent, WidgetAction};
 use crate::runtime::intent::Intent;
 use crate::runtime::key_bindings::KeyBindings;
 use crate::runtime::reducer::Reducer;
@@ -7,6 +7,7 @@ use crate::runtime::scheduler::Scheduler;
 use crate::state::app::AppState;
 use crate::task::{LogLine, TaskExecutor};
 use crate::terminal::{Terminal, TerminalEvent};
+use crate::ui::render_view::RenderView;
 use crate::ui::renderer::{Renderer, RendererConfig};
 use std::io;
 use std::time::{Duration, Instant};
@@ -90,14 +91,14 @@ impl Runtime {
 
     fn process_task_log_lines(&mut self) -> io::Result<()> {
         for LogLine { task_id, line } in self.task_executor.drain_log_lines() {
-            self.dispatch_app_event(AppEvent::Widget(WidgetEvent::TaskLogLine { task_id, line }))?;
+            self.dispatch_app_event(AppEvent::System(SystemEvent::TaskLogLine { task_id, line }))?;
         }
         Ok(())
     }
 
     fn process_task_completions(&mut self) -> io::Result<()> {
         for completion in self.task_executor.drain_ready() {
-            self.dispatch_app_event(AppEvent::Widget(WidgetEvent::TaskCompleted { completion }))?;
+            self.dispatch_app_event(AppEvent::System(SystemEvent::TaskCompleted { completion }))?;
         }
         Ok(())
     }
@@ -117,8 +118,14 @@ impl Runtime {
             }
             AppEvent::Terminal(TerminalEvent::Tick) => self.process_intent(Intent::Tick),
             AppEvent::Intent(intent) => self.process_intent(intent),
-            AppEvent::Widget(event) => {
-                if self.apply_widget_event(event) {
+            AppEvent::Action(action) => {
+                if self.apply_action(action) {
+                    self.render()?;
+                }
+                Ok(())
+            }
+            AppEvent::System(event) => {
+                if self.apply_system_event(event) {
                     self.render()?;
                 }
                 Ok(())
@@ -136,8 +143,11 @@ impl Runtime {
 
         for effect in effects {
             match effect {
-                Effect::EmitWidget(event) => {
-                    render_requested |= self.apply_widget_event(event);
+                Effect::Action(action) => {
+                    render_requested |= self.apply_action(action);
+                }
+                Effect::System(event) => {
+                    render_requested |= self.apply_system_event(event);
                 }
                 Effect::Schedule(cmd) => {
                     self.scheduler.schedule(cmd, Instant::now());
@@ -155,10 +165,16 @@ impl Runtime {
         Ok(())
     }
 
-    fn apply_widget_event(&mut self, event: WidgetEvent) -> bool {
-        let render_requested = self.state.handle_widget_event(event);
+    fn apply_action(&mut self, action: WidgetAction) -> bool {
+        let result = self.state.handle_action(action);
         self.flush_pending_task_invocations();
-        render_requested
+        result.request_render
+    }
+
+    fn apply_system_event(&mut self, event: SystemEvent) -> bool {
+        let result = self.state.handle_system_event(event);
+        self.flush_pending_task_invocations();
+        result.request_render
     }
 
     fn flush_pending_task_invocations(&mut self) {
@@ -168,7 +184,8 @@ impl Runtime {
     }
 
     fn render(&mut self) -> io::Result<()> {
-        let frame = self.renderer.render(&self.state, self.terminal.size());
+        let view = RenderView::from_state(&self.state);
+        let frame = self.renderer.render(&view, self.terminal.size());
         self.terminal.render(&frame.lines, frame.cursor)
     }
 }

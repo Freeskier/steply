@@ -5,9 +5,10 @@ use super::overlay_geometry::{
     FloatingOverlayGeometry, InlineOverlayGeometry, OverlayGeometry, resolve_overlay_geometry,
 };
 use super::{RenderFrame, StepVisualStatus, draw_nodes, render_context_for_nodes};
-use crate::state::app::AppState;
+use crate::state::validation::ValidationState;
 use crate::terminal::{CursorPos, TerminalSize};
 use crate::ui::layout::Layout;
+use crate::ui::render_view::CompletionSnapshot;
 use crate::ui::span::{Span, SpanLine};
 use crate::ui::style::{Color, Style};
 use crate::widgets::node::Node;
@@ -26,7 +27,8 @@ pub(super) fn blend_back_confirm(
 }
 
 pub(super) fn apply_overlay(
-    state: &AppState,
+    validation: &ValidationState,
+    completion: Option<&CompletionSnapshot>,
     terminal_size: TerminalSize,
     overlay_nodes: &[Node],
     placement: OverlayPlacement,
@@ -43,7 +45,8 @@ pub(super) fn apply_overlay(
     match geometry {
         OverlayGeometry::Floating(geometry) => {
             apply_floating_overlay(
-                state,
+                validation,
+                completion,
                 terminal_size,
                 overlay_nodes,
                 focused_id,
@@ -53,7 +56,8 @@ pub(super) fn apply_overlay(
         }
         OverlayGeometry::Inline(geometry) => {
             apply_inline_overlay(
-                state,
+                validation,
+                completion,
                 terminal_size,
                 overlay_nodes,
                 focused_id,
@@ -65,7 +69,8 @@ pub(super) fn apply_overlay(
 }
 
 fn apply_floating_overlay(
-    state: &AppState,
+    validation: &ValidationState,
+    completion: Option<&CompletionSnapshot>,
     terminal_size: TerminalSize,
     overlay_nodes: &[Node],
     focused_id: Option<&str>,
@@ -73,7 +78,8 @@ fn apply_floating_overlay(
     geometry: FloatingOverlayGeometry,
 ) {
     let body = render_overlay_body(
-        state,
+        validation,
+        completion,
         terminal_size,
         overlay_nodes,
         focused_id,
@@ -109,7 +115,8 @@ fn apply_floating_overlay(
 }
 
 fn apply_inline_overlay(
-    state: &AppState,
+    validation: &ValidationState,
+    completion: Option<&CompletionSnapshot>,
     terminal_size: TerminalSize,
     overlay_nodes: &[Node],
     focused_id: Option<&str>,
@@ -117,7 +124,8 @@ fn apply_inline_overlay(
     geometry: InlineOverlayGeometry,
 ) {
     let body = render_overlay_body(
-        state,
+        validation,
+        completion,
         terminal_size,
         overlay_nodes,
         focused_id,
@@ -166,7 +174,8 @@ struct OverlayBody {
 }
 
 fn render_overlay_body(
-    state: &AppState,
+    validation: &ValidationState,
+    completion: Option<&CompletionSnapshot>,
     terminal_size: TerminalSize,
     overlay_nodes: &[Node],
     focused_id: Option<&str>,
@@ -177,7 +186,8 @@ fn render_overlay_body(
     let mut row_offset: u16 = 0;
 
     let ctx = render_context_for_nodes(
-        state,
+        validation,
+        completion,
         terminal_size,
         StepVisualStatus::Active,
         overlay_nodes,

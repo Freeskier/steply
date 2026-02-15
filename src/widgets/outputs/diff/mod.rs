@@ -4,7 +4,7 @@ use crate::terminal::{KeyCode, KeyEvent, KeyModifiers};
 use crate::ui::span::Span;
 use crate::ui::style::{Color, Style};
 use crate::widgets::base::WidgetBase;
-use crate::widgets::components::scroll::ScrollState;
+use crate::widgets::components::scroll::CursorNav;
 use crate::widgets::node::{Component, Node};
 use crate::widgets::traits::{
     DrawOutput, Drawable, FocusMode, InteractionResult, Interactive, RenderContext, ValidationMode,
@@ -47,8 +47,7 @@ pub struct DiffOutput {
     /// Base context lines shown on each side of a change.
     context: usize,
     rows: Vec<DiffRow>,
-    active: usize,
-    scroll: ScrollState,
+    nav: CursorNav,
 }
 
 impl DiffOutput {
@@ -64,15 +63,14 @@ impl DiffOutput {
             new: new.into(),
             context: 3,
             rows: Vec::new(),
-            active: 0,
-            scroll: ScrollState::new(Some(20)),
+            nav: CursorNav::new(Some(20)),
         };
         this.rebuild();
         this
     }
 
     pub fn with_max_visible(mut self, n: usize) -> Self {
-        self.scroll.max_visible = Some(n);
+        self.nav.set_max_visible(n);
         self
     }
 
@@ -86,8 +84,7 @@ impl DiffOutput {
 
     fn rebuild(&mut self) {
         self.rows = Self::build_rows(&self.old, &self.new, self.context);
-        ScrollState::clamp_active(&mut self.active, self.rows.len());
-        self.scroll.ensure_visible(self.active, self.rows.len());
+        self.nav.clamp(self.rows.len());
     }
 
     fn build_rows(old: &str, new: &str, context: usize) -> Vec<DiffRow> {
@@ -254,54 +251,42 @@ impl DiffOutput {
     // ── Navigation ────────────────────────────────────────────────────────────
 
     fn move_cursor(&mut self, delta: isize) {
-        if self.rows.is_empty() {
-            return;
-        }
-        let len = self.rows.len() as isize;
-        self.active = ((self.active as isize + delta + len) % len) as usize;
-        self.scroll.ensure_visible(self.active, self.rows.len());
+        self.nav.move_by(delta, self.rows.len());
     }
 
     fn next_chunk(&mut self) {
-        let start = self.active + 1;
+        let start = self.nav.active() + 1;
         if start >= self.rows.len() {
             return;
         }
-        // Jump to next Gap or next changed line
         if let Some(pos) = self.rows[start..].iter().position(|r| {
             matches!(r, DiffRow::Gap { .. })
                 || matches!(r, DiffRow::Line { kind, .. } if *kind != RowKind::Context)
         }) {
-            self.active = start + pos;
-            self.scroll.ensure_visible(self.active, self.rows.len());
+            self.nav.set_active(start + pos, self.rows.len());
         }
     }
 
     fn prev_chunk(&mut self) {
-        if self.active == 0 {
+        if self.nav.active() == 0 {
             return;
         }
-        if let Some(pos) = self.rows[..self.active].iter().rposition(|r| {
+        if let Some(pos) = self.rows[..self.nav.active()].iter().rposition(|r| {
             matches!(r, DiffRow::Gap { .. })
                 || matches!(r, DiffRow::Line { kind, .. } if *kind != RowKind::Context)
         }) {
-            self.active = pos;
-            self.scroll.ensure_visible(self.active, self.rows.len());
+            self.nav.set_active(pos, self.rows.len());
         }
     }
 
     fn expand_gap(&mut self) {
-        // Expand the gap at active by 3 lines on each side — done by bumping
-        // context and rebuilding, preserving the cursor position approximately.
-        if !matches!(self.rows.get(self.active), Some(DiffRow::Gap { .. })) {
+        if !matches!(self.rows.get(self.nav.active()), Some(DiffRow::Gap { .. })) {
             return;
         }
         self.context += 3;
-        let old_active = self.active;
+        let old_active = self.nav.active();
         self.rebuild();
-        // Cursor may have shifted; clamp it.
-        self.active = old_active.min(self.rows.len().saturating_sub(1));
-        self.scroll.ensure_visible(self.active, self.rows.len());
+        self.nav.set_active(old_active, self.rows.len());
     }
 
     // ── Rendering helpers ─────────────────────────────────────────────────────
@@ -319,13 +304,7 @@ impl DiffOutput {
                 ]
             }
             Side::Empty => {
-                vec![
-                    Span::styled(
-                        " ".repeat(col_width),
-                        Style::default(),
-                    )
-                    .no_wrap(),
-                ]
+                vec![Span::styled(" ".repeat(col_width), Style::default()).no_wrap()]
             }
         }
     }
@@ -356,7 +335,7 @@ impl Drawable for DiffOutput {
     fn draw(&self, ctx: &RenderContext) -> DrawOutput {
         let focused = self.base.is_focused(ctx);
         let total = self.rows.len();
-        let (start, end) = self.scroll.visible_range(total);
+        let (start, end) = self.nav.visible_range(total);
 
         let dim = Style::new().color(Color::DarkGrey);
         let no_st = Style::new().color(Color::Rgb(80, 80, 80));
@@ -402,7 +381,7 @@ impl Drawable for DiffOutput {
         }
 
         for vis in start..end {
-            let is_active = focused && vis == self.active;
+            let is_active = focused && vis == self.nav.active();
 
             match &self.rows[vis] {
                 DiffRow::Gap { hidden } => {
@@ -483,7 +462,7 @@ impl Drawable for DiffOutput {
             }
         }
 
-        if let Some(text) = self.scroll.footer(total) {
+        if let Some(text) = self.nav.footer(total) {
             lines.push(vec![Span::styled(text, dim).no_wrap()]);
         }
 

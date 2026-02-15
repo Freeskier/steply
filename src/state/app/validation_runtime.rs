@@ -1,6 +1,6 @@
 use super::AppState;
 use crate::core::{NodeId, value::Value};
-use crate::runtime::event::{AppEvent, WidgetEvent};
+use crate::runtime::event::{AppEvent, SystemEvent};
 use crate::runtime::scheduler::SchedulerCommand;
 use crate::state::validation::{
     ErrorVisibility, ValidationContext, ValidationIssue, ValidationTarget,
@@ -94,7 +94,7 @@ impl AppState {
                         .push(SchedulerCommand::Debounce {
                             key: inline_error_key(id),
                             delay: ERROR_INLINE_TTL,
-                            event: AppEvent::Widget(WidgetEvent::ClearInlineError {
+                            event: AppEvent::System(SystemEvent::ClearInlineError {
                                 id: id.into(),
                             }),
                         });

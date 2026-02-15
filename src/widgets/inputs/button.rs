@@ -1,5 +1,5 @@
 use crate::core::value::Value;
-use crate::runtime::event::WidgetEvent;
+use crate::runtime::event::WidgetAction;
 use crate::task::{TaskId, TaskRequest};
 use crate::terminal::{KeyCode, KeyEvent};
 use crate::ui::span::Span;
@@ -92,7 +92,7 @@ impl Interactive for ButtonInput {
             KeyCode::Enter | KeyCode::Char(' ') => {
                 self.clicks = self.clicks.saturating_add(1);
                 if let Some(request) = self.task_request.clone() {
-                    return InteractionResult::with_event(WidgetEvent::TaskRequested { request });
+                    return InteractionResult::with_action(WidgetAction::TaskRequested { request });
                 }
                 InteractionResult::handled()
             }

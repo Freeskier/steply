@@ -1,10 +1,10 @@
 use crate::core::value::Value;
-use crate::runtime::event::WidgetEvent;
+use crate::runtime::event::{SystemEvent, WidgetAction};
 use crate::task::{TaskId, TaskRequest};
 use crate::ui::span::Span;
 use crate::ui::spinner::{Spinner, SpinnerStyle};
 use crate::ui::style::{Color, Style};
-use crate::widgets::traits::{DrawOutput, Drawable, InteractionResult, RenderContext, RenderNode};
+use crate::widgets::traits::{DrawOutput, Drawable, InteractionResult, OutputNode, RenderContext};
 use std::collections::VecDeque;
 use std::time::Instant;
 
@@ -272,10 +272,10 @@ impl Drawable for TaskLog {
 }
 
 // ---------------------------------------------------------------------------
-// RenderNode
+// OutputNode
 // ---------------------------------------------------------------------------
 
-impl RenderNode for TaskLog {
+impl OutputNode for TaskLog {
     fn on_tick(&mut self) -> InteractionResult {
         let running = self
             .active_step()
@@ -287,9 +287,9 @@ impl RenderNode for TaskLog {
         InteractionResult::ignored()
     }
 
-    fn on_event(&mut self, event: &WidgetEvent) -> InteractionResult {
+    fn on_system_event(&mut self, event: &SystemEvent) -> InteractionResult {
         match event {
-            WidgetEvent::TaskLogLine { task_id, line } => {
+            SystemEvent::TaskLogLine { task_id, line } => {
                 let is_active = self
                     .active_step()
                     .is_some_and(|s| &s.task_id == task_id && s.status == StepStatus::Running);
@@ -300,7 +300,7 @@ impl RenderNode for TaskLog {
                 InteractionResult::ignored()
             }
 
-            WidgetEvent::TaskCompleted { completion } => {
+            SystemEvent::TaskCompleted { completion } => {
                 let is_active = self
                     .active_step()
                     .is_some_and(|s| s.task_id == completion.task_id);
@@ -310,10 +310,10 @@ impl RenderNode for TaskLog {
 
                 let succeeded = completion.error.is_none() && !completion.cancelled;
                 if let Some(request) = self.advance(succeeded) {
-                    return InteractionResult::with_event(WidgetEvent::TaskRequested { request });
+                    return InteractionResult::with_action(WidgetAction::TaskRequested { request });
                 }
                 if succeeded {
-                    return InteractionResult::with_event(WidgetEvent::RequestSubmit);
+                    return InteractionResult::with_action(WidgetAction::RequestSubmit);
                 }
                 InteractionResult::handled()
             }

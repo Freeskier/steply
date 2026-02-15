@@ -1,7 +1,7 @@
 use crate::core::value::Value;
 use crate::ui::span::Span;
 use crate::ui::style::{Color, Style};
-use crate::widgets::traits::{DrawOutput, Drawable, RenderContext, RenderNode};
+use crate::widgets::traits::{DrawOutput, Drawable, OutputNode, RenderContext};
 use std::collections::VecDeque;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -212,7 +212,7 @@ impl Drawable for ChartOutput {
     }
 }
 
-impl RenderNode for ChartOutput {
+impl OutputNode for ChartOutput {
     fn set_value(&mut self, value: Value) {
         if let Some(number) = value.to_number() {
             self.push_point(number);

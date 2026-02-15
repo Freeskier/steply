@@ -47,6 +47,7 @@ pub struct AppState {
     runtime: RuntimeState,
     scratch_nodes: Vec<Node>,
     should_exit: bool,
+    pub pending_back_confirm: Option<String>,
 }
 
 impl AppState {
@@ -80,6 +81,7 @@ impl AppState {
             },
             scratch_nodes: Vec::new(),
             should_exit: false,
+            pending_back_confirm: None,
         };
         if state.flow.is_empty() {
             state.should_exit = true;
@@ -136,6 +138,9 @@ impl AppState {
 
     pub fn request_exit(&mut self) {
         self.should_exit = true;
+        if self.flow.current_status() == crate::state::step::StepStatus::Active {
+            self.flow.cancel_current();
+        }
         self.cancel_interval_tasks();
         self.cancel_all_running_tasks();
         self.runtime.queued_task_requests.clear();

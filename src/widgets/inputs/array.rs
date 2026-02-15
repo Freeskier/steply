@@ -254,12 +254,14 @@ impl Drawable for ArrayInput {
         self.base.id()
     }
 
+    fn label(&self) -> &str {
+        self.base.label()
+    }
+
     fn draw(&self, ctx: &RenderContext) -> DrawOutput {
         let focused = self.base.is_focused(ctx);
-        let prefix = self.base.input_prefix(ctx);
         let (content, _) = self.build_content(focused);
-        let mut spans = vec![Span::new(prefix).no_wrap()];
-        spans.extend(content);
+        let spans = content;
         DrawOutput { lines: vec![spans] }
     }
 }
@@ -361,10 +363,9 @@ impl Interactive for ArrayInput {
     }
 
     fn cursor_pos(&self) -> Option<CursorPos> {
-        let prefix = self.base.input_prefix_focused();
         let (_, cursor_offset) = self.build_content(true);
         Some(CursorPos {
-            col: (UnicodeWidthStr::width(prefix.as_str()) + cursor_offset) as u16,
+            col: cursor_offset as u16,
             row: 0,
         })
     }

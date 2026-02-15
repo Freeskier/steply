@@ -66,6 +66,24 @@ impl Flow {
         self.current + 1 < self.steps.len()
     }
 
+    pub fn has_prev(&self) -> bool {
+        self.current > 0
+    }
+
+    pub fn go_back(&mut self) -> bool {
+        if !self.has_prev() {
+            return false;
+        }
+        if let Some(status) = self.statuses.get_mut(self.current) {
+            *status = StepStatus::Pending;
+        }
+        self.current -= 1;
+        if let Some(status) = self.statuses.get_mut(self.current) {
+            *status = StepStatus::Active;
+        }
+        true
+    }
+
     pub fn advance(&mut self) -> bool {
         if !self.has_next() {
             return false;

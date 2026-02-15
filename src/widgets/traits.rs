@@ -121,6 +121,9 @@ impl DrawOutput {
 
 pub trait Drawable: Send {
     fn id(&self) -> &str;
+    fn label(&self) -> &str {
+        ""
+    }
     fn draw(&self, ctx: &RenderContext) -> DrawOutput;
 }
 
@@ -307,6 +310,9 @@ pub trait RenderNode: Drawable {
     }
     fn set_value(&mut self, _value: Value) {}
     fn on_tick(&mut self) -> InteractionResult {
+        InteractionResult::ignored()
+    }
+    fn on_event(&mut self, _event: &WidgetEvent) -> InteractionResult {
         InteractionResult::ignored()
     }
     fn validate(&self) -> Result<(), String> {

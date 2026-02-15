@@ -43,7 +43,11 @@ impl Drawable for CheckboxInput {
         self.base.id()
     }
 
-    fn draw(&self, ctx: &RenderContext) -> DrawOutput {
+    fn label(&self) -> &str {
+        self.base.label()
+    }
+
+    fn draw(&self, _ctx: &RenderContext) -> DrawOutput {
         let (symbol, style) = if self.checked {
             ("✓", Style::new().color(Color::Green))
         } else {
@@ -51,10 +55,7 @@ impl Drawable for CheckboxInput {
         };
 
         DrawOutput {
-            lines: vec![vec![
-                Span::new(self.base.input_prefix(ctx)).no_wrap(),
-                Span::styled(symbol, style).no_wrap(),
-            ]],
+            lines: vec![vec![Span::styled(symbol, style).no_wrap()]],
         }
     }
 }

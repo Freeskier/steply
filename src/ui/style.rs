@@ -18,6 +18,7 @@ pub struct Style {
     pub color: Option<Color>,
     pub background: Option<Color>,
     pub bold: bool,
+    pub strikethrough: bool,
 }
 
 impl Style {
@@ -37,6 +38,11 @@ impl Style {
 
     pub fn bold(mut self) -> Self {
         self.bold = true;
+        self
+    }
+
+    pub fn strikethrough(mut self) -> Self {
+        self.strikethrough = true;
         self
     }
 }

@@ -306,6 +306,7 @@ impl AppState {
             run_id,
             fingerprint,
             cancel_token,
+            log_tx: None,
         });
     }
 

@@ -8,7 +8,6 @@ use crate::widgets::traits::{
 };
 use crate::widgets::validators::{Validator, run_validators};
 use unicode_width::UnicodeWidthStr;
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ColorMode {
     Hex,
@@ -289,13 +288,14 @@ impl Drawable for ColorInput {
         self.base.id()
     }
 
+    fn label(&self) -> &str {
+        self.base.label()
+    }
+
     fn draw(&self, ctx: &RenderContext) -> DrawOutput {
         let focused = self.base.is_focused(ctx);
-        let prefix = self.base.input_prefix(ctx);
         let (parts, _) = self.render_parts(focused);
-        let mut spans = vec![Span::new(prefix).no_wrap()];
-        spans.extend(parts);
-        DrawOutput { lines: vec![spans] }
+        DrawOutput { lines: vec![parts] }
     }
 }
 
@@ -376,10 +376,9 @@ impl Interactive for ColorInput {
     }
 
     fn cursor_pos(&self) -> Option<CursorPos> {
-        let prefix = self.base.input_prefix_focused();
         let (_, local) = self.render_parts(true);
         Some(CursorPos {
-            col: (UnicodeWidthStr::width(prefix.as_str()) + local) as u16,
+            col: local as u16,
             row: 0,
         })
     }

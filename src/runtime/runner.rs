@@ -5,7 +5,7 @@ use crate::runtime::key_bindings::KeyBindings;
 use crate::runtime::reducer::Reducer;
 use crate::runtime::scheduler::Scheduler;
 use crate::state::app::AppState;
-use crate::task::TaskExecutor;
+use crate::task::{LogLine, TaskExecutor};
 use crate::terminal::{Terminal, TerminalEvent};
 use crate::ui::renderer::{Renderer, RendererConfig};
 use std::io;
@@ -63,6 +63,7 @@ impl Runtime {
 
             while !self.state.should_exit() {
                 self.process_scheduled_events()?;
+                self.process_task_log_lines()?;
                 self.process_task_completions()?;
                 self.flush_pending_task_invocations();
 
@@ -83,6 +84,13 @@ impl Runtime {
     fn process_scheduled_events(&mut self) -> io::Result<()> {
         for event in self.scheduler.drain_ready(Instant::now()) {
             self.dispatch_app_event(event)?;
+        }
+        Ok(())
+    }
+
+    fn process_task_log_lines(&mut self) -> io::Result<()> {
+        for LogLine { task_id, line } in self.task_executor.drain_log_lines() {
+            self.dispatch_app_event(AppEvent::Widget(WidgetEvent::TaskLogLine { task_id, line }))?;
         }
         Ok(())
     }

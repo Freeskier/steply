@@ -219,9 +219,15 @@ impl Terminal {
                 if span.style.bold {
                     queue!(self.stdout, SetAttribute(Attribute::Bold))?;
                 }
+                if span.style.strikethrough {
+                    queue!(self.stdout, SetAttribute(Attribute::CrossedOut))?;
+                }
                 queue!(self.stdout, Print(clipped.as_str()), ResetColor)?;
                 if span.style.bold {
                     queue!(self.stdout, SetAttribute(Attribute::NormalIntensity))?;
+                }
+                if span.style.strikethrough {
+                    queue!(self.stdout, SetAttribute(Attribute::NotCrossedOut))?;
                 }
                 used = used.saturating_add(UnicodeWidthStr::width(clipped.as_str()));
             }

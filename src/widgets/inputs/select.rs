@@ -87,11 +87,13 @@ impl Drawable for SelectInput {
         self.base.id()
     }
 
-    fn draw(&self, ctx: &RenderContext) -> DrawOutput {
-        let prefix = self.base.input_prefix(ctx);
+    fn label(&self) -> &str {
+        self.base.label()
+    }
+
+    fn draw(&self, _ctx: &RenderContext) -> DrawOutput {
         DrawOutput {
             lines: vec![vec![
-                Span::new(prefix).no_wrap(),
                 Span::styled(format!("‹ {} ›", self.selected_text()), Style::default()).no_wrap(),
             ]],
         }

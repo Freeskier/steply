@@ -1,9 +1,11 @@
 use crate::core::value::Value;
 use crate::task::policy::ConcurrencyPolicy;
 use crate::task::spec::{TaskAssign, TaskId, TaskKind, TaskParse, TaskSpec};
+use std::io::{BufRead, BufReader};
 use std::process::{Command, Stdio};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::mpsc::Sender;
 use std::time::{Duration, Instant};
 
 #[derive(Debug, Clone)]
@@ -55,6 +57,7 @@ pub struct TaskInvocation {
     pub run_id: u64,
     pub fingerprint: Option<u64>,
     pub cancel_token: TaskCancelToken,
+    pub log_tx: Option<Sender<String>>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -124,9 +127,26 @@ pub fn execute_invocation(invocation: TaskInvocation) -> TaskCompletion {
         }
     };
 
+    // Stream stdout line-by-line in a background thread, forwarding each line
+    // through log_tx (if any) and collecting them for the final TaskCompletion.
+    let stdout_reader = child.stdout.take().map(BufReader::new);
+    let log_tx = invocation.log_tx.clone();
+    let (lines_tx, lines_rx) = std::sync::mpsc::channel::<String>();
+    if let Some(reader) = stdout_reader {
+        std::thread::spawn(move || {
+            for line in reader.lines() {
+                let line = line.unwrap_or_default();
+                if let Some(ref tx) = log_tx {
+                    let _ = tx.send(line.clone());
+                }
+                let _ = lines_tx.send(line);
+            }
+        });
+    }
+
     let timeout = Duration::from_millis(timeout_ms.max(1));
     let started_at = Instant::now();
-    loop {
+    let status = loop {
         if invocation.cancel_token.is_cancelled() {
             let _ = child.kill();
             let _ = child.wait();
@@ -145,7 +165,7 @@ pub fn execute_invocation(invocation: TaskInvocation) -> TaskCompletion {
         }
 
         match child.try_wait() {
-            Ok(Some(_status)) => break,
+            Ok(Some(status)) => break status,
             Ok(None) => {
                 if started_at.elapsed() >= timeout {
                     let _ = child.kill();
@@ -180,29 +200,22 @@ pub fn execute_invocation(invocation: TaskInvocation) -> TaskCompletion {
                 };
             }
         }
-    }
-
-    let output = match child.wait_with_output() {
-        Ok(output) => output,
-        Err(err) => {
-            return TaskCompletion {
-                task_id,
-                run_id: invocation.run_id,
-                assign,
-                concurrency_policy,
-                value: None,
-                status_code: None,
-                stdout: String::new(),
-                stderr: String::new(),
-                error: Some(format!("read output failed: {err}")),
-                cancelled: false,
-            };
-        }
     };
 
-    let stdout = String::from_utf8_lossy(output.stdout.as_slice()).to_string();
-    let stderr = String::from_utf8_lossy(output.stderr.as_slice()).to_string();
-    let status_code = output.status.code();
+    let stdout: String = lines_rx.try_iter().collect::<Vec<_>>().join("\n");
+
+    let stderr = child
+        .stderr
+        .take()
+        .map(|s| {
+            let mut buf = String::new();
+            use std::io::Read;
+            BufReader::new(s).read_to_string(&mut buf).ok();
+            buf
+        })
+        .unwrap_or_default();
+
+    let status_code = status.code();
 
     let parse_result = parse_value(invocation.spec.parse, stdout.as_str());
     let (value, parse_error) = match parse_result {
@@ -210,7 +223,7 @@ pub fn execute_invocation(invocation: TaskInvocation) -> TaskCompletion {
         Err(err) => (None, Some(err)),
     };
 
-    let status_error = if output.status.success() {
+    let status_error = if status.success() {
         None
     } else {
         Some(format!(

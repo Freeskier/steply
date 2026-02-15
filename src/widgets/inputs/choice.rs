@@ -88,11 +88,15 @@ impl Drawable for ChoiceInput {
         self.base.id()
     }
 
-    fn draw(&self, ctx: &RenderContext) -> DrawOutput {
+    fn label(&self) -> &str {
+        self.base.label()
+    }
+
+    fn draw(&self, _ctx: &RenderContext) -> DrawOutput {
         let active_style = Style::new().color(Color::Cyan).bold();
         let inactive_style = Style::new().color(Color::DarkGrey);
 
-        let mut spans = vec![Span::new(self.base.input_prefix(ctx)).no_wrap()];
+        let mut spans = vec![];
         for (index, option) in self.options.iter().enumerate() {
             if index > 0 {
                 spans.push(Span::new(" / ").no_wrap());

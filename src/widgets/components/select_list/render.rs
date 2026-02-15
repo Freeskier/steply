@@ -157,5 +157,6 @@ fn merge_style(base: Style, extra: Style) -> Style {
         color: extra.color.or(base.color),
         background: extra.background.or(base.background),
         bold: base.bold || extra.bold,
+        strikethrough: base.strikethrough || extra.strikethrough,
     }
 }

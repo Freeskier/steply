@@ -12,8 +12,14 @@ impl Reducer {
                 state.request_exit();
                 vec![Effect::RequestRender]
             }
+            Intent::Back => {
+                state.handle_step_back();
+                vec![Effect::RequestRender]
+            }
             Intent::Cancel => {
-                if state.cancel_completion_for_focused() {
+                if state.pending_back_confirm.is_some() {
+                    state.cancel_back_confirm();
+                } else if state.cancel_completion_for_focused() {
                     // Esc first closes the completion menu before closing overlays or exiting.
                 } else if state.has_active_overlay() {
                     state.close_overlay();
@@ -23,6 +29,10 @@ impl Reducer {
                 vec![Effect::RequestRender]
             }
             Intent::Submit => {
+                if state.pending_back_confirm.is_some() {
+                    state.confirm_back();
+                    return vec![Effect::RequestRender];
+                }
                 if let Some(result) = state.submit_focused() {
                     let mut effects = effects_from_widget_events(result.events);
                     if result.request_render {

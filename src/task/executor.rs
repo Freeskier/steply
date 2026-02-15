@@ -1,32 +1,62 @@
 use crate::task::execution::{TaskCompletion, TaskInvocation, execute_invocation};
+use crate::task::spec::TaskId;
 use std::sync::mpsc::{self, Receiver, Sender, SyncSender, TryRecvError};
 use std::sync::{Arc, Mutex};
+
+pub struct LogLine {
+    pub task_id: TaskId,
+    pub line: String,
+}
 
 pub struct TaskExecutor {
     invocation_tx: SyncSender<TaskInvocation>,
     completion_rx: Receiver<TaskCompletion>,
+    log_rx: Receiver<LogLine>,
+    log_tx: Sender<LogLine>,
 }
 
 impl TaskExecutor {
     pub fn new() -> Self {
         let (invocation_tx, invocation_rx) = mpsc::sync_channel::<TaskInvocation>(256);
         let (completion_tx, completion_rx) = mpsc::channel::<TaskCompletion>();
-        spawn_workers(invocation_rx, completion_tx.clone());
+        let (log_tx, log_rx) = mpsc::channel::<LogLine>();
+        spawn_workers(invocation_rx, completion_tx, log_tx.clone());
         Self {
             invocation_tx,
             completion_rx,
+            log_rx,
+            log_tx,
         }
     }
 
-    pub fn spawn(&self, invocation: TaskInvocation) {
+    pub fn spawn(&self, mut invocation: TaskInvocation) {
+        invocation.log_tx = Some(
+            // wrap the executor's log_tx with a task_id-tagging sender
+            LogLineSender {
+                task_id: invocation.spec.id.clone(),
+                tx: self.log_tx.clone(),
+            }
+            .into_sender(),
+        );
         let _ = self.invocation_tx.send(invocation);
     }
 
     pub fn drain_ready(&self) -> Vec<TaskCompletion> {
-        let mut out = Vec::<TaskCompletion>::new();
+        let mut out = Vec::new();
         loop {
             match self.completion_rx.try_recv() {
                 Ok(completion) => out.push(completion),
+                Err(TryRecvError::Empty) | Err(TryRecvError::Disconnected) => break,
+            }
+        }
+        out
+    }
+
+    pub fn drain_log_lines(&self) -> Vec<LogLine> {
+        let mut out = Vec::new();
+        loop {
+            match self.log_rx.try_recv() {
+                Ok(line) => out.push(line),
                 Err(TryRecvError::Empty) | Err(TryRecvError::Disconnected) => break,
             }
         }
@@ -40,7 +70,35 @@ impl Default for TaskExecutor {
     }
 }
 
-fn spawn_workers(invocation_rx: Receiver<TaskInvocation>, completion_tx: Sender<TaskCompletion>) {
+// ---------------------------------------------------------------------------
+// Internal helpers
+// ---------------------------------------------------------------------------
+
+struct LogLineSender {
+    task_id: TaskId,
+    tx: Sender<LogLine>,
+}
+
+impl LogLineSender {
+    fn into_sender(self) -> Sender<String> {
+        let (line_tx, line_rx) = mpsc::channel::<String>();
+        std::thread::spawn(move || {
+            while let Ok(line) = line_rx.recv() {
+                let _ = self.tx.send(LogLine {
+                    task_id: self.task_id.clone(),
+                    line,
+                });
+            }
+        });
+        line_tx
+    }
+}
+
+fn spawn_workers(
+    invocation_rx: Receiver<TaskInvocation>,
+    completion_tx: Sender<TaskCompletion>,
+    _log_tx: Sender<LogLine>,
+) {
     let worker_count = std::thread::available_parallelism()
         .map(|count| count.get().min(4).max(1))
         .unwrap_or(2);
@@ -61,7 +119,6 @@ fn spawn_workers(invocation_rx: Receiver<TaskInvocation>, completion_tx: Sender<
                         Err(_) => return,
                     }
                 };
-
                 let completion = execute_invocation(invocation);
                 let _ = tx.send(completion);
             }

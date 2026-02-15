@@ -148,7 +148,7 @@ impl Node {
         match self {
             Self::Input(w) => w.on_event(event),
             Self::Component(w) => w.on_event(event),
-            Self::Output(_) => InteractionResult::ignored(),
+            Self::Output(w) => w.on_event(event),
         }
     }
 

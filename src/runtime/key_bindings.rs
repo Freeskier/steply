@@ -90,6 +90,7 @@ impl KeyBindings {
             Intent::OpenOverlayAtIndex(2),
         );
         self.bind(KeyBinding::key(KeyCode::Esc), Intent::Cancel);
+        self.bind(KeyBinding::alt(KeyCode::Left), Intent::Back);
         self.bind(KeyBinding::key(KeyCode::Tab), Intent::NextFocus);
         self.bind(
             KeyBinding::new(KeyCode::BackTab, KeyModifiers::SHIFT),

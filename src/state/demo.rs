@@ -1,7 +1,7 @@
 use crate::core::value::Value;
 use crate::state::flow::Flow;
-use crate::state::step::Step;
-use crate::task::{TaskSpec, TaskSubscription};
+use crate::state::step::{Step, StepNavigation};
+use crate::task::{TaskSpec, TaskSubscription, TaskTrigger};
 use crate::widgets::components::calendar::{Calendar, CalendarMode};
 use crate::widgets::components::file_browser::FileBrowserInput;
 use crate::widgets::components::object_editor::ObjectEditor;
@@ -25,6 +25,7 @@ use crate::widgets::outputs::diff::DiffOutput;
 use crate::widgets::outputs::progress::{
     Easing, ProgressOutput, ProgressStyle, ProgressTransition,
 };
+use crate::widgets::outputs::task_log::{TaskLog, TaskLogStep};
 use crate::widgets::outputs::text::TextOutput;
 use crate::widgets::validators;
 
@@ -492,6 +493,33 @@ mod tests {
     .with_hint("↑↓ navigate  Tab next chunk  Shift+Tab prev  Enter expand gap")
 }
 
+// ── Step 10b: TaskLog demo ────────────────────────────────────────────────────
+
+fn step_task_log() -> Step {
+    Step::new(
+        "step_task_log",
+        "Task log",
+        vec![
+            Node::Output(Box::new(crate::widgets::outputs::text::TextOutput::new(
+                "tlog_intro",
+                "Live streaming output from shell commands.",
+            ))),
+            Node::Output(Box::new(
+                TaskLog::new(
+                    "tlog_main",
+                    vec![
+                        TaskLogStep::new("Prepare", "tlog_prepare"),
+                        TaskLogStep::new("Build", "tlog_build"),
+                        TaskLogStep::new("Verify", "tlog_verify"),
+                    ],
+                )
+                .with_visible_lines(6),
+            )),
+        ],
+    )
+    .with_hint("Watch the steps complete automatically")
+}
+
 // ── Step 11: Summary + button ─────────────────────────────────────────────────
 
 fn step_finish() -> Step {
@@ -511,10 +539,67 @@ fn step_finish() -> Step {
     .with_hint("Enter → activate button")
 }
 
+// ── Back navigation demo steps ───────────────────────────────────────────────
+
+fn step_back_allowed() -> Step {
+    Step::new(
+        "step_back_allowed",
+        "Back navigation — Allowed",
+        vec![
+            Node::Output(Box::new(TextOutput::new(
+                "back_allowed_text",
+                "This step allows going back freely.\nPress Alt+← to return to the previous step.",
+            ))),
+            Node::Input(Box::new(TextInput::new("back_allowed_field", "Your name"))),
+        ],
+    )
+    .with_navigation(StepNavigation::Allowed)
+    .with_hint("Alt+← → go back  •  Enter → next step")
+}
+
+fn step_back_reset() -> Step {
+    Step::new(
+        "step_back_reset",
+        "Back navigation — Reset",
+        vec![
+            Node::Output(Box::new(TextOutput::new(
+                "back_reset_text",
+                "Going back from this step will reset all entered values to defaults.",
+            ))),
+            Node::Input(Box::new(TextInput::new("back_reset_field1", "Email"))),
+            Node::Input(Box::new(TextInput::new("back_reset_field2", "Phone"))),
+        ],
+    )
+    .with_navigation(StepNavigation::Reset)
+    .with_hint("Alt+← → go back (resets values)  •  Enter → next step")
+}
+
+fn step_back_destructive() -> Step {
+    Step::new(
+        "step_back_destructive",
+        "Back navigation — Destructive",
+        vec![
+            Node::Output(Box::new(TextOutput::new(
+                "back_dest_text",
+                "Going back from this step requires confirmation.\nA warning will be shown before proceeding.",
+            ))),
+            Node::Input(Box::new(TextInput::new("back_dest_field", "Deployment target"))),
+        ],
+    )
+    .with_navigation(StepNavigation::Destructive {
+        warning: "Going back will cancel the pending deployment. Are you sure?".into(),
+    })
+    .with_hint("Alt+← → go back (shows warning)  •  Enter → next step")
+}
+
 // ── Public API ───────────────────────────────────────────────────────────────
 
 pub fn build_demo_flow() -> Flow {
     Flow::new(vec![
+        step_back_allowed(),
+        step_back_reset(),
+        step_back_destructive(),
+        step_task_log(),
         step_snippet(),
         step_calendar(),
         step_diff(),
@@ -532,5 +617,113 @@ pub fn build_demo_flow() -> Flow {
 }
 
 pub fn build_demo_tasks() -> (Vec<TaskSpec>, Vec<TaskSubscription>) {
-    (Vec::new(), Vec::new())
+    let specs = vec![
+        TaskSpec::exec(
+            "tlog_prepare",
+            "bash",
+            vec![
+                "-c".into(),
+                r#"
+echo '[prepare] Checking system requirements...'
+sleep 0.3
+echo '[prepare] OS: Linux x86_64'
+sleep 0.2
+echo '[prepare] Available disk: 42 GB'
+sleep 0.2
+echo '[prepare] Available RAM: 16 GB'
+sleep 0.3
+echo '[prepare] Checking dependencies...'
+sleep 0.2
+for pkg in curl git gcc make cmake python3; do
+    echo "[prepare]   $pkg ... found"
+    sleep 0.15
+done
+echo '[prepare] All requirements satisfied.'
+sleep 0.2
+echo '[prepare] Creating build directories...'
+sleep 0.2
+for dir in build dist cache logs tmp; do
+    echo "[prepare]   mkdir ./$dir"
+    sleep 0.1
+done
+echo '[prepare] Environment ready.'
+"#.into(),
+            ],
+        )
+        .with_timeout_ms(30_000),
+
+        TaskSpec::exec(
+            "tlog_build",
+            "bash",
+            vec![
+                "-c".into(),
+                r#"
+echo '[build] Fetching sources...'
+sleep 0.3
+for i in $(seq 1 8); do
+    echo "[build]   fetching module $i/8..."
+    sleep 0.2
+done
+echo '[build] All sources fetched.'
+sleep 0.2
+echo '[build] Compiling...'
+sleep 0.3
+for src in main lib utils config parser renderer widgets network storage; do
+    echo "[build]   compiling src/$src.rs"
+    sleep 0.25
+done
+echo '[build] Linking binary...'
+sleep 0.5
+echo '[build] Stripping symbols...'
+sleep 0.3
+echo '[build] Binary size: 4.2 MB'
+sleep 0.2
+echo '[build] Build complete.'
+"#.into(),
+            ],
+        )
+        .with_timeout_ms(30_000),
+
+        TaskSpec::exec(
+            "tlog_verify",
+            "bash",
+            vec![
+                "-c".into(),
+                r#"
+echo '[verify] Running test suite...'
+sleep 0.3
+tests="unit_config unit_parser unit_renderer integration_network integration_storage e2e_login e2e_signup e2e_dashboard e2e_settings smoke_perf"
+total=0
+passed=0
+for t in $tests; do
+    total=$((total+1))
+    sleep 0.3
+    echo "[verify]   test_$t ... ok"
+    passed=$((passed+1))
+done
+echo "[verify] Results: $passed/$total passed"
+sleep 0.2
+echo '[verify] Running linter...'
+sleep 0.4
+echo '[verify]   no warnings found'
+sleep 0.2
+echo '[verify] Checking coverage...'
+sleep 0.4
+echo '[verify]   line coverage: 91.3%'
+sleep 0.2
+echo '[verify] All checks passed.'
+"#.into(),
+            ],
+        )
+        .with_timeout_ms(30_000),
+    ];
+
+    let subs = vec![TaskSubscription::new(
+        "tlog_prepare",
+        TaskTrigger::OnStepEnter {
+            step_id: "step_task_log".into(),
+        },
+    )];
+
+    (specs, subs)
 }

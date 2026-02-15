@@ -101,12 +101,15 @@ impl Drawable for SliderInput {
         self.base.id()
     }
 
-    fn draw(&self, ctx: &RenderContext) -> DrawOutput {
-        let prefix = self.base.input_prefix(ctx);
+    fn label(&self) -> &str {
+        self.base.label()
+    }
+
+    fn draw(&self, _ctx: &RenderContext) -> DrawOutput {
         let knob_position = self.track_position();
         let active_track_style = Style::new().color(Color::Green);
 
-        let mut spans = vec![Span::new(prefix).no_wrap(), Span::new("‹").no_wrap()];
+        let mut spans = vec![Span::new("‹").no_wrap()];
         for idx in 0..self.track_len {
             let symbol = if idx == knob_position { '◈' } else { '—' };
             let span = if idx <= knob_position {

@@ -7,6 +7,7 @@ pub enum Intent {
     Exit,
     Cancel,
     Submit,
+    Back,
     NextFocus,
     PrevFocus,
     InputKey(KeyEvent),

@@ -12,7 +12,6 @@ use crate::widgets::traits::{
 };
 use crate::widgets::validators::{Validator, run_validators};
 use model::{MaskToken, SegmentKind};
-use unicode_width::UnicodeWidthStr;
 
 const INVALID_MASK_MESSAGE: &str = "Invalid or incomplete value";
 
@@ -335,11 +334,14 @@ impl Drawable for MaskedInput {
         self.base.id()
     }
 
-    fn draw(&self, ctx: &RenderContext) -> DrawOutput {
-        let prefix = self.base.input_prefix(ctx);
-        let mut line = vec![Span::new(prefix).no_wrap()];
-        line.extend(format::render_spans(self.tokens.as_slice()));
-        DrawOutput { lines: vec![line] }
+    fn label(&self) -> &str {
+        self.base.label()
+    }
+
+    fn draw(&self, _ctx: &RenderContext) -> DrawOutput {
+        DrawOutput {
+            lines: vec![format::render_spans(self.tokens.as_slice())],
+        }
     }
 }
 
@@ -424,14 +426,13 @@ impl Interactive for MaskedInput {
     }
 
     fn cursor_pos(&self) -> Option<CursorPos> {
-        let prefix = self.base.input_prefix_focused();
         let local_offset = format::cursor_offset(
             self.tokens.as_slice(),
             self.cursor_token,
             self.cursor_offset,
         );
         Some(CursorPos {
-            col: (UnicodeWidthStr::width(prefix.as_str()) + local_offset) as u16,
+            col: local_offset as u16,
             row: 0,
         })
     }

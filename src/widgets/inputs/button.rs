@@ -56,6 +56,10 @@ impl Drawable for ButtonInput {
         self.base.id()
     }
 
+    fn label(&self) -> &str {
+        self.base.label()
+    }
+
     fn draw(&self, ctx: &RenderContext) -> DrawOutput {
         let focused = self.base.is_focused(ctx);
         let label = if self.text.is_empty() {
@@ -73,10 +77,7 @@ impl Drawable for ButtonInput {
         };
 
         DrawOutput {
-            lines: vec![vec![
-                Span::new(self.base.input_prefix(ctx)).no_wrap(),
-                Span::styled(label, style).no_wrap(),
-            ]],
+            lines: vec![vec![Span::styled(label, style).no_wrap()]],
         }
     }
 }

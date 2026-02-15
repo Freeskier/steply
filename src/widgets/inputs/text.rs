@@ -10,7 +10,7 @@ use crate::widgets::traits::{
     RenderContext, TextEditState, ValidationMode,
 };
 use crate::widgets::validators::{Validator, run_validators};
-use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
+use unicode_width::UnicodeWidthChar;
 
 /// Display mode for a text input field.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -93,14 +93,14 @@ impl Drawable for TextInput {
         self.base.id()
     }
 
+    fn label(&self) -> &str {
+        self.base.label()
+    }
+
     fn draw(&self, ctx: &RenderContext) -> DrawOutput {
-        let prefix = self.base.input_prefix(ctx);
         let focused = self.base.is_focused(ctx);
 
-        let mut first_line = vec![
-            Span::new(prefix).no_wrap(),
-            Span::styled(self.display_value(), Style::default()).no_wrap(),
-        ];
+        let mut first_line = vec![Span::styled(self.display_value(), Style::default()).no_wrap()];
 
         // Completion ghost text — only in Plain mode
         if self.mode == TextMode::Plain
@@ -225,17 +225,9 @@ impl Interactive for TextInput {
     }
 
     fn cursor_pos(&self) -> Option<CursorPos> {
-        let prefix = self.base.input_prefix_focused();
-        let prefix_width = UnicodeWidthStr::width(prefix.as_str()) as u16;
-
         let col = match self.mode {
-            // Secret: cursor always at the start of the value area
-            TextMode::Secret => prefix_width,
-            // Password: cursor tracks char position but each char is 1-wide (*)
-            TextMode::Password => {
-                prefix_width + text_edit::clamp_cursor(self.cursor, &self.value) as u16
-            }
-            // Plain: cursor tracks unicode width
+            TextMode::Secret => 0,
+            TextMode::Password => text_edit::clamp_cursor(self.cursor, &self.value) as u16,
             TextMode::Plain => {
                 let value_width: usize = self
                     .value
@@ -243,10 +235,9 @@ impl Interactive for TextInput {
                     .take(text_edit::clamp_cursor(self.cursor, &self.value))
                     .map(|ch| UnicodeWidthChar::width(ch).unwrap_or(0))
                     .sum();
-                prefix_width + value_width as u16
+                value_width as u16
             }
         };
-
         Some(CursorPos { col, row: 0 })
     }
 }

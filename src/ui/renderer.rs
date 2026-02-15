@@ -65,6 +65,7 @@ impl Renderer {
     pub fn render(&self, state: &AppState, terminal_size: TerminalSize) -> RenderFrame {
         let mut frame = self.render_steps_pass(state, terminal_size);
         self.apply_overlay_pass(state, terminal_size, &mut frame);
+        self.apply_back_confirm_pass(state, terminal_size, &mut frame);
         self.finalize_cursor_pass(terminal_size, &mut frame);
         frame
     }
@@ -96,6 +97,52 @@ impl Renderer {
             };
             apply_overlay(state, terminal_size, nodes, placement, focused_id, frame);
         }
+    }
+
+    fn apply_back_confirm_pass(
+        &self,
+        state: &AppState,
+        terminal_size: TerminalSize,
+        frame: &mut RenderFrame,
+    ) {
+        let Some(warning) = state.pending_back_confirm.as_deref() else {
+            return;
+        };
+        let width: u16 = 50;
+        let col = terminal_size.width.saturating_sub(width) / 2;
+        let row: u16 = terminal_size.height / 2;
+
+        let inner_w = width.saturating_sub(2) as usize;
+        let border = Style::new().color(Color::Yellow);
+        let bold = Style::new().color(Color::White).bold();
+        let hint_st = Style::new().color(Color::Yellow);
+
+        let top = format!("┌{}┐", "─".repeat(inner_w));
+        let bot = format!("└{}┘", "─".repeat(inner_w));
+        let pad = format!("│{}│", " ".repeat(inner_w));
+
+        let warn_text: String = warning.chars().take(inner_w.saturating_sub(2)).collect();
+        let warn_text = format!("  {warn_text}");
+        let hint_text = "  Enter confirm  •  Esc cancel";
+
+        let lines: Vec<SpanLine> = vec![
+            vec![Span::styled(&top, border).no_wrap()],
+            vec![Span::styled(&pad, border).no_wrap()],
+            vec![
+                Span::styled("│", border).no_wrap(),
+                Span::styled(format!("{warn_text:<inner_w$}"), bold).no_wrap(),
+                Span::styled("│", border).no_wrap(),
+            ],
+            vec![Span::styled(&pad, border).no_wrap()],
+            vec![
+                Span::styled("│", border).no_wrap(),
+                Span::styled(format!("{hint_text:<inner_w$}"), hint_st).no_wrap(),
+                Span::styled("│", border).no_wrap(),
+            ],
+            vec![Span::styled(&bot, border).no_wrap()],
+        ];
+
+        overlay::blend_back_confirm(frame, row as usize, col as usize, width as usize, lines);
     }
 
     fn finalize_cursor_pass(&self, terminal_size: TerminalSize, frame: &mut RenderFrame) {
@@ -198,6 +245,7 @@ fn build_base_frame(
             focused_id,
         );
         let track_cursor = status == StepVisualStatus::Active && !blocking_overlay;
+        let strikethrough_inputs = status == StepVisualStatus::Cancelled;
         draw_nodes(
             step.nodes.as_slice(),
             &ctx,
@@ -205,6 +253,7 @@ fn build_base_frame(
             &mut block_cursor,
             &mut row_offset,
             track_cursor,
+            strikethrough_inputs,
         );
 
         let layout_cursor = block_cursor.map(|cursor| (cursor.row as usize, cursor.col as usize));
@@ -218,8 +267,9 @@ fn build_base_frame(
 
         if status != StepVisualStatus::Active {
             let tint = match status {
-                StepVisualStatus::Cancelled => Color::Red,
-                StepVisualStatus::Done | StepVisualStatus::Pending => Color::DarkGrey,
+                StepVisualStatus::Cancelled
+                | StepVisualStatus::Done
+                | StepVisualStatus::Pending => Color::DarkGrey,
                 StepVisualStatus::Active => Color::Reset,
             };
             tint_block(&mut block_lines, tint);
@@ -233,6 +283,23 @@ fn build_base_frame(
                 status,
                 idx == 0,
             );
+        }
+
+        if status == StepVisualStatus::Cancelled && config.decorations_enabled {
+            // Insert empty line before replacing `└  ` with `└  Exiting.`
+            let last = block_lines.pop();
+            block_lines.push(vec![
+                Span::styled("│  ", Style::new().color(Color::Red)).no_wrap(),
+            ]);
+            if let Some(l) = last {
+                block_lines.push(l);
+            }
+            if let Some(last) = block_lines.last_mut() {
+                *last = vec![
+                    Span::styled("└  ", Style::new().color(Color::Red)).no_wrap(),
+                    Span::styled("Exiting.", Style::new().color(Color::Red)).no_wrap(),
+                ];
+            }
         }
 
         let start_row = frame.lines.len() as u16;
@@ -300,10 +367,37 @@ fn draw_nodes(
     cursor: &mut Option<CursorPos>,
     row_offset: &mut u16,
     track_cursor: bool,
+    strikethrough_inputs: bool,
 ) {
     for node in nodes {
+        // Render label row for Input nodes.
+        if let Node::Input(w) = node {
+            let focused = ctx.focused_id.as_deref().is_some_and(|id| id == w.id());
+            let marker = if focused { ">" } else { " " };
+            let label = w.label();
+            if !label.is_empty() {
+                let label_st = if focused {
+                    Style::new().color(Color::Cyan)
+                } else {
+                    Style::default()
+                };
+                lines.push(vec![
+                    Span::new(format!("{} ", marker)).no_wrap(),
+                    Span::styled(format!("{}:", label), label_st).no_wrap(),
+                ]);
+                *row_offset = row_offset.saturating_add(1);
+            }
+        }
+
         let mut out = node.draw(ctx);
         apply_input_validation_overlay(node, ctx, &mut out);
+        if strikethrough_inputs && matches!(node, Node::Input(_)) {
+            for line in &mut out.lines {
+                for span in line {
+                    span.style.strikethrough = true;
+                }
+            }
+        }
         if track_cursor
             && cursor.is_none()
             && ctx
@@ -328,29 +422,20 @@ fn apply_input_validation_overlay(node: &Node, ctx: &RenderContext, out: &mut Dr
     }
 
     if let Some(error) = ctx.visible_errors.get(node.id()) {
-        let prefix = out
-            .lines
-            .first()
-            .and_then(|line| line.first())
-            .map(|span| span.text.clone())
-            .unwrap_or_default();
-        out.lines = vec![vec![
-            Span::new(prefix).no_wrap(),
+        out.lines.push(vec![
+            Span::new("  ").no_wrap(),
             Span::styled(
                 format!("✗ {}", error),
                 Style::new().color(Color::Red).bold(),
             )
             .no_wrap(),
-        ]];
+        ]);
         return;
     }
 
     if ctx.invalid_hidden.contains(node.id()) {
-        for (line_idx, line) in out.lines.iter_mut().enumerate() {
-            for (span_idx, span) in line.iter_mut().enumerate() {
-                if line_idx == 0 && span_idx == 0 {
-                    continue;
-                }
+        for line in out.lines.iter_mut() {
+            for span in line.iter_mut() {
                 span.style.color = Some(Color::Red);
             }
         }

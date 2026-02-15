@@ -1,6 +1,6 @@
 use crate::core::{NodeId, value::Value};
 use crate::runtime::intent::Intent;
-use crate::task::{TaskCompletion, TaskRequest};
+use crate::task::{TaskCompletion, TaskId, TaskRequest};
 use crate::terminal::TerminalEvent;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -49,6 +49,10 @@ pub enum WidgetEvent {
     },
     TaskRequested {
         request: TaskRequest,
+    },
+    TaskLogLine {
+        task_id: TaskId,
+        line: String,
     },
     TaskCompleted {
         completion: TaskCompletion,

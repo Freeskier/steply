@@ -11,11 +11,11 @@ use crate::widgets::components::snippet::Snippet;
 use crate::widgets::components::table::{Table, TableStyle};
 use crate::widgets::components::tree_view::{TreeNode, TreeView};
 use crate::widgets::inputs::array::ArrayInput;
-use crate::widgets::inputs::confirm::{ConfirmInput, ConfirmMode};
 use crate::widgets::inputs::button::ButtonInput;
 use crate::widgets::inputs::checkbox::CheckboxInput;
 use crate::widgets::inputs::choice::ChoiceInput;
 use crate::widgets::inputs::color::ColorInput;
+use crate::widgets::inputs::confirm::{ConfirmInput, ConfirmMode};
 use crate::widgets::inputs::masked::MaskedInput;
 use crate::widgets::inputs::select::SelectInput;
 use crate::widgets::inputs::slider::SliderInput;
@@ -649,7 +649,10 @@ fn step_back_destructive() -> Step {
                 "back_dest_text",
                 "Going back from this step requires confirmation.",
             ))),
-            Node::Input(Box::new(TextInput::new("back_dest_field", "Deployment target"))),
+            Node::Input(Box::new(TextInput::new(
+                "back_dest_field",
+                "Deployment target",
+            ))),
         ],
     )
     .with_navigation(StepNavigation::Destructive {
@@ -664,16 +667,13 @@ fn step_textarea() -> Step {
     Step::new(
         "step_textarea",
         "Text area",
-        vec![
-            Node::Input(Box::new(
-                TextAreaInput::new("notes")
-                    .with_min_height(3)
-                    .with_max_height(6)
-                    .with_default(Value::Text("First line\nSecond line".into())),
-            )),
-        ],
+        vec![Node::Input(Box::new(
+            TextAreaInput::new("notes")
+                .with_min_height(3)
+                .with_max_height(6)
+                .with_default(Value::Text("First line\nSecond line".into())),
+        ))],
     )
-    .with_hint("Enter — new line  •  Esc / Ctrl+Enter — done")
 }
 
 // ── Confirm input ─────────────────────────────────────────────────────────────
@@ -683,12 +683,13 @@ fn step_confirm() -> Step {
         "step_confirm",
         "Confirm input",
         vec![
+            Node::Input(Box::new(ConfirmInput::new("confirm_relaxed", "Proceed?"))),
             Node::Input(Box::new(
-                ConfirmInput::new("confirm_relaxed", "Proceed?"),
-            )),
-            Node::Input(Box::new(
-                ConfirmInput::new("confirm_strict", "Delete everything?")
-                    .with_mode(ConfirmMode::Strict { word: "delete".into() }),
+                ConfirmInput::new("confirm_strict", "Delete everything?").with_mode(
+                    ConfirmMode::Strict {
+                        word: "delete".into(),
+                    },
+                ),
             )),
         ],
     )
@@ -725,14 +726,14 @@ fn step_validation_demo() -> Step {
 
 pub fn build_demo_flow() -> Flow {
     Flow::new(vec![
-        step_textarea(),
-        step_confirm(),
         step_text_inputs(),
         step_structured_inputs(),
         step_toggles(),
         step_outputs(),
         step_color(),
-//        step_finish(),
+        step_textarea(),
+        step_confirm(),
+        //        step_finish(),
         step_back_allowed(),
         step_back_destructive(),
         step_back_reset(),

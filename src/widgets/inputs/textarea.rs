@@ -169,11 +169,17 @@ impl Drawable for TextAreaInput {
 
         if let Some(footer) = self.scroll.footer(self.lines.len()) {
             output_lines.push(vec![
-                Span::styled(format!("  {}", footer), Style::new().color(Color::DarkGrey).no_strikethrough()).no_wrap(),
+                Span::styled(
+                    format!("  {}", footer),
+                    Style::new().color(Color::DarkGrey).no_strikethrough(),
+                )
+                .no_wrap(),
             ]);
         }
 
-        DrawOutput { lines: output_lines }
+        DrawOutput {
+            lines: output_lines,
+        }
     }
 }
 

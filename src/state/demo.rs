@@ -11,6 +11,7 @@ use crate::widgets::components::snippet::Snippet;
 use crate::widgets::components::table::{Table, TableStyle};
 use crate::widgets::components::tree_view::{TreeNode, TreeView};
 use crate::widgets::inputs::array::ArrayInput;
+use crate::widgets::inputs::confirm::{ConfirmInput, ConfirmMode};
 use crate::widgets::inputs::button::ButtonInput;
 use crate::widgets::inputs::checkbox::CheckboxInput;
 use crate::widgets::inputs::choice::ChoiceInput;
@@ -656,6 +657,25 @@ fn step_back_destructive() -> Step {
     .with_hint("Alt+← → go back (shows warning)  •  Enter → next step")
 }
 
+// ── Confirm input ─────────────────────────────────────────────────────────────
+
+fn step_confirm() -> Step {
+    Step::new(
+        "step_confirm",
+        "Confirm input",
+        vec![
+            Node::Input(Box::new(
+                ConfirmInput::new("confirm_relaxed", "Proceed?"),
+            )),
+            Node::Input(Box::new(
+                ConfirmInput::new("confirm_strict", "Delete everything?")
+                    .with_mode(ConfirmMode::Strict { word: "delete".into() }),
+            )),
+        ],
+    )
+    .with_hint("Relaxed: Enter/y/n  •  Strict: type the word then Enter")
+}
+
 // ── Public API ───────────────────────────────────────────────────────────────
 
 fn step_validation_demo() -> Step {
@@ -686,15 +706,16 @@ fn step_validation_demo() -> Step {
 
 pub fn build_demo_flow() -> Flow {
     Flow::new(vec![
-        step_back_allowed(),
-        step_back_destructive(),
-        step_back_reset(),
+        step_confirm(),
         step_text_inputs(),
         step_structured_inputs(),
         step_toggles(),
         step_outputs(),
         step_color(),
-        step_finish(),
+//        step_finish(),
+        step_back_allowed(),
+        step_back_destructive(),
+        step_back_reset(),
         step_validation_demo(),
         step_pokemon_search(),
         step_selection(),

@@ -40,6 +40,11 @@ impl ButtonInput {
         self
     }
 
+    pub fn with_default(mut self, value: impl Into<Value>) -> Self {
+        self.set_value(value.into());
+        self
+    }
+
     pub fn with_task_request(mut self, task_request: TaskRequest) -> Self {
         self.task_request = Some(task_request);
         self

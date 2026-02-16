@@ -32,6 +32,7 @@ pub struct TextInput {
     value: String,
     cursor: usize,
     mode: TextMode,
+    placeholder: Option<String>,
     submit_target: Option<String>,
     change_target: Option<String>,
     validators: Vec<Validator>,
@@ -45,11 +46,22 @@ impl TextInput {
             value: String::new(),
             cursor: 0,
             mode: TextMode::Plain,
+            placeholder: None,
             submit_target: None,
             change_target: None,
             validators: Vec::new(),
             completion_items: Vec::new(),
         }
+    }
+
+    pub fn with_placeholder(mut self, placeholder: impl Into<String>) -> Self {
+        self.placeholder = Some(placeholder.into());
+        self
+    }
+
+    pub fn with_default(mut self, value: impl Into<crate::core::value::Value>) -> Self {
+        self.set_value(value.into());
+        self
     }
 
     pub fn with_mode(mut self, mode: TextMode) -> Self {
@@ -116,7 +128,15 @@ impl Drawable for TextInput {
     fn draw(&self, ctx: &RenderContext) -> DrawOutput {
         let focused = self.base.is_focused(ctx);
 
-        let mut first_line = vec![Span::styled(self.display_value(), Style::default()).no_wrap()];
+        let mut first_line = if self.value.is_empty() && !focused {
+            if let Some(ph) = &self.placeholder {
+                vec![Span::styled(ph.clone(), Style::new().color(Color::DarkGrey)).no_wrap()]
+            } else {
+                vec![Span::new(self.display_value()).no_wrap()]
+            }
+        } else {
+            vec![Span::styled(self.display_value(), Style::default()).no_wrap()]
+        };
 
         // Completion ghost text — only in Plain mode
         if self.mode == TextMode::Plain

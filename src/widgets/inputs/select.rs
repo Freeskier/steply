@@ -37,6 +37,11 @@ impl SelectInput {
         self
     }
 
+    pub fn with_default(mut self, value: impl Into<Value>) -> Self {
+        self.set_value(value.into());
+        self
+    }
+
     pub fn with_selected(mut self, selected: usize) -> Self {
         self.selected = selected;
         self.clamp_selected();
@@ -91,11 +96,14 @@ impl Drawable for SelectInput {
         self.base.label()
     }
 
-    fn draw(&self, _ctx: &RenderContext) -> DrawOutput {
+    fn draw(&self, ctx: &RenderContext) -> DrawOutput {
+        let text = if self.base.is_focused(ctx) {
+            format!("‹ {} ›", self.selected_text())
+        } else {
+            self.selected_text().to_string()
+        };
         DrawOutput {
-            lines: vec![vec![
-                Span::styled(format!("‹ {} ›", self.selected_text()), Style::default()).no_wrap(),
-            ]],
+            lines: vec![vec![Span::styled(text, Style::default()).no_wrap()]],
         }
     }
 }

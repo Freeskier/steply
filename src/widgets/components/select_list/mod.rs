@@ -492,7 +492,7 @@ impl SelectList {
                 }
 
                 let Some(value) = self.value() else {
-                    return InteractionResult::submit_requested();
+                    return InteractionResult::input_done();
                 };
                 InteractionResult::submit_or_produce(self.submit_target.as_deref(), value)
             }
@@ -669,7 +669,7 @@ impl Interactive for SelectList {
 fn sanitize_child_result(mut result: InteractionResult) -> InteractionResult {
     result
         .actions
-        .retain(|action| !matches!(action, crate::runtime::event::WidgetAction::RequestSubmit));
+        .retain(|action| !matches!(action, crate::runtime::event::WidgetAction::InputDone));
     if result.handled {
         result.request_render = true;
     }

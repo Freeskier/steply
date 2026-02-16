@@ -48,6 +48,11 @@ impl MaskedInput {
         self
     }
 
+    pub fn with_default(mut self, value: impl Into<Value>) -> Self {
+        self.set_value(value.into());
+        self
+    }
+
     pub fn ipv4(id: impl Into<String>, label: impl Into<String>) -> Self {
         Self::new(
             id,
@@ -338,10 +343,14 @@ impl Drawable for MaskedInput {
         self.base.label()
     }
 
-    fn draw(&self, _ctx: &RenderContext) -> DrawOutput {
-        DrawOutput {
-            lines: vec![format::render_spans(self.tokens.as_slice())],
-        }
+    fn draw(&self, ctx: &RenderContext) -> DrawOutput {
+        let spans = if self.base.is_focused(ctx) {
+            format::render_spans(self.tokens.as_slice())
+        } else {
+            let plain = format::render_plain_value(self.tokens.as_slice());
+            vec![crate::ui::span::Span::new(plain).no_wrap()]
+        };
+        DrawOutput { lines: vec![spans] }
     }
 }
 

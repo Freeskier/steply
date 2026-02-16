@@ -167,8 +167,8 @@ impl InteractionResult {
         }
     }
 
-    pub fn submit_requested() -> Self {
-        Self::with_action(WidgetAction::RequestSubmit)
+    pub fn input_done() -> Self {
+        Self::with_action(WidgetAction::InputDone)
     }
 
     pub fn submit_or_produce(target: Option<&str>, value: Value) -> Self {
@@ -177,7 +177,7 @@ impl InteractionResult {
                 change: ValueChange::new(target, value),
             });
         }
-        Self::submit_requested()
+        Self::input_done()
     }
 
     pub fn merge(&mut self, other: Self) {

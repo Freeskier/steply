@@ -86,6 +86,11 @@ impl ColorInput {
         self
     }
 
+    pub fn with_default(mut self, value: impl Into<Value>) -> Self {
+        self.set_value(value.into());
+        self
+    }
+
     fn reset_edit_buffer(&mut self) {
         self.edit_buffer.clear();
         self.edit_mode = self.mode;

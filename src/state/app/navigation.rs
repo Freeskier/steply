@@ -153,13 +153,15 @@ impl AppState {
                 self.clear_step_errors();
                 InteractionResult::handled()
             }
-            WidgetAction::RequestSubmit => {
+            WidgetAction::InputDone => {
                 if self.has_blocking_overlay() {
                     self.close_overlay();
                 } else if self.pending_back_confirm.is_some() {
                     self.confirm_back();
-                } else {
+                } else if self.ui.focus.is_last() {
                     self.handle_step_submit();
+                } else {
+                    self.focus_next();
                 }
                 InteractionResult::handled()
             }

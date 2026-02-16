@@ -381,7 +381,7 @@ impl<T: TreeItemLabel> Interactive for TreeView<T> {
             }
             KeyCode::Enter => {
                 let Some(value) = self.value() else {
-                    return InteractionResult::submit_requested();
+                    return InteractionResult::input_done();
                 };
                 InteractionResult::submit_or_produce(self.submit_target.as_deref(), value)
             }

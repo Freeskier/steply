@@ -42,6 +42,13 @@ impl FocusState {
             .position(|target| target.id.as_str() == id);
     }
 
+    pub fn is_last(&self) -> bool {
+        match self.index {
+            Some(i) => i + 1 >= self.targets.len(),
+            None => true,
+        }
+    }
+
     pub fn next(&mut self) {
         let Some(current) = self.index else {
             return;

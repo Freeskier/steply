@@ -63,6 +63,11 @@ impl SliderInput {
         self
     }
 
+    pub fn with_default(mut self, value: impl Into<Value>) -> Self {
+        self.set_value(value.into());
+        self
+    }
+
     fn clamp_value(&mut self) {
         self.value = self.value.clamp(self.min, self.max);
     }
@@ -105,26 +110,35 @@ impl Drawable for SliderInput {
         self.base.label()
     }
 
-    fn draw(&self, _ctx: &RenderContext) -> DrawOutput {
-        let knob_position = self.track_position();
-        let active_track_style = Style::new().color(Color::Green);
-
-        let mut spans = vec![Span::new("‹").no_wrap()];
-        for idx in 0..self.track_len {
-            let symbol = if idx == knob_position { '◈' } else { '—' };
-            let span = if idx <= knob_position {
-                Span::styled(symbol.to_string(), active_track_style).no_wrap()
-            } else {
-                Span::new(symbol.to_string()).no_wrap()
-            };
-            spans.push(span);
-        }
-        spans.push(Span::new("› ").no_wrap());
-        spans.push(Span::styled(self.value.to_string(), Style::default()).no_wrap());
-        if let Some(unit) = &self.unit {
-            spans.push(Span::new(" ").no_wrap());
-            spans.push(Span::styled(unit.clone(), Style::new().color(Color::DarkGrey)).no_wrap());
-        }
+    fn draw(&self, ctx: &RenderContext) -> DrawOutput {
+        let focused = self.base.is_focused(ctx);
+        let spans = if focused {
+            let knob_position = self.track_position();
+            let active_track_style = Style::new().color(Color::Green);
+            let mut s = vec![Span::new("‹").no_wrap()];
+            for idx in 0..self.track_len {
+                let symbol = if idx == knob_position { '◈' } else { '—' };
+                s.push(if idx <= knob_position {
+                    Span::styled(symbol.to_string(), active_track_style).no_wrap()
+                } else {
+                    Span::new(symbol.to_string()).no_wrap()
+                });
+            }
+            s.push(Span::new("› ").no_wrap());
+            s.push(Span::styled(self.value.to_string(), Style::default()).no_wrap());
+            if let Some(unit) = &self.unit {
+                s.push(Span::new(" ").no_wrap());
+                s.push(Span::styled(unit.clone(), Style::new().color(Color::DarkGrey)).no_wrap());
+            }
+            s
+        } else {
+            let mut s = vec![Span::new(self.value.to_string()).no_wrap()];
+            if let Some(unit) = &self.unit {
+                s.push(Span::new(" ").no_wrap());
+                s.push(Span::styled(unit.clone(), Style::new().color(Color::DarkGrey)).no_wrap());
+            }
+            s
+        };
 
         DrawOutput { lines: vec![spans] }
     }
@@ -157,7 +171,7 @@ impl Interactive for SliderInput {
                 self.value = self.max;
                 self.value_changed_result(previous)
             }
-            KeyCode::Enter => InteractionResult::submit_requested(),
+            KeyCode::Enter => InteractionResult::input_done(),
             _ => InteractionResult::ignored(),
         }
     }

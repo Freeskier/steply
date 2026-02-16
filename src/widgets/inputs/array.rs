@@ -40,6 +40,11 @@ impl ArrayInput {
         self
     }
 
+    pub fn with_default(mut self, value: impl Into<Value>) -> Self {
+        self.set_value(value.into());
+        self
+    }
+
     fn replace_items(&mut self, items: Vec<String>) {
         let cleaned = items
             .into_iter()
@@ -213,7 +218,7 @@ impl ArrayInput {
         let mut width = 0usize;
         let mut cursor_width = 0usize;
 
-        spans.push(Span::new("(").no_wrap());
+        spans.push(Span::new("[").no_wrap());
         width += 1;
 
         for (idx, item) in self.items.iter().enumerate() {
@@ -243,7 +248,7 @@ impl ArrayInput {
             spans.push(Span::styled(display, style).no_wrap());
         }
 
-        spans.push(Span::new(")").no_wrap());
+        spans.push(Span::new("]").no_wrap());
 
         (spans, cursor_width)
     }
@@ -304,7 +309,7 @@ impl Interactive for ArrayInput {
                 self.insert_char(ch);
                 InteractionResult::handled()
             }
-            KeyCode::Enter => InteractionResult::submit_requested(),
+            KeyCode::Enter => InteractionResult::input_done(),
             _ => InteractionResult::ignored(),
         }
     }

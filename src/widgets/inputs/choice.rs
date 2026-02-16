@@ -44,6 +44,11 @@ impl ChoiceInput {
         self
     }
 
+    pub fn with_default(mut self, value: impl Into<Value>) -> Self {
+        self.set_value(value.into());
+        self
+    }
+
     fn selected_text(&self) -> &str {
         self.options
             .get(self.selected)
@@ -92,31 +97,31 @@ impl Drawable for ChoiceInput {
         self.base.label()
     }
 
-    fn draw(&self, _ctx: &RenderContext) -> DrawOutput {
-        let active_style = Style::new().color(Color::Cyan).bold();
-        let inactive_style = Style::new().color(Color::DarkGrey);
+    fn draw(&self, ctx: &RenderContext) -> DrawOutput {
+        let focused = self.base.is_focused(ctx);
 
-        let mut spans = vec![];
-        for (index, option) in self.options.iter().enumerate() {
-            if index > 0 {
-                spans.push(Span::new(" / ").no_wrap());
-            }
-            if self.show_bullets {
-                if index == self.selected {
-                    spans
-                        .push(Span::styled("●", Style::new().color(Color::Green).bold()).no_wrap());
-                } else {
-                    spans.push(Span::styled("○", inactive_style).no_wrap());
+        let spans = if focused {
+            let active_style = Style::new().color(Color::Cyan).bold();
+            let inactive_style = Style::new().color(Color::DarkGrey);
+            let mut s = vec![];
+            for (index, option) in self.options.iter().enumerate() {
+                if index > 0 {
+                    s.push(Span::new(" / ").no_wrap());
                 }
-                spans.push(Span::new(" ").no_wrap());
+                if self.show_bullets {
+                    if index == self.selected {
+                        s.push(Span::styled("●", Style::new().color(Color::Green).bold()).no_wrap());
+                    } else {
+                        s.push(Span::styled("○", inactive_style).no_wrap());
+                    }
+                    s.push(Span::new(" ").no_wrap());
+                }
+                s.push(Span::styled(option.clone(), if index == self.selected { active_style } else { inactive_style }).no_wrap());
             }
-            let style = if index == self.selected {
-                active_style
-            } else {
-                inactive_style
-            };
-            spans.push(Span::styled(option.clone(), style).no_wrap());
-        }
+            s
+        } else {
+            vec![Span::new(self.selected_text().to_string()).no_wrap()]
+        };
 
         DrawOutput { lines: vec![spans] }
     }

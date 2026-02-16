@@ -32,7 +32,9 @@ impl ValueChange {
 #[derive(Debug, Clone)]
 pub enum WidgetAction {
     ValueChanged { change: ValueChange },
-    RequestSubmit,
+    /// Widget signals it is done with its value.
+    /// Navigation decides: focus next input if one exists, else submit the step.
+    InputDone,
     RequestFocus { target: NodeId },
     TaskRequested { request: TaskRequest },
 }

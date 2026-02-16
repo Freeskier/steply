@@ -795,7 +795,7 @@ impl Interactive for Table {
 fn sanitize_child_result(mut result: InteractionResult) -> InteractionResult {
     result
         .actions
-        .retain(|action| !matches!(action, WidgetAction::RequestSubmit));
+        .retain(|action| !matches!(action, WidgetAction::InputDone));
     if result.handled {
         result.request_render = true;
     }

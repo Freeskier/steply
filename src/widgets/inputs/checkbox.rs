@@ -33,6 +33,10 @@ impl CheckboxInput {
         self
     }
 
+    pub fn with_default(mut self, value: impl Into<Value>) -> Self {
+        self.set_value(value.into());
+        self
+    }
 }
 
 impl Drawable for CheckboxInput {
@@ -44,15 +48,26 @@ impl Drawable for CheckboxInput {
         self.base.label()
     }
 
-    fn draw(&self, _ctx: &RenderContext) -> DrawOutput {
-        let (symbol, style) = if self.checked {
-            ("✓", Style::new().color(Color::Green))
+    fn draw(&self, ctx: &RenderContext) -> DrawOutput {
+        let focused = self.base.is_focused(ctx);
+        let span = if focused {
+            let (symbol, style) = if self.checked {
+                ("[✓]", Style::new().color(Color::Green))
+            } else {
+                ("[✗]", Style::new().color(Color::Red))
+            };
+            Span::styled(symbol, style).no_wrap()
         } else {
-            ("✗", Style::new().color(Color::Red))
+            let (text, style) = if self.checked {
+                ("true", Style::new().color(Color::Green))
+            } else {
+                ("false", Style::new().color(Color::Red))
+            };
+            Span::styled(text, style).no_wrap()
         };
 
         DrawOutput {
-            lines: vec![vec![Span::styled(symbol, style).no_wrap()]],
+            lines: vec![vec![span]],
         }
     }
 }
@@ -68,7 +83,7 @@ impl Interactive for CheckboxInput {
                 self.checked = !self.checked;
                 InteractionResult::handled()
             }
-            KeyCode::Enter => InteractionResult::submit_requested(),
+            KeyCode::Enter => InteractionResult::input_done(),
             _ => InteractionResult::ignored(),
         }
     }

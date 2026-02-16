@@ -313,7 +313,7 @@ impl OutputNode for TaskLog {
                     return InteractionResult::with_action(WidgetAction::TaskRequested { request });
                 }
                 if succeeded {
-                    return InteractionResult::with_action(WidgetAction::RequestSubmit);
+                    return InteractionResult::input_done();
                 }
                 InteractionResult::handled()
             }

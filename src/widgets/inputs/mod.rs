@@ -1,4 +1,5 @@
 pub mod array;
+pub mod confirm;
 pub mod button;
 pub mod checkbox;
 pub mod choice;

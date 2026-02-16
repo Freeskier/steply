@@ -318,6 +318,7 @@ impl Interactive for ArrayInput {
         let changed = match action {
             TextAction::DeleteWordLeft => self.remove_active(),
             TextAction::DeleteWordRight => self.remove_next(),
+            TextAction::MoveWordLeft | TextAction::MoveWordRight => false,
         };
         if changed {
             self.normalize_items();

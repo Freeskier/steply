@@ -19,6 +19,9 @@ pub struct Style {
     pub background: Option<Color>,
     pub bold: bool,
     pub strikethrough: bool,
+    /// Prevents the renderer from applying strikethrough to this span
+    /// even when the parent widget is in a cancelled/done state.
+    pub no_strikethrough: bool,
 }
 
 impl Style {
@@ -43,6 +46,11 @@ impl Style {
 
     pub fn strikethrough(mut self) -> Self {
         self.strikethrough = true;
+        self
+    }
+
+    pub fn no_strikethrough(mut self) -> Self {
+        self.no_strikethrough = true;
         self
     }
 }

@@ -373,10 +373,14 @@ fn draw_nodes(
         // and only when the value text is non-empty.
         if strikethrough_inputs && matches!(node, Node::Input(_)) {
             for line in &mut out.lines {
-                let has_content = line.iter().any(|s| !s.text.trim().is_empty());
+                let has_content = line
+                    .iter()
+                    .any(|s| !s.text.trim().is_empty() && !s.style.no_strikethrough);
                 if has_content {
                     for span in line.iter_mut() {
-                        span.style.strikethrough = true;
+                        if !span.style.no_strikethrough {
+                            span.style.strikethrough = true;
+                        }
                     }
                 }
             }

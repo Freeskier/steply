@@ -192,6 +192,7 @@ fn merge_style(base: Style, extra: Style) -> Style {
         background: extra.background.or(base.background),
         bold: base.bold || extra.bold,
         strikethrough: base.strikethrough || extra.strikethrough,
+        no_strikethrough: base.no_strikethrough || extra.no_strikethrough,
     }
 }
 
@@ -201,5 +202,6 @@ fn merge_style_no_inherit(base: Style, extra: Style) -> Style {
         background: extra.background.or(base.background),
         bold: extra.bold,
         strikethrough: extra.strikethrough,
+        no_strikethrough: base.no_strikethrough || extra.no_strikethrough,
     }
 }

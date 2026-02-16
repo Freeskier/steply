@@ -20,6 +20,7 @@ use crate::widgets::inputs::masked::MaskedInput;
 use crate::widgets::inputs::select::SelectInput;
 use crate::widgets::inputs::slider::SliderInput;
 use crate::widgets::inputs::text::{TextInput, TextMode};
+use crate::widgets::inputs::textarea::TextAreaInput;
 use crate::widgets::node::Node;
 use crate::widgets::outputs::chart::{ChartOutput, ChartRenderMode};
 use crate::widgets::outputs::diff::DiffOutput;
@@ -657,6 +658,24 @@ fn step_back_destructive() -> Step {
     .with_hint("Alt+← → go back (shows warning)  •  Enter → next step")
 }
 
+// ── TextArea input ────────────────────────────────────────────────────────────
+
+fn step_textarea() -> Step {
+    Step::new(
+        "step_textarea",
+        "Text area",
+        vec![
+            Node::Input(Box::new(
+                TextAreaInput::new("notes")
+                    .with_min_height(3)
+                    .with_max_height(6)
+                    .with_default(Value::Text("First line\nSecond line".into())),
+            )),
+        ],
+    )
+    .with_hint("Enter — new line  •  Esc / Ctrl+Enter — done")
+}
+
 // ── Confirm input ─────────────────────────────────────────────────────────────
 
 fn step_confirm() -> Step {
@@ -706,6 +725,7 @@ fn step_validation_demo() -> Step {
 
 pub fn build_demo_flow() -> Flow {
     Flow::new(vec![
+        step_textarea(),
         step_confirm(),
         step_text_inputs(),
         step_structured_inputs(),

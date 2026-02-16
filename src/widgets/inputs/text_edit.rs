@@ -142,6 +142,46 @@ fn is_separator(ch: char) -> bool {
     ch.is_whitespace() || matches!(ch, '.' | '/' | ',' | '-' | '@' | '_' | ':')
 }
 
+pub fn move_word_left(cursor: &mut usize, value: &str) -> bool {
+    let chars: Vec<char> = value.chars().collect();
+    let pos = (*cursor).min(chars.len());
+    if pos == 0 {
+        return false;
+    }
+    let mut i = pos;
+    while i > 0 && is_separator(chars[i - 1]) {
+        i -= 1;
+    }
+    while i > 0 && !is_separator(chars[i - 1]) {
+        i -= 1;
+    }
+    if i == pos {
+        return false;
+    }
+    *cursor = i;
+    true
+}
+
+pub fn move_word_right(cursor: &mut usize, value: &str) -> bool {
+    let chars: Vec<char> = value.chars().collect();
+    let pos = (*cursor).min(chars.len());
+    if pos >= chars.len() {
+        return false;
+    }
+    let mut i = pos;
+    while i < chars.len() && is_separator(chars[i]) {
+        i += 1;
+    }
+    while i < chars.len() && !is_separator(chars[i]) {
+        i += 1;
+    }
+    if i == pos {
+        return false;
+    }
+    *cursor = i;
+    true
+}
+
 pub fn byte_index_at_char(value: &str, char_idx: usize) -> usize {
     if char_idx == 0 {
         return 0;

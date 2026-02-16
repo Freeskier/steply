@@ -195,6 +195,8 @@ impl InteractionResult {
 pub enum TextAction {
     DeleteWordLeft,
     DeleteWordRight,
+    MoveWordLeft,
+    MoveWordRight,
 }
 
 pub struct TextEditState<'a> {
@@ -213,6 +215,8 @@ impl TextAction {
         match self {
             Self::DeleteWordLeft => text_edit::delete_word_left(state.value, state.cursor),
             Self::DeleteWordRight => text_edit::delete_word_right(state.value, state.cursor),
+            Self::MoveWordLeft => text_edit::move_word_left(state.cursor, state.value),
+            Self::MoveWordRight => text_edit::move_word_right(state.cursor, state.value),
         }
     }
 }

@@ -97,6 +97,14 @@ impl KeyBindings {
             Intent::PrevFocus,
         );
         self.bind(
+            KeyBinding::ctrl(KeyCode::Left),
+            Intent::TextAction(TextAction::MoveWordLeft),
+        );
+        self.bind(
+            KeyBinding::ctrl(KeyCode::Right),
+            Intent::TextAction(TextAction::MoveWordRight),
+        );
+        self.bind(
             KeyBinding::ctrl(KeyCode::Backspace),
             Intent::TextAction(TextAction::DeleteWordLeft),
         );

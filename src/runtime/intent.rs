@@ -18,4 +18,8 @@ pub enum Intent {
     CloseOverlay,
     Tick,
     Noop,
+    ScrollUp,
+    ScrollDown,
+    ScrollPageUp,
+    ScrollPageDown,
 }

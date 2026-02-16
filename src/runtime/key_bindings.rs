@@ -108,5 +108,7 @@ impl KeyBindings {
             KeyBinding::ctrl(KeyCode::Delete),
             Intent::TextAction(TextAction::DeleteWordRight),
         );
+        self.bind(KeyBinding::key(KeyCode::PageUp), Intent::ScrollPageUp);
+        self.bind(KeyBinding::key(KeyCode::PageDown), Intent::ScrollPageDown);
     }
 }

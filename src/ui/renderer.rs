@@ -20,6 +20,11 @@ use overlay::apply_overlay;
 pub struct RenderFrame {
     pub lines: Vec<SpanLine>,
     pub cursor: Option<CursorPos>,
+    /// Number of lines at the start of `lines` that correspond to
+    /// Done/Cancelled steps.  In Inline mode the terminal commits these lines
+    /// once to scrollback and never re-renders them.  Always 0 in AltScreen
+    /// mode (the terminal renders everything itself).
+    pub frozen_lines: usize,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -189,6 +194,7 @@ fn build_base_frame(
         return frame;
     }
     let blocking_overlay = view.has_blocking_overlay;
+    let mut frozen_lines = 0usize;
 
     for (idx, step) in steps.iter().enumerate().take(current_idx.saturating_add(1)) {
         let status = StepVisualStatus::from(view.step_statuses[idx]);
@@ -315,8 +321,15 @@ fn build_base_frame(
         if status == StepVisualStatus::Done && !config.decorations_enabled {
             frame.lines.push(vec![Span::new("")]);
         }
+
+        // Track the frozen boundary: lines through Done/Cancelled steps are
+        // committed to scrollback in Inline mode and never re-rendered.
+        if matches!(status, StepVisualStatus::Done | StepVisualStatus::Cancelled) {
+            frozen_lines = frame.lines.len();
+        }
     }
 
+    frame.frozen_lines = frozen_lines;
     frame
 }
 

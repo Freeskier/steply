@@ -66,6 +66,10 @@ impl Reducer {
             Intent::CloseOverlay => vec![Effect::System(SystemEvent::CloseOverlay)],
             Intent::Tick => collect_effects(state.tick_all_nodes()),
             Intent::Noop => vec![],
+            Intent::ScrollUp
+            | Intent::ScrollDown
+            | Intent::ScrollPageUp
+            | Intent::ScrollPageDown => vec![],
         };
 
         effects.extend(

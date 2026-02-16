@@ -6,7 +6,7 @@ use crate::runtime::reducer::Reducer;
 use crate::runtime::scheduler::Scheduler;
 use crate::state::app::AppState;
 use crate::task::{LogLine, TaskExecutor};
-use crate::terminal::{Terminal, TerminalEvent};
+use crate::terminal::{RenderMode, Terminal, TerminalEvent};
 use crate::ui::render_view::RenderView;
 use crate::ui::renderer::{Renderer, RendererConfig};
 use std::io;
@@ -36,6 +36,11 @@ impl Runtime {
 
     pub fn with_renderer_config(mut self, config: RendererConfig) -> Self {
         self.renderer = Renderer::new(config);
+        self
+    }
+
+    pub fn with_render_mode(mut self, mode: RenderMode) -> Self {
+        self.terminal = self.terminal.with_mode(mode);
         self
     }
 
@@ -116,6 +121,10 @@ impl Runtime {
                     .unwrap_or(Intent::InputKey(key));
                 self.process_intent(intent)
             }
+            AppEvent::Terminal(TerminalEvent::Scroll(delta)) => {
+                self.terminal.scroll(delta);
+                self.render()
+            }
             AppEvent::Terminal(TerminalEvent::Tick) => self.process_intent(Intent::Tick),
             AppEvent::Intent(intent) => self.process_intent(intent),
             AppEvent::Action(action) => {
@@ -134,6 +143,49 @@ impl Runtime {
     }
 
     fn process_intent(&mut self, intent: Intent) -> io::Result<()> {
+        match &intent {
+            // Scroll intents mutate terminal state and re-render; they never
+            // reach the Reducer.
+            Intent::ScrollUp => {
+                self.terminal.scroll(-1);
+                return self.render();
+            }
+            Intent::ScrollDown => {
+                self.terminal.scroll(1);
+                return self.render();
+            }
+            Intent::ScrollPageUp => {
+                let h = self.terminal.size().height as i32;
+                self.terminal.scroll(-(h.saturating_sub(1)));
+                return self.render();
+            }
+            Intent::ScrollPageDown => {
+                let h = self.terminal.size().height as i32;
+                self.terminal.scroll(h.saturating_sub(1));
+                return self.render();
+            }
+            // Back navigation is not possible in Inline mode because committed
+            // lines can no longer be re-rendered.
+            Intent::Back if self.terminal.is_inline() => {
+                return Ok(());
+            }
+            // Any real user interaction resets manual scroll so the cursor
+            // stays visible on the next render.
+            Intent::Submit
+            | Intent::InputKey(_)
+            | Intent::TextAction(_)
+            | Intent::NextFocus
+            | Intent::PrevFocus
+            | Intent::Cancel
+            | Intent::Back
+            | Intent::OpenOverlay(_)
+            | Intent::OpenOverlayAtIndex(_)
+            | Intent::OpenOverlayShortcut
+            | Intent::CloseOverlay => {
+                self.terminal.reset_scroll();
+            }
+            _ => {}
+        }
         let effects = Reducer::reduce(&mut self.state, intent);
         self.apply_effects(effects)
     }
@@ -186,6 +238,6 @@ impl Runtime {
     fn render(&mut self) -> io::Result<()> {
         let view = RenderView::from_state(&self.state);
         let frame = self.renderer.render(&view, self.terminal.size());
-        self.terminal.render(&frame.lines, frame.cursor)
+        self.terminal.render_frame(&frame)
     }
 }

@@ -356,7 +356,7 @@ impl Interactive for ArrayInput {
         for item in &self.items {
             let trimmed = item.trim();
             if !trimmed.is_empty() {
-                run_validators(&self.validators, trimmed)?;
+                run_validators(&self.validators, &Value::Text(trimmed.to_string()))?;
             }
         }
         Ok(())

@@ -507,7 +507,7 @@ impl Interactive for Calendar {
     }
 
     fn validate(&self, _mode: ValidationMode) -> Result<(), String> {
-        run_validators(&self.validators, &self.formatted_value())
+        run_validators(&self.validators, &Value::Text(self.formatted_value()))
     }
 }
 

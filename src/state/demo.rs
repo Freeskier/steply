@@ -144,19 +144,19 @@ fn step_text_inputs() -> Step {
             ))),
             Node::Input(Box::new(
                 TextInput::new("txt_name", "Full name")
-                    .with_validator(validators::required("Name is required"))
-                    .with_validator(validators::min_length(2, "At least 2 characters"))
+                    .with_validator(validators::required_msg("Name is required"))
+                    .with_validator(validators::min_length(2))
                     .with_completion_items(vec!["test".to_string(), "teflon".to_string()]),
             )),
             Node::Input(Box::new(
                 TextInput::new("txt_user", "Username")
                     .with_completion_items(completions)
-                    .with_validator(validators::required("Username is required")),
+                    .with_validator(validators::required_msg("Username is required")),
             )),
             Node::Input(Box::new(
                 TextInput::new("txt_pass", "Password")
                     .with_mode(TextMode::Password)
-                    .with_validator(validators::min_length(6, "Minimum 6 characters")),
+                    .with_validator(validators::min_length(6)),
             )),
             Node::Input(Box::new(
                 TextInput::new("txt_pass_hidden", "Secret token (hidden)")
@@ -180,11 +180,11 @@ fn step_structured_inputs() -> Step {
             ))),
             Node::Input(Box::new(
                 MaskedInput::new("masked_phone", "Phone", "+## (###) ###-##-##")
-                    .with_validator(validators::required("Phone is required")),
+                    .with_validator(validators::required_msg("Phone is required")),
             )),
             Node::Input(Box::new(
                 MaskedInput::new("masked_date", "Date", "YYYY-mm-DD")
-                    .with_validator(validators::required("Date is required")),
+                    .with_validator(validators::required_msg("Date is required")),
             )),
             Node::Input(Box::new(
                 MaskedInput::new("masked_ip", "IP address", "#{1,3:0-255}.###.###.###"),
@@ -192,7 +192,7 @@ fn step_structured_inputs() -> Step {
             Node::Input(Box::new(
                 ArrayInput::new("arr_tags", "Tags")
                     .with_items(vec!["rust".into(), "tui".into()])
-                    .with_validator(validators::required("At least one tag")),
+                    .with_validator(validators::required_msg("At least one tag")),
             )),
         ],
     )
@@ -256,11 +256,11 @@ fn step_selection() -> Step {
                     ],
                 )
                 .with_bullets(true)
-                .with_validator(validators::required("Pick one")),
+                .with_validator(validators::required_msg("Pick one")),
             )),
             Node::Input(Box::new(
                 SelectInput::new("sel_editor", "Editor", editors)
-                    .with_validator(validators::required("Pick an editor")),
+                    .with_validator(validators::required_msg("Pick an editor")),
             )),
             Node::Component(Box::new(
                 SelectList::new("ss_lang", "Language", languages)
@@ -296,7 +296,7 @@ fn step_toggles() -> Step {
             ))),
             Node::Input(Box::new(
                 CheckboxInput::new("chk_agree", "I agree to the terms")
-                    .with_validator(validators::required("You must agree to continue")),
+                    .with_validator(validators::required_msg("You must agree to continue")),
             )),
             Node::Input(Box::new(
                 CheckboxInput::new("chk_newsletter", "Subscribe to newsletter").with_checked(true),
@@ -383,7 +383,7 @@ fn step_color() -> Step {
             Node::Input(Box::new(
                 ColorInput::new("col_fg", "Foreground")
                     .with_rgb(220, 220, 220)
-                    .with_validator(validators::required("Required")),
+                    .with_validator(validators::required_msg("Required")),
             )),
             Node::Input(Box::new(
                 ColorInput::new("col_bg", "Background").with_rgb(30, 30, 46),
@@ -406,7 +406,7 @@ fn step_file_browser() -> Step {
             ))),
             Node::Component(Box::new(
                 FileBrowserInput::new("fb_any", "Any file")
-                    .with_validator(validators::required("Path is required"))
+                    .with_validator(validators::required_msg("Path is required"))
                     .with_browser_mode(crate::widgets::components::file_browser::BrowserMode::Tree),
             )),
             Node::Component(Box::new(
@@ -645,7 +645,7 @@ fn step_back_destructive() -> Step {
         vec![
             Node::Output(Box::new(TextOutput::new(
                 "back_dest_text",
-                "Going back from this step requires confirmation.\nA warning will be shown before proceeding.",
+                "Going back from this step requires confirmation.",
             ))),
             Node::Input(Box::new(TextInput::new("back_dest_field", "Deployment target"))),
         ],
@@ -658,14 +658,47 @@ fn step_back_destructive() -> Step {
 
 // ── Public API ───────────────────────────────────────────────────────────────
 
+fn step_validation_demo() -> Step {
+    use crate::state::validation::StepIssue;
+
+    Step::new(
+        "step_validation_demo",
+        "Validation demo",
+        vec![
+            Node::Input(Box::new(TextInput::new("longer", "Longer value"))),
+            Node::Input(Box::new(TextInput::new("shorter", "Shorter value"))),
+        ],
+    )
+    .validate(|ctx| {
+        let a = ctx.text("longer");
+        let b = ctx.text("shorter");
+        if a.len() <= b.len() {
+            Some(StepIssue::error(format!(
+                "\"Longer value\" ({} chars) must be longer than \"Shorter value\" ({} chars).",
+                a.len(),
+                b.len()
+            )))
+        } else {
+            None
+        }
+    })
+}
+
 pub fn build_demo_flow() -> Flow {
     Flow::new(vec![
+        step_back_allowed(),
+        step_back_destructive(),
+        step_back_reset(),
+        step_text_inputs(),
+        step_structured_inputs(),
+        step_toggles(),
+        step_outputs(),
+        step_color(),
+        step_finish(),
+        step_validation_demo(),
         step_pokemon_search(),
         step_selection(),
         step_table(),
-        step_back_allowed(),
-        step_back_reset(),
-        step_back_destructive(),
         step_task_log(),
         step_snippet(),
         step_calendar(),
@@ -673,12 +706,6 @@ pub fn build_demo_flow() -> Flow {
         step_object_editor(),
         step_file_browser(),
         step_tree_view(),
-        step_text_inputs(),
-        step_structured_inputs(),
-        step_toggles(),
-        step_outputs(),
-        step_color(),
-        step_finish(),
     ])
 }
 

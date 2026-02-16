@@ -372,7 +372,7 @@ impl Interactive for ColorInput {
     }
 
     fn validate(&self, _mode: ValidationMode) -> Result<(), String> {
-        run_validators(&self.validators, rgb_to_hex(self.rgb).as_str())
+        run_validators(&self.validators, &Value::Text(rgb_to_hex(self.rgb)))
     }
 
     fn cursor_pos(&self) -> Option<CursorPos> {

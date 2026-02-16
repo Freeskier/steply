@@ -6,7 +6,7 @@ use crate::widgets::base::WidgetBase;
 use crate::widgets::traits::{
     DrawOutput, Drawable, FocusMode, InteractionResult, Interactive, RenderContext, ValidationMode,
 };
-use crate::widgets::validators::Validator;
+use crate::widgets::validators::{Validator, run_validators};
 
 pub struct SelectInput {
     base: WidgetBase,
@@ -140,7 +140,6 @@ impl Interactive for SelectInput {
     }
 
     fn validate(&self, _mode: ValidationMode) -> Result<(), String> {
-        use crate::widgets::validators::run_validators;
-        run_validators(&self.validators, self.selected_text())
+        run_validators(&self.validators, &Value::Text(self.selected_text().to_string()))
     }
 }

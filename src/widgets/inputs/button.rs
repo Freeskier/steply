@@ -111,6 +111,6 @@ impl Interactive for ButtonInput {
     }
 
     fn validate(&self, _mode: ValidationMode) -> Result<(), String> {
-        run_validators(&self.validators, &self.clicks.to_string())
+        run_validators(&self.validators, &Value::Number(self.clicks as f64))
     }
 }

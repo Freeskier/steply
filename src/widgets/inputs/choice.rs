@@ -171,6 +171,6 @@ impl Interactive for ChoiceInput {
     }
 
     fn validate(&self, _mode: ValidationMode) -> Result<(), String> {
-        run_validators(&self.validators, self.selected_text())
+        run_validators(&self.validators, &Value::Text(self.selected_text().to_string()))
     }
 }

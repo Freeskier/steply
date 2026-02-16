@@ -234,7 +234,7 @@ impl Interactive for TextInput {
     }
 
     fn validate(&self, _mode: ValidationMode) -> Result<(), String> {
-        run_validators(&self.validators, &self.value)
+        run_validators(&self.validators, &Value::Text(self.value.clone()))
     }
 
     fn cursor_pos(&self) -> Option<CursorPos> {

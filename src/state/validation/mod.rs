@@ -1,6 +1,8 @@
 use crate::core::{NodeId, value::Value};
 use std::collections::HashMap;
 
+// ── Per-input validation state ────────────────────────────────────────────────
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ErrorVisibility {
     Hidden,
@@ -13,75 +15,103 @@ pub struct ValidationEntry {
     pub visibility: ErrorVisibility,
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub enum ValidationTarget {
-    Node(NodeId),
-    Step,
+// ── Step-level validation ─────────────────────────────────────────────────────
+
+/// Context passed to every step validator.  Provides typed accessors for all
+/// node values collected from the current step.
+pub struct StepContext<'a> {
+    pub step_id: &'a str,
+    values: &'a HashMap<NodeId, Value>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub struct ValidationIssue {
-    pub target: ValidationTarget,
-    pub message: String,
-}
+impl<'a> StepContext<'a> {
+    pub fn new(step_id: &'a str, values: &'a HashMap<NodeId, Value>) -> Self {
+        Self { step_id, values }
+    }
 
-impl ValidationIssue {
-    pub fn node(id: impl Into<NodeId>, message: impl Into<String>) -> Self {
-        Self {
-            target: ValidationTarget::Node(id.into()),
-            message: message.into(),
+    /// Raw value for a node, or `&Value::None` if absent.
+    pub fn get(&self, id: &str) -> &Value {
+        self.values.get(id).unwrap_or(&Value::None)
+    }
+
+    /// Text value, or `""` if absent or not a text value.
+    pub fn text(&self, id: &str) -> &str {
+        self.get(id).as_text().unwrap_or("")
+    }
+
+    /// Bool value, or `false` if absent or not a bool value.
+    pub fn bool(&self, id: &str) -> bool {
+        self.get(id).as_bool().unwrap_or(false)
+    }
+
+    /// Numeric value, or `0.0` if absent or not a number.
+    pub fn number(&self, id: &str) -> f64 {
+        self.get(id).as_number().unwrap_or(0.0)
+    }
+
+    /// List value as a slice, or `&[]` if absent or not a list.
+    pub fn list(&self, id: &str) -> &[Value] {
+        match self.values.get(id) {
+            Some(Value::List(items)) => items.as_slice(),
+            _ => &[],
         }
     }
 
-    pub fn step(message: impl Into<String>) -> Self {
-        Self {
-            target: ValidationTarget::Step,
-            message: message.into(),
+    /// Number of items in a list value (0 if absent or not a list).
+    pub fn list_len(&self, id: &str) -> usize {
+        self.list(id).len()
+    }
+
+    /// `true` if the value is absent, `Value::None`, empty text, or empty list.
+    pub fn is_empty(&self, id: &str) -> bool {
+        self.get(id).is_empty()
+    }
+}
+
+/// The result of a single step validator.
+///
+/// - `Error` — shown in red, blocks step submission.
+/// - `Warning` — shown in yellow, does **not** block submission.
+pub enum StepIssue {
+    Error(String),
+    Warning(String),
+}
+
+impl StepIssue {
+    pub fn error(msg: impl Into<String>) -> Self {
+        Self::Error(msg.into())
+    }
+
+    pub fn warning(msg: impl Into<String>) -> Self {
+        Self::Warning(msg.into())
+    }
+
+    pub fn is_error(&self) -> bool {
+        matches!(self, Self::Error(_))
+    }
+
+    pub fn message(&self) -> &str {
+        match self {
+            Self::Error(m) | Self::Warning(m) => m.as_str(),
         }
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct ValidationContext {
-    step_id: String,
-    values: HashMap<NodeId, Value>,
-}
+/// A step-level validator.  Receives the current step's values and returns
+/// `Some(StepIssue)` if validation fails, or `None` if everything is fine.
+///
+/// One validator = one concern.  Use multiple validators on a step rather than
+/// returning multiple issues from one closure.
+pub type StepValidator = Box<dyn Fn(&StepContext) -> Option<StepIssue> + Send + Sync>;
 
-impl ValidationContext {
-    pub fn new(step_id: impl Into<String>, values: HashMap<NodeId, Value>) -> Self {
-        Self {
-            step_id: step_id.into(),
-            values,
-        }
-    }
-
-    pub fn step_id(&self) -> &str {
-        &self.step_id
-    }
-
-    pub fn value(&self, id: &str) -> Option<&Value> {
-        self.values.get(id)
-    }
-
-    pub fn text(&self, id: &str) -> Option<&str> {
-        self.value(id).and_then(Value::as_text)
-    }
-
-    pub fn bool_value(&self, id: &str) -> Option<bool> {
-        self.value(id).and_then(Value::as_bool)
-    }
-
-    pub fn values(&self) -> &HashMap<NodeId, Value> {
-        &self.values
-    }
-}
-
-pub type StepValidator = Box<dyn Fn(&ValidationContext) -> Vec<ValidationIssue> + Send + Sync>;
+// ── ValidationState ───────────────────────────────────────────────────────────
 
 #[derive(Debug, Default, Clone)]
 pub struct ValidationState {
     entries: HashMap<NodeId, ValidationEntry>,
     step_errors: Vec<String>,
+    step_warnings: Vec<String>,
+    warnings_acknowledged: bool,
 }
 
 impl ValidationState {
@@ -114,6 +144,30 @@ impl ValidationState {
 
     pub fn step_errors(&self) -> &[String] {
         self.step_errors.as_slice()
+    }
+
+    pub fn set_step_warnings(&mut self, warnings: Vec<String>) {
+        self.step_warnings = warnings;
+    }
+
+    pub fn clear_step_warnings(&mut self) {
+        self.step_warnings.clear();
+    }
+
+    pub fn acknowledge_warnings(&mut self) {
+        self.warnings_acknowledged = true;
+    }
+
+    pub fn warnings_acknowledged(&self) -> bool {
+        self.warnings_acknowledged
+    }
+
+    pub fn reset_warnings_acknowledged(&mut self) {
+        self.warnings_acknowledged = false;
+    }
+
+    pub fn step_warnings(&self) -> &[String] {
+        self.step_warnings.as_slice()
     }
 
     pub fn visible_error(&self, id: &str) -> Option<&str> {

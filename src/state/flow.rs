@@ -75,7 +75,7 @@ impl Flow {
             return false;
         }
         if let Some(status) = self.statuses.get_mut(self.current) {
-            *status = StepStatus::Pending;
+            *status = StepStatus::Done;
         }
         self.current -= 1;
         if let Some(status) = self.statuses.get_mut(self.current) {

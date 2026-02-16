@@ -15,17 +15,6 @@ use crate::widgets::node::Node;
 use crate::widgets::traits::OverlayPlacement;
 use unicode_width::UnicodeWidthChar;
 
-pub(super) fn blend_back_confirm(
-    frame: &mut RenderFrame,
-    row: usize,
-    col: usize,
-    width: usize,
-    lines: Vec<SpanLine>,
-) {
-    blend_overlay_lines(&mut frame.lines, row, col, width, &lines);
-    frame.cursor = None;
-}
-
 pub(super) fn apply_overlay(
     validation: &ValidationState,
     completion: Option<&CompletionSnapshot>,

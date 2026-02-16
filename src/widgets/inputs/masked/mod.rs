@@ -422,7 +422,7 @@ impl Interactive for MaskedInput {
 
     fn validate(&self, _mode: ValidationMode) -> Result<(), String> {
         let value = self.validated_value()?;
-        run_validators(&self.validators, value.as_str())
+        run_validators(&self.validators, &Value::Text(value))
     }
 
     fn cursor_pos(&self) -> Option<CursorPos> {

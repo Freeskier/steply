@@ -156,6 +156,8 @@ impl AppState {
             WidgetAction::RequestSubmit => {
                 if self.has_blocking_overlay() {
                     self.close_overlay();
+                } else if self.pending_back_confirm.is_some() {
+                    self.confirm_back();
                 } else {
                     self.handle_step_submit();
                 }
@@ -298,6 +300,14 @@ impl AppState {
         self.trigger_submit_before_tasks(submit_step_id.as_str());
         if !self.validate_current_step(ValidationMode::Submit) {
             self.focus_first_invalid_on_current_step();
+            return;
+        }
+        // Step validators passed (no errors). If there are warnings and they
+        // haven't been acknowledged yet, show them and wait for a second Enter.
+        if !self.runtime.validation.step_warnings().is_empty()
+            && !self.runtime.validation.warnings_acknowledged()
+        {
+            self.runtime.validation.acknowledge_warnings();
             return;
         }
 

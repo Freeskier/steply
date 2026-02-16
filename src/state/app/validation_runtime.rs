@@ -2,9 +2,7 @@ use super::AppState;
 use crate::core::{NodeId, value::Value};
 use crate::runtime::event::{AppEvent, SystemEvent};
 use crate::runtime::scheduler::SchedulerCommand;
-use crate::state::validation::{
-    ErrorVisibility, ValidationContext, ValidationIssue, ValidationTarget,
-};
+use crate::state::validation::{ErrorVisibility, StepContext, StepIssue};
 use crate::widgets::node::Node;
 use crate::widgets::node::{NodeWalkScope, walk_nodes};
 use crate::widgets::traits::ValidationMode;
@@ -28,6 +26,7 @@ impl AppState {
 
     pub(super) fn validate_current_step(&mut self, mode: ValidationMode) -> bool {
         self.runtime.validation.clear_step_errors();
+        self.runtime.validation.clear_step_warnings();
 
         let validations = {
             let mut out = Vec::<(String, Result<(), String>)>::new();
@@ -48,7 +47,7 @@ impl AppState {
             }
         }
 
-        if !self.apply_step_validators(mode) {
+        if !self.apply_step_validators() {
             valid = false;
         }
 
@@ -111,50 +110,46 @@ impl AppState {
         });
         self.runtime.validation.clear_for_ids(&ids);
         self.runtime.validation.clear_step_errors();
+        self.runtime.validation.clear_step_warnings();
+        self.runtime.validation.reset_warnings_acknowledged();
     }
 
     pub fn take_pending_scheduler_commands(&mut self) -> Vec<SchedulerCommand> {
         self.runtime.pending_scheduler.drain(..).collect()
     }
 
-    fn apply_step_validators(&mut self, mode: ValidationMode) -> bool {
-        let issues = {
+    fn apply_step_validators(&mut self) -> bool {
+        let issues: Vec<StepIssue> = {
             let step = self.flow.current_step();
             if step.validators.is_empty() {
-                Vec::new()
-            } else {
-                let ctx = ValidationContext::new(
-                    step.id.clone(),
-                    collect_node_values(step.nodes.as_slice()),
-                );
-                step.validators
-                    .iter()
-                    .flat_map(|validator| validator(&ctx))
-                    .collect::<Vec<ValidationIssue>>()
+                return true;
             }
+            let values = collect_node_values(step.nodes.as_slice());
+            let ctx = StepContext::new(&step.id, &values);
+            step.validators
+                .iter()
+                .filter_map(|validator| validator(&ctx))
+                .collect()
         };
 
         let mut step_errors = Vec::new();
+        let mut step_warnings = Vec::new();
         let mut valid = true;
+
         for issue in issues {
-            match issue.target {
-                ValidationTarget::Node(id) => {
-                    if !self.apply_validation_result(id.as_str(), Some(Err(issue.message)), mode) {
-                        valid = false;
-                    }
-                }
-                ValidationTarget::Step => {
+            match &issue {
+                StepIssue::Error(msg) => {
                     valid = false;
-                    if mode == ValidationMode::Submit {
-                        step_errors.push(issue.message);
-                    }
+                    step_errors.push(msg.clone());
+                }
+                StepIssue::Warning(msg) => {
+                    step_warnings.push(msg.clone());
                 }
             }
         }
 
-        if mode == ValidationMode::Submit {
-            self.runtime.validation.set_step_errors(step_errors);
-        }
+        self.runtime.validation.set_step_errors(step_errors);
+        self.runtime.validation.set_step_warnings(step_warnings);
 
         valid
     }

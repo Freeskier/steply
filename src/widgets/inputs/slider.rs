@@ -174,6 +174,6 @@ impl Interactive for SliderInput {
     }
 
     fn validate(&self, _mode: ValidationMode) -> Result<(), String> {
-        run_validators(&self.validators, self.value.to_string().as_str())
+        run_validators(&self.validators, &Value::Number(self.value as f64))
     }
 }

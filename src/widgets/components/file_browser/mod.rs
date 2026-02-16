@@ -843,7 +843,7 @@ impl Interactive for FileBrowserInput {
     }
 
     fn validate(&self, _mode: ValidationMode) -> Result<(), String> {
-        run_validators(&self.validators, &self.current_input())
+        run_validators(&self.validators, &Value::Text(self.current_input()))
     }
 
     fn cursor_pos(&self) -> Option<CursorPos> {

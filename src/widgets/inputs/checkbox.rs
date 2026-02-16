@@ -33,9 +33,6 @@ impl CheckboxInput {
         self
     }
 
-    fn value_str(&self) -> &'static str {
-        if self.checked { "true" } else { "false" }
-    }
 }
 
 impl Drawable for CheckboxInput {
@@ -89,6 +86,6 @@ impl Interactive for CheckboxInput {
     }
 
     fn validate(&self, _mode: ValidationMode) -> Result<(), String> {
-        run_validators(&self.validators, self.value_str())
+        run_validators(&self.validators, &Value::Bool(self.checked))
     }
 }

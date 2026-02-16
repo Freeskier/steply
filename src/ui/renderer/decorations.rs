@@ -6,27 +6,50 @@ use crate::ui::style::{Color, Style};
 const DECOR_GUTTER: &str = "│  ";
 const DECOR_GUTTER_WIDTH: usize = 3;
 
+/// Optional footer message appended as `└  <message>` at the bottom of a
+/// step block.  Also overrides the marker and decoration colour for the whole
+/// block (e.g. `■` red for errors, `▲` yellow for warnings).
+pub(super) enum StepFooter<'a> {
+    Error { message: &'a str, description: Option<&'a str> },
+    Warning { message: &'a str, description: Option<&'a str> },
+}
+
 pub(super) fn decorate_step_block(
     lines: &mut Vec<SpanLine>,
     cursor: &mut Option<CursorPos>,
     connect_to_next: bool,
     status: StepVisualStatus,
     include_top: bool,
+    footer: Option<StepFooter<'_>>,
 ) {
-    let decor_style = match status {
-        StepVisualStatus::Active => Style::new().color(Color::Green),
-        StepVisualStatus::Done | StepVisualStatus::Pending => Style::new().color(Color::DarkGrey),
-        StepVisualStatus::Cancelled => Style::new().color(Color::Red),
+    let (decor_style, marker) = match &footer {
+        Some(StepFooter::Error { .. }) => (
+            Style::new().color(Color::Red),
+            "◆  ",
+        ),
+        Some(StepFooter::Warning { .. }) => (
+            Style::new().color(Color::Yellow),
+            "▲  ",
+        ),
+        None => {
+            let style = match status {
+                StepVisualStatus::Active => Style::new().color(Color::Green),
+                StepVisualStatus::Done | StepVisualStatus::Pending => {
+                    Style::new().color(Color::DarkGrey)
+                }
+                StepVisualStatus::Cancelled => Style::new().color(Color::Red),
+            };
+            let m = match status {
+                StepVisualStatus::Active => "◇  ",
+                StepVisualStatus::Pending => "◇  ",
+                StepVisualStatus::Done => "◈  ",
+                StepVisualStatus::Cancelled => "◆  ",
+            };
+            (style, m)
+        }
     };
 
-    let marker = match status {
-        StepVisualStatus::Active => "◇  ",
-        StepVisualStatus::Pending => "◇  ",
-        StepVisualStatus::Done => "◈  ",
-        StepVisualStatus::Cancelled => "◆  ",
-    };
-
-    let mut decorated = Vec::<SpanLine>::with_capacity(lines.len().saturating_add(2));
+    let mut decorated = Vec::<SpanLine>::with_capacity(lines.len().saturating_add(3));
     if include_top {
         decorated.push(vec![Span::styled("┌  ", decor_style).no_wrap()]);
     }
@@ -39,11 +62,30 @@ pub(super) fn decorate_step_block(
         decorated.push(out_line);
     }
 
-    if connect_to_next {
-        decorated.push(vec![Span::styled("│  ", decor_style).no_wrap()]);
-    } else {
-        decorated.push(vec![Span::styled("└  ", decor_style).no_wrap()]);
+    match footer {
+        Some(StepFooter::Error { message, description } | StepFooter::Warning { message, description }) => {
+            let bottom = if connect_to_next { "├  " } else { "└  " };
+            decorated.push(vec![
+                Span::styled(bottom, decor_style).no_wrap(),
+                Span::styled(message, decor_style).no_wrap(),
+            ]);
+            if let Some(desc) = description {
+                let cont = if connect_to_next { "│  " } else { "   " };
+                decorated.push(vec![
+                    Span::styled(cont, decor_style).no_wrap(),
+                    Span::styled(desc, Style::new().color(Color::DarkGrey)).no_wrap(),
+                ]);
+            }
+        }
+        None => {
+            if connect_to_next {
+                decorated.push(vec![Span::styled("│  ", decor_style).no_wrap()]);
+            } else {
+                decorated.push(vec![Span::styled("└  ", decor_style).no_wrap()]);
+            }
+        }
     }
+
     *lines = decorated;
 
     if let Some(cursor) = cursor {

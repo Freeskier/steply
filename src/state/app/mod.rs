@@ -316,10 +316,15 @@ impl AppState {
 
     pub fn clear_step_errors(&mut self) {
         self.runtime.validation.clear_step_errors();
+        self.runtime.validation.clear_step_warnings();
     }
 
     pub fn current_step_errors(&self) -> &[String] {
         self.runtime.validation.step_errors()
+    }
+
+    pub fn current_step_warnings(&self) -> &[String] {
+        self.runtime.validation.step_warnings()
     }
 }
 

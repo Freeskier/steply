@@ -11,8 +11,12 @@ use crossterm::style::{
     Attribute, Color as CrosstermColor, Print, ResetColor, SetAttribute, SetBackgroundColor,
     SetForegroundColor,
 };
-use crossterm::terminal::{self, Clear, ClearType, EnterAlternateScreen, LeaveAlternateScreen};
+use crossterm::terminal::{
+    self, Clear, ClearType, DisableLineWrap, EnableLineWrap, EnterAlternateScreen,
+    LeaveAlternateScreen,
+};
 use crossterm::{execute, queue};
+use std::fs::OpenOptions;
 use std::io::{self, Stdout, Write};
 use std::time::Duration;
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
@@ -122,14 +126,18 @@ impl AltScreenState {
 }
 
 struct InlineState {
-    /// How many lines from the start of the frame have already been committed
-    /// (printed once) to the terminal's scrollback buffer.
-    committed_lines: usize,
+    /// Width reflow detected; adjust anchor once at next inline render.
+    reflow_pending: bool,
+    /// Cached last full frame for deterministic inline exit printing.
+    last_frame: Vec<SpanLine>,
 }
 
 impl InlineState {
     fn new() -> Self {
-        Self { committed_lines: 0 }
+        Self {
+            reflow_pending: false,
+            last_frame: Vec::new(),
+        }
     }
 }
 
@@ -144,6 +152,12 @@ pub struct Terminal {
     origin_row: u16,
     /// Number of active lines drawn in the previous render call (inline mode).
     last_rendered_lines: usize,
+    /// Inline mode: absolute row where the previous active frame started.
+    /// Used to clear exactly the region that was rendered last time.
+    last_render_origin_row: u16,
+    /// Last known terminal cursor row after our render pass.
+    /// Used to detect row shifts caused by terminal reflow on width resize.
+    last_known_cursor_row: Option<u16>,
     mode: RenderMode,
     alt_screen: Option<AltScreenState>,
     inline_state: Option<InlineState>,
@@ -160,6 +174,8 @@ impl Terminal {
             },
             origin_row: 0,
             last_rendered_lines: 0,
+            last_render_origin_row: 0,
+            last_known_cursor_row: None,
             mode: RenderMode::default(),
             alt_screen: Some(AltScreenState::new()), // default is AltScreen
             inline_state: None,
@@ -264,14 +280,76 @@ impl Terminal {
     }
 
     pub fn set_size(&mut self, size: TerminalSize) {
+        let width_changed = self.state.size.width != size.width;
+        let old = self.state.size;
         self.state.size = size;
+        debug_log(format!(
+            "set_size old={}x{} new={}x{} width_changed={}",
+            old.width, old.height, size.width, size.height, width_changed
+        ));
+        if width_changed {
+            self.mark_inline_width_change();
+        }
     }
 
     pub fn refresh_size(&mut self) -> io::Result<()> {
+        let old_width = self.state.size.width;
+        let old_height = self.state.size.height;
         let (width, height) = terminal::size()?;
         self.state.size = TerminalSize { width, height };
+        debug_log(format!(
+            "refresh_size old={}x{} new={}x{} width_changed={}",
+            old_width,
+            old_height,
+            width,
+            height,
+            old_width != width
+        ));
+        if old_width != width {
+            self.mark_inline_width_change();
+        }
         Ok(())
     }
+
+    fn mark_inline_width_change(&mut self) {
+        if self.mode != RenderMode::Inline {
+            return;
+        }
+        if let Some(inline) = self.inline_state.as_mut() {
+            inline.reflow_pending = true;
+            debug_log(format!("mark_inline_width_change reflow_pending={}", inline.reflow_pending));
+        }
+    }
+
+    fn adjust_inline_anchor_for_reflow(&mut self) {
+        if self.mode != RenderMode::Inline {
+            return;
+        }
+        let Some(prev_row) = self.last_known_cursor_row else {
+            return;
+        };
+        let Ok((_, current_row)) = position() else {
+            return;
+        };
+        let delta = current_row as i32 - prev_row as i32;
+        debug_log(format!(
+            "adjust_inline_anchor_for_reflow prev_row={} current_row={} delta={} before_origin={} before_last_origin={}",
+            prev_row, current_row, delta, self.origin_row, self.last_render_origin_row
+        ));
+        if delta == 0 {
+            return;
+        }
+        let max_row = self.state.size.height.saturating_sub(1) as i32;
+        self.origin_row = (self.origin_row as i32 + delta).clamp(0, max_row) as u16;
+        self.last_render_origin_row =
+            (self.last_render_origin_row as i32 + delta).clamp(0, max_row) as u16;
+        self.last_known_cursor_row = Some(current_row);
+        debug_log(format!(
+            "adjust_inline_anchor_for_reflow after_origin={} after_last_origin={} max_row={}",
+            self.origin_row, self.last_render_origin_row, max_row
+        ));
+    }
+
 }
 
 // ── Enter / Exit ──────────────────────────────────────────────────────────────
@@ -279,7 +357,13 @@ impl Terminal {
 impl Terminal {
     fn enter_altscreen(&mut self) -> io::Result<()> {
         terminal::enable_raw_mode()?;
-        execute!(self.stdout, EnterAlternateScreen, EnableMouseCapture, Hide)?;
+        execute!(
+            self.stdout,
+            EnterAlternateScreen,
+            EnableMouseCapture,
+            DisableLineWrap,
+            Hide
+        )?;
         Ok(())
     }
 
@@ -292,13 +376,21 @@ impl Terminal {
                 .min(self.state.size.height.saturating_sub(1))
         };
         terminal::enable_raw_mode()?;
-        execute!(self.stdout, EnableMouseCapture, Hide)?;
+        execute!(self.stdout, DisableLineWrap, Hide)?;
+        self.last_render_origin_row = self.origin_row;
+        self.last_known_cursor_row = None;
         Ok(())
     }
 
     fn exit_altscreen(&mut self) -> io::Result<()> {
         terminal::disable_raw_mode()?;
-        execute!(self.stdout, DisableMouseCapture, LeaveAlternateScreen, Show)?;
+        execute!(
+            self.stdout,
+            DisableMouseCapture,
+            LeaveAlternateScreen,
+            EnableLineWrap,
+            Show
+        )?;
         // Print the last frame to the normal buffer so it appears in scrollback.
         if let Some(alt) = &self.alt_screen {
             let last_frame = alt.last_frame.clone();
@@ -310,28 +402,42 @@ impl Terminal {
     }
 
     fn exit_inline(&mut self) -> io::Result<()> {
+        let last_frame = self
+            .inline_state
+            .as_ref()
+            .map(|s| s.last_frame.clone())
+            .unwrap_or_default();
         let height = self.state.size.height;
         let rendered = self.last_rendered_lines as u16;
+        let clear_start = self.last_render_origin_row.min(self.origin_row);
+        for row in clear_start..height {
+            queue!(self.stdout, MoveTo(0, row), Clear(ClearType::CurrentLine))?;
+        }
+
         let end_row = self
-            .origin_row
+            .last_render_origin_row
             .saturating_add(rendered)
             .min(height.saturating_sub(1));
 
         if end_row < height.saturating_sub(1) {
             execute!(
                 self.stdout,
-                DisableMouseCapture,
                 MoveTo(0, end_row),
                 Clear(ClearType::CurrentLine),
+                EnableLineWrap,
                 Show
             )?;
         } else {
-            execute!(self.stdout, DisableMouseCapture, MoveTo(0, end_row), Show)?;
+            execute!(self.stdout, MoveTo(0, end_row), EnableLineWrap, Show)?;
         }
 
+        terminal::disable_raw_mode()?;
+        if !last_frame.is_empty() {
+            self.print_frame_to_stdout(last_frame.as_slice(), self.state.size.width)?;
+        }
         writeln!(self.stdout)?;
         self.stdout.flush()?;
-        terminal::disable_raw_mode()?;
+        self.last_known_cursor_row = None;
         Ok(())
     }
 }
@@ -416,64 +522,50 @@ impl Terminal {
             return Ok(());
         }
 
-        let inline = self
+        let mut reflow_pending = self
             .inline_state
-            .as_mut()
-            .expect("inline_state must be Some in Inline mode");
-        let committed = inline.committed_lines;
-        let frozen = frame.frozen_lines;
+            .as_ref()
+            .expect("inline_state must be Some in Inline mode")
+            .reflow_pending;
 
-        // ── Step 1: clear the previous active render ───────────────────────
-        for row_idx in 0..self.last_rendered_lines {
-            let abs_row = self.origin_row as usize + row_idx;
-            if abs_row >= height {
-                break;
-            }
-            queue!(
-                self.stdout,
-                MoveTo(0, abs_row as u16),
-                Clear(ClearType::CurrentLine)
-            )?;
-        }
-        self.stdout.flush()?;
+        debug_log(format!(
+            "render_inline start lines={} frozen={} origin_row={} last_render_origin_row={} reflow_pending={} cursor={:?}",
+            frame.lines.len(),
+            frame.frozen_lines,
+            self.origin_row,
+            self.last_render_origin_row,
+            reflow_pending,
+            frame.cursor
+        ));
 
-        // ── Step 2: commit newly frozen lines to scrollback ────────────────
-        if frozen > committed {
-            let new_lines = &frame.lines[committed..frozen];
-            let n_new = new_lines.len();
-
-            // Move to origin_row and print each newly-frozen line followed by
-            // \r\n.  In raw mode \n alone only moves down without returning to
-            // column 0, so we need \r\n.  The \n at the last row of the screen
-            // causes the terminal to scroll, pushing content into scrollback.
-            execute!(self.stdout, MoveTo(0, self.origin_row))?;
-            for line in new_lines {
-                self.write_span_line(line, width)?;
-                // Clear to end of line so no stale characters remain if this
-                // row was previously used by the active render.
-                queue!(self.stdout, Clear(ClearType::UntilNewLine))?;
-                self.stdout.write_all(b"\r\n")?;
-            }
-            self.stdout.flush()?;
-
-            self.inline_state.as_mut().unwrap().committed_lines = frozen;
-            // origin_row moves down by the number of lines we just printed.
-            self.origin_row = (self.origin_row as usize + n_new)
-                .min(height.saturating_sub(1)) as u16;
+        if reflow_pending {
+            debug_log("render_inline apply_reflow_anchor (tracking-row based)");
+            self.adjust_inline_anchor_for_reflow();
+            reflow_pending = false;
         }
 
-        // ── Step 3: render active lines from origin_row ────────────────────
-        let active_lines = &frame.lines[frozen..];
-        let active_cursor = frame.cursor.map(|cur| CursorPos {
-            row: cur.row.saturating_sub(frozen as u16),
-            col: cur.col,
-        });
-        self.render_inline_active(active_lines, active_cursor)
+        self.origin_row = self
+            .origin_row
+            .min(self.state.size.height.saturating_sub(1));
+
+        let inline = self.inline_state.as_mut().unwrap();
+        inline.last_frame.clone_from(&frame.lines);
+        inline.reflow_pending = reflow_pending;
+        debug_log(format!(
+            "render_inline before_active active_lines={} origin_row={} reflow_pending={}",
+            frame.lines.len(),
+            self.origin_row,
+            inline.reflow_pending
+        ));
+
+        self.render_inline_active(&frame.lines, frame.cursor)
     }
 
-    /// Render a slice of lines starting at `origin_row`, scrolling the
-    /// terminal if necessary to fit the content.  This is the core inline
-    /// rendering engine used for the active step.
+    /// Render a slice of lines starting at `origin_row`.
+    ///
+    /// Inline mode keeps history by committing frozen lines once. The active
+    /// viewport is then redrawn deterministically from `origin_row` down to
+    /// the bottom of the terminal.
     fn render_inline_active(
         &mut self,
         lines: &[SpanLine],
@@ -483,38 +575,53 @@ impl Terminal {
         let width = self.state.size.width;
 
         let frame_len = lines.len();
+        let mut draw_origin = self.origin_row.min(self.state.size.height.saturating_sub(1));
+        debug_log(format!(
+            "render_inline_active start frame_len={} height={} width={} draw_origin={} cursor={:?}",
+            frame_len, height, width, draw_origin, cursor
+        ));
 
-        // ── Make room by scrolling ─────────────────────────────────────────
-        let available = height.saturating_sub(self.origin_row as usize);
-        if frame_len > available {
-            let need = frame_len.saturating_sub(available);
-            let shift = need.min(self.origin_row as usize);
-            if shift > 0 {
-                execute!(self.stdout, MoveTo(0, (height - 1) as u16))?;
-                for _ in 0..shift {
-                    self.stdout.write_all(b"\n")?;
-                }
-                self.stdout.flush()?;
-                self.origin_row = self.origin_row.saturating_sub(shift as u16);
+        // If there is not enough room below origin_row, force terminal scroll
+        // to reserve space for inline rendering near the bottom edge.
+        let desired_visible = frame_len.min(height);
+        let available = height.saturating_sub(draw_origin as usize);
+        if desired_visible > available {
+            let need = desired_visible.saturating_sub(available);
+            debug_log(format!(
+                "render_inline_active scroll need={} desired_visible={} available={} draw_origin_before={}",
+                need, desired_visible, available, draw_origin
+            ));
+            execute!(self.stdout, MoveTo(0, (height - 1) as u16))?;
+            for _ in 0..need {
+                self.stdout.write_all(b"\n")?;
             }
+            self.stdout.flush()?;
+            draw_origin = draw_origin.saturating_sub(need as u16);
+            self.origin_row = draw_origin;
+            debug_log(format!(
+                "render_inline_active scroll done draw_origin_after={} origin_row={}",
+                draw_origin, self.origin_row
+            ));
         }
 
-        // ── Determine skip when pinned at row 0 ───────────────────────────
-        let visible_rows = height.saturating_sub(self.origin_row as usize);
+        let visible_rows = height.saturating_sub(draw_origin as usize);
         let skip = frame_len.saturating_sub(visible_rows);
         let draw_count = frame_len.min(visible_rows);
 
-        // ── Draw ──────────────────────────────────────────────────────────
-        for row_idx in 0..draw_count {
-            let abs_row = self.origin_row as usize + row_idx;
-            if abs_row >= height {
-                break;
-            }
+        // Clear the entire active viewport tail to avoid stale artifacts.
+        for abs_row in draw_origin as usize..height {
             queue!(
                 self.stdout,
                 MoveTo(0, abs_row as u16),
                 Clear(ClearType::CurrentLine)
             )?;
+        }
+        for row_idx in 0..draw_count {
+            let abs_row = draw_origin as usize + row_idx;
+            if abs_row >= height {
+                break;
+            }
+            queue!(self.stdout, MoveTo(0, abs_row as u16))?;
             let Some(line) = lines.get(skip + row_idx) else {
                 continue;
             };
@@ -522,26 +629,25 @@ impl Terminal {
         }
 
         self.last_rendered_lines = draw_count;
+        self.last_render_origin_row = draw_origin;
 
-        // ── Position cursor ────────────────────────────────────────────────
-        if let Some(cur) = cursor {
-            let frame_row = cur.row as usize;
-            if frame_row >= skip {
-                let abs_row = self.origin_row as usize + (frame_row - skip);
-                if abs_row < height {
-                    let col = cur.col.min(width.saturating_sub(1));
-                    queue!(self.stdout, MoveTo(col, abs_row as u16), Show)?;
-                } else {
-                    queue!(self.stdout, Hide)?;
-                }
-            } else {
-                queue!(self.stdout, Hide)?;
-            }
+        // ── Position technical tracking cursor ─────────────────────────────
+        // Keep cursor parked one row above inline block (when possible).
+        // This decouples resize-anchor tracking from active block reflow.
+        let tracking_row = draw_origin.checked_sub(1);
+        if let Some(row) = tracking_row {
+            queue!(self.stdout, MoveTo(0, row), Hide)?;
         } else {
-            queue!(self.stdout, Hide)?;
+            queue!(self.stdout, MoveTo(0, draw_origin), Hide)?;
         }
 
-        self.stdout.flush()
+        self.stdout.flush()?;
+        self.last_known_cursor_row = tracking_row;
+        debug_log(format!(
+            "render_inline_active end draw_origin={} draw_count={} tracking_row={:?} logical_cursor={:?} last_known_cursor_row={:?}",
+            draw_origin, draw_count, tracking_row, cursor, self.last_known_cursor_row
+        ));
+        Ok(())
     }
 }
 
@@ -552,12 +658,28 @@ impl Terminal {
     /// `width` columns.  Does NOT emit `MoveTo` or `Clear` — the caller is
     /// responsible for positioning the cursor first.
     fn write_span_line(&mut self, line: &SpanLine, width: u16) -> io::Result<()> {
+        self.write_span_line_with_margin(line, width, true)
+    }
+
+    fn write_span_line_with_margin(
+        &mut self,
+        line: &SpanLine,
+        width: u16,
+        keep_one_cell_margin: bool,
+    ) -> io::Result<()> {
+        // Keep one-cell safety margin in raw inline rendering to avoid
+        // terminal-specific auto-wrap/reflow when printing at the last column.
+        let render_width = if keep_one_cell_margin && width > 1 {
+            width - 1
+        } else {
+            width
+        };
         let mut used = 0usize;
         for span in line {
-            if used >= width as usize {
+            if used >= render_width as usize {
                 break;
             }
-            let available_cols = (width as usize).saturating_sub(used);
+            let available_cols = (render_width as usize).saturating_sub(used);
             let clipped = clip_to_width(&span.text, available_cols);
             if clipped.is_empty() {
                 continue;
@@ -591,7 +713,9 @@ impl Terminal {
     /// terminal buffer after leaving the alternate screen.
     fn print_frame_to_stdout(&mut self, lines: &[SpanLine], width: u16) -> io::Result<()> {
         for line in lines {
-            self.write_span_line(line, width)?;
+            // Final transcript print should not be clipped by the inline
+            // safety margin; let terminal line-wrap rules apply normally.
+            self.write_span_line_with_margin(line, width, false)?;
             self.stdout.write_all(b"\r\n")?;
         }
         Ok(())
@@ -664,7 +788,7 @@ fn clip_to_width(text: &str, max_width: usize) -> String {
     }
     let mut used = 0usize;
     let mut out = String::new();
-    for ch in text.chars() {
+    for ch in text.chars().filter(|ch| !matches!(ch, '\n' | '\r')) {
         let ch_width = UnicodeWidthChar::width(ch).unwrap_or(0);
         if used.saturating_add(ch_width) > max_width {
             break;
@@ -673,4 +797,17 @@ fn clip_to_width(text: &str, max_width: usize) -> String {
         used = used.saturating_add(ch_width);
     }
     out
+}
+
+fn debug_log(message: impl AsRef<str>) {
+    if std::env::var_os("STEPLY_INLINE_DEBUG").is_none() {
+        return;
+    }
+    if let Ok(mut f) = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open("/tmp/steply-inline.log")
+    {
+        let _ = writeln!(f, "{}", message.as_ref());
+    }
 }

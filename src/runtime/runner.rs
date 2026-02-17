@@ -164,8 +164,8 @@ impl Runtime {
                 self.terminal.scroll(h.saturating_sub(1));
                 return self.render();
             }
-            // Back navigation is not possible in Inline mode because committed
-            // lines can no longer be re-rendered.
+            // Back navigation is not reliable in Inline transcript mode because
+            // previously appended lines in scrollback cannot be retracted.
             Intent::Back if self.terminal.is_inline() => {
                 return Ok(());
             }

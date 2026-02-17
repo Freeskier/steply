@@ -142,7 +142,7 @@ fn step_text_inputs() -> Step {
         vec![
             Node::Output(Box::new(TextOutput::new(
                 "txt_intro",
-                "Type freely, use Tab for completion on the username field.",
+                "Type freely, use Tab for completion on the username field. completion on the username field.",
             ))),
             Node::Input(Box::new(
                 TextInput::new("txt_name", "Full name")
@@ -166,7 +166,6 @@ fn step_text_inputs() -> Step {
             )),
         ],
     )
-    .with_hint("Tab → completion  •  Enter → submit step")
 }
 
 // ── Step 2: Masked + Array ───────────────────────────────────────────────────
@@ -176,10 +175,7 @@ fn step_structured_inputs() -> Step {
         "step_structured",
         "Structured inputs",
         vec![
-            Node::Output(Box::new(TextOutput::new(
-                "struct_intro",
-                "Masked input guides cursor through a fixed pattern. Array lets you add/remove items.",
-            ))),
+            Node::Output(Box::new(TextOutput::new("struct_intro", ""))),
             Node::Input(Box::new(
                 MaskedInput::new("masked_phone", "Phone", "+## (###) ###-##-##")
                     .with_validator(validators::required_msg("Phone is required")),
@@ -188,9 +184,11 @@ fn step_structured_inputs() -> Step {
                 MaskedInput::new("masked_date", "Date", "YYYY-mm-DD")
                     .with_validator(validators::required_msg("Date is required")),
             )),
-            Node::Input(Box::new(
-                MaskedInput::new("masked_ip", "IP address", "#{1,3:0-255}.###.###.###"),
-            )),
+            Node::Input(Box::new(MaskedInput::new(
+                "masked_ip",
+                "IP address",
+                "#{1,3:0-255}.###.###.###",
+            ))),
             Node::Input(Box::new(
                 ArrayInput::new("arr_tags", "Tags")
                     .with_items(vec!["rust".into(), "tui".into()])
@@ -198,7 +196,6 @@ fn step_structured_inputs() -> Step {
             )),
         ],
     )
-    .with_hint("Masked: type digits, cursor skips separators  •  Array: Enter → add, Del → remove")
 }
 
 // ── Step 3: Choice + Select + SelectList (fuzzy filter) ──────────────────────

@@ -13,7 +13,7 @@ mod decorations;
 mod overlay;
 mod overlay_geometry;
 
-use decorations::{StepFooter, decorate_step_block};
+use decorations::{StepFooter, decorate_step_block, decoration_gutter_width};
 use overlay::apply_overlay;
 
 #[derive(Debug, Default, Clone)]
@@ -217,8 +217,16 @@ fn build_base_frame(
         );
 
         let layout_cursor = block_cursor.map(|cursor| (cursor.row as usize, cursor.col as usize));
+        let compose_width = if config.decorations_enabled {
+            terminal_size
+                .width
+                .saturating_sub(decoration_gutter_width().min(u16::MAX as usize) as u16)
+                .max(1)
+        } else {
+            terminal_size.width
+        };
         let (composed_lines, mapped_cursor) =
-            Layout::compose_with_cursor(&block_lines, terminal_size.width, layout_cursor);
+            Layout::compose_with_cursor(&block_lines, compose_width, layout_cursor);
         block_lines = composed_lines;
         block_cursor = mapped_cursor.map(|(row, col)| CursorPos {
             row: row.min(u16::MAX as usize) as u16,

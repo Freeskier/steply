@@ -30,24 +30,38 @@ impl Layout {
             for span in line {
                 match span.wrap_mode {
                     WrapMode::NoWrap => {
-                        let span_width = text_width(&span.text);
-                        if current_width > 0 && current_width + span_width > max_width {
+                        if current_width >= max_width {
                             push_line(&mut out, &mut current, &mut current_width);
                         }
+                        let remaining = max_width.saturating_sub(current_width);
+                        if remaining == 0 {
+                            source_col = source_col.saturating_add(text_width(&span.text));
+                            continue;
+                        }
+
+                        let clipped_text = clip_text_to_width(span.text.as_str(), remaining);
+                        let clipped_width = text_width(clipped_text.as_str());
 
                         map_cursor_in_segment(
                             cursor_target,
                             source_row,
                             source_col,
-                            span_width,
+                            clipped_width,
                             out.len(),
                             current_width,
                             &mut mapped_cursor,
                         );
 
-                        current_width = current_width.saturating_add(span_width);
-                        current.push(span.clone());
-                        source_col = source_col.saturating_add(span_width);
+                        if !clipped_text.is_empty() {
+                            let mut clipped = span.clone();
+                            clipped.text = clipped_text;
+                            current_width = current_width.saturating_add(clipped_width);
+                            current.push(clipped);
+                        }
+
+                        // Source column tracks full logical width even when
+                        // no-wrap content was clipped to visible width.
+                        source_col = source_col.saturating_add(text_width(&span.text));
                     }
                     WrapMode::Wrap => {
                         let mut rest = span.text.as_str();
@@ -161,4 +175,21 @@ fn split_at_width(s: &str, max: usize) -> (&str, &str) {
     }
 
     (s, "")
+}
+
+fn clip_text_to_width(s: &str, max: usize) -> String {
+    if max == 0 {
+        return String::new();
+    }
+    let mut width = 0usize;
+    let mut out = String::new();
+    for ch in s.chars() {
+        let ch_width = UnicodeWidthChar::width(ch).unwrap_or(0);
+        if width.saturating_add(ch_width) > max {
+            break;
+        }
+        out.push(ch);
+        width = width.saturating_add(ch_width);
+    }
+    out
 }

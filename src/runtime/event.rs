@@ -1,4 +1,4 @@
-use crate::core::{NodeId, value::Value};
+use crate::core::{NodeId, value::Value, value_path::ValueTarget};
 use crate::runtime::intent::Intent;
 use crate::task::{TaskCompletion, TaskId, TaskRequest};
 use crate::terminal::TerminalEvent;
@@ -14,14 +14,27 @@ pub enum OverlayLifecycle {
 
 #[derive(Debug, Clone)]
 pub struct ValueChange {
-    pub target: NodeId,
+    pub target: ValueTarget,
     pub value: Value,
 }
 
 impl ValueChange {
     pub fn new(target: impl Into<NodeId>, value: Value) -> Self {
         Self {
-            target: target.into(),
+            target: ValueTarget::node(target),
+            value,
+        }
+    }
+
+    pub fn with_target(target: ValueTarget, value: Value) -> Self {
+        Self { target, value }
+    }
+
+    pub fn with_selector(selector: impl AsRef<str>, value: Value) -> Self {
+        let target = ValueTarget::parse_selector(selector.as_ref())
+            .unwrap_or_else(|_| ValueTarget::node(selector.as_ref()));
+        Self {
+            target,
             value,
         }
     }

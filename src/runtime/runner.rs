@@ -12,8 +12,6 @@ use crate::ui::renderer::{Renderer, RendererConfig};
 use std::io;
 use std::time::{Duration, Instant};
 
-const DEFAULT_RESIZE_DEBOUNCE_MS: u64 = 24;
-
 pub struct Runtime {
     state: AppState,
     terminal: Terminal,
@@ -68,7 +66,6 @@ impl Runtime {
         let run_result = (|| -> io::Result<()> {
             self.flush_pending_task_invocations();
             self.render()?;
-            let mut pending_terminal_event: Option<TerminalEvent> = None;
 
             while !self.state.should_exit() {
                 self.process_scheduled_events()?;
@@ -76,42 +73,11 @@ impl Runtime {
                 self.process_task_completions()?;
                 self.flush_pending_task_invocations();
 
-                let event = if let Some(event) = pending_terminal_event.take() {
-                    event
-                } else {
-                    let now = Instant::now();
-                    let timeout = self.scheduler.poll_timeout(now, Duration::from_millis(120));
-                    self.terminal.poll_event(timeout)?
-                };
+                let now = Instant::now();
+                let timeout = self.scheduler.poll_timeout(now, Duration::from_millis(120));
+                let event = self.terminal.poll_event(timeout)?;
 
-                if let TerminalEvent::Resize(mut size) = event {
-                    let debounce = resize_debounce_duration();
-                    let mut deadline = Instant::now() + debounce;
-
-                    loop {
-                        let now = Instant::now();
-                        if now >= deadline {
-                            break;
-                        }
-                        let wait = deadline.saturating_duration_since(now);
-                        let next = self.terminal.poll_event(wait)?;
-                        match next {
-                            TerminalEvent::Resize(next_size) => {
-                                size = next_size;
-                                deadline = Instant::now() + debounce;
-                            }
-                            TerminalEvent::Tick => break,
-                            other => {
-                                pending_terminal_event = Some(other);
-                                break;
-                            }
-                        }
-                    }
-
-                    self.dispatch_app_event(AppEvent::Terminal(TerminalEvent::Resize(size)))?;
-                } else {
-                    self.dispatch_app_event(AppEvent::Terminal(event))?;
-                }
+                self.dispatch_app_event(AppEvent::Terminal(event))?;
             }
 
             Ok(())
@@ -274,12 +240,4 @@ impl Runtime {
         let frame = self.renderer.render(&view, self.terminal.size());
         self.terminal.render_frame(&frame)
     }
-}
-
-fn resize_debounce_duration() -> Duration {
-    let ms = std::env::var("STEPLY_RESIZE_DEBOUNCE_MS")
-        .ok()
-        .and_then(|raw| raw.parse::<u64>().ok())
-        .unwrap_or(DEFAULT_RESIZE_DEBOUNCE_MS);
-    Duration::from_millis(ms)
 }

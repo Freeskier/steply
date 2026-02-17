@@ -1,4 +1,6 @@
 use crate::core::value::Value;
+use crate::core::value_path::{ValuePath, ValueTarget};
+use crate::core::NodeId;
 use crate::runtime::event::{ValueChange, WidgetAction};
 use crate::terminal::{KeyCode, KeyEvent};
 use crate::ui::span::Span;
@@ -17,7 +19,7 @@ pub struct SliderInput {
     value: i64,
     track_len: usize,
     unit: Option<String>,
-    change_target: Option<String>,
+    change_target: Option<ValueTarget>,
     validators: Vec<Validator>,
 }
 
@@ -53,8 +55,13 @@ impl SliderInput {
         self
     }
 
-    pub fn with_change_target(mut self, target: impl Into<String>) -> Self {
-        self.change_target = Some(target.into());
+    pub fn with_change_target(mut self, target: impl Into<NodeId>) -> Self {
+        self.change_target = Some(ValueTarget::node(target));
+        self
+    }
+
+    pub fn with_change_target_path(mut self, root: impl Into<NodeId>, path: ValuePath) -> Self {
+        self.change_target = Some(ValueTarget::path(root, path));
         self
     }
 
@@ -83,7 +90,7 @@ impl SliderInput {
         }
         if let Some(target) = &self.change_target {
             return InteractionResult::with_action(WidgetAction::ValueChanged {
-                change: ValueChange::new(target.clone(), Value::Number(self.value as f64)),
+                change: ValueChange::with_target(target.clone(), Value::Number(self.value as f64)),
             });
         }
         InteractionResult::handled()

@@ -1,6 +1,8 @@
 mod state;
 
 use crate::core::value::Value;
+use crate::core::value_path::{ValuePath, ValueTarget};
+use crate::core::NodeId;
 
 use crate::terminal::{KeyCode, KeyEvent, KeyModifiers};
 use crate::ui::span::Span;
@@ -61,7 +63,7 @@ pub struct TreeView<T: TreeItemLabel> {
     visible: Vec<usize>,
     active_index: usize,
     scroll: ScrollState,
-    submit_target: Option<String>,
+    submit_target: Option<ValueTarget>,
     show_label: bool,
     /// node_idx pending a lazy-load scan (shows ⟳ icon while loading).
     pub pending_expand: Option<usize>,
@@ -93,8 +95,13 @@ impl<T: TreeItemLabel> TreeView<T> {
         self
     }
 
-    pub fn with_submit_target(mut self, target: impl Into<String>) -> Self {
-        self.submit_target = Some(target.into());
+    pub fn with_submit_target(mut self, target: impl Into<NodeId>) -> Self {
+        self.submit_target = Some(ValueTarget::node(target));
+        self
+    }
+
+    pub fn with_submit_target_path(mut self, root: impl Into<NodeId>, path: ValuePath) -> Self {
+        self.submit_target = Some(ValueTarget::path(root, path));
         self
     }
 
@@ -383,7 +390,7 @@ impl<T: TreeItemLabel> Interactive for TreeView<T> {
                 let Some(value) = self.value() else {
                     return InteractionResult::input_done();
                 };
-                InteractionResult::submit_or_produce(self.submit_target.as_deref(), value)
+                InteractionResult::submit_or_produce(self.submit_target.as_ref(), value)
             }
             _ => InteractionResult::ignored(),
         }

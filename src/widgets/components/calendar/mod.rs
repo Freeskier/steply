@@ -1,4 +1,6 @@
 use crate::core::value::Value;
+use crate::core::value_path::{ValuePath, ValueTarget};
+use crate::core::NodeId;
 use crate::terminal::{KeyCode, KeyEvent, KeyModifiers};
 use crate::ui::span::Span;
 use crate::ui::style::{Color, Style};
@@ -49,7 +51,7 @@ pub struct Calendar {
     time_input: MaskedInput,
 
     validators: Vec<Validator>,
-    submit_target: Option<String>,
+    submit_target: Option<ValueTarget>,
 }
 
 const MONTH_NAMES: [&str; 12] = [
@@ -99,8 +101,13 @@ impl Calendar {
         self
     }
 
-    pub fn with_submit_target(mut self, target: impl Into<String>) -> Self {
-        self.submit_target = Some(target.into());
+    pub fn with_submit_target(mut self, target: impl Into<NodeId>) -> Self {
+        self.submit_target = Some(ValueTarget::node(target));
+        self
+    }
+
+    pub fn with_submit_target_path(mut self, root: impl Into<NodeId>, path: ValuePath) -> Self {
+        self.submit_target = Some(ValueTarget::path(root, path));
         self
     }
 
@@ -395,7 +402,7 @@ impl Interactive for Calendar {
                 KeyCode::Enter => {
                     let val = Value::Text(self.formatted_value());
                     return InteractionResult::submit_or_produce(
-                        self.submit_target.as_deref(),
+                        self.submit_target.as_ref(),
                         val,
                     );
                 }
@@ -463,7 +470,7 @@ impl Interactive for Calendar {
                 }
                 _ => {
                     let val = Value::Text(self.formatted_value());
-                    InteractionResult::submit_or_produce(self.submit_target.as_deref(), val)
+                    InteractionResult::submit_or_produce(self.submit_target.as_ref(), val)
                 }
             },
             _ => InteractionResult::ignored(),

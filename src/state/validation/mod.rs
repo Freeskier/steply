@@ -1,4 +1,8 @@
-use crate::core::{NodeId, value::Value};
+use crate::core::{
+    NodeId,
+    value::Value,
+    value_path::{ValuePath, ValueTarget},
+};
 use std::collections::HashMap;
 
 // ── Per-input validation state ────────────────────────────────────────────────
@@ -32,6 +36,24 @@ impl<'a> StepContext<'a> {
     /// Raw value for a node, or `&Value::None` if absent.
     pub fn get(&self, id: &str) -> &Value {
         self.values.get(id).unwrap_or(&Value::None)
+    }
+
+    pub fn get_in(&self, root: &str, path: &ValuePath) -> &Value {
+        self.get(root).get_path(path).unwrap_or(&Value::None)
+    }
+
+    pub fn get_target(&self, target: &ValueTarget) -> &Value {
+        match target {
+            ValueTarget::Node(id) => self.get(id.as_str()),
+            ValueTarget::Path { root, path } => self.get_in(root.as_str(), path),
+        }
+    }
+
+    pub fn get_selector(&self, selector: &str) -> &Value {
+        match ValueTarget::parse_selector(selector) {
+            Ok(target) => self.get_target(&target),
+            Err(_) => &Value::None,
+        }
     }
 
     /// Text value, or `""` if absent or not a text value.

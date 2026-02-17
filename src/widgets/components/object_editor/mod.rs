@@ -3,6 +3,8 @@ use std::collections::HashSet;
 use indexmap::IndexMap;
 
 use crate::core::value::Value;
+use crate::core::value_path::{ValuePath, ValueTarget};
+use crate::core::NodeId;
 
 use crate::terminal::{CursorPos, KeyCode, KeyEvent, KeyModifiers};
 use crate::ui::span::Span;
@@ -84,7 +86,7 @@ pub struct ObjectEditor {
     mode: Mode,
     /// Reused TextInput for inline key/value editing.
     edit_input: TextInput,
-    submit_target: Option<String>,
+    submit_target: Option<ValueTarget>,
 }
 
 impl ObjectEditor {
@@ -122,8 +124,13 @@ impl ObjectEditor {
         self
     }
 
-    pub fn with_submit_target(mut self, target: impl Into<String>) -> Self {
-        self.submit_target = Some(target.into());
+    pub fn with_submit_target(mut self, target: impl Into<NodeId>) -> Self {
+        self.submit_target = Some(ValueTarget::node(target));
+        self
+    }
+
+    pub fn with_submit_target_path(mut self, root: impl Into<NodeId>, path: ValuePath) -> Self {
+        self.submit_target = Some(ValueTarget::path(root, path));
         self
     }
 

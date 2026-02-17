@@ -1,4 +1,6 @@
 use crate::core::value::Value;
+use crate::core::value_path::{ValuePath, ValueTarget};
+use crate::core::NodeId;
 use crate::terminal::{CursorPos, KeyCode, KeyEvent, KeyModifiers};
 use crate::ui::span::Span;
 use crate::ui::style::{Color, Style};
@@ -56,7 +58,7 @@ pub struct Snippet {
     slot_order: Vec<String>,
     /// Which slot is currently focused (index into `slot_order`).
     active_slot: usize,
-    submit_target: Option<String>,
+    submit_target: Option<ValueTarget>,
 }
 
 impl Snippet {
@@ -93,8 +95,13 @@ impl Snippet {
         self
     }
 
-    pub fn with_submit_target(mut self, target: impl Into<String>) -> Self {
-        self.submit_target = Some(target.into());
+    pub fn with_submit_target(mut self, target: impl Into<NodeId>) -> Self {
+        self.submit_target = Some(ValueTarget::node(target));
+        self
+    }
+
+    pub fn with_submit_target_path(mut self, root: impl Into<NodeId>, path: ValuePath) -> Self {
+        self.submit_target = Some(ValueTarget::path(root, path));
         self
     }
 
@@ -349,7 +356,7 @@ impl Interactive for Snippet {
                 // On last slot, submit; otherwise advance.
                 if self.active_slot + 1 >= self.slot_count() {
                     let val = Value::Text(self.formatted_value());
-                    InteractionResult::submit_or_produce(self.submit_target.as_deref(), val)
+                    InteractionResult::submit_or_produce(self.submit_target.as_ref(), val)
                 } else {
                     self.active_slot += 1;
                     InteractionResult::handled()

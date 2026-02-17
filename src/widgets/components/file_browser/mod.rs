@@ -41,6 +41,8 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use crate::core::value::Value;
+use crate::core::value_path::{ValuePath, ValueTarget};
+use crate::core::NodeId;
 
 use crate::terminal::{CursorPos, KeyCode, KeyEvent, KeyModifiers};
 use crate::ui::span::Span;
@@ -80,7 +82,7 @@ pub struct FileBrowserInput {
     entry_filter: EF,
     ext_filter: Option<HashSet<String>>,
     display_mode: DisplayMode,
-    submit_target: Option<String>,
+    submit_target: Option<ValueTarget>,
     validators: Vec<Validator>,
 
     // Async scan
@@ -184,8 +186,13 @@ impl FileBrowserInput {
         self
     }
 
-    pub fn with_submit_target(mut self, target: impl Into<String>) -> Self {
-        self.submit_target = Some(target.into());
+    pub fn with_submit_target(mut self, target: impl Into<NodeId>) -> Self {
+        self.submit_target = Some(ValueTarget::node(target));
+        self
+    }
+
+    pub fn with_submit_target_path(mut self, root: impl Into<NodeId>, path: ValuePath) -> Self {
+        self.submit_target = Some(ValueTarget::path(root, path));
         self
     }
 
@@ -789,7 +796,7 @@ impl Interactive for FileBrowserInput {
         // Enter → submit
         if key.code == KeyCode::Enter {
             return InteractionResult::submit_or_produce(
-                self.submit_target.as_deref(),
+                self.submit_target.as_ref(),
                 Value::Text(self.current_input()),
             );
         }

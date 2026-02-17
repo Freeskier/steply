@@ -6,6 +6,8 @@ use std::collections::HashSet;
 
 use crate::core::search::fuzzy::ranked_matches;
 use crate::core::value::Value;
+use crate::core::value_path::{ValuePath, ValueTarget};
+use crate::core::NodeId;
 
 use crate::terminal::{CursorPos, KeyCode, KeyEvent, KeyModifiers};
 use crate::ui::span::Span;
@@ -33,7 +35,7 @@ pub struct SelectList {
     selected: Vec<usize>,
     active_index: usize,
     scroll: ScrollState,
-    submit_target: Option<String>,
+    submit_target: Option<ValueTarget>,
     show_label: bool,
     filter: TextInput,
     filter_visible: bool,
@@ -163,12 +165,17 @@ impl SelectList {
         self
     }
 
-    pub fn with_submit_target(mut self, target: impl Into<String>) -> Self {
-        self.set_submit_target(Some(target.into()));
+    pub fn with_submit_target(mut self, target: impl Into<NodeId>) -> Self {
+        self.set_submit_target(Some(ValueTarget::node(target)));
         self
     }
 
-    pub fn set_submit_target(&mut self, target: Option<String>) {
+    pub fn with_submit_target_path(mut self, root: impl Into<NodeId>, path: ValuePath) -> Self {
+        self.set_submit_target(Some(ValueTarget::path(root, path)));
+        self
+    }
+
+    pub fn set_submit_target(&mut self, target: Option<ValueTarget>) {
         self.submit_target = target;
     }
 
@@ -494,7 +501,7 @@ impl SelectList {
                 let Some(value) = self.value() else {
                     return InteractionResult::input_done();
                 };
-                InteractionResult::submit_or_produce(self.submit_target.as_deref(), value)
+                InteractionResult::submit_or_produce(self.submit_target.as_ref(), value)
             }
             _ => InteractionResult::ignored(),
         }

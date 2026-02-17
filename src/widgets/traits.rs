@@ -1,4 +1,5 @@
 use crate::core::value::Value;
+use crate::core::value_path::ValueTarget;
 use crate::runtime::event::{SystemEvent, ValueChange, WidgetAction};
 use crate::terminal::{CursorPos, KeyEvent, TerminalSize};
 use crate::ui::span::{Span, SpanLine};
@@ -171,10 +172,10 @@ impl InteractionResult {
         Self::with_action(WidgetAction::InputDone)
     }
 
-    pub fn submit_or_produce(target: Option<&str>, value: Value) -> Self {
+    pub fn submit_or_produce(target: Option<&ValueTarget>, value: Value) -> Self {
         if let Some(target) = target {
             return Self::with_action(WidgetAction::ValueChanged {
-                change: ValueChange::new(target, value),
+                change: ValueChange::with_target(target.clone(), value),
             });
         }
         Self::input_done()

@@ -1,4 +1,5 @@
 use indexmap::IndexMap;
+use crate::core::value_path::{PathSegment, ValuePath, ensure_value_path_mut};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Value {
@@ -100,6 +101,62 @@ impl Value {
             Self::List(values) => values.last(),
             _ => None,
         }
+    }
+
+    pub fn get_path(&self, path: &ValuePath) -> Option<&Value> {
+        let mut current = self;
+        for segment in path.segments() {
+            match segment {
+                PathSegment::Key(key) => {
+                    let Value::Object(map) = current else {
+                        return None;
+                    };
+                    current = map.get(key.as_str())?;
+                }
+                PathSegment::Index(index) => {
+                    let Value::List(list) = current else {
+                        return None;
+                    };
+                    current = list.get(*index)?;
+                }
+            }
+        }
+        Some(current)
+    }
+
+    pub fn get_path_mut(&mut self, path: &ValuePath) -> Option<&mut Value> {
+        if path.is_empty() {
+            return Some(self);
+        }
+
+        let segments = path.segments();
+        let mut current = self;
+        for segment in segments {
+            match segment {
+                PathSegment::Key(key) => {
+                    let Value::Object(map) = current else {
+                        return None;
+                    };
+                    current = map.get_mut(key.as_str())?;
+                }
+                PathSegment::Index(index) => {
+                    let Value::List(list) = current else {
+                        return None;
+                    };
+                    current = list.get_mut(*index)?;
+                }
+            }
+        }
+        Some(current)
+    }
+
+    pub fn set_path(&mut self, path: &ValuePath, value: Value) {
+        if path.is_empty() {
+            *self = value;
+            return;
+        }
+        let target = ensure_value_path_mut(self, path);
+        *target = value;
     }
 
     // ── JSON ──────────────────────────────────────────────────────────────────

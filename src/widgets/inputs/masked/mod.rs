@@ -3,6 +3,8 @@ mod model;
 mod parser;
 
 use crate::core::value::Value;
+use crate::core::value_path::{ValuePath, ValueTarget};
+use crate::core::NodeId;
 use crate::terminal::{CursorPos, KeyCode, KeyEvent};
 use crate::ui::span::Span;
 use crate::widgets::base::WidgetBase;
@@ -20,7 +22,7 @@ pub struct MaskedInput {
     tokens: Vec<MaskToken>,
     cursor_token: usize,
     cursor_offset: usize,
-    submit_target: Option<String>,
+    submit_target: Option<ValueTarget>,
     validators: Vec<Validator>,
 }
 
@@ -38,8 +40,13 @@ impl MaskedInput {
         }
     }
 
-    pub fn with_submit_target(mut self, target: impl Into<String>) -> Self {
-        self.submit_target = Some(target.into());
+    pub fn with_submit_target(mut self, target: impl Into<NodeId>) -> Self {
+        self.submit_target = Some(ValueTarget::node(target));
+        self
+    }
+
+    pub fn with_submit_target_path(mut self, root: impl Into<NodeId>, path: ValuePath) -> Self {
+        self.submit_target = Some(ValueTarget::path(root, path));
         self
     }
 
@@ -407,7 +414,7 @@ impl Interactive for MaskedInput {
                 let value =
                     format::formatted_complete_value(self.tokens.as_slice()).unwrap_or_default();
                 InteractionResult::submit_or_produce(
-                    self.submit_target.as_deref(),
+                    self.submit_target.as_ref(),
                     Value::Text(value),
                 )
             }

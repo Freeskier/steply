@@ -148,7 +148,7 @@ impl AppState {
     pub fn handle_action(&mut self, action: WidgetAction) -> InteractionResult {
         match action {
             WidgetAction::ValueChanged { change } => {
-                self.apply_value_change(change.target, change.value);
+                self.apply_value_change_target(change.target, change.value);
                 self.clear_completion_session();
                 self.clear_step_errors();
                 InteractionResult::handled()

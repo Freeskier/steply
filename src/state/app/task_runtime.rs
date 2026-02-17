@@ -3,6 +3,7 @@ use crate::core::value::Value;
 use crate::runtime::event::{AppEvent, SystemEvent};
 use crate::runtime::scheduler::SchedulerCommand;
 use crate::state::step::StepStatus;
+use crate::core::value_path::ValueTarget;
 use crate::task::{
     ConcurrencyPolicy, TaskAssign, TaskCancelToken, TaskCompletion, TaskId, TaskInvocation,
     TaskKind, TaskRequest, TaskSpec, TaskTrigger,
@@ -166,7 +167,9 @@ impl AppState {
         match completion.assign {
             TaskAssign::Ignore => true,
             TaskAssign::SetValue(path) => {
-                self.apply_value_change(path, value);
+                let target = ValueTarget::parse_selector(path.as_str())
+                    .unwrap_or_else(|_| ValueTarget::node(path.clone()));
+                self.apply_value_change_target(target, value);
                 true
             }
         }
@@ -345,7 +348,7 @@ impl AppState {
                     let value = self
                         .data
                         .store
-                        .get(key.as_str())
+                        .get_selector(key.as_str())
                         .map(value_to_task_arg)
                         .unwrap_or_default();
                     out.push_str(value.as_str());

@@ -1,5 +1,7 @@
 use super::text_edit;
 use crate::core::value::Value;
+use crate::core::value_path::{ValuePath, ValueTarget};
+use crate::core::NodeId;
 use crate::runtime::event::{ValueChange, WidgetAction};
 use crate::terminal::{CursorPos, KeyCode, KeyEvent};
 use crate::ui::span::Span;
@@ -33,8 +35,8 @@ pub struct TextInput {
     cursor: usize,
     mode: TextMode,
     placeholder: Option<String>,
-    submit_target: Option<String>,
-    change_target: Option<String>,
+    submit_target: Option<ValueTarget>,
+    change_target: Option<ValueTarget>,
     validators: Vec<Validator>,
     completion_items: Vec<String>,
 }
@@ -69,13 +71,23 @@ impl TextInput {
         self
     }
 
-    pub fn with_submit_target(mut self, target: impl Into<String>) -> Self {
-        self.submit_target = Some(target.into());
+    pub fn with_submit_target(mut self, target: impl Into<NodeId>) -> Self {
+        self.submit_target = Some(ValueTarget::node(target));
         self
     }
 
-    pub fn with_change_target(mut self, target: impl Into<String>) -> Self {
-        self.change_target = Some(target.into());
+    pub fn with_submit_target_path(mut self, root: impl Into<NodeId>, path: ValuePath) -> Self {
+        self.submit_target = Some(ValueTarget::path(root, path));
+        self
+    }
+
+    pub fn with_change_target(mut self, target: impl Into<NodeId>) -> Self {
+        self.change_target = Some(ValueTarget::node(target));
+        self
+    }
+
+    pub fn with_change_target_path(mut self, root: impl Into<NodeId>, path: ValuePath) -> Self {
+        self.change_target = Some(ValueTarget::path(root, path));
         self
     }
 
@@ -109,7 +121,7 @@ impl TextInput {
     fn edited_result(&self) -> InteractionResult {
         if let Some(target) = &self.change_target {
             return InteractionResult::with_action(WidgetAction::ValueChanged {
-                change: ValueChange::new(target.clone(), Value::Text(self.value.clone())),
+                change: ValueChange::with_target(target.clone(), Value::Text(self.value.clone())),
             });
         }
         InteractionResult::handled()
@@ -200,7 +212,7 @@ impl Interactive for TextInput {
                 InteractionResult::handled()
             }
             KeyCode::Enter => InteractionResult::submit_or_produce(
-                self.submit_target.as_deref(),
+                self.submit_target.as_ref(),
                 Value::Text(self.value.clone()),
             ),
             _ => InteractionResult::ignored(),

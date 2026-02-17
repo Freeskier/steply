@@ -1,5 +1,6 @@
 pub mod search;
 pub mod value;
+pub mod value_path;
 
 use std::borrow::Borrow;
 use std::fmt;

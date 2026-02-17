@@ -297,14 +297,6 @@ impl Repeater {
         Value::List(rows)
     }
 
-    fn build_value_object(&self) -> Value {
-        let items = self.rows.iter().map(|row| row.item.clone()).collect::<Vec<_>>();
-        let mut map = IndexMap::<String, Value>::new();
-        map.insert("items".to_string(), Value::List(items));
-        map.insert("rows".to_string(), self.build_rows_value());
-        Value::Object(map)
-    }
-
     fn apply_rows_seed(&mut self, rows_seed: &[Value]) {
         for (row_idx, row_seed) in rows_seed.iter().enumerate() {
             let Some(row) = self.rows.get_mut(row_idx) else {
@@ -320,20 +312,10 @@ impl Repeater {
         }
     }
 
-    fn set_value_object(&mut self, map: &IndexMap<String, Value>) {
-        let rows_seed = map.get("rows").and_then(Value::as_list).map(|v| v.to_vec());
-        let items = match map.get("items") {
-            Some(Value::List(list)) => list.clone(),
-            _ => rows_seed
-                .as_ref()
-                .map(|rows| rows.iter().map(extract_item_from_row).collect::<Vec<_>>())
-                .unwrap_or_default(),
-        };
-
+    fn set_rows_value(&mut self, rows: &[Value]) {
+        let items = rows.iter().map(extract_item_from_row).collect::<Vec<_>>();
         self.set_items(items);
-        if let Some(rows) = rows_seed {
-            self.apply_rows_seed(rows.as_slice());
-        }
+        self.apply_rows_seed(rows);
     }
 
     fn child_context(&self, ctx: &RenderContext, focused_child_id: Option<String>) -> RenderContext {
@@ -468,6 +450,7 @@ impl Repeater {
         if should_advance {
             result.merge(self.advance_cursor_and_submit_if_done());
         }
+        self.ensure_live_sync(&mut result);
         if result.handled {
             result.request_render = true;
         }
@@ -525,12 +508,33 @@ impl Repeater {
     fn submit_or_done(&self) -> InteractionResult {
         if let Some(target) = &self.submit_target {
             let mut result = InteractionResult::with_action(WidgetAction::ValueChanged {
-                change: ValueChange::with_target(target.clone(), self.build_value_object()),
+                change: ValueChange::with_target(target.clone(), self.build_rows_value()),
             });
             result.actions.push(WidgetAction::InputDone);
             return result;
         }
         InteractionResult::input_done()
+    }
+
+    fn ensure_live_sync(&self, result: &mut InteractionResult) {
+        let Some(target) = &self.submit_target else {
+            return;
+        };
+        if !result.handled {
+            return;
+        }
+        let has_target_update = result.actions.iter().any(|action| {
+            matches!(
+                action,
+                WidgetAction::ValueChanged { change } if change.target == *target
+            )
+        });
+        if has_target_update {
+            return;
+        }
+        result.actions.push(WidgetAction::ValueChanged {
+            change: ValueChange::with_target(target.clone(), self.build_rows_value()),
+        });
     }
 
     fn handle_group_key(&mut self, key: KeyEvent) -> InteractionResult {
@@ -548,11 +552,13 @@ impl Repeater {
             }
         }
 
-        match key.code {
+        let mut result = match key.code {
             KeyCode::Enter | KeyCode::Tab => self.advance_cursor_and_submit_if_done(),
             KeyCode::BackTab => self.retreat_cursor(),
             _ => InteractionResult::ignored(),
-        }
+        };
+        self.ensure_live_sync(&mut result);
+        result
     }
 }
 
@@ -667,14 +673,26 @@ impl Interactive for Repeater {
     }
 
     fn value(&self) -> Option<Value> {
-        Some(self.build_value_object())
+        Some(self.build_rows_value())
     }
 
     fn set_value(&mut self, value: Value) {
         match value {
             Value::None => self.set_items(Vec::new()),
-            Value::List(items) => self.set_items(items),
-            Value::Object(map) => self.set_value_object(&map),
+            Value::List(rows_or_items) => {
+                if looks_like_rows_list(rows_or_items.as_slice(), self.fields.as_slice()) {
+                    self.set_rows_value(rows_or_items.as_slice());
+                } else {
+                    self.set_items(rows_or_items);
+                }
+            }
+            Value::Object(map) => {
+                if let Some(Value::List(rows)) = map.get("rows") {
+                    self.set_rows_value(rows.as_slice());
+                } else {
+                    self.set_items(Vec::new());
+                }
+            }
             scalar => self.set_items(vec![scalar]),
         }
         self.finished = false;
@@ -736,6 +754,18 @@ fn unique_field_key(fields: &[RepeaterFieldDef], requested: &str) -> String {
         }
         idx = idx.saturating_add(1);
     }
+}
+
+fn looks_like_rows_list(rows: &[Value], fields: &[RepeaterFieldDef]) -> bool {
+    rows.iter().any(|row| match row {
+        Value::Object(map) => {
+            map.contains_key("item")
+                || fields
+                    .iter()
+                    .any(|field| map.contains_key(field.key.as_str()))
+        }
+        _ => false,
+    })
 }
 
 fn seed_value(seed: &Value, field_idx: usize, key: &str, label: &str) -> Option<Value> {
@@ -800,13 +830,14 @@ mod tests {
         ]));
 
         let value = repeater.value().expect("value");
-        let Value::Object(map) = value else {
-            panic!("expected object");
+        let Value::List(rows) = value else {
+            panic!("expected list");
         };
-        let Value::List(items) = map.get("items").cloned().unwrap_or(Value::None) else {
-            panic!("expected items list");
+        assert_eq!(rows.len(), 2);
+        let Some(Value::Object(first)) = rows.first() else {
+            panic!("expected first row object");
         };
-        assert_eq!(items.len(), 2);
+        assert_eq!(first.get("item").and_then(Value::as_text), Some("Kasia"));
     }
 
     #[test]
@@ -826,11 +857,8 @@ mod tests {
         repeater.set_value(Value::Object(root));
 
         let value = repeater.value().expect("value");
-        let Value::Object(map) = value else {
-            panic!("expected object");
-        };
-        let Value::List(rows) = map.get("rows").cloned().unwrap_or(Value::None) else {
-            panic!("expected rows");
+        let Value::List(rows) = value else {
+            panic!("expected rows list");
         };
         let Some(Value::Object(first)) = rows.first() else {
             panic!("expected first row object");
@@ -857,5 +885,9 @@ mod tests {
         assert_eq!(result.actions.len(), 2);
         assert!(matches!(result.actions[0], WidgetAction::ValueChanged { .. }));
         assert!(matches!(result.actions[1], WidgetAction::InputDone));
+        let Some(WidgetAction::ValueChanged { change }) = result.actions.first() else {
+            panic!("expected ValueChanged");
+        };
+        assert!(matches!(change.value, Value::List(_)));
     }
 }

@@ -1,5 +1,4 @@
 use crate::core::value::Value;
-use crate::core::value_path::ValuePath;
 use crate::state::flow::Flow;
 use crate::state::step::{Step, StepNavigation};
 use crate::task::{TaskAssign, TaskParse, TaskSpec, TaskSubscription, TaskTrigger};
@@ -38,11 +37,11 @@ use crate::widgets::validators;
 fn step_repeater() -> Step {
     Step::new(
         "step_repeater",
-        "Repeater",
+        "Repeater -> Table bridge",
         vec![
             Node::Output(Box::new(TextOutput::new(
                 "rep_intro",
-                "Configure fields for each person. Enter/Tab advances to next field or item.",
+                "Configure entries in Repeater, then final Enter pushes rows into Table below.",
             ))),
             Node::Component(Box::new(
                 Repeater::new("rep_accounts", "Accounts setup")
@@ -60,14 +59,25 @@ fn step_repeater() -> Step {
                     .field("priority", "Priority", |id, label| {
                         SliderInput::new(id, label, 0, 100).with_step(5)
                     })
-                    .with_submit_target_path(
-                        "demo_data",
-                        ValuePath::parse_relative("repeater.accounts").expect("valid path"),
-                    ),
+                    .with_submit_target("tbl_rep_preview"),
+            )),
+            Node::Component(Box::new(
+                Table::new("tbl_rep_preview", "Preview from repeater")
+                    .with_style(TableStyle::Grid)
+                    .column("Item", TextInput::new)
+                    .column("Path", TextInput::new)
+                    .column("Password", |id, label| {
+                        TextInput::new(id, label).with_mode(TextMode::Password)
+                    })
+                    .column("Priority", |id, label| {
+                        SliderInput::new(id, label, 0, 100).with_step(5)
+                    }),
             )),
         ],
     )
-    .with_hint("Enter/Tab -> next field/item  •  Shift+Tab -> previous  •  final Enter submits")
+    .with_hint(
+        "Repeater: Enter/Tab next  •  Shift+Tab previous  •  final Enter fills table and moves focus down",
+    )
 }
 
 // ── Snippet ───────────────────────────────────────────────────────────────────

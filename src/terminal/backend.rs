@@ -582,25 +582,21 @@ impl Terminal {
             frame_len, height, width, draw_origin, cursor
         ));
 
-        // If there is not enough room below origin_row, force terminal scroll
-        // to reserve space for inline rendering near the bottom edge.
+        // If there is not enough room below origin_row, clamp render origin
+        // upward instead of forcing terminal scroll with trailing newlines.
+        // This avoids bottom-edge artifacts when resizing near shell prompt.
         let desired_visible = frame_len.min(height);
         let available = height.saturating_sub(draw_origin as usize);
         if desired_visible > available {
             let need = desired_visible.saturating_sub(available);
             debug_log(format!(
-                "render_inline_active scroll need={} desired_visible={} available={} draw_origin_before={}",
+                "render_inline_active clamp need={} desired_visible={} available={} draw_origin_before={}",
                 need, desired_visible, available, draw_origin
             ));
-            execute!(self.stdout, MoveTo(0, (height - 1) as u16))?;
-            for _ in 0..need {
-                self.stdout.write_all(b"\n")?;
-            }
-            self.stdout.flush()?;
             draw_origin = draw_origin.saturating_sub(need as u16);
             self.origin_row = draw_origin;
             debug_log(format!(
-                "render_inline_active scroll done draw_origin_after={} origin_row={}",
+                "render_inline_active clamp done draw_origin_after={} origin_row={}",
                 draw_origin, self.origin_row
             ));
         }

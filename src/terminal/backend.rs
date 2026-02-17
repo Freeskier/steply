@@ -12,8 +12,7 @@ use crossterm::style::{
     SetForegroundColor,
 };
 use crossterm::terminal::{
-    self, Clear, ClearType, DisableLineWrap, EnableLineWrap, EnterAlternateScreen,
-    LeaveAlternateScreen,
+    self, Clear, ClearType, EnableLineWrap, EnterAlternateScreen, LeaveAlternateScreen,
 };
 use crossterm::{execute, queue};
 use std::fs::OpenOptions;
@@ -361,7 +360,6 @@ impl Terminal {
             self.stdout,
             EnterAlternateScreen,
             EnableMouseCapture,
-            DisableLineWrap,
             Hide
         )?;
         Ok(())
@@ -375,7 +373,7 @@ impl Terminal {
             row.min(self.state.size.height.saturating_sub(1))
         };
         terminal::enable_raw_mode()?;
-        execute!(self.stdout, DisableLineWrap, Hide)?;
+        execute!(self.stdout, Hide)?;
         self.last_render_origin_row = self.origin_row;
         self.last_known_cursor_row = None;
         Ok(())
@@ -635,14 +633,10 @@ impl Terminal {
         self.last_render_origin_row = draw_origin;
 
         // ── Position technical tracking cursor ─────────────────────────────
-        // Keep cursor parked one row above inline block (when possible).
-        // This decouples resize-anchor tracking from active block reflow.
-        let tracking_row = draw_origin.checked_sub(1);
-        if let Some(row) = tracking_row {
-            queue!(self.stdout, MoveTo(0, row), Hide)?;
-        } else {
-            queue!(self.stdout, MoveTo(0, draw_origin), Hide)?;
-        }
+        // Park cursor at the first row of inline block (never on shell prompt
+        // line above), so history reflow still shifts it but prompt is untouched.
+        let tracking_row = Some(draw_origin);
+        queue!(self.stdout, MoveTo(0, draw_origin), Hide)?;
 
         self.stdout.flush()?;
         self.last_known_cursor_row = tracking_row;

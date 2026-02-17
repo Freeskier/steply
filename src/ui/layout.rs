@@ -30,38 +30,45 @@ impl Layout {
             for span in line {
                 match span.wrap_mode {
                     WrapMode::NoWrap => {
-                        if current_width >= max_width {
-                            push_line(&mut out, &mut current, &mut current_width);
+                        // Hard-wrap long no-wrap spans instead of clipping them.
+                        // This keeps full text visible when a single long token
+                        // exceeds the available terminal width.
+                        let mut rest = span.text.as_str();
+                        while !rest.is_empty() {
+                            if current_width >= max_width {
+                                push_line(&mut out, &mut current, &mut current_width);
+                            }
+
+                            let remaining = max_width.saturating_sub(current_width);
+                            if remaining == 0 {
+                                push_line(&mut out, &mut current, &mut current_width);
+                                continue;
+                            }
+
+                            let (left, tail) = split_at_width(rest, remaining);
+                            let piece_width = text_width(left);
+
+                            map_cursor_in_segment(
+                                cursor_target,
+                                source_row,
+                                source_col,
+                                piece_width,
+                                out.len(),
+                                current_width,
+                                &mut mapped_cursor,
+                            );
+
+                            let mut piece = span.clone();
+                            piece.text = left.to_string();
+                            current_width = current_width.saturating_add(piece_width);
+                            current.push(piece);
+                            source_col = source_col.saturating_add(piece_width);
+
+                            rest = tail;
+                            if !rest.is_empty() {
+                                push_line(&mut out, &mut current, &mut current_width);
+                            }
                         }
-                        let remaining = max_width.saturating_sub(current_width);
-                        if remaining == 0 {
-                            source_col = source_col.saturating_add(text_width(&span.text));
-                            continue;
-                        }
-
-                        let clipped_text = clip_text_to_width(span.text.as_str(), remaining);
-                        let clipped_width = text_width(clipped_text.as_str());
-
-                        map_cursor_in_segment(
-                            cursor_target,
-                            source_row,
-                            source_col,
-                            clipped_width,
-                            out.len(),
-                            current_width,
-                            &mut mapped_cursor,
-                        );
-
-                        if !clipped_text.is_empty() {
-                            let mut clipped = span.clone();
-                            clipped.text = clipped_text;
-                            current_width = current_width.saturating_add(clipped_width);
-                            current.push(clipped);
-                        }
-
-                        // Source column tracks full logical width even when
-                        // no-wrap content was clipped to visible width.
-                        source_col = source_col.saturating_add(text_width(&span.text));
                     }
                     WrapMode::Wrap => {
                         let mut rest = span.text.as_str();
@@ -175,21 +182,4 @@ fn split_at_width(s: &str, max: usize) -> (&str, &str) {
     }
 
     (s, "")
-}
-
-fn clip_text_to_width(s: &str, max: usize) -> String {
-    if max == 0 {
-        return String::new();
-    }
-    let mut width = 0usize;
-    let mut out = String::new();
-    for ch in s.chars() {
-        let ch_width = UnicodeWidthChar::width(ch).unwrap_or(0);
-        if width.saturating_add(ch_width) > max {
-            break;
-        }
-        out.push(ch);
-        width = width.saturating_add(ch_width);
-    }
-    out
 }

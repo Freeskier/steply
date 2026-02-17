@@ -372,8 +372,7 @@ impl Terminal {
         self.origin_row = if self.state.size.height == 0 {
             0
         } else {
-            row.saturating_add(1)
-                .min(self.state.size.height.saturating_sub(1))
+            row.min(self.state.size.height.saturating_sub(1))
         };
         terminal::enable_raw_mode()?;
         execute!(self.stdout, DisableLineWrap, Hide)?;
@@ -407,6 +406,9 @@ impl Terminal {
             .as_ref()
             .map(|s| s.last_frame.clone())
             .unwrap_or_default();
+        let anchor_row = self
+            .last_render_origin_row
+            .min(self.state.size.height.saturating_sub(1));
         let height = self.state.size.height;
         let rendered = self.last_rendered_lines as u16;
         let clear_start = self.last_render_origin_row.min(self.origin_row);
@@ -433,6 +435,7 @@ impl Terminal {
 
         terminal::disable_raw_mode()?;
         if !last_frame.is_empty() {
+            execute!(self.stdout, MoveTo(0, anchor_row))?;
             self.print_frame_to_stdout(last_frame.as_slice(), self.state.size.width)?;
         }
         writeln!(self.stdout)?;

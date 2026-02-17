@@ -3,21 +3,23 @@ use crate::ui::span::SpanLine;
 use crate::ui::style::Color;
 use crossterm::cursor::{Hide, MoveTo, Show, position};
 use crossterm::event::{
-    self, Event as CrosstermEvent, KeyCode as CrosstermKeyCode, KeyEvent as CrosstermKeyEvent,
+    self, DisableMouseCapture, EnableMouseCapture, Event as CrosstermEvent,
+    KeyCode as CrosstermKeyCode, KeyEvent as CrosstermKeyEvent,
     KeyModifiers as CrosstermKeyModifiers, MouseEventKind,
-    DisableMouseCapture, EnableMouseCapture,
 };
 use crossterm::style::{
     Attribute, Color as CrosstermColor, Print, ResetColor, SetAttribute, SetBackgroundColor,
     SetForegroundColor,
 };
 use crossterm::terminal::{
-    self, Clear, ClearType, EnableLineWrap, EnterAlternateScreen, LeaveAlternateScreen,
+    self, BeginSynchronizedUpdate, Clear, ClearType, DisableLineWrap, EnableLineWrap,
+    EndSynchronizedUpdate, EnterAlternateScreen, LeaveAlternateScreen,
 };
 use crossterm::{execute, queue};
 use std::fs::OpenOptions;
 use std::io::{self, Stdout, Write};
-use std::time::Duration;
+use std::process;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
 // ── Public types ──────────────────────────────────────────────────────────────
@@ -29,9 +31,8 @@ pub enum RenderMode {
     /// to the normal terminal buffer so it appears in scrollback history.
     #[default]
     AltScreen,
-    /// Renders inline in the normal terminal buffer.  Done steps are committed
-    /// once to scrollback and never re-rendered.  Only the active step is
-    /// re-rendered in place.  Back navigation is disabled in this mode.
+    /// Renders inline in the normal terminal buffer using deterministic block
+    /// anchoring and explicit redraw planning.
     Inline,
 }
 
@@ -125,18 +126,102 @@ impl AltScreenState {
 }
 
 struct InlineState {
-    /// Width reflow detected; adjust anchor once at next inline render.
-    reflow_pending: bool,
-    /// Cached last full frame for deterministic inline exit printing.
+    /// Number of lines drawn in the last render pass.
+    last_drawn_count: usize,
+    /// Last cursor row inside the rendered block (0-based).
+    /// Kept so next renders can place the input cursor consistently after
+    /// terminal size changes.
+    last_cursor_row: u16,
+    /// Last cursor column actually sent to terminal at the end of inline
+    /// render. Used to estimate how terminal reflow moves the probe row.
+    last_cursor_col: u16,
+    /// Screen row where the first line of our block sits after the last render.
+    /// Seeded from `position()` at `enter()`, then updated by inline layout
+    /// planning on each render.
+    block_start_row: u16,
+    /// Cached last full frame for deterministic exit printing.
     last_frame: Vec<SpanLine>,
+    /// Last cursor submitted to terminal for inline render.
+    last_rendered_cursor: Option<CursorPos>,
+    /// Last terminal size used for inline render.
+    last_rendered_size: TerminalSize,
+    /// Whether any inline frame has already been rendered.
+    has_rendered_once: bool,
+    /// Set after terminal resize; next render should re-anchor block start
+    /// against real cursor row to follow terminal history reflow.
+    reanchor_after_resize: bool,
+    /// Last resize width delta (`new.width - old.width`) used to constrain
+    /// re-anchor direction for pure width changes.
+    last_resize_width_delta: i16,
+    /// Last resize height delta (`new.height - old.height`).
+    last_resize_height_delta: i16,
 }
 
 impl InlineState {
     fn new() -> Self {
         Self {
-            reflow_pending: false,
+            last_drawn_count: 0,
+            last_cursor_row: 0,
+            last_cursor_col: 0,
+            block_start_row: 0,
             last_frame: Vec::new(),
+            last_rendered_cursor: None,
+            last_rendered_size: TerminalSize {
+                width: 0,
+                height: 0,
+            },
+            has_rendered_once: false,
+            reanchor_after_resize: false,
+            last_resize_width_delta: 0,
+            last_resize_height_delta: 0,
         }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct InlineLayoutPlan {
+    block_start_row: u16,
+    clear_start_row: u16,
+    draw_count: usize,
+    skip: usize,
+}
+
+fn plan_inline_layout(
+    height: usize,
+    frame_len: usize,
+    prev_block_start_row: u16,
+) -> InlineLayoutPlan {
+    if height == 0 {
+        return InlineLayoutPlan {
+            block_start_row: 0,
+            clear_start_row: 0,
+            draw_count: 0,
+            skip: 0,
+        };
+    }
+
+    let max_row = height.saturating_sub(1) as u16;
+    let mut block_start = prev_block_start_row.min(max_row) as usize;
+    let desired_visible = frame_len.min(height);
+    let available = height.saturating_sub(block_start);
+
+    if desired_visible > available {
+        let need = desired_visible.saturating_sub(available);
+        let shift_up = need.min(block_start);
+        block_start = block_start.saturating_sub(shift_up);
+    }
+
+    let available_after_shift = height.saturating_sub(block_start);
+    let draw_count = frame_len.min(available_after_shift);
+    let skip = frame_len.saturating_sub(draw_count);
+    let block_start_row = block_start.min(u16::MAX as usize) as u16;
+    let clear_start_row = prev_block_start_row.min(block_start_row);
+
+    InlineLayoutPlan {
+        block_start_row,
+        clear_start_row,
+        draw_count,
+        skip,
     }
 }
 
@@ -145,18 +230,6 @@ impl InlineState {
 pub struct Terminal {
     stdout: Stdout,
     state: TerminalState,
-    /// Inline mode: absolute terminal row where line 0 of the active frame is
-    /// drawn.  Starts at the cursor row when `enter()` is called and can only
-    /// decrease toward row 0.
-    origin_row: u16,
-    /// Number of active lines drawn in the previous render call (inline mode).
-    last_rendered_lines: usize,
-    /// Inline mode: absolute row where the previous active frame started.
-    /// Used to clear exactly the region that was rendered last time.
-    last_render_origin_row: u16,
-    /// Last known terminal cursor row after our render pass.
-    /// Used to detect row shifts caused by terminal reflow on width resize.
-    last_known_cursor_row: Option<u16>,
     mode: RenderMode,
     alt_screen: Option<AltScreenState>,
     inline_state: Option<InlineState>,
@@ -171,10 +244,6 @@ impl Terminal {
                 size: TerminalSize { width, height },
                 cursor: None,
             },
-            origin_row: 0,
-            last_rendered_lines: 0,
-            last_render_origin_row: 0,
-            last_known_cursor_row: None,
             mode: RenderMode::default(),
             alt_screen: Some(AltScreenState::new()), // default is AltScreen
             inline_state: None,
@@ -256,11 +325,18 @@ impl Terminal {
             match event::read()? {
                 CrosstermEvent::Key(key) => Ok(TerminalEvent::Key(map_key_event(key))),
                 CrosstermEvent::Resize(width, height) => {
+                    debug_log(format!("event resize {}x{}", width, height));
                     Ok(TerminalEvent::Resize(TerminalSize { width, height }))
                 }
                 CrosstermEvent::Mouse(mouse) => match mouse.kind {
-                    MouseEventKind::ScrollUp => Ok(TerminalEvent::Scroll(-3)),
-                    MouseEventKind::ScrollDown => Ok(TerminalEvent::Scroll(3)),
+                    MouseEventKind::ScrollUp => {
+                        debug_log("event mouse scroll up");
+                        Ok(TerminalEvent::Scroll(-3))
+                    }
+                    MouseEventKind::ScrollDown => {
+                        debug_log("event mouse scroll down");
+                        Ok(TerminalEvent::Scroll(3))
+                    }
                     _ => Ok(TerminalEvent::Tick),
                 },
                 _ => Ok(TerminalEvent::Tick),
@@ -279,76 +355,174 @@ impl Terminal {
     }
 
     pub fn set_size(&mut self, size: TerminalSize) {
-        let width_changed = self.state.size.width != size.width;
         let old = self.state.size;
-        self.state.size = size;
         debug_log(format!(
-            "set_size old={}x{} new={}x{} width_changed={}",
-            old.width, old.height, size.width, size.height, width_changed
+            "set_size {}x{} -> {}x{}",
+            old.width, old.height, size.width, size.height
         ));
-        if width_changed {
-            self.mark_inline_width_change();
-        }
+        self.state.size = size;
+        self.handle_inline_size_change(old, size);
     }
 
     pub fn refresh_size(&mut self) -> io::Result<()> {
-        let old_width = self.state.size.width;
-        let old_height = self.state.size.height;
+        let old = self.state.size;
         let (width, height) = terminal::size()?;
-        self.state.size = TerminalSize { width, height };
-        debug_log(format!(
-            "refresh_size old={}x{} new={}x{} width_changed={}",
-            old_width,
-            old_height,
-            width,
-            height,
-            old_width != width
-        ));
-        if old_width != width {
-            self.mark_inline_width_change();
+        let new = TerminalSize { width, height };
+        self.state.size = new;
+        if old.width != width || old.height != height {
+            debug_log(format!(
+                "refresh_size {}x{} -> {}x{}",
+                old.width, old.height, width, height
+            ));
+            self.handle_inline_size_change(old, new);
         }
         Ok(())
     }
 
-    fn mark_inline_width_change(&mut self) {
+    fn handle_inline_size_change(&mut self, old: TerminalSize, new: TerminalSize) {
         if self.mode != RenderMode::Inline {
             return;
         }
+        let Some(inline) = self.inline_state.as_mut() else {
+            return;
+        };
+        if old == new {
+            return;
+        }
+
+        if new.height == 0 {
+            inline.block_start_row = 0;
+            inline.last_cursor_row = 0;
+            inline.reanchor_after_resize = false;
+            inline.last_resize_width_delta = 0;
+            inline.last_resize_height_delta = 0;
+            return;
+        }
+
+        let max_row = new.height.saturating_sub(1);
+        inline.block_start_row = inline.block_start_row.min(max_row);
+        let max_cursor_row = max_row.saturating_sub(inline.block_start_row);
+        inline.last_cursor_row = inline.last_cursor_row.min(max_cursor_row);
+        inline.last_cursor_col = inline.last_cursor_col.min(new.width.saturating_sub(1));
+        inline.reanchor_after_resize = true;
+        inline.last_resize_width_delta = new.width as i16 - old.width as i16;
+        inline.last_resize_height_delta = new.height as i16 - old.height as i16;
+        debug_log(format!(
+            "inline_resize old={}x{} new={}x{} block_start_row={} last_cursor_row={} last_cursor_col={} reanchor_after_resize={} dw={} dh={}",
+            old.width,
+            old.height,
+            new.width,
+            new.height,
+            inline.block_start_row,
+            inline.last_cursor_row,
+            inline.last_cursor_col,
+            inline.reanchor_after_resize,
+            inline.last_resize_width_delta,
+            inline.last_resize_height_delta
+        ));
+    }
+
+    fn reanchor_inline_after_resize_if_needed(&mut self) {
+        if self.mode != RenderMode::Inline {
+            return;
+        }
+        if self.state.size.height == 0 {
+            return;
+        }
+        let Some(inline_snapshot) = self.inline_state.as_ref().map(|inline| {
+            (
+                inline.reanchor_after_resize,
+                inline.block_start_row,
+                inline.last_cursor_row,
+                inline.last_resize_width_delta,
+                inline.last_resize_height_delta,
+                estimate_self_reflow_cursor_delta(inline, self.state.size.width),
+            )
+        }) else {
+            return;
+        };
+
+        let (pending, block_start_row, last_cursor_row, width_delta, height_delta, self_reflow_delta) =
+            inline_snapshot;
+        if !pending {
+            return;
+        }
+
+        let max_row = self.state.size.height.saturating_sub(1);
+        let expected_cursor_row = block_start_row.saturating_add(last_cursor_row).min(max_row);
+        let maybe_actual_row = match position() {
+            Ok((col, row)) => {
+                debug_log(format!(
+                    "inline_reanchor probe cursor=({},{}) expected_cursor_row={}",
+                    col, row, expected_cursor_row
+                ));
+                Some(row.min(max_row))
+            }
+            Err(err) => {
+                debug_log(format!(
+                    "inline_reanchor probe failed expected_cursor_row={} err={}",
+                    expected_cursor_row, err
+                ));
+                None
+            }
+        };
+
+        let mut new_block_start_row = block_start_row;
+        let mut delta = 0i32;
+        if let Some(actual_row) = maybe_actual_row {
+            let measured_delta = actual_row as i32 - expected_cursor_row as i32;
+            // Remove movement caused by reflow of our own previously rendered
+            // block. We only want drift originating from terminal history above
+            // the block.
+            delta = measured_delta - self_reflow_delta;
+            debug_log(format!(
+                "inline_reanchor delta measured={} self_reflow={} history={}",
+                measured_delta, self_reflow_delta, delta
+            ));
+            // Guard against directional drift from noisy cursor probes:
+            // for pure width expansion, block should not move down;
+            // for pure width shrink, block should not move up.
+            if height_delta == 0 {
+                if width_delta > 0 && delta > 0 {
+                    debug_log(format!(
+                        "inline_reanchor clamp delta {} -> 0 (pure width expand dw={} dh={})",
+                        delta, width_delta, height_delta
+                    ));
+                    delta = 0;
+                } else if width_delta < 0 && delta < 0 {
+                    debug_log(format!(
+                        "inline_reanchor clamp delta {} -> 0 (pure width shrink dw={} dh={})",
+                        delta, width_delta, height_delta
+                    ));
+                    delta = 0;
+                }
+            }
+            if delta != 0 {
+                new_block_start_row = (block_start_row as i32 + delta)
+                    .clamp(0, max_row as i32) as u16;
+            }
+        }
+
         if let Some(inline) = self.inline_state.as_mut() {
-            inline.reflow_pending = true;
-            debug_log(format!("mark_inline_width_change reflow_pending={}", inline.reflow_pending));
+            inline.reanchor_after_resize = false;
+            inline.last_resize_width_delta = 0;
+            inline.last_resize_height_delta = 0;
+            inline.block_start_row = new_block_start_row;
+            let max_cursor_row = max_row.saturating_sub(new_block_start_row);
+            inline.last_cursor_row = inline.last_cursor_row.min(max_cursor_row);
+            debug_log(format!(
+                "inline_reanchor apply old_block_start_row={} new_block_start_row={} expected_cursor_row={} delta={} self_reflow_delta={} last_cursor_row={} dw={} dh={}",
+                block_start_row,
+                inline.block_start_row,
+                expected_cursor_row,
+                delta,
+                self_reflow_delta,
+                inline.last_cursor_row,
+                width_delta,
+                height_delta
+            ));
         }
     }
-
-    fn adjust_inline_anchor_for_reflow(&mut self) {
-        if self.mode != RenderMode::Inline {
-            return;
-        }
-        let Some(prev_row) = self.last_known_cursor_row else {
-            return;
-        };
-        let Ok((_, current_row)) = position() else {
-            return;
-        };
-        let delta = current_row as i32 - prev_row as i32;
-        debug_log(format!(
-            "adjust_inline_anchor_for_reflow prev_row={} current_row={} delta={} before_origin={} before_last_origin={}",
-            prev_row, current_row, delta, self.origin_row, self.last_render_origin_row
-        ));
-        if delta == 0 {
-            return;
-        }
-        let max_row = self.state.size.height.saturating_sub(1) as i32;
-        self.origin_row = (self.origin_row as i32 + delta).clamp(0, max_row) as u16;
-        self.last_render_origin_row =
-            (self.last_render_origin_row as i32 + delta).clamp(0, max_row) as u16;
-        self.last_known_cursor_row = Some(current_row);
-        debug_log(format!(
-            "adjust_inline_anchor_for_reflow after_origin={} after_last_origin={} max_row={}",
-            self.origin_row, self.last_render_origin_row, max_row
-        ));
-    }
-
 }
 
 // ── Enter / Exit ──────────────────────────────────────────────────────────────
@@ -356,26 +530,29 @@ impl Terminal {
 impl Terminal {
     fn enter_altscreen(&mut self) -> io::Result<()> {
         terminal::enable_raw_mode()?;
-        execute!(
-            self.stdout,
-            EnterAlternateScreen,
-            EnableMouseCapture,
-            Hide
-        )?;
+        execute!(self.stdout, EnterAlternateScreen, EnableMouseCapture, Hide)?;
         Ok(())
     }
 
     fn enter_inline(&mut self) -> io::Result<()> {
-        let (_, row) = position()?;
-        self.origin_row = if self.state.size.height == 0 {
-            0
-        } else {
-            row.min(self.state.size.height.saturating_sub(1))
-        };
+        // Query cursor position once at startup — the only DSR we ever do.
+        // This tells us which screen row our block starts on.
+        let (col, row) = position()?;
+        let inline = self
+            .inline_state
+            .as_mut()
+            .expect("inline_state must be Some");
+        inline.block_start_row = row.min(self.state.size.height.saturating_sub(1));
+        inline.last_cursor_row = 0;
+        log_inline_environment();
+        debug_log(format!(
+            "enter_inline cursor_pos=({},{}) block_start_row={} terminal={}x{}",
+            col, row, inline.block_start_row, self.state.size.width, self.state.size.height
+        ));
         terminal::enable_raw_mode()?;
-        execute!(self.stdout, Hide)?;
-        self.last_render_origin_row = self.origin_row;
-        self.last_known_cursor_row = None;
+        // Prevent terminal soft-wrap from mutating physical row count of the
+        // previously drawn block after resize. This keeps relative anchoring stable.
+        execute!(self.stdout, DisableLineWrap, Hide)?;
         Ok(())
     }
 
@@ -399,46 +576,39 @@ impl Terminal {
     }
 
     fn exit_inline(&mut self) -> io::Result<()> {
-        let last_frame = self
+        let inline = self
             .inline_state
             .as_ref()
-            .map(|s| s.last_frame.clone())
-            .unwrap_or_default();
-        let anchor_row = self
-            .last_render_origin_row
+            .expect("inline_state must be Some");
+        let last_frame = inline.last_frame.clone();
+        let block_start = inline
+            .block_start_row
             .min(self.state.size.height.saturating_sub(1));
-        let height = self.state.size.height;
-        let rendered = self.last_rendered_lines as u16;
-        let clear_start = self.last_render_origin_row.min(self.origin_row);
-        for row in clear_start..height {
-            queue!(self.stdout, MoveTo(0, row), Clear(ClearType::CurrentLine))?;
-        }
+        debug_log(format!(
+            "exit_inline block_start={} last_drawn={} last_cursor_row={} last_frame_lines={} terminal={}x{}",
+            block_start,
+            inline.last_drawn_count,
+            inline.last_cursor_row,
+            last_frame.len(),
+            self.state.size.width,
+            self.state.size.height
+        ));
 
-        let end_row = self
-            .last_render_origin_row
-            .saturating_add(rendered)
-            .min(height.saturating_sub(1));
+        // Move to block start and clear everything below.
+        queue!(
+            self.stdout,
+            MoveTo(0, block_start),
+            Clear(ClearType::FromCursorDown)
+        )?;
 
-        if end_row < height.saturating_sub(1) {
-            execute!(
-                self.stdout,
-                MoveTo(0, end_row),
-                Clear(ClearType::CurrentLine),
-                EnableLineWrap,
-                Show
-            )?;
-        } else {
-            execute!(self.stdout, MoveTo(0, end_row), EnableLineWrap, Show)?;
-        }
-
-        terminal::disable_raw_mode()?;
+        // Print the last frame as permanent scrollback content.
         if !last_frame.is_empty() {
-            execute!(self.stdout, MoveTo(0, anchor_row))?;
-            self.print_frame_to_stdout(last_frame.as_slice(), self.state.size.width)?;
+            self.print_frame_to_stdout(&last_frame, self.state.size.width)?;
         }
-        writeln!(self.stdout)?;
+
+        execute!(self.stdout, EnableLineWrap, Show)?;
+        terminal::disable_raw_mode()?;
         self.stdout.flush()?;
-        self.last_known_cursor_row = None;
         Ok(())
     }
 }
@@ -456,7 +626,10 @@ impl Terminal {
 
         let frame_len = frame.lines.len();
 
-        let alt = self.alt_screen.as_mut().expect("alt_screen must be Some in AltScreen mode");
+        let alt = self
+            .alt_screen
+            .as_mut()
+            .expect("alt_screen must be Some in AltScreen mode");
 
         // Cache the full frame for printing on exit.
         alt.last_frame.clone_from(&frame.lines);
@@ -515,6 +688,14 @@ impl Terminal {
 // ── Inline rendering ──────────────────────────────────────────────────────────
 
 impl Terminal {
+    /// Render a frame inline by anchoring redraw to the tracked block start.
+    ///
+    /// This approach is resilient to terminal history reflow because:
+    /// 1. Our lines are always printed at `width - 1` columns, so the terminal
+    ///    never wraps them during reflow.
+    /// 2. Layout is deterministic from terminal height + previous anchor, so
+    ///    redraw does not depend on per-frame terminal cursor queries.
+    /// 3. Synchronized output prevents tearing between clear and redraw.
     fn render_inline(&mut self, frame: &RenderFrame) -> io::Result<()> {
         let height = self.state.size.height as usize;
         let width = self.state.size.width;
@@ -523,124 +704,114 @@ impl Terminal {
             return Ok(());
         }
 
-        let mut reflow_pending = self
+        self.reanchor_inline_after_resize_if_needed();
+
+        let (prev_block_start_row, prev_drawn, prev_cursor_row, skip_noop) = self
             .inline_state
             .as_ref()
-            .expect("inline_state must be Some in Inline mode")
-            .reflow_pending;
-
-        debug_log(format!(
-            "render_inline start lines={} frozen={} origin_row={} last_render_origin_row={} reflow_pending={} cursor={:?}",
-            frame.lines.len(),
-            frame.frozen_lines,
-            self.origin_row,
-            self.last_render_origin_row,
-            reflow_pending,
-            frame.cursor
-        ));
-
-        if reflow_pending {
-            debug_log("render_inline apply_reflow_anchor (tracking-row based)");
-            self.adjust_inline_anchor_for_reflow();
-            reflow_pending = false;
+            .map(|inline| {
+                let same_frame = inline.last_frame == frame.lines;
+                let same_cursor = inline.last_rendered_cursor == frame.cursor;
+                let same_size = inline.last_rendered_size == self.state.size;
+                let should_skip = inline.has_rendered_once
+                    && !inline.reanchor_after_resize
+                    && same_frame
+                    && same_cursor
+                    && same_size;
+                (
+                    inline.block_start_row,
+                    inline.last_drawn_count,
+                    inline.last_cursor_row,
+                    should_skip,
+                )
+            })
+            .unwrap_or((0, 0, 0, false));
+        if skip_noop {
+            debug_log("render_inline skip_noop");
+            return Ok(());
+        }
+        if let Some(inline) = self.inline_state.as_mut() {
+            inline.last_frame.clone_from(&frame.lines);
         }
 
-        self.origin_row = self
-            .origin_row
-            .min(self.state.size.height.saturating_sub(1));
+        let frame_len = frame.lines.len();
+        let plan = plan_inline_layout(height, frame_len, prev_block_start_row);
+        let block_start_row = plan.block_start_row;
+        let block_start = block_start_row as usize;
+        let draw_count = plan.draw_count;
+        let skip = plan.skip;
+        let clear_start_row = plan.clear_start_row;
 
-        let inline = self.inline_state.as_mut().unwrap();
-        inline.last_frame.clone_from(&frame.lines);
-        inline.reflow_pending = reflow_pending;
         debug_log(format!(
-            "render_inline before_active active_lines={} origin_row={} reflow_pending={}",
-            frame.lines.len(),
-            self.origin_row,
-            inline.reflow_pending
+            "render_inline block_start={} clear_start={} prev_drawn={} prev_cursor_row={} frame_lines={} height={} width={} draw_count={} skip={} cursor={:?} frozen={}",
+            block_start,
+            clear_start_row,
+            prev_drawn,
+            prev_cursor_row,
+            frame_len,
+            height,
+            width,
+            draw_count,
+            skip,
+            frame.cursor,
+            frame.frozen_lines
         ));
 
-        self.render_inline_active(&frame.lines, frame.cursor)
-    }
+        queue!(self.stdout, BeginSynchronizedUpdate, Hide)?;
+        queue!(
+            self.stdout,
+            MoveTo(0, clear_start_row),
+            Clear(ClearType::FromCursorDown)
+        )?;
 
-    /// Render a slice of lines starting at `origin_row`.
-    ///
-    /// Inline mode keeps history by committing frozen lines once. The active
-    /// viewport is then redrawn deterministically from `origin_row` down to
-    /// the bottom of the terminal.
-    fn render_inline_active(
-        &mut self,
-        lines: &[SpanLine],
-        cursor: Option<CursorPos>,
-    ) -> io::Result<()> {
-        let height = self.state.size.height as usize;
-        let width = self.state.size.width;
-
-        let frame_len = lines.len();
-        let mut draw_origin = self.origin_row.min(self.state.size.height.saturating_sub(1));
-        debug_log(format!(
-            "render_inline_active start frame_len={} height={} width={} draw_origin={} cursor={:?}",
-            frame_len, height, width, draw_origin, cursor
-        ));
-
-        // If there is not enough room below origin_row, clamp render origin
-        // upward instead of forcing terminal scroll with trailing newlines.
-        // This avoids bottom-edge artifacts when resizing near shell prompt.
-        let desired_visible = frame_len.min(height);
-        let available = height.saturating_sub(draw_origin as usize);
-        if desired_visible > available {
-            let need = desired_visible.saturating_sub(available);
-            debug_log(format!(
-                "render_inline_active clamp need={} desired_visible={} available={} draw_origin_before={}",
-                need, desired_visible, available, draw_origin
-            ));
-            draw_origin = draw_origin.saturating_sub(need as u16);
-            self.origin_row = draw_origin;
-            debug_log(format!(
-                "render_inline_active clamp done draw_origin_after={} origin_row={}",
-                draw_origin, self.origin_row
-            ));
-        }
-
-        let visible_rows = height.saturating_sub(draw_origin as usize);
-        let skip = frame_len.saturating_sub(visible_rows);
-        let draw_count = frame_len.min(visible_rows);
-
-        // Clear the entire active viewport tail to avoid stale artifacts.
-        for abs_row in draw_origin as usize..height {
-            queue!(
-                self.stdout,
-                MoveTo(0, abs_row as u16),
-                Clear(ClearType::CurrentLine)
-            )?;
-        }
-        for row_idx in 0..draw_count {
-            let abs_row = draw_origin as usize + row_idx;
-            if abs_row >= height {
-                break;
+        for visible_row in 0..draw_count {
+            let target_row = block_start.saturating_add(visible_row) as u16;
+            queue!(self.stdout, MoveTo(0, target_row))?;
+            if let Some(line) = frame.lines.get(skip + visible_row) {
+                self.write_span_line(line, width)?;
             }
-            queue!(self.stdout, MoveTo(0, abs_row as u16))?;
-            let Some(line) = lines.get(skip + row_idx) else {
-                continue;
-            };
-            self.write_span_line(line, width)?;
         }
 
-        self.last_rendered_lines = draw_count;
-        self.last_render_origin_row = draw_origin;
+        let mut next_last_cursor_row = 0u16;
+        let mut next_last_cursor_col = 0u16;
 
-        // ── Position technical tracking cursor ─────────────────────────────
-        // Park cursor at the first row of inline block (never on shell prompt
-        // line above), so history reflow still shifts it but prompt is untouched.
-        let tracking_row = Some(draw_origin);
-        queue!(self.stdout, MoveTo(0, draw_origin), Hide)?;
+        if let Some(cursor) = frame.cursor {
+            let cursor_row = cursor.row as usize;
+            if cursor_row >= skip {
+                let visible_row = cursor_row - skip;
+                let target_row = block_start + visible_row;
+                let col = cursor.col.min(width.saturating_sub(1));
+                next_last_cursor_row = visible_row.min(u16::MAX as usize) as u16;
+                next_last_cursor_col = col;
+                debug_log(format!(
+                    "render_inline cursor: frame_row={} visible_row={} target_row={} col={}",
+                    cursor_row, visible_row, target_row, col
+                ));
+                queue!(self.stdout, MoveTo(col, target_row as u16), Show)?;
+            } else {
+                debug_log(format!(
+                    "render_inline cursor hidden: frame_row={} < skip={}",
+                    cursor_row, skip
+                ));
+                queue!(self.stdout, MoveTo(0, block_start_row), Hide)?;
+            }
+        } else {
+            queue!(self.stdout, MoveTo(0, block_start_row), Hide)?;
+        }
 
-        self.stdout.flush()?;
-        self.last_known_cursor_row = tracking_row;
-        debug_log(format!(
-            "render_inline_active end draw_origin={} draw_count={} tracking_row={:?} logical_cursor={:?} last_known_cursor_row={:?}",
-            draw_origin, draw_count, tracking_row, cursor, self.last_known_cursor_row
-        ));
-        Ok(())
+        if let Some(inline) = self.inline_state.as_mut() {
+            inline.last_drawn_count = draw_count;
+            inline.last_cursor_row = next_last_cursor_row;
+            inline.last_cursor_col = next_last_cursor_col;
+            inline.block_start_row = block_start_row;
+            inline.last_rendered_cursor = frame.cursor;
+            inline.last_rendered_size = self.state.size;
+            inline.has_rendered_once = true;
+        }
+
+        queue!(self.stdout, EndSynchronizedUpdate)?;
+
+        self.stdout.flush()
     }
 }
 
@@ -775,6 +946,48 @@ fn map_key_modifiers(modifiers: CrosstermKeyModifiers) -> KeyModifiers {
     out
 }
 
+fn log_inline_environment() {
+    if std::env::var_os("STEPLY_INLINE_DEBUG").is_none() {
+        return;
+    }
+    let keys = [
+        "STEPLY_TERM",
+        "TERM",
+        "COLORTERM",
+        "TERM_PROGRAM",
+        "TERM_PROGRAM_VERSION",
+        "TMUX",
+        "ZELLIJ",
+        "WEZTERM_PANE",
+        "WT_SESSION",
+        "KITTY_WINDOW_ID",
+        "VTE_VERSION",
+        "WAYLAND_DISPLAY",
+        "DISPLAY",
+    ];
+    let mut parts = Vec::with_capacity(keys.len());
+    for key in keys {
+        let value = std::env::var(key).unwrap_or_else(|_| "-".to_string());
+        parts.push(format!("{key}={value}"));
+    }
+    debug_log(format!("inline_env {}", parts.join(" ")));
+}
+
+fn debug_log(message: impl std::fmt::Display) {
+    if std::env::var_os("STEPLY_INLINE_DEBUG").is_none() {
+        return;
+    }
+    let log_path = std::env::var("STEPLY_INLINE_LOG")
+        .unwrap_or_else(|_| format!("/tmp/steply-inline-{}.log", process::id()));
+    let ts_ms = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_millis())
+        .unwrap_or(0);
+    if let Ok(mut f) = OpenOptions::new().create(true).append(true).open(log_path) {
+        let _ = writeln!(f, "[{}][pid={}] {}", ts_ms, process::id(), message);
+    }
+}
+
 fn clip_to_width(text: &str, max_width: usize) -> String {
     if max_width == 0 {
         return String::new();
@@ -792,15 +1005,204 @@ fn clip_to_width(text: &str, max_width: usize) -> String {
     out
 }
 
-fn debug_log(message: impl AsRef<str>) {
-    if std::env::var_os("STEPLY_INLINE_DEBUG").is_none() {
-        return;
+fn estimate_self_reflow_cursor_delta(inline: &InlineState, new_width: u16) -> i32 {
+    if !inline.has_rendered_once || inline.last_drawn_count == 0 {
+        return 0;
     }
-    if let Ok(mut f) = OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open("/tmp/steply-inline.log")
-    {
-        let _ = writeln!(f, "{}", message.as_ref());
+    let old_width = inline.last_rendered_size.width;
+    if old_width == 0 || new_width == 0 {
+        return 0;
+    }
+
+    let old_skip = inline.last_frame.len().saturating_sub(inline.last_drawn_count);
+    let visible_lines = &inline.last_frame[old_skip..];
+    if visible_lines.is_empty() {
+        return 0;
+    }
+
+    let cursor = match inline.last_rendered_cursor {
+        Some(cursor) => cursor,
+        None => return 0,
+    };
+    let cursor_abs_row = cursor.row as usize;
+    if cursor_abs_row < old_skip {
+        return 0;
+    }
+    let cursor_visible_row = inline
+        .last_cursor_row
+        .min(visible_lines.len().saturating_sub(1) as u16) as usize;
+
+    let new_width_usize = new_width as usize;
+    let mut new_row = 0usize;
+    for line in visible_lines.iter().take(cursor_visible_row) {
+        let width = rendered_line_width(line, old_width);
+        new_row = new_row.saturating_add(wrapped_rows(width, new_width_usize));
+    }
+
+    if visible_lines.get(cursor_visible_row).is_none() {
+        return 0;
+    }
+    // Use the actual cursor column that was moved to during the last render,
+    // not the raw frame cursor. This mirrors the probe row that `position()`
+    // measures after resize.
+    let prefix = inline
+        .last_cursor_col
+        .min(old_width.saturating_sub(1)) as usize;
+    new_row = new_row.saturating_add(prefix / new_width_usize);
+
+    new_row as i32 - cursor_visible_row as i32
+}
+
+fn rendered_line_width(line: &SpanLine, old_width: u16) -> usize {
+    let render_width = if old_width > 1 {
+        (old_width - 1) as usize
+    } else {
+        old_width as usize
+    };
+    if render_width == 0 {
+        return 0;
+    }
+
+    let mut used = 0usize;
+    for span in line {
+        if used >= render_width {
+            break;
+        }
+        let available = render_width.saturating_sub(used);
+        let mut span_used = 0usize;
+        for ch in span.text.chars().filter(|ch| !matches!(ch, '\n' | '\r')) {
+            let ch_width = UnicodeWidthChar::width(ch).unwrap_or(0);
+            if span_used.saturating_add(ch_width) > available {
+                break;
+            }
+            span_used = span_used.saturating_add(ch_width);
+        }
+        used = used.saturating_add(span_used);
+    }
+    used
+}
+
+fn wrapped_rows(line_width: usize, width: usize) -> usize {
+    if width == 0 {
+        return 0;
+    }
+    if line_width == 0 {
+        return 1;
+    }
+    (line_width.saturating_sub(1) / width).saturating_add(1)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        CursorPos, InlineState, TerminalSize, estimate_self_reflow_cursor_delta, plan_inline_layout,
+    };
+    use crate::ui::span::{Span, SpanLine};
+
+    fn line_with_width(width: usize) -> SpanLine {
+        vec![Span::new("x".repeat(width))]
+    }
+
+    #[test]
+    fn inline_layout_keeps_anchor_when_frame_fits() {
+        let plan = plan_inline_layout(24, 8, 10);
+        assert_eq!(plan.block_start_row, 10);
+        assert_eq!(plan.clear_start_row, 10);
+        assert_eq!(plan.draw_count, 8);
+        assert_eq!(plan.skip, 0);
+    }
+
+    #[test]
+    fn inline_layout_shifts_up_when_not_enough_space() {
+        let plan = plan_inline_layout(24, 10, 18);
+        assert_eq!(plan.block_start_row, 14);
+        assert_eq!(plan.clear_start_row, 14);
+        assert_eq!(plan.draw_count, 10);
+        assert_eq!(plan.skip, 0);
+    }
+
+    #[test]
+    fn inline_layout_shows_tail_when_frame_is_taller_than_terminal() {
+        let plan = plan_inline_layout(24, 40, 5);
+        assert_eq!(plan.block_start_row, 0);
+        assert_eq!(plan.clear_start_row, 0);
+        assert_eq!(plan.draw_count, 24);
+        assert_eq!(plan.skip, 16);
+    }
+
+    #[test]
+    fn inline_layout_clamps_out_of_range_anchor() {
+        let plan = plan_inline_layout(10, 3, 20);
+        assert_eq!(plan.block_start_row, 7);
+        assert_eq!(plan.clear_start_row, 7);
+        assert_eq!(plan.draw_count, 3);
+        assert_eq!(plan.skip, 0);
+    }
+
+    #[test]
+    fn self_reflow_delta_counts_new_wrap_rows_before_cursor() {
+        let mut inline = InlineState::new();
+        inline.has_rendered_once = true;
+        inline.last_drawn_count = 5;
+        inline.last_cursor_row = 4;
+        inline.last_cursor_col = 14;
+        inline.last_rendered_size = TerminalSize {
+            width: 83,
+            height: 24,
+        };
+        inline.last_rendered_cursor = Some(CursorPos { col: 14, row: 4 });
+        inline.last_frame = vec![
+            line_with_width(1),
+            line_with_width(82),
+            line_with_width(1),
+            line_with_width(1),
+            line_with_width(12),
+        ];
+
+        // Shrink 83 -> 81. The second line (82 cols) gains one wrapped row.
+        assert_eq!(estimate_self_reflow_cursor_delta(&inline, 81), 1);
+    }
+
+    #[test]
+    fn self_reflow_delta_uses_actual_rendered_cursor_col() {
+        let mut inline = InlineState::new();
+        inline.has_rendered_once = true;
+        inline.last_drawn_count = 3;
+        inline.last_cursor_row = 2;
+        inline.last_cursor_col = 10;
+        inline.last_rendered_size = TerminalSize {
+            width: 40,
+            height: 24,
+        };
+        // Raw frame cursor can be far to the right, but probe is at
+        // `last_cursor_col` (actual MoveTo col used in render pass).
+        inline.last_rendered_cursor = Some(CursorPos { col: 70, row: 2 });
+        inline.last_frame = vec![line_with_width(1), line_with_width(1), line_with_width(1)];
+
+        assert_eq!(estimate_self_reflow_cursor_delta(&inline, 8), 1);
+    }
+
+    #[test]
+    fn self_reflow_delta_is_zero_when_cursor_not_in_visible_tail() {
+        let mut inline = InlineState::new();
+        inline.has_rendered_once = true;
+        inline.last_drawn_count = 3;
+        inline.last_cursor_row = 0;
+        inline.last_cursor_col = 0;
+        inline.last_rendered_size = TerminalSize {
+            width: 80,
+            height: 24,
+        };
+        // Cursor was above visible tail, so the probe sat at block start.
+        inline.last_rendered_cursor = Some(CursorPos { col: 0, row: 0 });
+        inline.last_frame = vec![
+            line_with_width(10),
+            line_with_width(10),
+            line_with_width(10),
+            line_with_width(10),
+            line_with_width(10),
+        ];
+
+        assert_eq!(estimate_self_reflow_cursor_delta(&inline, 60), 0);
     }
 }

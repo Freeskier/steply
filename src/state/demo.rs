@@ -1,10 +1,12 @@
 use crate::core::value::Value;
+use crate::core::value_path::ValuePath;
 use crate::state::flow::Flow;
 use crate::state::step::{Step, StepNavigation};
 use crate::task::{TaskAssign, TaskParse, TaskSpec, TaskSubscription, TaskTrigger};
 use crate::widgets::components::calendar::{Calendar, CalendarMode};
 use crate::widgets::components::file_browser::FileBrowserInput;
 use crate::widgets::components::object_editor::ObjectEditor;
+use crate::widgets::components::repeater::{Repeater, RepeaterLayout};
 use crate::widgets::components::select_list::SelectList;
 use crate::widgets::components::select_list::{SelectMode, SelectOption};
 use crate::widgets::components::snippet::Snippet;
@@ -30,6 +32,43 @@ use crate::widgets::outputs::progress::{
 use crate::widgets::outputs::task_log::{TaskLog, TaskLogStep};
 use crate::widgets::outputs::text::TextOutput;
 use crate::widgets::validators;
+
+// ── Snippet ───────────────────────────────────────────────────────────────────
+
+fn step_repeater() -> Step {
+    Step::new(
+        "step_repeater",
+        "Repeater",
+        vec![
+            Node::Output(Box::new(TextOutput::new(
+                "rep_intro",
+                "Configure fields for each person. Enter/Tab advances to next field or item.",
+            ))),
+            Node::Component(Box::new(
+                Repeater::new("rep_accounts", "Accounts setup")
+                    .with_layout(RepeaterLayout::Stacked)
+                    .with_header_template("configuring [{index} of {total}] for {item}:")
+                    .with_items(vec![
+                        Value::Text("Kasia".into()),
+                        Value::Text("Jas".into()),
+                        Value::Text("Zosia".into()),
+                    ])
+                    .field("path", "Path", TextInput::new)
+                    .field("password", "Password", |id, label| {
+                        TextInput::new(id, label).with_mode(TextMode::Password)
+                    })
+                    .field("priority", "Priority", |id, label| {
+                        SliderInput::new(id, label, 0, 100).with_step(5)
+                    })
+                    .with_submit_target_path(
+                        "demo_data",
+                        ValuePath::parse_relative("repeater.accounts").expect("valid path"),
+                    ),
+            )),
+        ],
+    )
+    .with_hint("Enter/Tab -> next field/item  •  Shift+Tab -> previous  •  final Enter submits")
+}
 
 // ── Snippet ───────────────────────────────────────────────────────────────────
 
@@ -723,6 +762,7 @@ fn step_validation_demo() -> Step {
 
 pub fn build_demo_flow() -> Flow {
     Flow::new(vec![
+        step_repeater(),
         step_text_inputs(),
         step_structured_inputs(),
         step_toggles(),

@@ -2,6 +2,7 @@ pub mod calendar;
 pub mod file_browser;
 pub mod object_editor;
 pub mod overlay;
+pub mod repeater;
 pub mod scroll;
 pub mod select_list;
 pub mod snippet;

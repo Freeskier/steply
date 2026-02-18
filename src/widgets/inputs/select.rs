@@ -1,6 +1,6 @@
+use crate::core::NodeId;
 use crate::core::value::Value;
 use crate::core::value_path::{ValuePath, ValueTarget};
-use crate::core::NodeId;
 use crate::terminal::{KeyCode, KeyEvent};
 use crate::ui::span::Span;
 use crate::ui::style::Style;
@@ -155,6 +155,9 @@ impl Interactive for SelectInput {
     }
 
     fn validate(&self, _mode: ValidationMode) -> Result<(), String> {
-        run_validators(&self.validators, &Value::Text(self.selected_text().to_string()))
+        run_validators(
+            &self.validators,
+            &Value::Text(self.selected_text().to_string()),
+        )
     }
 }

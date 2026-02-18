@@ -91,11 +91,18 @@ impl KeyBindings {
         );
         self.bind(KeyBinding::key(KeyCode::Esc), Intent::Cancel);
         self.bind(KeyBinding::alt(KeyCode::Left), Intent::Back);
-        self.bind(KeyBinding::key(KeyCode::Tab), Intent::NextFocus);
+        self.bind(KeyBinding::key(KeyCode::Tab), Intent::CompleteNext);
+        // Toggle completion menu/ghost for focused input.
+        self.bind(
+            KeyBinding::ctrl(KeyCode::Char(' ')),
+            Intent::ToggleCompletion,
+        );
         self.bind(
             KeyBinding::new(KeyCode::BackTab, KeyModifiers::SHIFT),
-            Intent::PrevFocus,
+            Intent::CompletePrev,
         );
+        self.bind(KeyBinding::alt(KeyCode::Down), Intent::NextFocus);
+        self.bind(KeyBinding::alt(KeyCode::Up), Intent::PrevFocus);
         self.bind(
             KeyBinding::ctrl(KeyCode::Left),
             Intent::TextAction(TextAction::MoveWordLeft),

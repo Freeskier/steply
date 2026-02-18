@@ -3,13 +3,31 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EntryKind {
+    Dir,
+    File,
+    SymlinkDir,
+    SymlinkFile,
+}
+
+impl EntryKind {
+    pub fn is_dir(self) -> bool {
+        matches!(self, Self::Dir | Self::SymlinkDir)
+    }
+
+    pub fn is_symlink(self) -> bool {
+        matches!(self, Self::SymlinkDir | Self::SymlinkFile)
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct FileEntry {
     pub name: String,
     pub name_lower: String,
     pub ext_lower: Option<String>,
     pub path: Arc<PathBuf>,
-    pub is_dir: bool,
+    pub kind: EntryKind,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -19,9 +37,9 @@ pub enum EntryFilter {
     DirsOnly,
 }
 
-pub fn build_entry(name: String, path: PathBuf, is_dir: bool) -> FileEntry {
+pub fn build_entry(name: String, path: PathBuf, kind: EntryKind) -> FileEntry {
     let name_lower = name.to_ascii_lowercase();
-    let ext_lower = if is_dir {
+    let ext_lower = if kind.is_dir() {
         None
     } else {
         name.rsplit_once('.')
@@ -33,7 +51,7 @@ pub fn build_entry(name: String, path: PathBuf, is_dir: bool) -> FileEntry {
         name_lower,
         ext_lower,
         path: Arc::new(path),
-        is_dir,
+        kind,
     }
 }
 
@@ -42,12 +60,12 @@ pub fn list_dir(dir: &Path, hide_hidden: bool) -> Vec<FileEntry> {
     if let Ok(rd) = fs::read_dir(dir) {
         for entry in rd.flatten() {
             let path = entry.path();
-            let is_dir = entry.file_type().map(|t| t.is_dir()).unwrap_or(false);
+            let kind = classify_entry_kind(&entry);
             let name = entry.file_name().to_string_lossy().to_string();
             if hide_hidden && name.starts_with('.') {
                 continue;
             }
-            entries.push(build_entry(name, path, is_dir));
+            entries.push(build_entry(name, path, kind));
         }
     }
     entries.sort_by(entry_sort);
@@ -65,13 +83,13 @@ fn list_dir_recursive_inner(dir: &Path, entries: &mut Vec<FileEntry>, hide_hidde
     let Ok(rd) = fs::read_dir(dir) else { return };
     for entry in rd.flatten() {
         let path = entry.path();
-        let is_dir = entry.file_type().map(|t| t.is_dir()).unwrap_or(false);
+        let kind = classify_entry_kind(&entry);
         let name = entry.file_name().to_string_lossy().to_string();
         if hide_hidden && name.starts_with('.') {
             continue;
         }
-        entries.push(build_entry(name, path.clone(), is_dir));
-        if is_dir {
+        entries.push(build_entry(name, path.clone(), kind));
+        if kind.is_dir() {
             list_dir_recursive_inner(&path, entries, hide_hidden);
         }
     }
@@ -84,12 +102,12 @@ pub fn filter_entries(
 ) -> Vec<FileEntry> {
     entries.retain(|e| match entry_filter {
         EntryFilter::All => true,
-        EntryFilter::FilesOnly => !e.is_dir,
-        EntryFilter::DirsOnly => e.is_dir,
+        EntryFilter::FilesOnly => !e.kind.is_dir(),
+        EntryFilter::DirsOnly => e.kind.is_dir(),
     });
     if let Some(exts) = ext_filter {
         entries.retain(|e| {
-            e.is_dir
+            e.kind.is_dir()
                 || e.ext_lower
                     .as_ref()
                     .map(|ext| exts.contains(ext))
@@ -100,9 +118,30 @@ pub fn filter_entries(
 }
 
 pub fn entry_sort(a: &FileEntry, b: &FileEntry) -> std::cmp::Ordering {
-    match (a.is_dir, b.is_dir) {
+    match (a.kind.is_dir(), b.kind.is_dir()) {
         (true, false) => std::cmp::Ordering::Less,
         (false, true) => std::cmp::Ordering::Greater,
         _ => a.name_lower.cmp(&b.name_lower),
+    }
+}
+
+fn classify_entry_kind(entry: &fs::DirEntry) -> EntryKind {
+    let Ok(ft) = entry.file_type() else {
+        return EntryKind::File;
+    };
+    if ft.is_symlink() {
+        // Follow symlink target to preserve dir/file behavior in browser logic.
+        let target_is_dir = fs::metadata(entry.path())
+            .map(|m| m.is_dir())
+            .unwrap_or(false);
+        if target_is_dir {
+            EntryKind::SymlinkDir
+        } else {
+            EntryKind::SymlinkFile
+        }
+    } else if ft.is_dir() {
+        EntryKind::Dir
+    } else {
+        EntryKind::File
     }
 }

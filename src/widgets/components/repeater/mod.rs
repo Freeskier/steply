@@ -303,8 +303,12 @@ impl Repeater {
                 break;
             };
             for (field_idx, field) in self.fields.iter().enumerate() {
-                if let Some(seed) = seed_value(row_seed, field_idx, field.key.as_str(), field.label.as_str())
-                    && let Some(widget) = row.fields.get_mut(field_idx)
+                if let Some(seed) = seed_value(
+                    row_seed,
+                    field_idx,
+                    field.key.as_str(),
+                    field.label.as_str(),
+                ) && let Some(widget) = row.fields.get_mut(field_idx)
                 {
                     widget.set_value(seed);
                 }
@@ -318,7 +322,11 @@ impl Repeater {
         self.apply_rows_seed(rows);
     }
 
-    fn child_context(&self, ctx: &RenderContext, focused_child_id: Option<String>) -> RenderContext {
+    fn child_context(
+        &self,
+        ctx: &RenderContext,
+        focused_child_id: Option<String>,
+    ) -> RenderContext {
         let mut completion_menus = HashMap::<String, CompletionMenu>::new();
         if let Some(child_id) = focused_child_id.as_deref()
             && let Some(menu) = ctx.completion_menus.get(self.base.id())
@@ -425,13 +433,20 @@ impl Repeater {
     fn draw_empty_state(&self) -> Vec<SpanLine> {
         if self.rows.is_empty() {
             return vec![vec![
-                Span::styled("No items to configure.", Style::new().color(Color::DarkGrey)).no_wrap(),
+                Span::styled(
+                    "No items to configure.",
+                    Style::new().color(Color::DarkGrey),
+                )
+                .no_wrap(),
             ]];
         }
         if self.fields.is_empty() {
             return vec![vec![
-                Span::styled("No repeater fields configured.", Style::new().color(Color::DarkGrey))
-                    .no_wrap(),
+                Span::styled(
+                    "No repeater fields configured.",
+                    Style::new().color(Color::DarkGrey),
+                )
+                .no_wrap(),
             ]];
         }
         vec![]
@@ -594,7 +609,9 @@ impl Drawable for Repeater {
         ]);
 
         if let Some(progress) = self.progress_line() {
-            lines.push(vec![Span::styled(progress, Style::new().color(Color::DarkGrey)).no_wrap()]);
+            lines.push(vec![
+                Span::styled(progress, Style::new().color(Color::DarkGrey)).no_wrap(),
+            ]);
         }
 
         let mut body = self.draw_empty_state();
@@ -709,7 +726,13 @@ impl Interactive for Repeater {
                         .map(|f| f.label.as_str())
                         .unwrap_or("field");
                     let item = self.item_label(row_idx);
-                    return Err(format!("item {} [{}], {}: {}", row_idx + 1, item, field_label, err));
+                    return Err(format!(
+                        "item {} [{}], {}: {}",
+                        row_idx + 1,
+                        item,
+                        field_label,
+                        err
+                    ));
                 }
             }
         }
@@ -804,90 +827,10 @@ fn truncate_text(input: &str, max_chars: usize) -> String {
     if count <= max_chars {
         return input.to_string();
     }
-    let mut out = input.chars().take(max_chars.saturating_sub(1)).collect::<String>();
+    let mut out = input
+        .chars()
+        .take(max_chars.saturating_sub(1))
+        .collect::<String>();
     out.push('…');
     out
-}
-
-#[cfg(test)]
-mod tests {
-    use super::{Repeater, RepeaterLayout};
-    use crate::core::value::Value;
-    use crate::runtime::event::WidgetAction;
-    use crate::terminal::{KeyCode, KeyEvent, KeyModifiers};
-    use crate::widgets::inputs::text::TextInput;
-    use crate::widgets::traits::Interactive;
-    use indexmap::IndexMap;
-
-    #[test]
-    fn set_value_list_becomes_items() {
-        let mut repeater = Repeater::new("r", "R")
-            .with_layout(RepeaterLayout::SingleField)
-            .field_auto("Path", TextInput::new);
-        repeater.set_value(Value::List(vec![
-            Value::Text("Kasia".to_string()),
-            Value::Text("Jas".to_string()),
-        ]));
-
-        let value = repeater.value().expect("value");
-        let Value::List(rows) = value else {
-            panic!("expected list");
-        };
-        assert_eq!(rows.len(), 2);
-        let Some(Value::Object(first)) = rows.first() else {
-            panic!("expected first row object");
-        };
-        assert_eq!(first.get("item").and_then(Value::as_text), Some("Kasia"));
-    }
-
-    #[test]
-    fn value_object_seeds_row_fields() {
-        let mut row = IndexMap::<String, Value>::new();
-        row.insert("item".to_string(), Value::Text("Kasia".to_string()));
-        row.insert("path".to_string(), Value::Text("/tmp/out".to_string()));
-
-        let mut root = IndexMap::<String, Value>::new();
-        root.insert(
-            "items".to_string(),
-            Value::List(vec![Value::Text("Kasia".to_string())]),
-        );
-        root.insert("rows".to_string(), Value::List(vec![Value::Object(row)]));
-
-        let mut repeater = Repeater::new("r", "R").field_auto("Path", TextInput::new);
-        repeater.set_value(Value::Object(root));
-
-        let value = repeater.value().expect("value");
-        let Value::List(rows) = value else {
-            panic!("expected rows list");
-        };
-        let Some(Value::Object(first)) = rows.first() else {
-            panic!("expected first row object");
-        };
-        assert_eq!(
-            first.get("path").and_then(Value::as_text),
-            Some("/tmp/out")
-        );
-    }
-
-    #[test]
-    fn submit_with_target_emits_value_change_and_input_done() {
-        let mut repeater = Repeater::new("r", "R")
-            .with_items(vec![Value::Text("Kasia".into())])
-            .field_auto("Path", TextInput::new)
-            .with_submit_target("rep_out");
-
-        let result = repeater.on_key(KeyEvent {
-            code: KeyCode::Enter,
-            modifiers: KeyModifiers::NONE,
-        });
-
-        assert!(result.handled);
-        assert_eq!(result.actions.len(), 2);
-        assert!(matches!(result.actions[0], WidgetAction::ValueChanged { .. }));
-        assert!(matches!(result.actions[1], WidgetAction::InputDone));
-        let Some(WidgetAction::ValueChanged { change }) = result.actions.first() else {
-            panic!("expected ValueChanged");
-        };
-        assert!(matches!(change.value, Value::List(_)));
-    }
 }

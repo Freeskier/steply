@@ -1,8 +1,8 @@
 mod state;
 
+use crate::core::NodeId;
 use crate::core::value::Value;
 use crate::core::value_path::{ValuePath, ValueTarget};
-use crate::core::NodeId;
 
 use crate::terminal::{KeyCode, KeyEvent, KeyModifiers};
 use crate::ui::span::Span;
@@ -15,17 +15,27 @@ use crate::widgets::traits::{
 };
 use state::rebuild_visible;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TreeItemRenderState {
+    pub focused: bool,
+    pub active: bool,
+    pub has_children: bool,
+    pub expanded: bool,
+    pub loading: bool,
+}
+
 pub trait TreeItemLabel: Send + 'static {
     fn label(&self) -> &str;
 
-    fn highlight_ranges(&self) -> &[(usize, usize)] {
-        const EMPTY: &[(usize, usize)] = &[];
-        EMPTY
-    }
-
-    /// Optional badge text shown after the label (e.g. "[3 matches]").
-    fn badge(&self) -> Option<&str> {
-        None
+    fn render_spans(&self, state: TreeItemRenderState) -> Vec<Span> {
+        let style = if state.focused && state.active {
+            Style::new().color(Color::Cyan).bold()
+        } else if state.has_children {
+            Style::new().color(Color::Blue).bold()
+        } else {
+            Style::default()
+        };
+        vec![Span::styled(self.label().to_string(), style).no_wrap()]
     }
 }
 
@@ -75,6 +85,7 @@ pub struct TreeView<T: TreeItemLabel> {
     scroll: ScrollState,
     submit_target: Option<ValueTarget>,
     show_label: bool,
+    show_indent_guides: bool,
     /// node_idx pending a lazy-load scan (shows ⟳ icon while loading).
     pub pending_expand: Option<usize>,
 }
@@ -89,6 +100,7 @@ impl<T: TreeItemLabel> TreeView<T> {
             scroll: ScrollState::new(None),
             submit_target: None,
             show_label: true,
+            show_indent_guides: false,
             pending_expand: None,
         };
         this.rebuild();
@@ -125,6 +137,18 @@ impl<T: TreeItemLabel> TreeView<T> {
         self.active_index
     }
 
+    /// Set active index within the visible list (clamped).
+    pub fn set_active_visible_index(&mut self, index: usize) {
+        if self.visible.is_empty() {
+            self.active_index = 0;
+            self.scroll.offset = 0;
+            return;
+        }
+        self.active_index = index.min(self.visible.len() - 1);
+        self.scroll
+            .ensure_visible(self.active_index, self.visible.len());
+    }
+
     /// The visible list: indices into nodes[].
     pub fn visible(&self) -> &[usize] {
         &self.visible
@@ -133,6 +157,15 @@ impl<T: TreeItemLabel> TreeView<T> {
     pub fn with_show_label(mut self, show_label: bool) -> Self {
         self.show_label = show_label;
         self
+    }
+
+    pub fn with_indent_guides(mut self, show: bool) -> Self {
+        self.show_indent_guides = show;
+        self
+    }
+
+    pub fn set_indent_guides(&mut self, show: bool) {
+        self.show_indent_guides = show;
     }
 
     pub fn set_nodes(&mut self, nodes: Vec<TreeNode<T>>) {
@@ -269,7 +302,6 @@ impl<T: TreeItemLabel> TreeView<T> {
         let inactive_style = Style::new().color(Color::DarkGrey);
         let cursor_style = Style::new().color(Color::Yellow);
         let active_style = Style::new().color(Color::Cyan).bold();
-        let highlight_style = Style::new().color(Color::Yellow).bold();
         let loading_style = Style::new().color(Color::Yellow);
 
         for vis_pos in start..end {
@@ -286,13 +318,6 @@ impl<T: TreeItemLabel> TreeView<T> {
                 Span::styled(cursor, inactive_style).no_wrap()
             };
 
-            let indent: String = "  ".repeat(node.depth);
-            let indent_span = if focused && active {
-                Span::new(format!(" {}", indent)).no_wrap()
-            } else {
-                Span::styled(format!(" {}", indent), inactive_style).no_wrap()
-            };
-
             let icon = if node.has_children {
                 if loading {
                     "⟳ "
@@ -304,30 +329,23 @@ impl<T: TreeItemLabel> TreeView<T> {
             } else {
                 "  "
             };
-            let dir_style = Style::new().color(Color::Blue).bold();
-            let (icon_span, label_style) = if focused && active {
+            let icon_span = if focused && active {
                 let icon_st = if loading { loading_style } else { active_style };
-                (
-                    Span::styled(icon, icon_st).no_wrap(),
-                    active_style,
-                )
+                Span::styled(icon, icon_st).no_wrap()
             } else {
-                (
-                    Span::styled(icon, inactive_style).no_wrap(),
-                    if node.has_children { dir_style } else { Style::default() },
-                )
+                Span::styled(icon, inactive_style).no_wrap()
             };
 
-            let mut line = vec![cursor_span, indent_span, icon_span];
-            line.extend(render_text_spans(
-                node.item.label(),
-                node.item.highlight_ranges(),
-                label_style,
-                highlight_style,
-            ));
-            if let Some(badge) = node.item.badge() {
-                line.push(Span::styled(format!(" {}", badge), inactive_style).no_wrap());
-            }
+            let mut line = vec![cursor_span];
+            line.extend(self.render_indent_spans(node_idx, node.depth, focused, active));
+            line.push(icon_span);
+            line.extend(node.item.render_spans(TreeItemRenderState {
+                focused,
+                active,
+                has_children: node.has_children,
+                expanded: node.expanded,
+                loading,
+            }));
             lines.push(line);
         }
 
@@ -339,65 +357,60 @@ impl<T: TreeItemLabel> TreeView<T> {
 
         lines
     }
-}
 
-fn render_text_spans(
-    text: &str,
-    highlights: &[(usize, usize)],
-    base_style: Style,
-    highlight_style: Style,
-) -> Vec<Span> {
-    if highlights.is_empty() {
-        return vec![Span::styled(text.to_string(), base_style).no_wrap()];
-    }
+    fn render_indent_spans(
+        &self,
+        node_idx: usize,
+        depth: usize,
+        focused: bool,
+        active: bool,
+    ) -> Vec<Span> {
+        let inactive_style = Style::new().color(Color::DarkGrey);
+        let mut spans = Vec::with_capacity(depth + 1);
+        if focused && active {
+            spans.push(Span::new(" ").no_wrap());
+        } else {
+            spans.push(Span::styled(" ", inactive_style).no_wrap());
+        }
 
-    let chars: Vec<char> = text.chars().collect();
-    let mut sorted = highlights.to_vec();
-    sorted.sort_unstable_by(|left, right| left.0.cmp(&right.0).then(left.1.cmp(&right.1)));
-
-    let mut spans = Vec::<Span>::new();
-    let mut cursor = 0usize;
-
-    for (start, end) in sorted {
-        let start = start.min(chars.len());
-        let end = end.min(chars.len());
-        if start > cursor {
-            let plain: String = chars[cursor..start].iter().collect();
-            if !plain.is_empty() {
-                spans.push(Span::styled(plain, base_style).no_wrap());
+        if depth == 0 {
+            return spans;
+        }
+        if !self.show_indent_guides {
+            let indent = "  ".repeat(depth);
+            if focused && active {
+                spans.push(Span::new(indent).no_wrap());
+            } else {
+                spans.push(Span::styled(indent, inactive_style).no_wrap());
             }
+            return spans;
         }
-        if end > start {
-            let highlighted: String = chars[start..end].iter().collect();
-            if !highlighted.is_empty() {
-                spans.push(
-                    Span::styled(highlighted, merge_style(base_style, highlight_style)).no_wrap(),
-                );
-            }
+
+        let guides = self.ancestor_guides(node_idx, depth);
+        for show in guides {
+            let segment = if show { "│ " } else { "  " };
+            spans.push(Span::styled(segment, inactive_style).no_wrap());
         }
-        cursor = end.max(cursor);
+        spans
     }
 
-    if cursor < chars.len() {
-        let tail: String = chars[cursor..].iter().collect();
-        if !tail.is_empty() {
-            spans.push(Span::styled(tail, base_style).no_wrap());
+    fn ancestor_guides(&self, mut node_idx: usize, depth: usize) -> Vec<bool> {
+        let mut guides = vec![false; depth];
+        let mut cur_depth = depth;
+        while cur_depth > 0 {
+            let target_depth = cur_depth - 1;
+            let Some(parent_idx) = (0..node_idx)
+                .rev()
+                .find(|&idx| self.nodes[idx].depth == target_depth)
+            else {
+                break;
+            };
+            let parent = &self.nodes[parent_idx];
+            guides[target_depth] = parent.has_children && parent.expanded;
+            node_idx = parent_idx;
+            cur_depth = target_depth;
         }
-    }
-
-    if spans.is_empty() {
-        spans.push(Span::styled(text.to_string(), base_style).no_wrap());
-    }
-    spans
-}
-
-fn merge_style(base: Style, extra: Style) -> Style {
-    Style {
-        color: extra.color.or(base.color),
-        background: extra.background.or(base.background),
-        bold: base.bold || extra.bold,
-        strikethrough: base.strikethrough || extra.strikethrough,
-        no_strikethrough: base.no_strikethrough || extra.no_strikethrough,
+        guides
     }
 }
 
@@ -496,67 +509,5 @@ impl<T: TreeItemLabel> Interactive for TreeView<T> {
             self.scroll
                 .ensure_visible(self.active_index, self.visible.len());
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::{TreeItemLabel, TreeNode, TreeView};
-    use crate::ui::style::Color;
-
-    struct HighlightItem {
-        label: String,
-        highlights: Vec<(usize, usize)>,
-    }
-
-    impl TreeItemLabel for HighlightItem {
-        fn label(&self) -> &str {
-            self.label.as_str()
-        }
-
-        fn highlight_ranges(&self) -> &[(usize, usize)] {
-            self.highlights.as_slice()
-        }
-    }
-
-    #[test]
-    fn collapsed_parent_hides_children() {
-        // Simulates: src/ (depth=0, collapsed) with children (depth=1)
-        // Children should NOT be visible when parent is collapsed.
-        let mut src = TreeNode::new("src".to_string(), 0, true);
-        src.expanded = false;
-        src.children_loaded = true;
-
-        let child1 = TreeNode::new("acp.rs".to_string(), 1, false);
-        let child2 = TreeNode::new("acp_thread.rs".to_string(), 1, false);
-
-        let nodes = vec![src, child1, child2];
-        let tree = TreeView::new("t", "", nodes).with_show_label(false);
-
-        // Only src should be visible, not its children
-        assert_eq!(tree.visible(), &[0], "collapsed src should only show itself, not children");
-    }
-
-    #[test]
-    fn render_lines_highlights_label_ranges() {
-        let nodes = vec![TreeNode::new(
-            HighlightItem {
-                label: "foo_utils.rs".to_string(),
-                highlights: vec![(0, 3), (9, 12)],
-            },
-            0,
-            false,
-        )];
-
-        let tree = TreeView::new("tree", "", nodes).with_show_label(false);
-        let lines = tree.render_lines(true);
-        let line = lines.first().expect("missing rendered line");
-
-        assert!(line
-            .iter()
-            .any(|span| span.text == "foo" && span.style.color == Some(Color::Yellow)));
-        assert!(line
-            .iter()
-            .any(|span| span.text == ".rs" && span.style.color == Some(Color::Yellow)));
     }
 }

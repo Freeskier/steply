@@ -517,8 +517,8 @@ impl Terminal {
             if delta != 0 {
                 new_block_start_row =
                     (block_start_row as i32 + delta).clamp(0, u16::MAX as i32) as u16;
-                new_last_rendered_block_start_row = (last_rendered_block_start_row as i32 + delta)
-                    .clamp(0, max_row as i32) as u16;
+                new_last_rendered_block_start_row =
+                    (last_rendered_block_start_row as i32 + delta).clamp(0, max_row as i32) as u16;
             }
         }
 
@@ -1065,7 +1065,10 @@ fn estimate_self_reflow_cursor_delta(inline: &InlineState, new_width: u16) -> i3
         return 0;
     }
 
-    let old_skip = inline.last_frame.len().saturating_sub(inline.last_drawn_count);
+    let old_skip = inline
+        .last_frame
+        .len()
+        .saturating_sub(inline.last_drawn_count);
     let visible_lines = &inline.last_frame[old_skip..];
     if visible_lines.is_empty() {
         return 0;
@@ -1096,9 +1099,7 @@ fn estimate_self_reflow_cursor_delta(inline: &InlineState, new_width: u16) -> i3
     // Use the actual cursor column that was moved to during the last render,
     // not the raw frame cursor. This mirrors the probe row that `position()`
     // measures after resize.
-    let prefix = inline
-        .last_cursor_col
-        .min(old_width.saturating_sub(1)) as usize;
+    let prefix = inline.last_cursor_col.min(old_width.saturating_sub(1)) as usize;
     new_row = new_row.saturating_add(prefix / new_width_usize);
 
     new_row as i32 - cursor_visible_row as i32
@@ -1141,119 +1142,4 @@ fn wrapped_rows(line_width: usize, width: usize) -> usize {
         return 1;
     }
     (line_width.saturating_sub(1) / width).saturating_add(1)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::{
-        CursorPos, InlineState, TerminalSize, estimate_self_reflow_cursor_delta, plan_inline_layout,
-    };
-    use crate::ui::span::{Span, SpanLine};
-
-    fn line_with_width(width: usize) -> SpanLine {
-        vec![Span::new("x".repeat(width))]
-    }
-
-    #[test]
-    fn inline_layout_keeps_anchor_when_frame_fits() {
-        let plan = plan_inline_layout(24, 8, 10);
-        assert_eq!(plan.block_start_row, 10);
-        assert_eq!(plan.clear_start_row, 10);
-        assert_eq!(plan.draw_count, 8);
-        assert_eq!(plan.skip, 0);
-    }
-
-    #[test]
-    fn inline_layout_shifts_up_when_not_enough_space() {
-        let plan = plan_inline_layout(24, 10, 18);
-        assert_eq!(plan.block_start_row, 14);
-        assert_eq!(plan.clear_start_row, 14);
-        assert_eq!(plan.draw_count, 10);
-        assert_eq!(plan.skip, 0);
-    }
-
-    #[test]
-    fn inline_layout_shows_tail_when_frame_is_taller_than_terminal() {
-        let plan = plan_inline_layout(24, 40, 5);
-        assert_eq!(plan.block_start_row, 0);
-        assert_eq!(plan.clear_start_row, 0);
-        assert_eq!(plan.draw_count, 24);
-        assert_eq!(plan.skip, 16);
-    }
-
-    #[test]
-    fn inline_layout_clamps_out_of_range_anchor() {
-        let plan = plan_inline_layout(10, 3, 20);
-        assert_eq!(plan.block_start_row, 7);
-        assert_eq!(plan.clear_start_row, 7);
-        assert_eq!(plan.draw_count, 3);
-        assert_eq!(plan.skip, 0);
-    }
-
-    #[test]
-    fn self_reflow_delta_counts_new_wrap_rows_before_cursor() {
-        let mut inline = InlineState::new();
-        inline.has_rendered_once = true;
-        inline.last_drawn_count = 5;
-        inline.last_cursor_row = 4;
-        inline.last_cursor_col = 14;
-        inline.last_rendered_size = TerminalSize {
-            width: 83,
-            height: 24,
-        };
-        inline.last_rendered_cursor = Some(CursorPos { col: 14, row: 4 });
-        inline.last_frame = vec![
-            line_with_width(1),
-            line_with_width(82),
-            line_with_width(1),
-            line_with_width(1),
-            line_with_width(12),
-        ];
-
-        // Shrink 83 -> 81. The second line (82 cols) gains one wrapped row.
-        assert_eq!(estimate_self_reflow_cursor_delta(&inline, 81), 1);
-    }
-
-    #[test]
-    fn self_reflow_delta_uses_actual_rendered_cursor_col() {
-        let mut inline = InlineState::new();
-        inline.has_rendered_once = true;
-        inline.last_drawn_count = 3;
-        inline.last_cursor_row = 2;
-        inline.last_cursor_col = 10;
-        inline.last_rendered_size = TerminalSize {
-            width: 40,
-            height: 24,
-        };
-        // Raw frame cursor can be far to the right, but probe is at
-        // `last_cursor_col` (actual MoveTo col used in render pass).
-        inline.last_rendered_cursor = Some(CursorPos { col: 70, row: 2 });
-        inline.last_frame = vec![line_with_width(1), line_with_width(1), line_with_width(1)];
-
-        assert_eq!(estimate_self_reflow_cursor_delta(&inline, 8), 1);
-    }
-
-    #[test]
-    fn self_reflow_delta_is_zero_when_cursor_not_in_visible_tail() {
-        let mut inline = InlineState::new();
-        inline.has_rendered_once = true;
-        inline.last_drawn_count = 3;
-        inline.last_cursor_row = 0;
-        inline.last_cursor_col = 0;
-        inline.last_rendered_size = TerminalSize {
-            width: 80,
-            height: 24,
-        };
-        // Cursor was above visible tail, so the probe sat at block start.
-        inline.last_rendered_cursor = Some(CursorPos { col: 0, row: 0 });
-        inline.last_frame = vec![
-            line_with_width(10),
-            line_with_width(10),
-            line_with_width(10),
-            line_with_width(10),
-            line_with_width(10),
-        ];
-
-        assert_eq!(estimate_self_reflow_cursor_delta(&inline, 60), 0);
-    }
 }

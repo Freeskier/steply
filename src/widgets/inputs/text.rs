@@ -1,7 +1,7 @@
 use super::text_edit;
+use crate::core::NodeId;
 use crate::core::value::Value;
 use crate::core::value_path::{ValuePath, ValueTarget};
-use crate::core::NodeId;
 use crate::runtime::event::{ValueChange, WidgetAction};
 use crate::terminal::{CursorPos, KeyCode, KeyEvent};
 use crate::ui::span::Span;
@@ -140,7 +140,23 @@ impl Drawable for TextInput {
     fn draw(&self, ctx: &RenderContext) -> DrawOutput {
         let focused = self.base.is_focused(ctx);
 
-        let mut first_line = if self.value.is_empty() && !focused {
+        let ghost_suffix = if self.mode == TextMode::Plain && focused {
+            ctx.completion_menus
+                .get(self.base.id())
+                .and_then(|menu| {
+                    menu.matches
+                        .get(menu.selected)
+                        .map(|selected| (menu, selected))
+                })
+                .and_then(|(menu, selected)| {
+                    completion_suffix(selected, &self.value, self.cursor, menu.start)
+                })
+                .filter(|suffix| !suffix.is_empty())
+        } else {
+            None
+        };
+
+        let mut first_line = if self.value.is_empty() && ghost_suffix.is_none() {
             if let Some(ph) = &self.placeholder {
                 vec![Span::styled(ph.clone(), Style::new().color(Color::DarkGrey)).no_wrap()]
             } else {
@@ -151,13 +167,7 @@ impl Drawable for TextInput {
         };
 
         // Completion ghost text — only in Plain mode
-        if self.mode == TextMode::Plain
-            && focused
-            && let Some(menu) = ctx.completion_menus.get(self.base.id())
-            && let Some(selected) = menu.matches.get(menu.selected)
-            && let Some(suffix) = completion_suffix(selected, &self.value, self.cursor, menu.start)
-            && !suffix.is_empty()
-        {
+        if let Some(suffix) = ghost_suffix {
             first_line.push(Span::styled(suffix, Style::new().color(Color::DarkGrey)).no_wrap());
         }
 

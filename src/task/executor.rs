@@ -94,10 +94,7 @@ impl LogLineSender {
     }
 }
 
-fn spawn_workers(
-    invocation_rx: Receiver<TaskInvocation>,
-    completion_tx: Sender<TaskCompletion>,
-) {
+fn spawn_workers(invocation_rx: Receiver<TaskInvocation>, completion_tx: Sender<TaskCompletion>) {
     let worker_count = std::thread::available_parallelism()
         .map(|count| count.get().min(4).max(1))
         .unwrap_or(2);

@@ -1,6 +1,6 @@
+use crate::core::NodeId;
 use crate::core::value::Value;
 use crate::core::value_path::{ValuePath, ValueTarget};
-use crate::core::NodeId;
 use crate::runtime::event::{ValueChange, WidgetAction};
 use crate::terminal::{KeyCode, KeyEvent};
 use crate::ui::span::Span;

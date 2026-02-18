@@ -2,9 +2,9 @@ use std::collections::HashSet;
 
 use indexmap::IndexMap;
 
+use crate::core::NodeId;
 use crate::core::value::Value;
 use crate::core::value_path::{ValuePath, ValueTarget};
-use crate::core::NodeId;
 
 use crate::terminal::{CursorPos, KeyCode, KeyEvent, KeyModifiers};
 use crate::ui::span::Span;

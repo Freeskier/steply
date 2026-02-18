@@ -1,6 +1,6 @@
+use crate::core::NodeId;
 use crate::core::value::Value;
 use crate::core::value_path::{ValuePath, ValueTarget};
-use crate::core::NodeId;
 use crate::terminal::{KeyCode, KeyEvent, KeyModifiers};
 use crate::ui::span::Span;
 use crate::ui::style::{Color, Style};
@@ -401,10 +401,7 @@ impl Interactive for Calendar {
                 }
                 KeyCode::Enter => {
                     let val = Value::Text(self.formatted_value());
-                    return InteractionResult::submit_or_produce(
-                        self.submit_target.as_ref(),
-                        val,
-                    );
+                    return InteractionResult::submit_or_produce(self.submit_target.as_ref(), val);
                 }
                 _ => return self.time_input.on_key(key),
             }

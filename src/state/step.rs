@@ -68,7 +68,11 @@ impl Step {
     }
 
     /// Warning (non-blocking) if the named field is empty at submit time.
-    pub fn warn_if_empty(mut self, field_id: impl Into<String>, message: impl Into<String>) -> Self {
+    pub fn warn_if_empty(
+        mut self,
+        field_id: impl Into<String>,
+        message: impl Into<String>,
+    ) -> Self {
         let id = field_id.into();
         let msg = message.into();
         self.validators.push(Box::new(move |ctx: &StepContext| {

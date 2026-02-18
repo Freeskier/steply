@@ -174,6 +174,9 @@ impl Runtime {
             Intent::Submit
             | Intent::InputKey(_)
             | Intent::TextAction(_)
+            | Intent::ToggleCompletion
+            | Intent::CompleteNext
+            | Intent::CompletePrev
             | Intent::NextFocus
             | Intent::PrevFocus
             | Intent::Cancel

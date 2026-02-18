@@ -53,4 +53,24 @@ impl Style {
         self.no_strikethrough = true;
         self
     }
+
+    pub fn merge(self, extra: Style) -> Self {
+        Self {
+            color: extra.color.or(self.color),
+            background: extra.background.or(self.background),
+            bold: self.bold || extra.bold,
+            strikethrough: self.strikethrough || extra.strikethrough,
+            no_strikethrough: self.no_strikethrough || extra.no_strikethrough,
+        }
+    }
+
+    pub fn merge_no_inherit(self, extra: Style) -> Self {
+        Self {
+            color: extra.color.or(self.color),
+            background: extra.background.or(self.background),
+            bold: extra.bold,
+            strikethrough: extra.strikethrough,
+            no_strikethrough: self.no_strikethrough || extra.no_strikethrough,
+        }
+    }
 }

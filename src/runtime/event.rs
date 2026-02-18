@@ -33,10 +33,7 @@ impl ValueChange {
     pub fn with_selector(selector: impl AsRef<str>, value: Value) -> Self {
         let target = ValueTarget::parse_selector(selector.as_ref())
             .unwrap_or_else(|_| ValueTarget::node(selector.as_ref()));
-        Self {
-            target,
-            value,
-        }
+        Self { target, value }
     }
 }
 
@@ -44,12 +41,18 @@ impl ValueChange {
 /// These flow upward from widgets to the runtime.
 #[derive(Debug, Clone)]
 pub enum WidgetAction {
-    ValueChanged { change: ValueChange },
+    ValueChanged {
+        change: ValueChange,
+    },
     /// Widget signals it is done with its value.
     /// Navigation decides: focus next input if one exists, else submit the step.
     InputDone,
-    RequestFocus { target: NodeId },
-    TaskRequested { request: TaskRequest },
+    RequestFocus {
+        target: NodeId,
+    },
+    TaskRequested {
+        request: TaskRequest,
+    },
 }
 
 /// Events dispatched by the runtime to widgets or handled internally.

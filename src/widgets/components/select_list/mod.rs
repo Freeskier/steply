@@ -2,12 +2,12 @@ mod model;
 mod render;
 mod state;
 
-use std::collections::HashSet;
+use std::sync::Arc;
 
+use crate::core::NodeId;
 use crate::core::search::fuzzy::ranked_matches;
 use crate::core::value::Value;
 use crate::core::value_path::{ValuePath, ValueTarget};
-use crate::core::NodeId;
 
 use crate::terminal::{CursorPos, KeyCode, KeyEvent, KeyModifiers};
 use crate::ui::span::Span;
@@ -20,16 +20,17 @@ use crate::widgets::traits::{
     CompletionState, DrawOutput, Drawable, FocusMode, InteractionResult, Interactive,
     RenderContext, TextAction,
 };
-use model::option_text;
-use render::render_option_lines;
+use model::item_search_text;
+use render::{OptionRenderer, default_option_renderer};
 use state::marker_symbol;
 
-pub use model::{SelectMode, SelectOption};
+pub use model::{SelectItem, SelectItemView, SelectMode};
+pub use render::SelectItemRenderState;
 
 pub struct SelectList {
     base: WidgetBase,
-    source_options: Vec<SelectOption>,
-    options: Vec<SelectOption>,
+    source_options: Vec<SelectItem>,
+    options: Vec<SelectItem>,
     visible_to_source: Vec<usize>,
     mode: SelectMode,
     selected: Vec<usize>,
@@ -40,14 +41,11 @@ pub struct SelectList {
     filter: TextInput,
     filter_visible: bool,
     filter_focus: bool,
+    option_renderer: OptionRenderer,
 }
 
 impl SelectList {
-    pub fn new(
-        id: impl Into<String>,
-        label: impl Into<String>,
-        options: Vec<SelectOption>,
-    ) -> Self {
+    pub fn new(id: impl Into<String>, label: impl Into<String>, options: Vec<SelectItem>) -> Self {
         let id = id.into();
         let label = label.into();
         let mut this = Self {
@@ -64,6 +62,7 @@ impl SelectList {
             filter: TextInput::new(format!("{id}__filter"), ""),
             filter_visible: false,
             filter_focus: false,
+            option_renderer: default_option_renderer(),
         };
         this.apply_filter(None);
         this
@@ -77,7 +76,7 @@ impl SelectList {
         Self::new(
             id,
             label,
-            options.into_iter().map(SelectOption::plain).collect(),
+            options.into_iter().map(SelectItem::plain).collect(),
         )
     }
 
@@ -118,13 +117,32 @@ impl SelectList {
             .ensure_visible(self.active_index, self.options.len());
     }
 
-    pub fn with_options(mut self, options: Vec<SelectOption>) -> Self {
+    pub fn with_options(mut self, options: Vec<SelectItem>) -> Self {
         self.set_options(options);
         self
     }
 
-    pub fn set_options(&mut self, options: Vec<SelectOption>) {
-        let selected_values: HashSet<String> = self.selected_values().into_iter().collect();
+    pub fn with_option_renderer<F>(mut self, renderer: F) -> Self
+    where
+        F: Fn(&SelectItem, SelectItemRenderState) -> Vec<Vec<Span>> + Send + Sync + 'static,
+    {
+        self.set_option_renderer(renderer);
+        self
+    }
+
+    pub fn set_option_renderer<F>(&mut self, renderer: F)
+    where
+        F: Fn(&SelectItem, SelectItemRenderState) -> Vec<Vec<Span>> + Send + Sync + 'static,
+    {
+        self.option_renderer = Arc::new(renderer);
+    }
+
+    pub fn reset_option_renderer(&mut self) {
+        self.option_renderer = default_option_renderer();
+    }
+
+    pub fn set_options(&mut self, options: Vec<SelectItem>) {
+        let selected_values = self.selected_values();
         self.source_options = options;
 
         self.selected = self
@@ -132,7 +150,7 @@ impl SelectList {
             .iter()
             .enumerate()
             .filter_map(|(index, option)| {
-                if selected_values.contains(option_text(option)) {
+                if selected_values.iter().any(|value| value == &option.value) {
                     Some(index)
                 } else {
                     None
@@ -183,16 +201,27 @@ impl SelectList {
         self.selected.as_slice()
     }
 
-    pub fn selected_values(&self) -> Vec<String> {
+    pub fn selected_values(&self) -> Vec<Value> {
         self.selected
             .iter()
             .filter_map(|index| self.source_options.get(*index))
-            .map(|option| option_text(option).to_string())
+            .map(|option| option.value.clone())
             .collect()
     }
 
     pub fn active_index(&self) -> usize {
         self.active_index
+    }
+
+    pub fn set_active_index(&mut self, index: usize) {
+        if self.options.is_empty() {
+            self.active_index = 0;
+            self.scroll.offset = 0;
+            return;
+        }
+        self.active_index = index.min(self.options.len() - 1);
+        self.scroll
+            .ensure_visible(self.active_index, self.options.len());
     }
 
     pub fn mode(&self) -> SelectMode {
@@ -354,14 +383,19 @@ impl SelectList {
                 } else {
                     inactive_style
                 };
-                let option_lines = render_option_lines(option, base_style, highlight_style);
+                let option_lines = (self.option_renderer)(
+                    option,
+                    SelectItemRenderState {
+                        focused,
+                        active,
+                        selected,
+                        mode: self.mode,
+                        base_style,
+                        highlight_style,
+                    },
+                );
                 for (line_idx, option_line) in option_lines.into_iter().enumerate() {
                     let mut spans = Vec::<Span>::new();
-                    let pipe_style = if focused && active {
-                        Style::new().color(Color::Cyan)
-                    } else {
-                        inactive_style
-                    };
                     if line_idx == 0 {
                         if focused && active {
                             spans.push(Span::styled(cursor, cursor_style).no_wrap());
@@ -386,11 +420,22 @@ impl SelectList {
             } else {
                 inactive_style
             };
-            let option_lines = if active {
-                render_option_lines(option, Style::default(), highlight_style)
+            let base_style = if active {
+                Style::default()
             } else {
-                render_option_lines(option, inactive_style, highlight_style)
+                inactive_style
             };
+            let option_lines = (self.option_renderer)(
+                option,
+                SelectItemRenderState {
+                    focused,
+                    active,
+                    selected,
+                    mode: self.mode,
+                    base_style,
+                    highlight_style,
+                },
+            );
 
             for (line_idx, option_line) in option_lines.into_iter().enumerate() {
                 let mut spans = Vec::<Span>::new();
@@ -620,17 +665,12 @@ impl Interactive for SelectList {
         }
 
         match self.mode {
-            SelectMode::Multi => Some(Value::List(
-                self.selected_values()
-                    .into_iter()
-                    .map(Value::Text)
-                    .collect::<Vec<_>>(),
-            )),
+            SelectMode::Multi => Some(Value::List(self.selected_values())),
             SelectMode::Single | SelectMode::Radio | SelectMode::List => self
                 .selected
                 .first()
                 .and_then(|index| self.source_options.get(*index))
-                .map(|option| Value::Text(option_text(option).to_string())),
+                .map(|option| option.value.clone()),
         }
     }
 
@@ -640,31 +680,26 @@ impl Interactive for SelectList {
             return;
         }
 
-        if let Some(text) = value.to_text_scalar() {
-            if let Some(index) = self
-                .source_options
-                .iter()
-                .position(|option| option_text(option) == text.as_str())
-            {
-                self.selected.clear();
-                self.selected.push(index);
-            }
-        } else if let Some(values) = value.as_list() {
+        if let Some(values) = value.as_list() {
             self.selected.clear();
             for value in values {
-                let Some(value) = value.to_text_scalar() else {
-                    continue;
-                };
                 if let Some(index) = self
                     .source_options
                     .iter()
-                    .position(|option| option_text(option) == value.as_str())
+                    .position(|option| option.value == *value)
                     && !self.selected.contains(&index)
                 {
                     self.selected.push(index);
                 }
             }
             self.selected.sort_unstable();
+        } else if let Some(index) = self
+            .source_options
+            .iter()
+            .position(|option| option.value == value)
+        {
+            self.selected.clear();
+            self.selected.push(index);
         }
 
         self.apply_filter(None);
@@ -683,11 +718,11 @@ fn sanitize_child_result(mut result: InteractionResult) -> InteractionResult {
 
 fn fuzzy_filter_options(
     query: &str,
-    source_options: &[SelectOption],
-) -> (Vec<SelectOption>, Vec<usize>) {
-    let mut scored = Vec::<(usize, i32, SelectOption)>::new();
+    source_options: &[SelectItem],
+) -> (Vec<SelectItem>, Vec<usize>) {
+    let mut scored = Vec::<(usize, i32, SelectItem)>::new();
     for (index, option) in source_options.iter().enumerate() {
-        let Some((score, option)) = highlight_option_for_query(query, option) else {
+        let Some((score, option)) = highlight_item_for_query(query, option) else {
             continue;
         };
         scored.push((index, score, option));
@@ -703,141 +738,58 @@ fn fuzzy_filter_options(
     (options, mapping)
 }
 
-fn highlight_option_for_query(query: &str, option: &SelectOption) -> Option<(i32, SelectOption)> {
-    match option {
-        SelectOption::Plain(text) => {
-            let (score, ranges) = fuzzy_match_text(query, text.as_str())?;
-            Some((
-                score,
-                SelectOption::Highlighted {
-                    text: text.clone(),
-                    highlights: ranges,
-                },
-            ))
+fn highlight_item_for_query(query: &str, option: &SelectItem) -> Option<(i32, SelectItem)> {
+    let (search_score, _) = fuzzy_match_text(query, item_search_text(option))?;
+    let mut highlighted = option.clone();
+    let mut score = search_score;
+
+    match &mut highlighted.view {
+        SelectItemView::Plain { text, highlights } => {
+            *highlights = fuzzy_match_text(query, text.as_str())
+                .map(|(_, ranges)| ranges)
+                .unwrap_or_default();
         }
-        SelectOption::Detailed {
-            value,
+        SelectItemView::Detailed {
             title,
             description,
-            title_style,
-            description_style,
+            title_highlights,
+            description_highlights,
             ..
         } => {
             let title_match = fuzzy_match_text(query, title.as_str());
             let description_match = fuzzy_match_text(query, description.as_str());
-            if title_match.is_none() && description_match.is_none() {
-                return None;
-            }
-
-            let title_highlights = title_match
+            *title_highlights = title_match
                 .as_ref()
                 .map(|(_, ranges)| ranges.clone())
                 .unwrap_or_default();
-            let description_highlights = description_match
+            *description_highlights = description_match
                 .as_ref()
                 .map(|(_, ranges)| ranges.clone())
                 .unwrap_or_default();
 
-            let title_score = title_match.map(|(score, _)| score + 30).unwrap_or_default();
-            let description_score = description_match
-                .map(|(score, _)| score)
+            let title_score = title_match.map(|(s, _)| s + 30).unwrap_or_default();
+            let description_score = description_match.map(|(s, _)| s).unwrap_or_default();
+            score = score.max(title_score.max(description_score));
+        }
+        SelectItemView::Styled {
+            text, highlights, ..
+        }
+        | SelectItemView::Split {
+            text, highlights, ..
+        }
+        | SelectItemView::Suffix {
+            text, highlights, ..
+        }
+        | SelectItemView::SplitSuffix {
+            text, highlights, ..
+        } => {
+            *highlights = fuzzy_match_text(query, text.as_str())
+                .map(|(_, ranges)| ranges)
                 .unwrap_or_default();
-            Some((
-                title_score.max(description_score),
-                SelectOption::Detailed {
-                    value: value.clone(),
-                    title: title.clone(),
-                    description: description.clone(),
-                    title_highlights,
-                    description_highlights,
-                    title_style: *title_style,
-                    description_style: *description_style,
-                },
-            ))
-        }
-        SelectOption::Highlighted { text, .. } => {
-            let (score, ranges) = fuzzy_match_text(query, text.as_str())?;
-            Some((
-                score,
-                SelectOption::Highlighted {
-                    text: text.clone(),
-                    highlights: ranges,
-                },
-            ))
-        }
-        SelectOption::Styled { text, style, .. } => {
-            let (score, ranges) = fuzzy_match_text(query, text.as_str())?;
-            Some((
-                score,
-                SelectOption::Styled {
-                    text: text.clone(),
-                    highlights: ranges,
-                    style: *style,
-                },
-            ))
-        }
-        SelectOption::Split {
-            text,
-            name_start,
-            prefix_style,
-            name_style,
-            ..
-        } => {
-            let (score, ranges) = fuzzy_match_text(query, text.as_str())?;
-            Some((
-                score,
-                SelectOption::Split {
-                    text: text.clone(),
-                    name_start: *name_start,
-                    highlights: ranges,
-                    prefix_style: *prefix_style,
-                    name_style: *name_style,
-                },
-            ))
-        }
-        SelectOption::Suffix {
-            text,
-            suffix_start,
-            style,
-            suffix_style,
-            ..
-        } => {
-            let (score, ranges) = fuzzy_match_text(query, text.as_str())?;
-            Some((
-                score,
-                SelectOption::Suffix {
-                    text: text.clone(),
-                    highlights: ranges,
-                    suffix_start: *suffix_start,
-                    style: *style,
-                    suffix_style: *suffix_style,
-                },
-            ))
-        }
-        SelectOption::SplitSuffix {
-            text,
-            name_start,
-            suffix_start,
-            prefix_style,
-            name_style,
-            suffix_style,
-            ..
-        } => {
-            let (score, ranges) = fuzzy_match_text(query, text.as_str())?;
-            Some((
-                score,
-                SelectOption::SplitSuffix {
-                    text: text.clone(),
-                    name_start: *name_start,
-                    suffix_start: *suffix_start,
-                    highlights: ranges,
-                    prefix_style: *prefix_style,
-                    name_style: *name_style,
-                    suffix_style: *suffix_style,
-                },
-            ))
         }
     }
+
+    Some((score, highlighted))
 }
 
 fn fuzzy_match_text(query: &str, text: &str) -> Option<(i32, Vec<(usize, usize)>)> {
@@ -846,11 +798,11 @@ fn fuzzy_match_text(query: &str, text: &str) -> Option<(i32, Vec<(usize, usize)>
     Some((best.score, best.ranges.clone()))
 }
 
-fn options_from_value(value: &Value) -> Option<Vec<SelectOption>> {
+fn options_from_value(value: &Value) -> Option<Vec<SelectItem>> {
     match value {
         Value::Object(map) => map.get("options").and_then(options_from_value),
         Value::List(items) if items.iter().all(|item| matches!(item, Value::Object(_))) => {
-            let mut options = Vec::<SelectOption>::new();
+            let mut options = Vec::<SelectItem>::new();
             for item in items {
                 if let Some(option) = option_from_object_value(item) {
                     options.push(option);
@@ -862,7 +814,7 @@ fn options_from_value(value: &Value) -> Option<Vec<SelectOption>> {
     }
 }
 
-fn option_from_object_value(value: &Value) -> Option<SelectOption> {
+fn option_from_object_value(value: &Value) -> Option<SelectItem> {
     let Value::Object(map) = value else {
         return None;
     };
@@ -881,7 +833,7 @@ fn option_from_object_value(value: &Value) -> Option<SelectOption> {
     let value_text = value_text.unwrap_or_else(|| title.clone());
 
     if let Some(description) = description {
-        return Some(SelectOption::detailed(value_text, title, description));
+        return Some(SelectItem::detailed(value_text, title, description));
     }
-    Some(SelectOption::plain(value_text))
+    Some(SelectItem::plain(value_text))
 }

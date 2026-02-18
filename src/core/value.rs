@@ -1,5 +1,5 @@
-use indexmap::IndexMap;
 use crate::core::value_path::{PathSegment, ValuePath, ensure_value_path_mut};
+use indexmap::IndexMap;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Value {

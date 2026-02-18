@@ -10,8 +10,14 @@ const DECOR_GUTTER_WIDTH: usize = 3;
 /// step block.  Also overrides the marker and decoration colour for the whole
 /// block (e.g. `■` red for errors, `▲` yellow for warnings).
 pub(super) enum StepFooter<'a> {
-    Error { message: &'a str, description: Option<&'a str> },
-    Warning { message: &'a str, description: Option<&'a str> },
+    Error {
+        message: &'a str,
+        description: Option<&'a str>,
+    },
+    Warning {
+        message: &'a str,
+        description: Option<&'a str>,
+    },
 }
 
 pub(super) fn decorate_step_block(
@@ -23,14 +29,8 @@ pub(super) fn decorate_step_block(
     footer: Option<StepFooter<'_>>,
 ) {
     let (decor_style, marker) = match &footer {
-        Some(StepFooter::Error { .. }) => (
-            Style::new().color(Color::Red),
-            "◆  ",
-        ),
-        Some(StepFooter::Warning { .. }) => (
-            Style::new().color(Color::Yellow),
-            "▲  ",
-        ),
+        Some(StepFooter::Error { .. }) => (Style::new().color(Color::Red), "◆  "),
+        Some(StepFooter::Warning { .. }) => (Style::new().color(Color::Yellow), "▲  "),
         None => {
             let style = match status {
                 StepVisualStatus::Active => Style::new().color(Color::Green),
@@ -63,7 +63,16 @@ pub(super) fn decorate_step_block(
     }
 
     match footer {
-        Some(StepFooter::Error { message, description } | StepFooter::Warning { message, description }) => {
+        Some(
+            StepFooter::Error {
+                message,
+                description,
+            }
+            | StepFooter::Warning {
+                message,
+                description,
+            },
+        ) => {
             let bottom = if connect_to_next { "├  " } else { "└  " };
             decorated.push(vec![
                 Span::styled(bottom, decor_style).no_wrap(),

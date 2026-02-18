@@ -21,6 +21,7 @@ struct ViewState {
     focus: FocusState,
     active_node_index: NodeIndex,
     completion_session: Option<CompletionSession>,
+    completion_tab_suppressed_for: Option<NodeId>,
 }
 
 #[derive(Default)]

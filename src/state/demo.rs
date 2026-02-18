@@ -7,7 +7,7 @@ use crate::widgets::components::file_browser::FileBrowserInput;
 use crate::widgets::components::object_editor::ObjectEditor;
 use crate::widgets::components::repeater::{Repeater, RepeaterLayout};
 use crate::widgets::components::select_list::SelectList;
-use crate::widgets::components::select_list::{SelectMode, SelectOption};
+use crate::widgets::components::select_list::{SelectItem, SelectMode};
 use crate::widgets::components::snippet::Snippet;
 use crate::widgets::components::table::{Table, TableStyle};
 use crate::widgets::components::tree_view::{TreeNode, TreeView};
@@ -251,32 +251,32 @@ fn step_structured_inputs() -> Step {
 
 fn step_selection() -> Step {
     let languages = vec![
-        SelectOption::detailed(
+        SelectItem::detailed(
             "rust",
             "Rust",
             "Systems language focused on safety and performance",
         ),
-        SelectOption::detailed(
+        SelectItem::detailed(
             "go",
             "Go",
             "Simple concurrency model and fast compile times",
         ),
-        SelectOption::detailed(
+        SelectItem::detailed(
             "python",
             "Python",
             "General-purpose scripting with rich ecosystem",
         ),
-        SelectOption::detailed(
+        SelectItem::detailed(
             "typescript",
             "TypeScript",
             "Typed superset of JavaScript for large front-end apps",
         ),
-        SelectOption::detailed(
+        SelectItem::detailed(
             "zig",
             "Zig",
             "Low-level language with explicit memory control",
         ),
-        SelectOption::detailed(
+        SelectItem::detailed(
             "kotlin",
             "Kotlin",
             "Modern JVM language with concise syntax",
@@ -450,7 +450,7 @@ fn step_file_browser() -> Step {
         vec![
             Node::Output(Box::new(TextOutput::new(
                 "fb_intro",
-                "Type a path directly (Tab for completion) or press Ctrl+Space to open the browser.",
+                "Type a path directly (Tab/Ctrl+Space for completion) or press Shift+Space (or Alt+Space) to open the browser.",
             ))),
             Node::Component(Box::new(
                 FileBrowserInput::new("fb_any", "Any file")
@@ -465,7 +465,7 @@ fn step_file_browser() -> Step {
             )),
         ],
     )
-    .with_hint("Tab → path completion  •  Ctrl+Space → browser  •  ← → navigate dirs  •  Enter → select")
+    .with_hint("Tab/Ctrl+Space → completion  •  Shift+Space/Alt+Space → browser  •  ← → navigate dirs  •  Enter → select")
 }
 
 // ── Step 8: Tree view ────────────────────────────────────────────────────────
@@ -561,13 +561,6 @@ fn greet(name: &str) {
 
 fn farewell(name: &str) {
     println!("Bye {}!", name);
-}
-
-#[cfg(test)]
-mod tests {
-    fn test_greet() {
-        assert!(true);
-    }
 }"#;
 
     let new = r#"fn main() {
@@ -582,17 +575,6 @@ fn greet(name: &str, msg: &str) {
 
 fn farewell(name: &str) {
     println!("Bye {}!", name);
-}
-
-#[cfg(test)]
-mod tests {
-    fn test_greet() {
-        assert!(true);
-    }
-
-    fn test_farewell() {
-        assert!(true);
-    }
 }"#;
 
     Step::new(

@@ -1,6 +1,6 @@
+use crate::core::NodeId;
 use crate::core::value::Value;
 use crate::core::value_path::{ValuePath, ValueTarget};
-use crate::core::NodeId;
 use crate::terminal::{KeyCode, KeyEvent};
 use crate::ui::span::Span;
 use crate::ui::style::{Color, Style};
@@ -117,13 +117,25 @@ impl Drawable for ChoiceInput {
                 }
                 if self.show_bullets {
                     if index == self.selected {
-                        s.push(Span::styled("●", Style::new().color(Color::Green).bold()).no_wrap());
+                        s.push(
+                            Span::styled("●", Style::new().color(Color::Green).bold()).no_wrap(),
+                        );
                     } else {
                         s.push(Span::styled("○", inactive_style).no_wrap());
                     }
                     s.push(Span::new(" ").no_wrap());
                 }
-                s.push(Span::styled(option.clone(), if index == self.selected { active_style } else { inactive_style }).no_wrap());
+                s.push(
+                    Span::styled(
+                        option.clone(),
+                        if index == self.selected {
+                            active_style
+                        } else {
+                            inactive_style
+                        },
+                    )
+                    .no_wrap(),
+                );
             }
             s
         } else {
@@ -183,6 +195,9 @@ impl Interactive for ChoiceInput {
     }
 
     fn validate(&self, _mode: ValidationMode) -> Result<(), String> {
-        run_validators(&self.validators, &Value::Text(self.selected_text().to_string()))
+        run_validators(
+            &self.validators,
+            &Value::Text(self.selected_text().to_string()),
+        )
     }
 }

@@ -1,12 +1,12 @@
 pub mod array;
-pub mod confirm;
-pub mod textarea;
 pub mod button;
 pub mod checkbox;
 pub mod choice;
 pub mod color;
+pub mod confirm;
 pub mod masked;
 pub mod select;
 pub mod slider;
 pub mod text;
 pub(crate) mod text_edit;
+pub mod textarea;

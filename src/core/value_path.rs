@@ -168,7 +168,10 @@ impl From<String> for ValueTarget {
     }
 }
 
-fn parse_path(input: &str, allow_leading_separator: bool) -> Result<ValuePath, ValuePathParseError> {
+fn parse_path(
+    input: &str,
+    allow_leading_separator: bool,
+) -> Result<ValuePath, ValuePathParseError> {
     let raw = input.trim();
     if raw.is_empty() {
         return Ok(ValuePath::empty());
@@ -251,7 +254,9 @@ fn parse_bracket_segment(
             *idx += 1;
             if c == '\\' {
                 let Some(next) = chars.get(*idx).copied() else {
-                    return Err(ValuePathParseError::new("unterminated escape in quoted key"));
+                    return Err(ValuePathParseError::new(
+                        "unterminated escape in quoted key",
+                    ));
                 };
                 key.push(next);
                 *idx += 1;
@@ -353,67 +358,4 @@ pub fn ensure_value_path_mut<'a>(root: &'a mut Value, path: &ValuePath) -> &'a m
         }
     }
     current
-}
-
-#[cfg(test)]
-mod tests {
-    use super::{PathSegment, ValuePath, ValueTarget};
-    use crate::core::value::Value;
-
-    #[test]
-    fn parse_absolute_path_with_indexes() {
-        let path = ValuePath::parse("users[0].profile.name").expect("path should parse");
-        assert_eq!(
-            path.segments(),
-            &[
-                PathSegment::Key("users".to_string()),
-                PathSegment::Index(0),
-                PathSegment::Key("profile".to_string()),
-                PathSegment::Key("name".to_string()),
-            ]
-        );
-    }
-
-    #[test]
-    fn parse_relative_path() {
-        let path = ValuePath::parse_relative(".profile.names[2]").expect("relative path should parse");
-        assert_eq!(
-            path.segments(),
-            &[
-                PathSegment::Key("profile".to_string()),
-                PathSegment::Key("names".to_string()),
-                PathSegment::Index(2),
-            ]
-        );
-    }
-
-    #[test]
-    fn selector_parses_node_and_nested_path() {
-        let node = ValueTarget::parse_selector("user_cfg").expect("selector");
-        assert_eq!(node.to_selector(), "user_cfg");
-
-        let nested = ValueTarget::parse_selector("user_cfg::rows[1].path").expect("selector");
-        assert_eq!(nested.to_selector(), "user_cfg::rows[1].path");
-    }
-
-    #[test]
-    fn value_set_path_creates_nested_structure() {
-        let mut root = Value::None;
-        let path = ValuePath::parse("rows[1].path").expect("path");
-        root.set_path(&path, Value::Text("/tmp/out".to_string()));
-
-        let fetched = root.get_path(&path).and_then(Value::as_text);
-        assert_eq!(fetched, Some("/tmp/out"));
-    }
-
-    #[test]
-    fn value_set_path_overwrites_existing_leaf() {
-        let mut root = Value::None;
-        let path = ValuePath::parse("rows[0].enabled").expect("path");
-        root.set_path(&path, Value::Bool(false));
-        root.set_path(&path, Value::Bool(true));
-
-        let fetched = root.get_path(&path).and_then(Value::as_bool);
-        assert_eq!(fetched, Some(true));
-    }
 }

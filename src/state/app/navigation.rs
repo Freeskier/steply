@@ -28,6 +28,7 @@ impl AppState {
                 // Esc dismisses ghost without clearing input
                 KeyCode::Esc => {
                     self.clear_completion_session();
+                    self.suppress_completion_tab_for_focused();
                     return InteractionResult::handled();
                 }
                 _ => {}
@@ -43,6 +44,9 @@ impl AppState {
         };
 
         if result.handled {
+            if should_clear_completion_suppression_for_key(key) {
+                self.clear_completion_tab_suppression_for_focused();
+            }
             self.refresh_after_input();
         }
         result
@@ -62,13 +66,35 @@ impl AppState {
         };
 
         if result.handled {
+            self.clear_completion_tab_suppression_for_focused();
             self.refresh_after_input();
         }
         result
     }
 
     pub fn handle_tab_forward(&mut self) -> InteractionResult {
+        if self.is_completion_tab_suppressed_for_focused() {
+            // One-shot suppression after Esc: consume it on first Tab.
+            self.clear_completion_tab_suppression_for_focused();
+            let result = self.dispatch_key_to_focused(KeyEvent {
+                code: KeyCode::Tab,
+                modifiers: KeyModifiers::NONE,
+            });
+            if result.handled {
+                return result;
+            }
+            self.focus_next();
+            return InteractionResult::handled();
+        }
+
         if self.has_completion_for_focused() {
+            if self
+                .completion_snapshot()
+                .is_some_and(|(_, matches, _, _)| matches.len() == 1)
+            {
+                self.accept_and_refresh_completion();
+                return InteractionResult::handled();
+            }
             // First expand to longest common prefix, then cycle
             if self.expand_common_prefix_for_focused() {
                 self.try_update_ghost_for_focused();
@@ -100,6 +126,20 @@ impl AppState {
     }
 
     pub fn handle_tab_backward(&mut self) -> InteractionResult {
+        if self.is_completion_tab_suppressed_for_focused() {
+            // One-shot suppression after Esc: consume it on first Shift+Tab.
+            self.clear_completion_tab_suppression_for_focused();
+            let result = self.dispatch_key_to_focused(KeyEvent {
+                code: KeyCode::BackTab,
+                modifiers: KeyModifiers::SHIFT,
+            });
+            if result.handled {
+                return result;
+            }
+            self.focus_prev();
+            return InteractionResult::handled();
+        }
+
         if self.has_completion_for_focused() {
             if self.expand_common_prefix_for_focused() {
                 self.try_update_ghost_for_focused();
@@ -262,6 +302,7 @@ impl AppState {
 
     pub fn focus_next(&mut self) {
         self.clear_completion_session();
+        self.ui.completion_tab_suppressed_for = None;
         if self.has_blocking_overlay()
             && matches!(self.active_overlay_focus_mode(), Some(FocusMode::Group))
         {
@@ -273,6 +314,7 @@ impl AppState {
 
     pub fn focus_prev(&mut self) {
         self.clear_completion_session();
+        self.ui.completion_tab_suppressed_for = None;
         if self.has_blocking_overlay()
             && matches!(self.active_overlay_focus_mode(), Some(FocusMode::Group))
         {
@@ -288,6 +330,7 @@ impl AppState {
         prune_validation: bool,
     ) {
         self.clear_completion_session();
+        self.ui.completion_tab_suppressed_for = None;
         self.ui.active_node_index =
             crate::widgets::node_index::NodeIndex::build(self.active_nodes());
         self.ui.focus = crate::state::focus::FocusState::from_nodes(self.active_nodes());
@@ -431,4 +474,17 @@ impl AppState {
         let nodes = self.active_nodes_mut();
         find_node_mut(nodes, focused_id)
     }
+}
+
+fn should_clear_completion_suppression_for_key(key: KeyEvent) -> bool {
+    matches!(
+        key.code,
+        KeyCode::Char(_)
+            | KeyCode::Backspace
+            | KeyCode::Delete
+            | KeyCode::Left
+            | KeyCode::Right
+            | KeyCode::Home
+            | KeyCode::End
+    )
 }

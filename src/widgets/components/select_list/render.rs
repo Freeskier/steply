@@ -1,28 +1,49 @@
-use super::model::SelectOption;
+use super::SelectMode;
+use super::model::{SelectItem, SelectItemView};
+use crate::ui::highlight::render_text_spans;
 use crate::ui::span::{Span, SpanLine};
 use crate::ui::style::Style;
 use crate::widgets::inputs::text_edit;
+use std::sync::Arc;
 
-pub(super) fn render_option_lines(
-    option: &SelectOption,
-    base_style: Style,
-    highlight_style: Style,
-) -> Vec<SpanLine> {
-    match option {
-        SelectOption::Plain(text) => {
-            vec![vec![Span::styled(text.clone(), base_style).no_wrap()]]
-        }
-        SelectOption::Detailed {
+#[derive(Debug, Clone, Copy)]
+pub struct SelectItemRenderState {
+    pub focused: bool,
+    pub active: bool,
+    pub selected: bool,
+    pub mode: SelectMode,
+    pub base_style: Style,
+    pub highlight_style: Style,
+}
+
+pub type OptionRenderer =
+    Arc<dyn Fn(&SelectItem, SelectItemRenderState) -> Vec<SpanLine> + Send + Sync>;
+
+pub fn default_option_renderer() -> OptionRenderer {
+    Arc::new(default_render_option_lines)
+}
+
+fn default_render_option_lines(item: &SelectItem, state: SelectItemRenderState) -> Vec<SpanLine> {
+    let base_style = state.base_style;
+    let highlight_style = state.highlight_style;
+
+    match &item.view {
+        SelectItemView::Plain { text, highlights } => vec![render_text_spans(
+            text.as_str(),
+            highlights,
+            base_style,
+            highlight_style,
+        )],
+        SelectItemView::Detailed {
             title,
             description,
             title_highlights,
             description_highlights,
             title_style,
             description_style,
-            ..
         } => {
-            let title_base = merge_style(base_style, *title_style);
-            let description_base = merge_style_no_inherit(base_style, *description_style);
+            let title_base = base_style.merge(*title_style);
+            let description_base = base_style.merge_no_inherit(*description_style);
             let mut lines = vec![render_text_spans(
                 title.as_str(),
                 title_highlights,
@@ -39,25 +60,17 @@ pub(super) fn render_option_lines(
             }
             lines
         }
-        SelectOption::Highlighted { text, highlights } => {
-            vec![render_text_spans(
-                text.as_str(),
-                highlights,
-                base_style,
-                highlight_style,
-            )]
-        }
-        SelectOption::Styled {
+        SelectItemView::Styled {
             text,
             highlights,
             style,
         } => vec![render_text_spans(
             text.as_str(),
             highlights,
-            merge_style(base_style, *style),
+            base_style.merge(*style),
             highlight_style,
         )],
-        SelectOption::Split {
+        SelectItemView::Split {
             text,
             name_start,
             highlights,
@@ -72,12 +85,12 @@ pub(super) fn render_option_lines(
             spans.extend(render_text_spans(
                 name.as_str(),
                 highlights,
-                merge_style(base_style, *name_style),
+                base_style.merge(*name_style),
                 highlight_style,
             ));
             vec![spans]
         }
-        SelectOption::Suffix {
+        SelectItemView::Suffix {
             text,
             highlights,
             suffix_start,
@@ -88,15 +101,15 @@ pub(super) fn render_option_lines(
             let mut spans = render_text_spans(
                 name.as_str(),
                 highlights,
-                merge_style(base_style, *style),
+                base_style.merge(*style),
                 highlight_style,
             );
             if !suffix.is_empty() {
-                spans.push(Span::styled(suffix, merge_style(base_style, *suffix_style)));
+                spans.push(Span::styled(suffix, base_style.merge(*suffix_style)));
             }
             vec![spans]
         }
-        SelectOption::SplitSuffix {
+        SelectItemView::SplitSuffix {
             text,
             name_start,
             suffix_start,
@@ -117,65 +130,15 @@ pub(super) fn render_option_lines(
             spans.extend(render_text_spans(
                 name.as_str(),
                 highlights,
-                merge_style(base_style, *name_style),
+                base_style.merge(*name_style),
                 highlight_style,
             ));
             if !suffix.is_empty() {
-                spans.push(Span::styled(suffix, merge_style(base_style, *suffix_style)));
+                spans.push(Span::styled(suffix, base_style.merge(*suffix_style)));
             }
             vec![spans]
         }
     }
-}
-
-fn render_text_spans(
-    text: &str,
-    highlights: &[(usize, usize)],
-    base_style: Style,
-    highlight_style: Style,
-) -> Vec<Span> {
-    if highlights.is_empty() {
-        return vec![Span::styled(text.to_string(), base_style).no_wrap()];
-    }
-
-    let chars: Vec<char> = text.chars().collect();
-    let mut sorted = highlights.to_vec();
-    sorted.sort_unstable_by(|left, right| left.0.cmp(&right.0).then(left.1.cmp(&right.1)));
-
-    let mut spans = Vec::<Span>::new();
-    let mut cursor = 0usize;
-
-    for (start, end) in sorted {
-        let start = start.min(chars.len());
-        let end = end.min(chars.len());
-        if start > cursor {
-            let plain: String = chars[cursor..start].iter().collect();
-            if !plain.is_empty() {
-                spans.push(Span::styled(plain, base_style).no_wrap());
-            }
-        }
-        if end > start {
-            let highlighted: String = chars[start..end].iter().collect();
-            if !highlighted.is_empty() {
-                spans.push(
-                    Span::styled(highlighted, merge_style(base_style, highlight_style)).no_wrap(),
-                );
-            }
-        }
-        cursor = end.max(cursor);
-    }
-
-    if cursor < chars.len() {
-        let tail: String = chars[cursor..].iter().collect();
-        if !tail.is_empty() {
-            spans.push(Span::styled(tail, base_style).no_wrap());
-        }
-    }
-
-    if spans.is_empty() {
-        spans.push(Span::styled(text.to_string(), base_style).no_wrap());
-    }
-    spans
 }
 
 fn split_text_at_char(text: &str, char_index: usize) -> (String, String) {
@@ -184,24 +147,4 @@ fn split_text_at_char(text: &str, char_index: usize) -> (String, String) {
         text[..byte_index].to_string(),
         text[byte_index..].to_string(),
     )
-}
-
-fn merge_style(base: Style, extra: Style) -> Style {
-    Style {
-        color: extra.color.or(base.color),
-        background: extra.background.or(base.background),
-        bold: base.bold || extra.bold,
-        strikethrough: base.strikethrough || extra.strikethrough,
-        no_strikethrough: base.no_strikethrough || extra.no_strikethrough,
-    }
-}
-
-fn merge_style_no_inherit(base: Style, extra: Style) -> Style {
-    Style {
-        color: extra.color.or(base.color),
-        background: extra.background.or(base.background),
-        bold: extra.bold,
-        strikethrough: extra.strikethrough,
-        no_strikethrough: base.no_strikethrough || extra.no_strikethrough,
-    }
 }

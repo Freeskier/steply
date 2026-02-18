@@ -2,6 +2,7 @@ use crate::runtime::effect::Effect;
 use crate::runtime::event::SystemEvent;
 use crate::runtime::intent::Intent;
 use crate::state::app::AppState;
+use crate::terminal::{KeyCode, KeyEvent, KeyModifiers};
 use crate::widgets::traits::InteractionResult;
 
 pub struct Reducer;
@@ -22,10 +23,17 @@ impl Reducer {
                     state.cancel_back_confirm();
                 } else if state.cancel_completion_for_focused() {
                     // Esc first closes the completion menu before closing overlays or exiting.
+                    state.suppress_completion_tab_for_focused();
+                } else if state
+                    .dispatch_key_to_focused(KeyEvent {
+                        code: KeyCode::Esc,
+                        modifiers: KeyModifiers::NONE,
+                    })
+                    .handled
+                {
+                    // Focused widget consumed Esc (e.g. file browser clears query).
                 } else if state.has_active_overlay() {
                     state.close_overlay();
-                } else {
-                    state.request_exit();
                 }
                 vec![Effect::RequestRender]
             }
@@ -40,8 +48,20 @@ impl Reducer {
                     vec![Effect::RequestRender]
                 }
             }
-            Intent::NextFocus => collect_effects(state.handle_tab_forward()),
-            Intent::PrevFocus => collect_effects(state.handle_tab_backward()),
+            Intent::ToggleCompletion => {
+                state.toggle_completion_for_focused();
+                vec![Effect::RequestRender]
+            }
+            Intent::CompleteNext => collect_effects(state.handle_tab_forward()),
+            Intent::CompletePrev => collect_effects(state.handle_tab_backward()),
+            Intent::NextFocus => {
+                state.focus_next();
+                vec![Effect::RequestRender]
+            }
+            Intent::PrevFocus => {
+                state.focus_prev();
+                vec![Effect::RequestRender]
+            }
             Intent::InputKey(key) => collect_effects(state.dispatch_key_to_focused(key)),
             Intent::TextAction(action) => {
                 collect_effects(state.dispatch_text_action_to_focused(action))

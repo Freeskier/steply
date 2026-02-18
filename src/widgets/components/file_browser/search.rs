@@ -3,13 +3,14 @@ use std::path::Path;
 use globset::{Glob, GlobSetBuilder};
 
 use crate::core::search::fuzzy;
+use crate::core::value::Value;
 use crate::ui::style::{Color, Style};
-use crate::widgets::components::select_list::SelectOption;
+use crate::widgets::components::select_list::{SelectItem, SelectItemView};
 
 use super::DisplayMode;
-use super::model::{FileEntry, build_entry, entry_sort};
+use super::model::{EntryKind, FileEntry, build_entry, entry_sort};
 
-const MAX_MATCHES: usize = 200;
+const MAX_MATCHES: usize = 10000;
 const RELATIVE_PREFIX_MAX: usize = 24;
 
 /// Processed result ready to feed into the SelectList and completion items.
@@ -18,8 +19,8 @@ pub struct ScanResult {
     pub entries: Vec<FileEntry>,
     /// Highlight ranges (char indices) aligned with `entries`.
     pub highlights: Vec<Vec<(usize, usize)>>,
-    pub options: Vec<SelectOption>,
-    /// Plain names / relative paths for TextInput completion.
+    pub options: Vec<SelectItem>,
+    /// Plain entry names for TextInput path-segment completion.
     pub completion_items: Vec<String>,
     /// Total matches before truncation (> entries.len() means results were cut off).
     pub total_matches: usize,
@@ -56,18 +57,28 @@ pub fn fuzzy_search(
     let total_matches = matches.len();
     matches.truncate(MAX_MATCHES);
 
-    let mut matched_entries: Vec<FileEntry> = Vec::with_capacity(matches.len());
-    let mut matched_ranges: Vec<Vec<(usize, usize)>> = Vec::with_capacity(matches.len());
-
+    let mut ranked_rows: Vec<(FileEntry, Vec<(usize, usize)>)> = Vec::with_capacity(matches.len());
     for m in &matches {
         if let Some(&ei) = indices.get(m.index)
             && let Some(entry) = entries.get(ei)
         {
-            matched_entries.push(entry.clone());
-            matched_ranges.push(m.ranges.clone());
+            ranked_rows.push((entry.clone(), m.ranges.clone()));
         }
     }
 
+    // Keep fuzzy relevance order within groups, but surface directories first.
+    let mut dirs = Vec::new();
+    let mut files = Vec::new();
+    for row in ranked_rows {
+        if row.0.kind.is_dir() {
+            dirs.push(row);
+        } else {
+            files.push(row);
+        }
+    }
+    dirs.extend(files);
+
+    let (matched_entries, matched_ranges): (Vec<_>, Vec<_>) = dirs.into_iter().unzip();
     build_result(matched_entries, matched_ranges, root, mode, total_matches)
 }
 
@@ -165,7 +176,26 @@ fn walk_dir_recursive(
         if hide_hidden && name.starts_with('.') {
             continue;
         }
-        let is_dir = entry.file_type().map(|t| t.is_dir()).unwrap_or(false);
+        let kind = entry
+            .file_type()
+            .map(|ft| {
+                if ft.is_symlink() {
+                    if std::fs::metadata(path.as_path())
+                        .map(|m| m.is_dir())
+                        .unwrap_or(false)
+                    {
+                        EntryKind::SymlinkDir
+                    } else {
+                        EntryKind::SymlinkFile
+                    }
+                } else if ft.is_dir() {
+                    EntryKind::Dir
+                } else {
+                    EntryKind::File
+                }
+            })
+            .unwrap_or(EntryKind::File);
+        let is_dir = kind.is_dir();
 
         // Compute relative path from root for matching
         let rel = path
@@ -179,7 +209,7 @@ fn walk_dir_recursive(
         };
 
         if matches {
-            entries.push(build_entry(name.clone(), path.clone(), is_dir));
+            entries.push(build_entry(name.clone(), path.clone(), kind));
         }
 
         if is_dir {
@@ -205,7 +235,13 @@ fn build_result(
 
     let completion_items = entries
         .iter()
-        .map(|e| display_text(e, root, mode))
+        .map(|e| {
+            if e.kind.is_dir() {
+                format!("{}/", e.name)
+            } else {
+                e.name.clone()
+            }
+        })
         .collect();
 
     ScanResult {
@@ -222,9 +258,11 @@ fn entry_option(
     highlights: &[(usize, usize)],
     root: &Path,
     mode: DisplayMode,
-) -> SelectOption {
+) -> SelectItem {
     let dir_style = Style::new().color(Color::Blue).bold();
     let prefix_style = Style::new().color(Color::DarkGrey);
+    let link_style = Style::new().color(Color::Green);
+    let value = Value::Text(entry.path.to_string_lossy().to_string());
 
     match mode {
         DisplayMode::Relative => {
@@ -232,66 +270,111 @@ fn entry_option(
                 let name = entry.name.clone();
                 let name_start = prefix.chars().count();
                 let text = format!("{}{}", prefix, name);
-                let name_style = if entry.is_dir {
+                let name_style = if entry.kind.is_dir() {
                     dir_style
                 } else {
                     Style::default()
                 };
-                return SelectOption::Split {
-                    text,
-                    name_start,
-                    highlights: highlights.to_vec(),
-                    prefix_style,
-                    name_style,
+                return if entry.kind.is_symlink() {
+                    let suffix_start = text.chars().count();
+                    SelectItem::new(
+                        value,
+                        SelectItemView::SplitSuffix {
+                            text: format!("{text}@"),
+                            name_start,
+                            suffix_start,
+                            highlights: highlights.to_vec(),
+                            prefix_style,
+                            name_style,
+                            suffix_style: link_style,
+                        },
+                    )
+                } else {
+                    SelectItem::new(
+                        value,
+                        SelectItemView::Split {
+                            text,
+                            name_start,
+                            highlights: highlights.to_vec(),
+                            prefix_style,
+                            name_style,
+                        },
+                    )
                 };
             }
         }
         DisplayMode::Full => {
             let full = entry.path.to_string_lossy().to_string();
             let name_start = full.len().saturating_sub(entry.name.len());
-            let name_style = if entry.is_dir {
+            let name_style = if entry.kind.is_dir() {
                 dir_style
             } else {
                 Style::default()
             };
-            return SelectOption::Split {
-                text: full,
-                name_start,
-                highlights: highlights.to_vec(),
-                prefix_style,
-                name_style,
+            return if entry.kind.is_symlink() {
+                let suffix_start = full.chars().count();
+                SelectItem::new(
+                    value,
+                    SelectItemView::SplitSuffix {
+                        text: format!("{full}@"),
+                        name_start,
+                        suffix_start,
+                        highlights: highlights.to_vec(),
+                        prefix_style,
+                        name_style,
+                        suffix_style: link_style,
+                    },
+                )
+            } else {
+                SelectItem::new(
+                    value,
+                    SelectItemView::Split {
+                        text: full,
+                        name_start,
+                        highlights: highlights.to_vec(),
+                        prefix_style,
+                        name_style,
+                    },
+                )
             };
         }
         DisplayMode::Name => {}
     }
 
     // Name mode (or Relative with no prefix — file is at root level)
-    if entry.is_dir {
-        SelectOption::Styled {
-            text: entry.name.clone(),
-            highlights: highlights.to_vec(),
-            style: dir_style,
-        }
-    } else if highlights.is_empty() {
-        SelectOption::Plain(entry.name.clone())
+    let style = if entry.kind.is_dir() {
+        dir_style
     } else {
-        SelectOption::Highlighted {
-            text: entry.name.clone(),
-            highlights: highlights.to_vec(),
-        }
-    }
-}
-
-/// The string used for completion items, matching what's shown in the list.
-fn display_text(entry: &FileEntry, root: &Path, mode: DisplayMode) -> String {
-    match mode {
-        DisplayMode::Full => entry.path.to_string_lossy().to_string(),
-        DisplayMode::Relative => entry
-            .path
-            .strip_prefix(root)
-            .map(|r| r.to_string_lossy().to_string())
-            .unwrap_or_else(|_| entry.name.clone()),
-        DisplayMode::Name => entry.name.clone(),
+        Style::default()
+    };
+    if entry.kind.is_symlink() {
+        SelectItem::new(
+            value,
+            SelectItemView::Suffix {
+                text: format!("{}@", entry.name),
+                highlights: highlights.to_vec(),
+                suffix_start: entry.name.chars().count(),
+                style,
+                suffix_style: link_style,
+            },
+        )
+    } else if entry.kind.is_dir() {
+        SelectItem::new(
+            value,
+            SelectItemView::Styled {
+                text: entry.name.clone(),
+                highlights: highlights.to_vec(),
+                style: dir_style,
+            },
+        )
+    } else {
+        SelectItem::new(
+            value,
+            SelectItemView::Plain {
+                text: entry.name.clone(),
+                highlights: highlights.to_vec(),
+            },
+        )
     }
 }
 

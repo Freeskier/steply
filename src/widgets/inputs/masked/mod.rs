@@ -2,9 +2,9 @@ mod format;
 mod model;
 mod parser;
 
+use crate::core::NodeId;
 use crate::core::value::Value;
 use crate::core::value_path::{ValuePath, ValueTarget};
-use crate::core::NodeId;
 use crate::terminal::{CursorPos, KeyCode, KeyEvent};
 use crate::ui::span::Span;
 use crate::widgets::base::WidgetBase;

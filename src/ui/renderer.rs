@@ -159,7 +159,11 @@ fn build_base_frame(
         .unwrap_or(current_idx);
     let render_up_to = last_visible_idx.max(current_idx);
 
-    for (idx, step) in steps.iter().enumerate().take(render_up_to.saturating_add(1)) {
+    for (idx, step) in steps
+        .iter()
+        .enumerate()
+        .take(render_up_to.saturating_add(1))
+    {
         let status = StepVisualStatus::from(view.step_statuses[idx]);
 
         let mut block_lines = Vec::<SpanLine>::new();
@@ -245,7 +249,10 @@ fn build_base_frame(
 
         if config.decorations_enabled {
             let footer = if status == StepVisualStatus::Cancelled {
-                Some(StepFooter::Error { message: "Exiting.", description: None })
+                Some(StepFooter::Error {
+                    message: "Exiting.",
+                    description: None,
+                })
             } else if status == StepVisualStatus::Active {
                 if let Some(msg) = view.back_confirm {
                     Some(StepFooter::Warning {
@@ -253,9 +260,15 @@ fn build_base_frame(
                         description: Some("[Enter] confirm  •  [Esc] cancel"),
                     })
                 } else if let Some(msg) = view.step_errors.first() {
-                    Some(StepFooter::Error { message: msg.as_str(), description: None })
+                    Some(StepFooter::Error {
+                        message: msg.as_str(),
+                        description: None,
+                    })
                 } else if let Some(msg) = view.step_warnings.first() {
-                    Some(StepFooter::Warning { message: msg.as_str(), description: Some("[Enter] confirm  •  [Esc] cancel") })
+                    Some(StepFooter::Warning {
+                        message: msg.as_str(),
+                        description: Some("[Enter] confirm  •  [Esc] cancel"),
+                    })
                 } else {
                     None
                 }
@@ -368,7 +381,9 @@ fn draw_nodes(
                 } else {
                     Style::default()
                 };
-                Some(vec![Span::styled(format!("{}: ", label), label_st).no_wrap()])
+                Some(vec![
+                    Span::styled(format!("{}: ", label), label_st).no_wrap(),
+                ])
             } else {
                 None
             }

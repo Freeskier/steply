@@ -84,7 +84,6 @@ impl ConfirmInput {
         self.buffer.clear();
         self.cursor = 0;
     }
-
 }
 
 impl Drawable for ConfirmInput {
@@ -102,8 +101,13 @@ impl Drawable for ConfirmInput {
         let spans = if !focused {
             // Unfocused: show current state or plain options
             match self.confirmed {
-                Some(true) => vec![Span::styled(self.yes_label.clone(), Style::new().color(Color::Green)).no_wrap()],
-                Some(false) => vec![Span::styled(self.no_label.clone(), Style::new().color(Color::Red)).no_wrap()],
+                Some(true) => vec![
+                    Span::styled(self.yes_label.clone(), Style::new().color(Color::Green))
+                        .no_wrap(),
+                ],
+                Some(false) => vec![
+                    Span::styled(self.no_label.clone(), Style::new().color(Color::Red)).no_wrap(),
+                ],
                 None => vec![
                     Span::new(self.yes_label.clone()).no_wrap(),
                     Span::styled(" / ", Style::new().color(Color::DarkGrey)).no_wrap(),
@@ -115,9 +119,14 @@ impl Drawable for ConfirmInput {
                 ConfirmMode::Relaxed => {
                     // [yes] / no  — yes is highlighted as default action
                     vec![
-                        Span::styled(format!("[{}]", self.yes_label), Style::new().color(Color::Green).bold()).no_wrap(),
+                        Span::styled(
+                            format!("[{}]", self.yes_label),
+                            Style::new().color(Color::Green).bold(),
+                        )
+                        .no_wrap(),
                         Span::styled(" / ", Style::new().color(Color::DarkGrey)).no_wrap(),
-                        Span::styled(self.no_label.clone(), Style::new().color(Color::DarkGrey)).no_wrap(),
+                        Span::styled(self.no_label.clone(), Style::new().color(Color::DarkGrey))
+                            .no_wrap(),
                     ]
                 }
                 ConfirmMode::Strict { word } => {
@@ -128,10 +137,13 @@ impl Drawable for ConfirmInput {
                         Span::new(self.buffer.clone()).no_wrap(),
                     ];
                     if self.strict_error {
-                        s.push(Span::styled(
-                            format!("  ✗ Type \"{}\" to confirm", word),
-                            Style::new().color(Color::Red),
-                        ).no_wrap());
+                        s.push(
+                            Span::styled(
+                                format!("  ✗ Type \"{}\" to confirm", word),
+                                Style::new().color(Color::Red),
+                            )
+                            .no_wrap(),
+                        );
                     }
                     s
                 }
@@ -212,7 +224,10 @@ impl Interactive for ConfirmInput {
         if let Some(flag) = value.to_bool() {
             self.confirmed = Some(flag);
         } else if let Some(text) = value.as_text() {
-            self.confirmed = Some(matches!(text.to_ascii_lowercase().as_str(), "true" | "1" | "yes"));
+            self.confirmed = Some(matches!(
+                text.to_ascii_lowercase().as_str(),
+                "true" | "1" | "yes"
+            ));
         }
     }
 
@@ -226,7 +241,10 @@ impl Interactive for ConfirmInput {
             let prompt_len = format!("Type \"{}\" to confirm: ", word).chars().count();
             let cursor_chars = self.cursor.min(text_edit::char_count(&self.buffer));
             let col = prompt_len + cursor_chars;
-            Some(CursorPos { row: 0, col: col as u16 })
+            Some(CursorPos {
+                row: 0,
+                col: col as u16,
+            })
         } else {
             None
         }

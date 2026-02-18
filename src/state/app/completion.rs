@@ -158,15 +158,18 @@ impl AppState {
             let Some(node) = find_node_mut(nodes, &focused_id) else {
                 return false;
             };
-            let Some(state) = node.completion() else {
-                return false;
-            };
-            text_edit::replace_completion_prefix(
-                state.value,
-                state.cursor,
-                session.start,
-                &selected,
-            );
+            {
+                let Some(state) = node.completion() else {
+                    return false;
+                };
+                text_edit::replace_completion_prefix(
+                    state.value,
+                    state.cursor,
+                    session.start,
+                    &selected,
+                );
+            }
+            node.on_text_edited();
             true
         };
 
@@ -199,23 +202,29 @@ impl AppState {
         let Some(node) = find_node_mut(nodes, &focused_id) else {
             return false;
         };
-        let Some(state) = node.completion() else {
-            return false;
-        };
-
-        let chars: Vec<char> = state.value.chars().collect();
-        let pos = (*state.cursor).min(chars.len());
-        let s = start.min(pos);
-        let token: String = chars[s..pos].iter().collect();
-
-        if !prefix.is_empty()
-            && prefix.to_lowercase() != token.to_lowercase()
-            && prefix.len() > token.len()
+        let mut changed = false;
         {
-            text_edit::replace_completion_prefix(state.value, state.cursor, start, &prefix);
-            return true;
+            let Some(state) = node.completion() else {
+                return false;
+            };
+
+            let chars: Vec<char> = state.value.chars().collect();
+            let pos = (*state.cursor).min(chars.len());
+            let s = start.min(pos);
+            let token: String = chars[s..pos].iter().collect();
+
+            if !prefix.is_empty()
+                && prefix.to_lowercase() != token.to_lowercase()
+                && prefix.len() > token.len()
+            {
+                text_edit::replace_completion_prefix(state.value, state.cursor, start, &prefix);
+                changed = true;
+            }
         }
-        false
+        if changed {
+            node.on_text_edited();
+        }
+        changed
     }
 
     pub(super) fn cycle_completion_for_focused(&mut self, reverse: bool) -> bool {
@@ -329,12 +338,14 @@ impl AppState {
                     return Some(CompletionStartResult::None);
                 }
                 text_edit::replace_completion_prefix(state.value, state.cursor, start, only);
+                node.on_text_edited();
                 return Some(CompletionStartResult::ExpandedToSingle);
             }
 
             let prefix = longest_common_prefix(matches.as_slice());
             if !prefix.is_empty() && prefix != token {
                 text_edit::replace_completion_prefix(state.value, state.cursor, start, &prefix);
+                node.on_text_edited();
             }
 
             let index = if reverse { matches.len() - 1 } else { 0 };

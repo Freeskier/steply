@@ -2,6 +2,7 @@ use super::model::EntryFilter;
 use super::search::ScanResult;
 use std::collections::HashMap;
 use std::path::PathBuf;
+use std::sync::Arc;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct CacheKey {
@@ -13,7 +14,7 @@ pub struct CacheKey {
 }
 
 pub struct ScanCache {
-    results: HashMap<CacheKey, ScanResult>,
+    results: HashMap<CacheKey, Arc<ScanResult>>,
     in_flight: Option<CacheKey>,
 }
 
@@ -25,11 +26,11 @@ impl ScanCache {
         }
     }
 
-    pub fn get(&self, key: &CacheKey) -> Option<&ScanResult> {
+    pub fn get(&self, key: &CacheKey) -> Option<&Arc<ScanResult>> {
         self.results.get(key)
     }
 
-    pub fn insert(&mut self, key: CacheKey, result: ScanResult) {
+    pub fn insert(&mut self, key: CacheKey, result: Arc<ScanResult>) {
         if self.in_flight.as_ref() == Some(&key) {
             self.in_flight = None;
         }

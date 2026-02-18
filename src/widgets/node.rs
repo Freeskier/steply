@@ -144,6 +144,14 @@ impl Node {
         }
     }
 
+    pub fn on_text_edited(&mut self) {
+        match self {
+            Self::Input(w) => w.on_text_edited(),
+            Self::Component(w) => w.on_text_edited(),
+            Self::Output(_) => {}
+        }
+    }
+
     pub fn on_system_event(&mut self, event: &SystemEvent) -> InteractionResult {
         match self {
             Self::Input(w) => w.on_system_event(event),

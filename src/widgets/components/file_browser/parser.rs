@@ -7,8 +7,29 @@ pub struct ParsedInput {
     pub view_dir: PathBuf,
     /// The search/filter segment (last path component being typed).
     pub query: String,
-    /// Whether the input looks like a glob pattern.
-    pub is_glob: bool,
+    /// How to interpret `query`.
+    pub mode: QueryMode,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum QueryMode {
+    Fuzzy,
+    FuzzyRecursive,
+    Glob,
+}
+
+impl QueryMode {
+    pub fn is_glob(self) -> bool {
+        matches!(self, Self::Glob)
+    }
+
+    pub fn recursive(self, default_recursive: bool, query: &str) -> bool {
+        match self {
+            Self::FuzzyRecursive => true,
+            Self::Glob => default_recursive || query.contains("**"),
+            Self::Fuzzy => default_recursive,
+        }
+    }
 }
 
 /// Parse a raw input string into a view directory + search segment.
@@ -16,25 +37,10 @@ pub fn parse_input(raw: &str, cwd: &Path) -> ParsedInput {
     let expanded = expand_home(raw);
     let normalized = expanded.replace('\\', "/");
 
-    // Detect glob — bare `**` or `*` alone is not treated as glob (no useful pattern)
-    let query_part = if let Some(pos) = normalized.rfind('/') {
-        &normalized[pos + 1..]
-    } else {
-        normalized.as_str()
-    };
-    let is_glob = (normalized.contains('*') || normalized.contains('?'))
-        && !matches!(query_part.trim_matches('*'), "" | "." | "..");
-
     // Split on the last '/' that is NOT inside a `**/` glob segment.
     // For `src/**/*.rs` we want dir=`src/` and query=`**/*.rs`.
     let (dir_part, raw_query) = split_dir_query(&normalized);
-
-    // If not a glob, strip any bare wildcards from query so fuzzy search gets clean input
-    let query = if !is_glob {
-        raw_query.trim_matches('*').trim_matches('?').to_string()
-    } else {
-        raw_query
-    };
+    let (mode, query) = classify_query(raw_query.as_str());
 
     let base = if dir_part.is_empty() {
         cwd.to_path_buf()
@@ -48,7 +54,7 @@ pub fn parse_input(raw: &str, cwd: &Path) -> ParsedInput {
     ParsedInput {
         view_dir,
         query,
-        is_glob,
+        mode,
     }
 }
 
@@ -102,4 +108,35 @@ fn split_dir_query(path: &str) -> (&str, String) {
         Some(pos) => (&path[..=pos], path[pos + 1..].to_string()),
         None => ("", path.to_string()),
     }
+}
+
+fn classify_query(raw_query: &str) -> (QueryMode, String) {
+    if let Some(suffix) = raw_query.strip_prefix("**")
+        && !suffix.is_empty()
+        && !suffix.starts_with('/')
+        && !suffix.contains('/')
+        && !contains_glob_meta(suffix)
+    {
+        return (QueryMode::FuzzyRecursive, suffix.to_string());
+    }
+
+    if is_glob_query(raw_query) {
+        return (QueryMode::Glob, raw_query.to_string());
+    }
+
+    (
+        QueryMode::Fuzzy,
+        raw_query.trim_matches('*').trim_matches('?').to_string(),
+    )
+}
+
+fn is_glob_query(query: &str) -> bool {
+    contains_glob_meta(query)
+        && !matches!(query.trim_matches('*').trim_matches('?'), "" | "." | "..")
+}
+
+fn contains_glob_meta(query: &str) -> bool {
+    query
+        .chars()
+        .any(|ch| matches!(ch, '*' | '?' | '[' | ']' | '{' | '}'))
 }

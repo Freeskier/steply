@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use globset::{Glob, GlobSetBuilder};
+use globset::{Glob, GlobBuilder, GlobSetBuilder};
 
 use crate::core::search::fuzzy;
 use crate::core::value::Value;
@@ -8,7 +8,9 @@ use crate::ui::style::{Color, Style};
 use crate::widgets::components::select_list::{SelectItem, SelectItemView};
 
 use super::DisplayMode;
-use super::model::{EntryKind, FileEntry, build_entry, entry_sort};
+use super::model::{
+    FileEntry, build_entry, classify_entry_kind, completion_item_label, entry_sort, sort_entries,
+};
 
 const MAX_MATCHES: usize = 10000;
 const RELATIVE_PREFIX_MAX: usize = 24;
@@ -156,7 +158,7 @@ pub fn list_dir_recursive_glob(dir: &Path, hide_hidden: bool, pattern: &str) -> 
     let matcher = build_glob_matcher(&normalized);
     let mut entries = Vec::new();
     walk_dir_recursive(dir, dir, hide_hidden, &matcher, &mut entries);
-    entries.sort_by(entry_sort);
+    sort_entries(&mut entries);
     entries
 }
 
@@ -176,27 +178,7 @@ fn walk_dir_recursive(
         if hide_hidden && name.starts_with('.') {
             continue;
         }
-        let kind = entry
-            .file_type()
-            .map(|ft| {
-                if ft.is_symlink() {
-                    if std::fs::metadata(path.as_path())
-                        .map(|m| m.is_dir())
-                        .unwrap_or(false)
-                    {
-                        EntryKind::SymlinkDir
-                    } else {
-                        EntryKind::SymlinkFile
-                    }
-                } else if ft.is_dir() {
-                    EntryKind::Dir
-                } else {
-                    EntryKind::File
-                }
-            })
-            .unwrap_or(EntryKind::File);
-        let is_dir = kind.is_dir();
-
+        let kind = classify_entry_kind(&entry);
         // Compute relative path from root for matching
         let rel = path
             .strip_prefix(root)
@@ -212,7 +194,7 @@ fn walk_dir_recursive(
             entries.push(build_entry(name.clone(), path.clone(), kind));
         }
 
-        if is_dir {
+        if kind.should_recurse() {
             walk_dir_recursive(root, &path, hide_hidden, matcher, entries);
         }
     }
@@ -233,16 +215,7 @@ fn build_result(
         .map(|(entry, hl)| entry_option(entry, hl, root, mode))
         .collect();
 
-    let completion_items = entries
-        .iter()
-        .map(|e| {
-            if e.kind.is_dir() {
-                format!("{}/", e.name)
-            } else {
-                e.name.clone()
-            }
-        })
-        .collect();
+    let completion_items = entries.iter().map(completion_item_label).collect();
 
     ScanResult {
         total_matches,
@@ -384,19 +357,26 @@ fn build_glob_matcher(pattern: &str) -> Option<globset::GlobSet> {
     let mut builder = GlobSetBuilder::new();
 
     // Always include the user pattern as-is.
-    builder.add(Glob::new(pattern).ok()?);
+    builder.add(build_case_insensitive_glob(pattern)?);
 
     // For patterns without an explicit path segment, also include a recursive
     // variant so `*.rs` matches both `main.rs` and `src/main.rs` when scanning
     // recursively.
     if !pattern.contains('/') {
         let recursive = format!("**/{pattern}");
-        if let Ok(glob) = Glob::new(recursive.as_str()) {
+        if let Some(glob) = build_case_insensitive_glob(recursive.as_str()) {
             builder.add(glob);
         }
     }
 
     builder.build().ok()
+}
+
+fn build_case_insensitive_glob(pattern: &str) -> Option<Glob> {
+    GlobBuilder::new(pattern)
+        .case_insensitive(true)
+        .build()
+        .ok()
 }
 
 /// Extract literal chunks from a glob pattern for highlight hints.

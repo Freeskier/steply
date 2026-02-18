@@ -87,12 +87,7 @@ impl SelectList {
 
     pub fn set_mode(&mut self, mode: SelectMode) {
         self.mode = mode;
-        if self.mode == SelectMode::Radio
-            && self.selected.is_empty()
-            && !self.source_options.is_empty()
-        {
-            self.selected.push(0);
-        }
+        self.ensure_radio_selection();
     }
 
     pub fn with_show_label(mut self, show_label: bool) -> Self {
@@ -158,12 +153,7 @@ impl SelectList {
             })
             .collect();
 
-        if self.mode == SelectMode::Radio
-            && self.selected.is_empty()
-            && !self.source_options.is_empty()
-        {
-            self.selected.push(0);
-        }
+        self.ensure_radio_selection();
 
         self.apply_filter(None);
     }
@@ -173,12 +163,7 @@ impl SelectList {
             .into_iter()
             .filter(|index| *index < self.source_options.len())
             .collect();
-        if self.mode == SelectMode::Radio
-            && self.selected.is_empty()
-            && !self.source_options.is_empty()
-        {
-            self.selected.push(0);
-        }
+        self.ensure_radio_selection();
         self.apply_filter(None);
         self
     }
@@ -255,6 +240,27 @@ impl SelectList {
         self.visible_to_source.get(self.active_index).copied()
     }
 
+    fn ensure_radio_selection(&mut self) {
+        if self.mode == SelectMode::Radio
+            && self.selected.is_empty()
+            && !self.source_options.is_empty()
+        {
+            self.selected.push(0);
+        }
+    }
+
+    fn apply_filter_on_edit(
+        &mut self,
+        before_query: String,
+        result: InteractionResult,
+    ) -> InteractionResult {
+        if self.filter_query() != before_query {
+            self.apply_filter(None);
+            return InteractionResult::handled();
+        }
+        result
+    }
+
     fn apply_filter(&mut self, preferred_source: Option<usize>) {
         let preferred_source = preferred_source.or_else(|| self.active_source_index());
         let query = self.filter_query();
@@ -271,12 +277,7 @@ impl SelectList {
 
         self.selected
             .retain(|index| *index < self.source_options.len());
-        if self.mode == SelectMode::Radio
-            && self.selected.is_empty()
-            && !self.source_options.is_empty()
-        {
-            self.selected.push(0);
-        }
+        self.ensure_radio_selection();
 
         if self.options.is_empty() {
             self.active_index = 0;
@@ -498,11 +499,7 @@ impl SelectList {
             _ => {
                 let before = self.filter_query();
                 let result = sanitize_child_result(self.filter.on_key(key));
-                if self.filter_query() != before {
-                    self.apply_filter(None);
-                    return InteractionResult::handled();
-                }
-                result
+                self.apply_filter_on_edit(before, result)
             }
         }
     }
@@ -629,11 +626,7 @@ impl Interactive for SelectList {
 
         let before = self.filter_query();
         let result = sanitize_child_result(self.filter.on_text_action(action));
-        if self.filter_query() != before {
-            self.apply_filter(None);
-            return InteractionResult::handled();
-        }
-        result
+        self.apply_filter_on_edit(before, result)
     }
 
     fn completion(&mut self) -> Option<CompletionState<'_>> {

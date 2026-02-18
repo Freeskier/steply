@@ -19,6 +19,10 @@ impl EntryKind {
     pub fn is_symlink(self) -> bool {
         matches!(self, Self::SymlinkDir | Self::SymlinkFile)
     }
+
+    pub fn should_recurse(self) -> bool {
+        matches!(self, Self::Dir)
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -68,14 +72,14 @@ pub fn list_dir(dir: &Path, hide_hidden: bool) -> Vec<FileEntry> {
             entries.push(build_entry(name, path, kind));
         }
     }
-    entries.sort_by(entry_sort);
+    sort_entries(&mut entries);
     entries
 }
 
 pub fn list_dir_recursive(dir: &Path, hide_hidden: bool) -> Vec<FileEntry> {
     let mut entries = Vec::new();
     list_dir_recursive_inner(dir, &mut entries, hide_hidden);
-    entries.sort_by(entry_sort);
+    sort_entries(&mut entries);
     entries
 }
 
@@ -89,7 +93,7 @@ fn list_dir_recursive_inner(dir: &Path, entries: &mut Vec<FileEntry>, hide_hidde
             continue;
         }
         entries.push(build_entry(name, path.clone(), kind));
-        if kind.is_dir() {
+        if kind.should_recurse() {
             list_dir_recursive_inner(&path, entries, hide_hidden);
         }
     }
@@ -125,7 +129,19 @@ pub fn entry_sort(a: &FileEntry, b: &FileEntry) -> std::cmp::Ordering {
     }
 }
 
-fn classify_entry_kind(entry: &fs::DirEntry) -> EntryKind {
+pub fn sort_entries(entries: &mut [FileEntry]) {
+    entries.sort_by(entry_sort);
+}
+
+pub fn completion_item_label(entry: &FileEntry) -> String {
+    if entry.kind.is_dir() {
+        format!("{}/", entry.name)
+    } else {
+        entry.name.clone()
+    }
+}
+
+pub fn classify_entry_kind(entry: &fs::DirEntry) -> EntryKind {
     let Ok(ft) = entry.file_type() else {
         return EntryKind::File;
     };

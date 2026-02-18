@@ -22,6 +22,7 @@ pub struct CompletionSnapshot {
     pub owner: String,
     pub matches: Vec<String>,
     pub selected: usize,
+    pub start: usize,
 }
 
 pub struct OverlayView<'a> {
@@ -58,10 +59,11 @@ impl<'a> RenderView<'a> {
 
         let completion = state
             .completion_snapshot()
-            .map(|(owner, matches, selected)| CompletionSnapshot {
+            .map(|(owner, matches, selected, start)| CompletionSnapshot {
                 owner,
                 matches,
                 selected,
+                start,
             });
 
         Self {

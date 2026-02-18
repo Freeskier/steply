@@ -23,7 +23,7 @@ impl AppState {
         self.ui.completion_session = None;
     }
 
-    pub fn completion_snapshot(&self) -> Option<(String, Vec<String>, usize)> {
+    pub fn completion_snapshot(&self) -> Option<(String, Vec<String>, usize, usize)> {
         let session = self.ui.completion_session.as_ref()?;
         let focused = self.ui.focus.current_id()?;
         if session.owner_id.as_str() != focused {
@@ -33,6 +33,7 @@ impl AppState {
             session.owner_id.to_string(),
             session.matches.clone(),
             session.index,
+            session.start,
         ))
     }
 
@@ -113,6 +114,42 @@ impl AppState {
         updated
     }
 
+    /// If the current token is shorter than the longest common prefix of
+    /// all matches, expand the input to that common prefix. Returns true
+    /// if the input was modified.
+    pub(super) fn expand_common_prefix_for_focused(&mut self) -> bool {
+        let Some(session) = self.ui.completion_session.as_ref() else {
+            return false;
+        };
+        let Some(focused_id) = self.ui.focus.current_id().map(ToOwned::to_owned) else {
+            return false;
+        };
+        if session.owner_id.as_str() != focused_id || session.matches.len() <= 1 {
+            return false;
+        }
+        let prefix = longest_common_prefix(&session.matches);
+        let start = session.start;
+
+        let nodes = self.active_nodes_mut();
+        let Some(node) = find_node_mut(nodes, &focused_id) else {
+            return false;
+        };
+        let Some(state) = node.completion() else {
+            return false;
+        };
+
+        let chars: Vec<char> = state.value.chars().collect();
+        let pos = (*state.cursor).min(chars.len());
+        let s = start.min(pos);
+        let token: String = chars[s..pos].iter().collect();
+
+        if !prefix.is_empty() && prefix.to_lowercase() != token.to_lowercase() && prefix.len() > token.len() {
+            text_edit::replace_completion_prefix(state.value, state.cursor, start, &prefix);
+            return true;
+        }
+        false
+    }
+
     pub(super) fn cycle_completion_for_focused(&mut self, reverse: bool) -> bool {
         let Some(session) = self.ui.completion_session.as_mut() else {
             return false;
@@ -142,16 +179,43 @@ impl AppState {
             return;
         };
 
+        // Snapshot existing session info before mutable borrow
+        let existing_session = self.ui.completion_session.as_ref().map(|s| {
+            (s.owner_id.to_string(), s.start, s.index)
+        });
+
         let result = (|| -> Option<CompletionSession> {
             let nodes = self.active_nodes_mut();
             let node = find_node_mut(nodes, &focused_id)?;
             let state = node.completion()?;
 
-            let (start, token) = text_edit::completion_prefix(state.value.as_str(), *state.cursor)?;
+            let has_prefix_start = state.prefix_start.is_some();
+            let (start, token) = if let Some(ps) = state.prefix_start {
+                let chars: Vec<char> = state.value.chars().collect();
+                let pos = (*state.cursor).min(chars.len());
+                let ps = ps.min(pos);
+                (ps, chars[ps..pos].iter().collect::<String>())
+            } else {
+                text_edit::completion_prefix(state.value.as_str(), *state.cursor)?
+            };
             if token.is_empty() {
-                return None;
+                // For empty token with prefix_start, only keep an existing session
+                // (opened by Tab) alive — don't create a new one automatically.
+                if has_prefix_start {
+                    let has_existing = existing_session.as_ref()
+                        .is_some_and(|(id, s, _)| id == &focused_id && *s == start);
+                    if !has_existing {
+                        return None;
+                    }
+                } else {
+                    return None;
+                }
             }
-            let matches = completion_matches(state.candidates, &token);
+            let matches = if token.is_empty() {
+                state.candidates.iter().cloned().collect()
+            } else {
+                completion_matches(state.candidates, &token)
+            };
             // Only show ghost if the first match is strictly longer than the typed token
             let first = matches.first()?;
             if first == &token {
@@ -159,12 +223,9 @@ impl AppState {
             }
 
             // Preserve current cycle index if session is already open for same owner+start
-            let index = self
-                .ui
-                .completion_session
-                .as_ref()
-                .filter(|s| s.owner_id.as_str() == focused_id && s.start == start)
-                .map(|s| s.index.min(matches.len().saturating_sub(1)))
+            let index = existing_session.as_ref()
+                .filter(|(id, s, _)| id == &focused_id && *s == start)
+                .map(|(_, _, idx)| (*idx).min(matches.len().saturating_sub(1)))
                 .unwrap_or(0);
 
             Some(CompletionSession {
@@ -192,8 +253,20 @@ impl AppState {
             let node = find_node_mut(nodes, &focused_id)?;
             let state = node.completion()?;
 
-            let (start, token) = text_edit::completion_prefix(state.value.as_str(), *state.cursor)?;
-            let matches = completion_matches(state.candidates, &token);
+            let has_prefix_start = state.prefix_start.is_some();
+            let (start, token) = if let Some(ps) = state.prefix_start {
+                let chars: Vec<char> = state.value.chars().collect();
+                let pos = (*state.cursor).min(chars.len());
+                let ps = ps.min(pos);
+                (ps, chars[ps..pos].iter().collect::<String>())
+            } else {
+                text_edit::completion_prefix(state.value.as_str(), *state.cursor)?
+            };
+            let matches = if token.is_empty() && has_prefix_start {
+                state.candidates.iter().cloned().collect()
+            } else {
+                completion_matches(state.candidates, &token)
+            };
             if matches.is_empty() {
                 return Some(CompletionStartResult::None);
             }

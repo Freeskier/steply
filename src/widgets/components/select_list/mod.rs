@@ -372,8 +372,6 @@ impl SelectList {
                         spans.push(Span::styled(" ", inactive_style).no_wrap());
                     }
                     spans.push(Span::styled(" ", inactive_style).no_wrap());
-                    spans.push(Span::styled("|", pipe_style).no_wrap());
-                    spans.push(Span::styled(" ", pipe_style).no_wrap());
                     spans.extend(option_line);
                     lines.push(spans);
                 }

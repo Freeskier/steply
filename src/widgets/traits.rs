@@ -87,6 +87,7 @@ pub enum ValidationMode {
 pub struct CompletionMenu {
     pub matches: Vec<String>,
     pub selected: usize,
+    pub start: usize,
 }
 
 #[derive(Debug, Clone)]
@@ -209,6 +210,8 @@ pub struct CompletionState<'a> {
     pub value: &'a mut String,
     pub cursor: &'a mut usize,
     pub candidates: &'a [String],
+    /// If set, overrides the default `completion_prefix` token start position.
+    pub prefix_start: Option<usize>,
 }
 
 impl TextAction {

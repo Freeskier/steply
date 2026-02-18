@@ -331,6 +331,7 @@ fn render_context_for_nodes(
             CompletionMenu {
                 matches: snap.matches.clone(),
                 selected: snap.selected,
+                start: snap.start,
             },
         );
     }

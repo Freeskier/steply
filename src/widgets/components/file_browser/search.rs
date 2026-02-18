@@ -16,6 +16,8 @@ const RELATIVE_PREFIX_MAX: usize = 24;
 #[derive(Debug, Clone)]
 pub struct ScanResult {
     pub entries: Vec<FileEntry>,
+    /// Highlight ranges (char indices) aligned with `entries`.
+    pub highlights: Vec<Vec<(usize, usize)>>,
     pub options: Vec<SelectOption>,
     /// Plain names / relative paths for TextInput completion.
     pub completion_items: Vec<String>,
@@ -41,6 +43,7 @@ pub fn fuzzy_search(
     if indices.is_empty() {
         return ScanResult {
             entries: Vec::new(),
+            highlights: Vec::new(),
             options: Vec::new(),
             completion_items: Vec::new(),
             total_matches: 0,
@@ -77,10 +80,22 @@ pub fn glob_search(
 ) -> ScanResult {
     let matcher = build_glob_matcher(pattern);
     let use_path = pattern.contains('/');
+    let literals = glob_literal_chunks(pattern)
+        .into_iter()
+        .map(|s| s.to_ascii_lowercase())
+        .collect::<Vec<_>>();
+    let primary_literal = literals.iter().max_by_key(|s| s.len()).cloned();
 
     let mut matched_entries: Vec<FileEntry> = entries
         .iter()
         .filter(|entry| {
+            if !use_path
+                && let Some(lit) = &primary_literal
+                && !entry.name_lower.contains(lit)
+            {
+                return false;
+            }
+
             let target = if use_path {
                 entry
                     .path
@@ -99,10 +114,9 @@ pub fn glob_search(
     matched_entries.truncate(MAX_MATCHES);
     matched_entries.sort_by(entry_sort);
 
-    let literal = glob_literal_chunk(pattern);
     let ranges: Vec<Vec<(usize, usize)>> = matched_entries
         .iter()
-        .map(|e| literal_highlights(&literal, &e.name))
+        .map(|e| literal_highlights(&literals, &e.name))
         .collect();
 
     build_result(matched_entries, ranges, root, mode, total_matches)
@@ -197,6 +211,7 @@ fn build_result(
     ScanResult {
         total_matches,
         entries,
+        highlights: ranges,
         options,
         completion_items,
     }
@@ -301,48 +316,92 @@ fn build_glob_matcher(pattern: &str) -> Option<globset::GlobSet> {
     builder.build().ok()
 }
 
-/// Extract the longest literal chunk from a glob pattern for highlight hints.
-fn glob_literal_chunk(pattern: &str) -> Option<String> {
+/// Extract literal chunks from a glob pattern for highlight hints.
+fn glob_literal_chunks(pattern: &str) -> Vec<String> {
     let mut chunks: Vec<String> = Vec::new();
     let mut cur = String::new();
+    let mut in_class = false;
     for ch in pattern.chars() {
-        if matches!(ch, '*' | '?' | '[' | ']') {
+        if in_class {
+            if ch == ']' {
+                in_class = false;
+            }
+            continue;
+        }
+        if ch == '[' {
+            in_class = true;
             if !cur.is_empty() {
                 chunks.push(cur.clone());
                 cur.clear();
             }
-        } else if ch != '/' {
+            continue;
+        }
+        if matches!(ch, '*' | '?' | '{' | '}' | '/' | '\\') {
+            if !cur.is_empty() {
+                chunks.push(cur.clone());
+                cur.clear();
+            }
+        } else {
             cur.push(ch);
         }
     }
     if !cur.is_empty() {
         chunks.push(cur);
     }
-    chunks.into_iter().max_by_key(|s| s.len())
+
+    chunks.sort_by(|a, b| b.len().cmp(&a.len()).then(a.cmp(b)));
+    chunks.dedup();
+    chunks
 }
 
-fn literal_highlights(literal: &Option<String>, name: &str) -> Vec<(usize, usize)> {
-    let Some(lit) = literal else {
-        return Vec::new();
-    };
-    if lit.is_empty() {
+fn literal_highlights(literals: &[String], name: &str) -> Vec<(usize, usize)> {
+    if literals.is_empty() {
         return Vec::new();
     }
-    let name_chars: Vec<char> = name.chars().collect();
-    let lit_chars: Vec<char> = lit.chars().collect();
-    if lit_chars.len() > name_chars.len() {
+    let lower_name = name.to_ascii_lowercase();
+    if lower_name.is_empty() {
         return Vec::new();
     }
-    for start in 0..=(name_chars.len() - lit_chars.len()) {
-        if name_chars[start..start + lit_chars.len()]
-            .iter()
-            .zip(lit_chars.iter())
-            .all(|(a, b)| a.eq_ignore_ascii_case(b))
-        {
-            return vec![(start, start + lit_chars.len())];
+
+    let mut ranges = Vec::new();
+    for lit in literals {
+        if lit.is_empty() {
+            continue;
+        }
+        let mut cursor = 0usize;
+        while let Some(found) = lower_name[cursor..].find(lit.as_str()) {
+            let start_byte = cursor + found;
+            let end_byte = start_byte + lit.len();
+            let start_char = lower_name[..start_byte].chars().count();
+            let end_char = lower_name[..end_byte].chars().count();
+            if end_char > start_char {
+                ranges.push((start_char, end_char));
+            }
+            cursor = start_byte + 1;
         }
     }
-    Vec::new()
+
+    merge_ranges(ranges)
+}
+
+fn merge_ranges(mut ranges: Vec<(usize, usize)>) -> Vec<(usize, usize)> {
+    if ranges.is_empty() {
+        return ranges;
+    }
+    ranges.sort_unstable_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)));
+
+    let mut merged = Vec::with_capacity(ranges.len());
+    let mut current = ranges[0];
+    for (start, end) in ranges.into_iter().skip(1) {
+        if start <= current.1 {
+            current.1 = current.1.max(end);
+        } else {
+            merged.push(current);
+            current = (start, end);
+        }
+    }
+    merged.push(current);
+    merged
 }
 
 // ── Path display helpers ─────────────────────────────────────────────────────

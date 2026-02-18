@@ -17,6 +17,16 @@ use state::rebuild_visible;
 
 pub trait TreeItemLabel: Send + 'static {
     fn label(&self) -> &str;
+
+    fn highlight_ranges(&self) -> &[(usize, usize)] {
+        const EMPTY: &[(usize, usize)] = &[];
+        EMPTY
+    }
+
+    /// Optional badge text shown after the label (e.g. "[3 matches]").
+    fn badge(&self) -> Option<&str> {
+        None
+    }
 }
 
 impl TreeItemLabel for String {
@@ -259,6 +269,7 @@ impl<T: TreeItemLabel> TreeView<T> {
         let inactive_style = Style::new().color(Color::DarkGrey);
         let cursor_style = Style::new().color(Color::Yellow);
         let active_style = Style::new().color(Color::Cyan).bold();
+        let highlight_style = Style::new().color(Color::Yellow).bold();
         let loading_style = Style::new().color(Color::Yellow);
 
         for vis_pos in start..end {
@@ -293,20 +304,31 @@ impl<T: TreeItemLabel> TreeView<T> {
             } else {
                 "  "
             };
-            let (icon_span, label_span) = if focused && active {
+            let dir_style = Style::new().color(Color::Blue).bold();
+            let (icon_span, label_style) = if focused && active {
                 let icon_st = if loading { loading_style } else { active_style };
                 (
                     Span::styled(icon, icon_st).no_wrap(),
-                    Span::styled(node.item.label(), active_style).no_wrap(),
+                    active_style,
                 )
             } else {
                 (
                     Span::styled(icon, inactive_style).no_wrap(),
-                    Span::styled(node.item.label(), inactive_style).no_wrap(),
+                    if node.has_children { dir_style } else { Style::default() },
                 )
             };
 
-            lines.push(vec![cursor_span, indent_span, icon_span, label_span]);
+            let mut line = vec![cursor_span, indent_span, icon_span];
+            line.extend(render_text_spans(
+                node.item.label(),
+                node.item.highlight_ranges(),
+                label_style,
+                highlight_style,
+            ));
+            if let Some(badge) = node.item.badge() {
+                line.push(Span::styled(format!(" {}", badge), inactive_style).no_wrap());
+            }
+            lines.push(line);
         }
 
         if let Some(text) = self.scroll.footer(total) {
@@ -316,6 +338,66 @@ impl<T: TreeItemLabel> TreeView<T> {
         }
 
         lines
+    }
+}
+
+fn render_text_spans(
+    text: &str,
+    highlights: &[(usize, usize)],
+    base_style: Style,
+    highlight_style: Style,
+) -> Vec<Span> {
+    if highlights.is_empty() {
+        return vec![Span::styled(text.to_string(), base_style).no_wrap()];
+    }
+
+    let chars: Vec<char> = text.chars().collect();
+    let mut sorted = highlights.to_vec();
+    sorted.sort_unstable_by(|left, right| left.0.cmp(&right.0).then(left.1.cmp(&right.1)));
+
+    let mut spans = Vec::<Span>::new();
+    let mut cursor = 0usize;
+
+    for (start, end) in sorted {
+        let start = start.min(chars.len());
+        let end = end.min(chars.len());
+        if start > cursor {
+            let plain: String = chars[cursor..start].iter().collect();
+            if !plain.is_empty() {
+                spans.push(Span::styled(plain, base_style).no_wrap());
+            }
+        }
+        if end > start {
+            let highlighted: String = chars[start..end].iter().collect();
+            if !highlighted.is_empty() {
+                spans.push(
+                    Span::styled(highlighted, merge_style(base_style, highlight_style)).no_wrap(),
+                );
+            }
+        }
+        cursor = end.max(cursor);
+    }
+
+    if cursor < chars.len() {
+        let tail: String = chars[cursor..].iter().collect();
+        if !tail.is_empty() {
+            spans.push(Span::styled(tail, base_style).no_wrap());
+        }
+    }
+
+    if spans.is_empty() {
+        spans.push(Span::styled(text.to_string(), base_style).no_wrap());
+    }
+    spans
+}
+
+fn merge_style(base: Style, extra: Style) -> Style {
+    Style {
+        color: extra.color.or(base.color),
+        background: extra.background.or(base.background),
+        bold: base.bold || extra.bold,
+        strikethrough: base.strikethrough || extra.strikethrough,
+        no_strikethrough: base.no_strikethrough || extra.no_strikethrough,
     }
 }
 
@@ -414,5 +496,67 @@ impl<T: TreeItemLabel> Interactive for TreeView<T> {
             self.scroll
                 .ensure_visible(self.active_index, self.visible.len());
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{TreeItemLabel, TreeNode, TreeView};
+    use crate::ui::style::Color;
+
+    struct HighlightItem {
+        label: String,
+        highlights: Vec<(usize, usize)>,
+    }
+
+    impl TreeItemLabel for HighlightItem {
+        fn label(&self) -> &str {
+            self.label.as_str()
+        }
+
+        fn highlight_ranges(&self) -> &[(usize, usize)] {
+            self.highlights.as_slice()
+        }
+    }
+
+    #[test]
+    fn collapsed_parent_hides_children() {
+        // Simulates: src/ (depth=0, collapsed) with children (depth=1)
+        // Children should NOT be visible when parent is collapsed.
+        let mut src = TreeNode::new("src".to_string(), 0, true);
+        src.expanded = false;
+        src.children_loaded = true;
+
+        let child1 = TreeNode::new("acp.rs".to_string(), 1, false);
+        let child2 = TreeNode::new("acp_thread.rs".to_string(), 1, false);
+
+        let nodes = vec![src, child1, child2];
+        let tree = TreeView::new("t", "", nodes).with_show_label(false);
+
+        // Only src should be visible, not its children
+        assert_eq!(tree.visible(), &[0], "collapsed src should only show itself, not children");
+    }
+
+    #[test]
+    fn render_lines_highlights_label_ranges() {
+        let nodes = vec![TreeNode::new(
+            HighlightItem {
+                label: "foo_utils.rs".to_string(),
+                highlights: vec![(0, 3), (9, 12)],
+            },
+            0,
+            false,
+        )];
+
+        let tree = TreeView::new("tree", "", nodes).with_show_label(false);
+        let lines = tree.render_lines(true);
+        let line = lines.first().expect("missing rendered line");
+
+        assert!(line
+            .iter()
+            .any(|span| span.text == "foo" && span.style.color == Some(Color::Yellow)));
+        assert!(line
+            .iter()
+            .any(|span| span.text == ".rs" && span.style.color == Some(Color::Yellow)));
     }
 }

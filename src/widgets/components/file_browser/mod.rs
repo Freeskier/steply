@@ -16,11 +16,38 @@ pub enum BrowserMode {
 
 // ── FileTreeItem ──────────────────────────────────────────────────────────────
 
-struct FileTreeItem(model::FileEntry);
+struct FileTreeItem {
+    entry: model::FileEntry,
+    highlights: Vec<(usize, usize)>,
+    badge: Option<String>,
+}
+
+impl FileTreeItem {
+    fn new(entry: model::FileEntry, highlights: Vec<(usize, usize)>) -> Self {
+        Self {
+            entry,
+            highlights,
+            badge: None,
+        }
+    }
+
+    fn with_badge(mut self, badge: String) -> Self {
+        self.badge = Some(badge);
+        self
+    }
+}
 
 impl TreeItemLabel for FileTreeItem {
     fn label(&self) -> &str {
-        &self.0.name
+        &self.entry.name
+    }
+
+    fn highlight_ranges(&self) -> &[(usize, usize)] {
+        self.highlights.as_slice()
+    }
+
+    fn badge(&self) -> Option<&str> {
+        self.badge.as_deref()
     }
 }
 
@@ -259,8 +286,6 @@ impl FileBrowserInput {
 
     fn apply_result(&mut self, result: ScanResult) {
         self.scanning = false;
-        self.text
-            .set_completion_items(result.completion_items.clone());
 
         // When browser is open and not at root, prepend `..` as a navigation option
         let options = if self.overlay_open && self.browse_dir.parent().is_some() {
@@ -294,7 +319,11 @@ impl FileBrowserInput {
                     path: Arc::new(self.browse_dir.parent().unwrap().to_path_buf()),
                     is_dir: true,
                 };
-                nodes.push(TreeNode::new(FileTreeItem(dotdot_entry), 0, false));
+                nodes.push(TreeNode::new(
+                    FileTreeItem::new(dotdot_entry, Vec::new()),
+                    0,
+                    false,
+                ));
             }
 
             // Track which ancestor dirs have already been inserted as synthetic nodes
@@ -302,11 +331,16 @@ impl FileBrowserInput {
             let mut inserted_dirs: std::collections::HashSet<PathBuf> =
                 std::collections::HashSet::new();
 
-            for e in &result.entries {
+            for (entry_idx, e) in result.entries.iter().enumerate() {
+                let highlights = result.highlights.get(entry_idx).cloned().unwrap_or_default();
                 let rel = match e.path.strip_prefix(&self.browse_dir) {
                     Ok(r) => r.to_path_buf(),
                     Err(_) => {
-                        nodes.push(TreeNode::new(FileTreeItem(e.clone()), 0, e.is_dir));
+                        nodes.push(TreeNode::new(
+                            FileTreeItem::new(e.clone(), highlights),
+                            0,
+                            e.is_dir,
+                        ));
                         continue;
                     }
                 };
@@ -329,15 +363,20 @@ impl FileBrowserInput {
                             path: Arc::new(anc_abs),
                             is_dir: true,
                         };
-                        let mut node = TreeNode::new(FileTreeItem(dir_entry), anc_depth, true);
-                        node.expanded = true;
+                        let mut node =
+                            TreeNode::new(FileTreeItem::new(dir_entry, Vec::new()), anc_depth, true);
+                        node.expanded = false;
                         node.children_loaded = true;
                         nodes.push(node);
                     }
                 }
 
                 let depth = components.len().saturating_sub(1);
-                nodes.push(TreeNode::new(FileTreeItem(e.clone()), depth, e.is_dir));
+                nodes.push(TreeNode::new(
+                    FileTreeItem::new(e.clone(), highlights),
+                    depth,
+                    e.is_dir,
+                ));
             }
 
             // Sort by absolute path so parents always precede their children
@@ -345,16 +384,43 @@ impl FileBrowserInput {
             // Keep `..` pinned at the front.
             let dotdot = if nodes
                 .first()
-                .map(|n| n.item.0.name == "..")
+                .map(|n| n.item.entry.name == "..")
                 .unwrap_or(false)
             {
                 Some(nodes.remove(0))
             } else {
                 None
             };
-            nodes.sort_by(|a, b| a.item.0.path.cmp(&b.item.0.path));
+            nodes.sort_by(|a, b| {
+                // Build sort keys: dirs get a trailing '/' so they sort before
+                // files in the same directory while keeping parents before children.
+                fn sort_key(entry: &model::FileEntry) -> String {
+                    let mut s = entry.path.to_string_lossy().to_ascii_lowercase();
+                    if entry.is_dir {
+                        s.push('/');
+                    }
+                    s
+                }
+                sort_key(&a.item.entry).cmp(&sort_key(&b.item.entry))
+            });
             if let Some(dd) = dotdot {
                 nodes.insert(0, dd);
+            }
+
+            // Count descendant matches for folder badges
+            for i in 0..nodes.len() {
+                if !nodes[i].has_children {
+                    continue;
+                }
+                let parent_depth = nodes[i].depth;
+                let count = nodes[i + 1..]
+                    .iter()
+                    .take_while(|n| n.depth > parent_depth)
+                    .filter(|n| !n.has_children)
+                    .count();
+                if count > 0 {
+                    nodes[i].item.badge = Some(format!("[{}]", count));
+                }
             }
 
             tree.set_nodes(nodes);
@@ -376,12 +442,76 @@ impl FileBrowserInput {
         let mut changed = false;
         for (key, result) in results {
             self.cache.insert(key.clone(), result.clone());
+
+            // Check if this result is for a pending tree expand
+            if let Some(tree) = self.tree.as_mut()
+                && let Some(pending_idx) = tree.pending_expand
+            {
+                let pending_path = tree
+                    .nodes()
+                    .get(pending_idx)
+                    .map(|n| n.item.entry.path.clone());
+                if let Some(pending_path) = pending_path
+                    && key.dir == *pending_path
+                    && key.query.is_empty()
+                {
+                    let children: Vec<_> = result
+                        .entries
+                        .iter()
+                        .map(|e| {
+                            TreeNode::new(
+                                FileTreeItem::new(e.clone(), Vec::new()),
+                                0, // depth will be set by insert_children_after
+                                e.is_dir,
+                            )
+                        })
+                        .collect();
+                    tree.pending_expand = None;
+                    tree.insert_children_after(pending_idx, children);
+                    changed = true;
+                    continue;
+                }
+            }
+
             if key == current_key || (self.overlay_open && key == browse_key) {
                 self.apply_result(result);
                 changed = true;
             }
         }
         changed
+    }
+
+    /// Synchronously read `browse_dir` children and populate completion candidates.
+    /// This is a fast, non-recursive `read_dir` so it doesn't need the async scanner.
+    fn refresh_completion_items(&mut self) {
+        let mut items = Vec::new();
+        if let Ok(rd) = std::fs::read_dir(&self.browse_dir) {
+            for entry in rd.flatten() {
+                let name = entry.file_name().to_string_lossy().to_string();
+                if self.hide_hidden && name.starts_with('.') {
+                    continue;
+                }
+                let is_dir = entry.file_type().map(|t| t.is_dir()).unwrap_or(false);
+                match self.entry_filter {
+                    EF::FilesOnly if is_dir => continue,
+                    EF::DirsOnly if !is_dir => continue,
+                    _ => {}
+                }
+                if let Some(exts) = &self.ext_filter {
+                    if !is_dir {
+                        let ext = entry.path().extension()
+                            .map(|e| e.to_string_lossy().to_ascii_lowercase())
+                            .unwrap_or_default();
+                        if !exts.contains(&ext) {
+                            continue;
+                        }
+                    }
+                }
+                items.push(name);
+            }
+        }
+        items.sort_unstable();
+        self.text.set_completion_items(items);
     }
 
     fn flush_debounce(&mut self) -> bool {
@@ -393,6 +523,8 @@ impl FileBrowserInput {
         }
         self.debounce_deadline = None;
         let parsed = parse_input(&self.current_input(), &self.cwd);
+        self.browse_dir = parsed.view_dir.clone();
+        self.refresh_completion_items();
         self.submit_scan(
             parsed.view_dir,
             parsed.query,
@@ -409,6 +541,7 @@ impl FileBrowserInput {
     fn browse_into(&mut self, dir: PathBuf) {
         self.browse_dir = dir.clone();
         self.list.set_options(vec![]);
+        self.refresh_completion_items();
         // Update text input to show the new directory path (relative to cwd if possible)
         let path_str = if let Ok(rel) = dir.strip_prefix(&self.cwd) {
             let s = rel.to_string_lossy();
@@ -428,6 +561,7 @@ impl FileBrowserInput {
         self.overlay_open = true;
         let parsed = parse_input(&self.current_input(), &self.cwd);
         self.browse_dir = parsed.view_dir.clone();
+        self.refresh_completion_items();
         if self.browser_mode == BrowserMode::Tree && self.tree.is_none() {
             self.tree = Some(
                 TreeView::new(format!("{}_tree", self.base.id()), "", vec![])
@@ -510,12 +644,8 @@ impl FileBrowserInput {
             }
 
             KeyCode::Right => {
-                // `..` selected → go to parent
-                if self.has_dotdot()
-                    && self.list.active_index() == 0
-                    && let Some(parent) = self.browse_dir.parent().map(Path::to_path_buf)
-                {
-                    self.browse_into(parent);
+                // Ignore on `..`
+                if self.has_dotdot() && self.list.active_index() == 0 {
                     return InteractionResult::handled();
                 }
                 let entry = self.active_entry().cloned();
@@ -529,6 +659,10 @@ impl FileBrowserInput {
             }
 
             KeyCode::Left => {
+                // Ignore on `..`
+                if self.has_dotdot() && self.list.active_index() == 0 {
+                    return InteractionResult::handled();
+                }
                 if let Some(parent) = self.browse_dir.parent().map(Path::to_path_buf) {
                     self.browse_into(parent);
                     return InteractionResult::handled();
@@ -579,60 +713,142 @@ impl FileBrowserInput {
                 }
             }
 
-            KeyCode::Right | KeyCode::Enter => {
+            KeyCode::Right => {
                 let active = self.tree.as_ref().and_then(|t| t.active_node()).map(|n| {
-                    let is_dotdot = n.item.0.name == "..";
                     (
-                        is_dotdot,
-                        n.item.0.is_dir,
-                        n.item.0.path.clone(),
-                        n.has_children,
+                        n.item.entry.name == "..",
+                        n.item.entry.is_dir,
+                        n.item.entry.path.clone(),
                     )
                 });
-                let Some((is_dotdot, is_dir, path, has_children)) = active else {
+                let Some((is_dotdot, is_dir, path)) = active else {
                     return InteractionResult::handled();
                 };
 
-                if is_dotdot
-                    || (key.code == KeyCode::Right && is_dir)
-                    || (key.code == KeyCode::Enter && is_dir)
-                {
+                // Ignore on `..`
+                if is_dotdot {
+                    return InteractionResult::handled();
+                }
+
+                if is_dir {
                     let dir = (*path).clone();
                     self.browse_into(dir);
-                    // Reset tree for new directory
+                    if let Some(tree) = self.tree.as_mut() {
+                        tree.set_nodes(vec![]);
+                    }
+                }
+                InteractionResult::handled()
+            }
+
+            KeyCode::Enter => {
+                let active = self.tree.as_ref().and_then(|t| t.active_node()).map(|n| {
+                    (
+                        n.item.entry.name == "..",
+                        n.item.entry.is_dir,
+                        n.item.entry.path.clone(),
+                    )
+                });
+                let Some((is_dotdot, is_dir, path)) = active else {
+                    return InteractionResult::handled();
+                };
+
+                if is_dotdot || is_dir {
+                    let dir = (*path).clone();
+                    self.browse_into(dir);
                     if let Some(tree) = self.tree.as_mut() {
                         tree.set_nodes(vec![]);
                     }
                     return InteractionResult::handled();
                 }
 
-                if key.code == KeyCode::Enter && !is_dir {
-                    let path_str = if let Ok(rel) = path.strip_prefix(&self.cwd) {
-                        rel.to_string_lossy().to_string()
-                    } else {
-                        path.to_string_lossy().to_string()
-                    };
-                    self.text.set_value(Value::Text(path_str));
-                    return self.close_browser();
-                }
-
-                // Dir node without Enter: expand/collapse
-                if has_children && let Some(tree) = self.tree.as_mut() {
-                    tree.expand_active();
-                }
-                InteractionResult::handled()
+                // File — select it
+                let path_str = if let Ok(rel) = path.strip_prefix(&self.cwd) {
+                    rel.to_string_lossy().to_string()
+                } else {
+                    path.to_string_lossy().to_string()
+                };
+                self.text.set_value(Value::Text(path_str));
+                return self.close_browser();
             }
 
             KeyCode::Char(' ') => {
-                if let Some(tree) = self.tree.as_mut()
-                    && !tree.expand_active()
-                {
-                    tree.collapse_active();
+                // `..` → go to parent
+                let is_dotdot = self.tree.as_ref()
+                    .and_then(|t| t.active_node())
+                    .map(|n| n.item.entry.name == "..")
+                    .unwrap_or(false);
+                if is_dotdot {
+                    if let Some(parent) = self.browse_dir.parent().map(Path::to_path_buf) {
+                        self.browse_into(parent);
+                        if let Some(tree) = self.tree.as_mut() {
+                            tree.set_nodes(vec![]);
+                        }
+                    }
+                    return InteractionResult::handled();
+                }
+
+                let active = self.tree.as_ref().and_then(|t| {
+                    let node = t.active_node()?;
+                    let idx = t.active_node_idx()?;
+                    Some((
+                        node.has_children,
+                        node.children_loaded,
+                        node.expanded,
+                        idx,
+                    ))
+                });
+                let Some((has_children, children_loaded, expanded, node_idx)) = active else {
+                    return InteractionResult::handled();
+                };
+
+                if !has_children {
+                    return InteractionResult::handled();
+                }
+
+                if children_loaded {
+                    // Toggle expand/collapse
+                    if let Some(tree) = self.tree.as_mut() {
+                        if expanded {
+                            tree.collapse_active();
+                        } else {
+                            tree.expand_active();
+                        }
+                    }
+                } else {
+                    // Lazy-load: scan directory and insert children
+                    let path = self.tree.as_ref()
+                        .and_then(|t| t.active_node())
+                        .map(|n| n.item.entry.path.clone());
+                    if let Some(path) = path {
+                        if let Some(tree) = self.tree.as_mut() {
+                            tree.pending_expand = Some(node_idx);
+                        }
+                        self.scanner.submit(ScanRequest {
+                            key: self.make_key(&path, ""),
+                            dir: (*path).clone(),
+                            query: String::new(),
+                            recursive: false,
+                            hide_hidden: self.hide_hidden,
+                            entry_filter: self.entry_filter,
+                            ext_filter: self.ext_filter.clone(),
+                            is_glob: false,
+                            display_mode: self.display_mode,
+                        });
+                    }
                 }
                 InteractionResult::handled()
             }
 
             KeyCode::Left => {
+                // Ignore on `..`
+                let is_dotdot = self.tree.as_ref()
+                    .and_then(|t| t.active_node())
+                    .map(|n| n.item.entry.name == "..")
+                    .unwrap_or(false);
+                if is_dotdot {
+                    return InteractionResult::handled();
+                }
+
                 if let Some(tree) = self.tree.as_mut()
                     && tree.collapse_active()
                 {
@@ -821,8 +1037,29 @@ impl Interactive for FileBrowserInput {
     }
 
     fn completion(&mut self) -> Option<CompletionState<'_>> {
-        // Delegate so Tab-completion uses inner TextInput's value + completion_items
-        self.text.completion()
+        // Ensure completion candidates match the directory implied by the current input.
+        // parse_input extracts `view_dir` from the text; if it differs from
+        // `browse_dir` (e.g. debounce hasn't fired yet), refresh immediately.
+        let parsed = parse_input(&self.current_input(), &self.cwd);
+        if parsed.view_dir != self.browse_dir {
+            self.browse_dir = parsed.view_dir;
+            self.refresh_completion_items();
+        }
+
+        let mut state = self.text.completion()?;
+        // Path-aware completion: token starts after the last '/'
+        let chars: Vec<char> = state.value.chars().collect();
+        let pos = (*state.cursor).min(chars.len());
+        let byte_end = state.value.char_indices()
+            .nth(pos)
+            .map(|(i, _)| i)
+            .unwrap_or(state.value.len());
+        let start = state.value[..byte_end]
+            .rfind('/')
+            .map(|i| state.value[..=i].chars().count())
+            .unwrap_or(0);
+        state.prefix_start = Some(start);
+        Some(state)
     }
 
     fn on_tick(&mut self) -> InteractionResult {

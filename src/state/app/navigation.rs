@@ -69,7 +69,11 @@ impl AppState {
 
     pub fn handle_tab_forward(&mut self) -> InteractionResult {
         if self.has_completion_for_focused() {
-            // Tab cycles forward through ghost options
+            // First expand to longest common prefix, then cycle
+            if self.expand_common_prefix_for_focused() {
+                self.try_update_ghost_for_focused();
+                return InteractionResult::handled();
+            }
             self.cycle_completion_for_focused(false);
             return InteractionResult::handled();
         }
@@ -97,7 +101,10 @@ impl AppState {
 
     pub fn handle_tab_backward(&mut self) -> InteractionResult {
         if self.has_completion_for_focused() {
-            // Shift+Tab cycles backward through ghost options
+            if self.expand_common_prefix_for_focused() {
+                self.try_update_ghost_for_focused();
+                return InteractionResult::handled();
+            }
             self.cycle_completion_for_focused(true);
             return InteractionResult::handled();
         }

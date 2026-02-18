@@ -155,7 +155,7 @@ impl Drawable for TextInput {
             && focused
             && let Some(menu) = ctx.completion_menus.get(self.base.id())
             && let Some(selected) = menu.matches.get(menu.selected)
-            && let Some(suffix) = completion_suffix(selected, &self.value, self.cursor)
+            && let Some(suffix) = completion_suffix(selected, &self.value, self.cursor, menu.start)
             && !suffix.is_empty()
         {
             first_line.push(Span::styled(suffix, Style::new().color(Color::DarkGrey)).no_wrap());
@@ -240,6 +240,7 @@ impl Interactive for TextInput {
             value: &mut self.value,
             cursor: &mut self.cursor,
             candidates: self.completion_items.as_slice(),
+            prefix_start: None,
         })
     }
 
@@ -287,12 +288,12 @@ impl Interactive for TextInput {
     }
 }
 
-fn completion_suffix(selected: &str, value: &str, cursor: usize) -> Option<String> {
-    let (_, token) = text_edit::completion_prefix(value, cursor)?;
-    if token.is_empty() {
-        return None;
-    }
-    if !selected.to_lowercase().starts_with(&token.to_lowercase()) {
+fn completion_suffix(selected: &str, value: &str, cursor: usize, start: usize) -> Option<String> {
+    let chars: Vec<char> = value.chars().collect();
+    let pos = cursor.min(chars.len());
+    let start = start.min(pos);
+    let token: String = chars[start..pos].iter().collect();
+    if !token.is_empty() && !selected.to_lowercase().starts_with(&token.to_lowercase()) {
         return None;
     }
     let token_len = token.chars().count();

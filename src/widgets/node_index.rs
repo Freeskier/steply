@@ -6,10 +6,6 @@ use std::collections::HashMap;
 pub struct NodePath(Vec<usize>);
 
 impl NodePath {
-    pub fn as_slice(&self) -> &[usize] {
-        self.0.as_slice()
-    }
-
     fn push(&mut self, index: usize) {
         self.0.push(index);
     }
@@ -43,42 +39,6 @@ impl NodeIndex {
     pub fn has_visible(&self, id: &str) -> bool {
         self.visible.contains_key(id)
     }
-
-    pub fn visible_path(&self, id: &str) -> Option<&NodePath> {
-        self.visible.get(id)
-    }
-}
-
-pub fn node_at_path_mut<'a>(
-    roots: &'a mut [Node],
-    path: &NodePath,
-    scope: NodeWalkScope,
-) -> Option<&'a mut Node> {
-    node_at_path_slice_mut(roots, path.as_slice(), scope)
-}
-
-fn node_at_path_slice_mut<'a>(
-    roots: &'a mut [Node],
-    path: &[usize],
-    scope: NodeWalkScope,
-) -> Option<&'a mut Node> {
-    let (&first, rest) = path.split_first()?;
-    let node = roots.get_mut(first)?;
-    if rest.is_empty() {
-        return Some(node);
-    }
-
-    // Use the new scope-aware children accessor from Node.
-    // For Visible scope, components never expose children (they draw themselves).
-    // For Persistent scope, component children are always accessible.
-    let children = match scope {
-        NodeWalkScope::Visible => match node {
-            Node::Component(_) => return None,
-            _ => return None,
-        },
-        NodeWalkScope::Persistent => node.persistent_children_mut()?,
-    };
-    node_at_path_slice_mut(children, rest, scope)
 }
 
 fn collect_paths(

@@ -20,7 +20,7 @@ impl TaskExecutor {
         let (invocation_tx, invocation_rx) = mpsc::sync_channel::<TaskInvocation>(256);
         let (completion_tx, completion_rx) = mpsc::channel::<TaskCompletion>();
         let (log_tx, log_rx) = mpsc::channel::<LogLine>();
-        spawn_workers(invocation_rx, completion_tx, log_tx.clone());
+        spawn_workers(invocation_rx, completion_tx);
         Self {
             invocation_tx,
             completion_rx,
@@ -97,7 +97,6 @@ impl LogLineSender {
 fn spawn_workers(
     invocation_rx: Receiver<TaskInvocation>,
     completion_tx: Sender<TaskCompletion>,
-    _log_tx: Sender<LogLine>,
 ) {
     let worker_count = std::thread::available_parallelism()
         .map(|count| count.get().min(4).max(1))

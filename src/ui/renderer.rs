@@ -6,11 +6,11 @@ use crate::ui::render_view::{CompletionSnapshot, RenderView};
 use crate::ui::span::{Span, SpanLine};
 use crate::ui::style::{Color, Style};
 use crate::widgets::node::{Node, NodeWalkScope, walk_nodes};
-use crate::widgets::outputs::table::{TableOutput, TableOutputStyle};
 use crate::widgets::traits::{
-    CompletionMenu, DrawOutput, Drawable, HintContext, HintGroup, HintItem, RenderContext,
+    CompletionMenu, DrawOutput, HintContext, HintGroup, HintItem, RenderContext,
 };
 use std::collections::{HashMap, HashSet};
+use unicode_width::UnicodeWidthStr;
 
 mod decorations;
 mod overlay;
@@ -323,7 +323,7 @@ fn append_hints_panel(nodes: &[Node], focused_id: Option<&str>, block_lines: &mu
     let mut hints = collect_hints(nodes, focused_id);
     if hints.is_empty() {
         block_lines.push(vec![Span::styled(
-            "Help: no hints available",
+            "no hints available",
             Style::new().color(Color::DarkGrey),
         )]);
         return;
@@ -337,35 +337,85 @@ fn append_hints_panel(nodes: &[Node], focused_id: Option<&str>, block_lines: &mu
             .then_with(|| a.label.cmp(&b.label))
     });
 
-    let rows = hints
-        .into_iter()
-        .map(|hint| {
-            vec![
-                hint_group_label(hint.group).to_string(),
-                hint.key.to_string(),
-                hint.label.to_string(),
-            ]
+    let mut grouped = Vec::<(HintGroup, Vec<HintItem>)>::new();
+    for group in [
+        HintGroup::Navigation,
+        HintGroup::Action,
+        HintGroup::Completion,
+        HintGroup::Edit,
+        HintGroup::View,
+    ] {
+        let items = hints
+            .iter()
+            .filter(|hint| hint.group == group)
+            .cloned()
+            .collect::<Vec<_>>();
+        if !items.is_empty() {
+            grouped.push((group, items));
+        }
+    }
+
+    grouped.sort_by(|a, b| b.1.len().cmp(&a.1.len()).then_with(|| a.0.cmp(&b.0)));
+
+    let column_widths = grouped
+        .iter()
+        .map(|(_, items)| {
+            items
+                .iter()
+                .map(|item| {
+                    let key_width = item.key.as_ref().width();
+                    let label_width = item.label.as_ref().width();
+                    if label_width == 0 {
+                        key_width
+                    } else {
+                        key_width + 1 + label_width
+                    }
+                })
+                .max()
+                .unwrap_or(0)
         })
         .collect::<Vec<_>>();
-    let table = TableOutput::new("__step_hints_table", "Help (Ctrl+/ to hide)")
-        .with_style(TableOutputStyle::Clean)
-        .with_headers(vec![
-            "Group".to_string(),
-            "Key".to_string(),
-            "Description".to_string(),
-        ])
-        .with_rows(rows);
-    let ctx = RenderContext {
-        focused_id: None,
-        terminal_size: TerminalSize {
-            width: 80,
-            height: 24,
-        },
-        visible_errors: HashMap::new(),
-        invalid_hidden: HashSet::new(),
-        completion_menus: HashMap::new(),
-    };
-    block_lines.extend(table.draw(&ctx).lines);
+
+    let max_rows = grouped.iter().map(|(_, items)| items.len()).max().unwrap_or(0);
+    const HINT_COLUMN_GAP: usize = 4;
+
+    for row in 0..max_rows {
+        let mut line = Vec::<Span>::new();
+        for (col_idx, (_, items)) in grouped.iter().enumerate() {
+            let is_last_col = col_idx + 1 == grouped.len();
+            if let Some(item) = items.get(row) {
+                let key = item.key.to_string();
+                let label = item.label.to_string();
+                let key_style = Style::new().color(Color::DarkGrey).bold();
+                let text_style = Style::new().color(Color::DarkGrey);
+                line.push(Span::styled(key.clone(), key_style).no_wrap());
+                if !label.is_empty() {
+                    line.push(Span::styled(" ", text_style).no_wrap());
+                    line.push(Span::styled(label.clone(), text_style).no_wrap());
+                }
+
+                if !is_last_col {
+                    let rendered_width = if label.is_empty() {
+                        key.as_str().width()
+                    } else {
+                        key.as_str().width() + 1 + label.as_str().width()
+                    };
+                    let pad = column_widths[col_idx]
+                        .saturating_sub(rendered_width)
+                        .saturating_add(HINT_COLUMN_GAP);
+                    if pad > 0 {
+                        line.push(Span::new(" ".repeat(pad)).no_wrap());
+                    }
+                }
+            } else if !is_last_col {
+                let pad = column_widths[col_idx].saturating_add(HINT_COLUMN_GAP);
+                if pad > 0 {
+                    line.push(Span::new(" ".repeat(pad)).no_wrap());
+                }
+            }
+        }
+        block_lines.push(line);
+    }
 }
 
 fn collect_hints(nodes: &[Node], focused_id: Option<&str>) -> Vec<HintItem> {
@@ -391,16 +441,6 @@ fn collect_hints(nodes: &[Node], focused_id: Option<&str>) -> Vec<HintItem> {
         }
     });
     out
-}
-
-fn hint_group_label(group: HintGroup) -> &'static str {
-    match group {
-        HintGroup::Navigation => "Navigation",
-        HintGroup::Completion => "Completion",
-        HintGroup::View => "View",
-        HintGroup::Action => "Action",
-        HintGroup::Edit => "Edit",
-    }
 }
 
 fn render_context_for_nodes(

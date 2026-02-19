@@ -550,14 +550,15 @@ impl Drawable for FileBrowserInput {
                     if let Some(tree) = &self.tree {
                         lines.extend(tree.render_lines(true));
                     }
-                    let hint = if self.scanning || self.tree_building {
-                        format!("  {} scanning…", self.spinner_char())
-                    } else {
-                        "  ↑↓ nav  Space expand/collapse  ← → dirs  Enter select  Ctrl+T list  Esc close".to_string()
-                    };
-                    lines.push(vec![
-                        Span::styled(hint, Style::new().color(Color::DarkGrey)).no_wrap(),
-                    ]);
+                    if self.scanning || self.tree_building {
+                        lines.push(vec![
+                            Span::styled(
+                                format!("  {} scanning…", self.spinner_char()),
+                                Style::new().color(Color::DarkGrey),
+                            )
+                            .no_wrap(),
+                        ]);
+                    }
                 } else {
                     // Inline list — pass list's own ID as focused so the ❯ cursor renders
                     let list_id = self.list.id().to_string();
@@ -582,24 +583,26 @@ impl Drawable for FileBrowserInput {
                         }
                     }
 
-                    let hint = if self.scanning || self.tree_building {
-                        format!("  {} scanning…", self.spinner_char())
-                    } else {
-                        "  ← → dirs  Enter select  Ctrl+T tree  Esc close".to_string()
-                    };
-                    lines.push(vec![
-                        Span::styled(hint, Style::new().color(Color::DarkGrey)).no_wrap(),
-                    ]);
+                    if self.scanning || self.tree_building {
+                        lines.push(vec![
+                            Span::styled(
+                                format!("  {} scanning…", self.spinner_char()),
+                                Style::new().color(Color::DarkGrey),
+                            )
+                            .no_wrap(),
+                        ]);
+                    }
                 }
             } else {
-                let hint = if self.scanning || self.tree_building {
-                    format!("  {} scanning…", self.spinner_char())
-                } else {
-                    "  Shift+Space (or Alt+Space) to browse".to_string()
-                };
-                lines.push(vec![
-                    Span::styled(hint, Style::new().color(Color::DarkGrey)).no_wrap(),
-                ]);
+                if self.scanning || self.tree_building {
+                    lines.push(vec![
+                        Span::styled(
+                            format!("  {} scanning…", self.spinner_char()),
+                            Style::new().color(Color::DarkGrey),
+                        )
+                        .no_wrap(),
+                    ]);
+                }
             }
         }
 

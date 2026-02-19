@@ -85,7 +85,7 @@ pub enum DisplayMode {
     Name,
 }
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -162,8 +162,20 @@ pub struct FileBrowserInput {
     tree: Option<TreeView<FileTreeItem>>,
     pending_tree_nodes: Option<(u64, Vec<TreeNode<FileTreeItem>>)>,
     tree_build_seq: u64,
-    prefer_first_real_entry: bool,
-    preferred_entry_path: Option<PathBuf>,
+    pending_focus_restore: Option<FocusRestore>,
+    focus_history: HashMap<PathBuf, FocusMemory>,
+}
+
+#[derive(Clone)]
+pub(super) struct FocusMemory {
+    pub index: usize,
+    pub path: Option<PathBuf>,
+}
+
+#[derive(Clone)]
+pub(super) enum FocusRestore {
+    History(FocusMemory),
+    FirstRealEntry,
 }
 
 impl FileBrowserInput {
@@ -206,8 +218,8 @@ impl FileBrowserInput {
             tree: None,
             pending_tree_nodes: None,
             tree_build_seq: 0,
-            prefer_first_real_entry: false,
-            preferred_entry_path: None,
+            pending_focus_restore: None,
+            focus_history: HashMap::new(),
         }
     }
 
@@ -416,9 +428,19 @@ impl FileBrowserInput {
     }
 
     fn browse_into(&mut self, dir: PathBuf) {
+        self.browse_into_with_restore(dir, None);
+    }
+
+    fn browse_into_with_restore(&mut self, dir: PathBuf, fallback: Option<FocusRestore>) {
         self.debounce_deadline = None;
         self.overlay_open = true;
-        self.prefer_first_real_entry = self.preferred_entry_path.is_none();
+        self.pending_focus_restore = self
+            .focus_history
+            .get(&dir)
+            .cloned()
+            .map(FocusRestore::History)
+            .or(fallback)
+            .or(Some(FocusRestore::FirstRealEntry));
         self.browse_dir = dir.clone();
         // Update text input to show the new directory path (relative to cwd if possible)
         let path_str = if let Ok(rel) = dir.strip_prefix(&self.cwd) {
@@ -445,9 +467,14 @@ impl FileBrowserInput {
     fn open_browser(&mut self) -> InteractionResult {
         self.debounce_deadline = None;
         self.overlay_open = true;
-        self.prefer_first_real_entry = true;
         let parsed = parse_input(&self.current_input(), &self.cwd);
         self.browse_dir = parsed.view_dir.clone();
+        self.pending_focus_restore = self
+            .focus_history
+            .get(&parsed.view_dir)
+            .cloned()
+            .map(FocusRestore::History)
+            .or(Some(FocusRestore::FirstRealEntry));
         self.sync_completion_items_for_dir(parsed.view_dir.as_path());
         if self.browser_mode == BrowserMode::Tree {
             self.ensure_tree_widget();

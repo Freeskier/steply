@@ -40,14 +40,22 @@ impl FileBrowserInput {
     }
 
     fn set_preferred_list_active(&mut self, entries: &[model::FileEntry], has_parent: bool) {
-        if let Some(pref_path) = self.preferred_entry_path.as_ref()
-            && let Some(pos) = preferred_entry_pos(entries, pref_path.as_path())
-        {
-            self.list.set_active_index(pos + usize::from(has_parent));
-            return;
-        }
-        if self.prefer_first_real_entry && has_parent {
-            self.list.set_active_index(1);
+        match self.pending_focus_restore.as_ref() {
+            Some(FocusRestore::History(memory)) => {
+                if let Some(pref_path) = memory.path.as_ref()
+                    && let Some(pos) = preferred_entry_pos(entries, pref_path.as_path())
+                {
+                    self.list.set_active_index(pos + usize::from(has_parent));
+                    return;
+                }
+                self.list.set_active_index(memory.index);
+            }
+            Some(FocusRestore::FirstRealEntry) => {
+                if has_parent {
+                    self.list.set_active_index(1);
+                }
+            }
+            None => {}
         }
     }
 
@@ -55,19 +63,27 @@ impl FileBrowserInput {
         let Some(tree) = self.tree.as_mut() else {
             return;
         };
-        if let Some(pref_path) = self.preferred_entry_path.as_ref()
-            && let Some(pos) = preferred_tree_visible_pos(tree, pref_path.as_path())
-        {
-            tree.set_active_visible_index(pos);
-            return;
-        }
-        let has_parent = tree
-            .visible()
-            .first()
-            .and_then(|idx| tree.nodes().get(*idx))
-            .is_some_and(|node| node.item.entry.name == "..");
-        if self.prefer_first_real_entry && has_parent {
-            tree.set_active_visible_index(1);
+        match self.pending_focus_restore.as_ref() {
+            Some(FocusRestore::History(memory)) => {
+                if let Some(pref_path) = memory.path.as_ref()
+                    && let Some(pos) = preferred_tree_visible_pos(tree, pref_path.as_path())
+                {
+                    tree.set_active_visible_index(pos);
+                    return;
+                }
+                tree.set_active_visible_index(memory.index);
+            }
+            Some(FocusRestore::FirstRealEntry) => {
+                let has_parent = tree
+                    .visible()
+                    .first()
+                    .and_then(|idx| tree.nodes().get(*idx))
+                    .is_some_and(|node| node.item.entry.name == "..");
+                if has_parent {
+                    tree.set_active_visible_index(1);
+                }
+            }
+            None => {}
         }
     }
 
@@ -86,10 +102,7 @@ impl FileBrowserInput {
     }
 
     fn clear_preferred_entry_state(&mut self) {
-        if self.prefer_first_real_entry {
-            self.prefer_first_real_entry = false;
-        }
-        self.preferred_entry_path = None;
+        self.pending_focus_restore = None;
     }
 
     fn apply_list_result(&mut self, result: &ScanResult) {
@@ -188,11 +201,20 @@ impl FileBrowserInput {
     }
 
     pub(super) fn navigate_parent(&mut self) -> bool {
+        let came_from = self.browse_dir.clone();
         let Some(parent) = self.browse_dir.parent().map(Path::to_path_buf) else {
             return false;
         };
-        self.preferred_entry_path = Some(self.browse_dir.clone());
-        self.browse_into(parent);
+        self.remember_active_focus_for_current_dir();
+        let fallback = if self.focus_history.contains_key(&parent) {
+            None
+        } else {
+            Some(FocusRestore::History(FocusMemory {
+                index: 0,
+                path: Some(came_from),
+            }))
+        };
+        self.browse_into_with_restore(parent, fallback);
         true
     }
 
@@ -208,6 +230,7 @@ impl FileBrowserInput {
             }
             ActiveOverlayItem::Entry { path, is_dir } => {
                 if is_dir {
+                    self.remember_active_focus_for_current_dir();
                     self.browse_into(path);
                     return InteractionResult::handled();
                 }
@@ -236,6 +259,32 @@ impl FileBrowserInput {
         } else {
             path.to_string_lossy().to_string()
         }
+    }
+
+    fn remember_active_focus_for_current_dir(&mut self) {
+        let memory = if self.browser_mode == BrowserMode::Tree {
+            self.tree
+                .as_ref()
+                .map(|tree| {
+                    let index = tree.active_visible_index();
+                    let path = tree.active_node().and_then(|node| {
+                        (node.item.entry.name != "..").then(|| (*node.item.entry.path).clone())
+                    });
+                    FocusMemory { index, path }
+                })
+                .unwrap_or(FocusMemory {
+                    index: 0,
+                    path: None,
+                })
+        } else {
+            let index = self.list.active_index();
+            let path = match self.active_list_item() {
+                Some(ActiveOverlayItem::Entry { path, .. }) => Some(path),
+                _ => None,
+            };
+            FocusMemory { index, path }
+        };
+        self.focus_history.insert(self.browse_dir.clone(), memory);
     }
 }
 

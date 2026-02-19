@@ -745,9 +745,9 @@ fn step_validation_demo() -> Step {
 
 pub fn build_demo_flow() -> Flow {
     Flow::new(vec![
+        step_text_inputs(),
         step_file_browser(),
         step_repeater(),
-        step_text_inputs(),
         step_structured_inputs(),
         step_toggles(),
         step_outputs(),

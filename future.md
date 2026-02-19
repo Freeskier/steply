@@ -33,3 +33,7 @@ common:
 DateInput` / `TimeInput` — oparte na masked, ale z walidacją zakresu i nawigacją strzałkami po polach (dd/mm/yyyy)
 - `NumberInput` — dedykowany input numeryczny z min/max, step, formatowaniem
 - `TagInput` — jak ArrayInput ale tagi wyświetlane jako `[tag1] [tag2]` inline, usuwanie Backspace
+
+- timer do jakiegoś czasu
+- - text effect że tak "błyszczy" - falowo zmienia się kolor czcionki
+- WEB BUILDER

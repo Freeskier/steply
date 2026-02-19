@@ -17,8 +17,8 @@ use crate::widgets::components::scroll::ScrollState;
 use crate::widgets::inputs::text::TextInput;
 use crate::widgets::node::{Component, Node};
 use crate::widgets::traits::{
-    CompletionState, DrawOutput, Drawable, FocusMode, InteractionResult, Interactive,
-    RenderContext, TextAction,
+    CompletionState, DrawOutput, Drawable, FocusMode, HintContext, HintGroup, HintItem,
+    InteractionResult, Interactive, RenderContext, TextAction,
 };
 use model::item_search_text;
 use render::{OptionRenderer, default_option_renderer};
@@ -598,6 +598,27 @@ impl Drawable for SelectList {
 
         lines.extend(self.line_items(focused && !self.filter_focus));
         DrawOutput { lines }
+    }
+
+    fn hints(&self, ctx: HintContext) -> Vec<HintItem> {
+        if !ctx.focused {
+            return Vec::new();
+        }
+
+        let mut hints = vec![
+            HintItem::new("↑ ↓", "move", HintGroup::Navigation).with_priority(10),
+            HintItem::new("Enter", "confirm", HintGroup::Action).with_priority(20),
+            HintItem::new("Ctrl+F", "toggle filter", HintGroup::View).with_priority(30),
+        ];
+        if self.mode != SelectMode::List {
+            hints.push(
+                HintItem::new("Space", "toggle selection", HintGroup::Action).with_priority(21),
+            );
+        }
+        if self.filter_focus {
+            hints.push(HintItem::new("Esc", "close filter", HintGroup::View).with_priority(31));
+        }
+        hints
     }
 }
 

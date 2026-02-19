@@ -104,8 +104,8 @@ use crate::widgets::components::tree_view::{TreeItemLabel, TreeNode, TreeView};
 use crate::widgets::inputs::text::TextInput;
 use crate::widgets::node::{Component, Node};
 use crate::widgets::traits::{
-    CompletionState, DrawOutput, Drawable, FocusMode, InteractionResult, Interactive,
-    RenderContext, TextEditState, ValidationMode,
+    CompletionState, DrawOutput, Drawable, FocusMode, HintContext, HintGroup, HintItem,
+    InteractionResult, Interactive, RenderContext, TextEditState, ValidationMode,
 };
 use crate::widgets::validators::{Validator, run_validators};
 
@@ -577,6 +577,49 @@ impl Drawable for FileBrowserInput {
         }
 
         DrawOutput { lines }
+    }
+
+    fn hints(&self, ctx: HintContext) -> Vec<HintItem> {
+        if !ctx.focused {
+            return Vec::new();
+        }
+
+        let mut hints = vec![
+            HintItem::new("Tab", "completion", HintGroup::Completion).with_priority(10),
+            HintItem::new("Ctrl+Space", "toggle completion", HintGroup::Completion)
+                .with_priority(11),
+            HintItem::new("Shift+Space / Alt+Space", "open browser", HintGroup::View)
+                .with_priority(20),
+            HintItem::new("Enter", "select / submit", HintGroup::Action).with_priority(30),
+        ];
+
+        if self.overlay_open {
+            hints.push(HintItem::new("Esc", "close browser", HintGroup::View).with_priority(21));
+            hints.push(
+                HintItem::new("← →", "navigate dirs", HintGroup::Navigation).with_priority(12),
+            );
+            if self.browser_mode == BrowserMode::Tree {
+                hints.push(
+                    HintItem::new("↑ ↓", "move in tree", HintGroup::Navigation).with_priority(13),
+                );
+                hints.push(
+                    HintItem::new("Space", "expand/collapse", HintGroup::Navigation)
+                        .with_priority(14),
+                );
+                hints.push(
+                    HintItem::new("Ctrl+T", "switch to list", HintGroup::View).with_priority(22),
+                );
+            } else {
+                hints.push(
+                    HintItem::new("↑ ↓", "move in list", HintGroup::Navigation).with_priority(13),
+                );
+                hints.push(
+                    HintItem::new("Ctrl+T", "switch to tree", HintGroup::View).with_priority(22),
+                );
+            }
+        }
+
+        hints
     }
 }
 

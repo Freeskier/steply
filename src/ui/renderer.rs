@@ -6,7 +6,10 @@ use crate::ui::render_view::{CompletionSnapshot, RenderView};
 use crate::ui::span::{Span, SpanLine};
 use crate::ui::style::{Color, Style};
 use crate::widgets::node::{Node, NodeWalkScope, walk_nodes};
-use crate::widgets::traits::{CompletionMenu, DrawOutput, RenderContext};
+use crate::widgets::outputs::table::{TableOutput, TableOutputStyle};
+use crate::widgets::traits::{
+    CompletionMenu, DrawOutput, Drawable, HintContext, HintGroup, HintItem, RenderContext,
+};
 use std::collections::{HashMap, HashSet};
 
 mod decorations;
@@ -183,15 +186,18 @@ fn build_base_frame(
         )]);
         row_offset = row_offset.saturating_add(1);
 
-        if let Some(hint) = step.hint.as_deref() {
-            let hint_style = match status {
+        if let Some(description) = step.description.as_deref() {
+            let description_style = match status {
                 StepVisualStatus::Active => Style::new().color(Color::Yellow),
                 StepVisualStatus::Done | StepVisualStatus::Pending => {
                     Style::new().color(Color::DarkGrey)
                 }
                 StepVisualStatus::Cancelled => Style::new().color(Color::Red),
             };
-            block_lines.push(vec![Span::styled(format!("Hint: {}", hint), hint_style)]);
+            block_lines.push(vec![Span::styled(
+                format!("Description: {}", description),
+                description_style,
+            )]);
             row_offset = row_offset.saturating_add(1);
         }
 
@@ -219,6 +225,10 @@ fn build_base_frame(
             track_cursor,
             strikethrough_inputs,
         );
+
+        if status == StepVisualStatus::Active && view.hints_visible {
+            append_hints_panel(step.nodes.as_slice(), view.focused_id, &mut block_lines);
+        }
 
         let layout_cursor = block_cursor.map(|cursor| (cursor.row as usize, cursor.col as usize));
         let compose_width = if config.decorations_enabled {
@@ -307,6 +317,90 @@ fn build_base_frame(
 
     frame.frozen_lines = frozen_lines;
     frame
+}
+
+fn append_hints_panel(nodes: &[Node], focused_id: Option<&str>, block_lines: &mut Vec<SpanLine>) {
+    let mut hints = collect_hints(nodes, focused_id);
+    if hints.is_empty() {
+        block_lines.push(vec![Span::styled(
+            "Help: no hints available",
+            Style::new().color(Color::DarkGrey),
+        )]);
+        return;
+    }
+
+    hints.sort_by(|a, b| {
+        a.priority
+            .cmp(&b.priority)
+            .then_with(|| a.group.cmp(&b.group))
+            .then_with(|| a.key.cmp(&b.key))
+            .then_with(|| a.label.cmp(&b.label))
+    });
+
+    let rows = hints
+        .into_iter()
+        .map(|hint| {
+            vec![
+                hint_group_label(hint.group).to_string(),
+                hint.key.to_string(),
+                hint.label.to_string(),
+            ]
+        })
+        .collect::<Vec<_>>();
+    let table = TableOutput::new("__step_hints_table", "Help (Ctrl+/ to hide)")
+        .with_style(TableOutputStyle::Clean)
+        .with_headers(vec![
+            "Group".to_string(),
+            "Key".to_string(),
+            "Description".to_string(),
+        ])
+        .with_rows(rows);
+    let ctx = RenderContext {
+        focused_id: None,
+        terminal_size: TerminalSize {
+            width: 80,
+            height: 24,
+        },
+        visible_errors: HashMap::new(),
+        invalid_hidden: HashSet::new(),
+        completion_menus: HashMap::new(),
+    };
+    block_lines.extend(table.draw(&ctx).lines);
+}
+
+fn collect_hints(nodes: &[Node], focused_id: Option<&str>) -> Vec<HintItem> {
+    let mut out = Vec::<HintItem>::new();
+    let mut seen = HashSet::<(String, String, HintGroup)>::new();
+    walk_nodes(nodes, NodeWalkScope::Visible, &mut |node| {
+        let focused = focused_id.is_some_and(|id| id == node.id());
+        for hint in node.hints(HintContext {
+            focused,
+            expanded: true,
+        }) {
+            let key = hint.key.to_string();
+            let label = hint.label.to_string();
+            let dedup_key = (key.clone(), label.clone(), hint.group);
+            if seen.insert(dedup_key) {
+                out.push(HintItem {
+                    key: key.into(),
+                    label: label.into(),
+                    priority: hint.priority,
+                    group: hint.group,
+                });
+            }
+        }
+    });
+    out
+}
+
+fn hint_group_label(group: HintGroup) -> &'static str {
+    match group {
+        HintGroup::Navigation => "Navigation",
+        HintGroup::Completion => "Completion",
+        HintGroup::View => "View",
+        HintGroup::Action => "Action",
+        HintGroup::Edit => "Edit",
+    }
 }
 
 fn render_context_for_nodes(

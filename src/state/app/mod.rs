@@ -22,6 +22,7 @@ struct ViewState {
     active_node_index: NodeIndex,
     completion_session: Option<CompletionSession>,
     completion_tab_suppressed_for: Option<NodeId>,
+    hints_visible: bool,
 }
 
 #[derive(Default)]
@@ -122,11 +123,19 @@ impl AppState {
         &self.flow.current_step().prompt
     }
 
-    pub fn current_hint(&self) -> Option<&str> {
+    pub fn current_description(&self) -> Option<&str> {
         if self.flow.is_empty() {
             return None;
         }
-        self.flow.current_step().hint.as_deref()
+        self.flow.current_step().description.as_deref()
+    }
+
+    pub fn hints_visible(&self) -> bool {
+        self.ui.hints_visible
+    }
+
+    pub fn toggle_hints_visibility(&mut self) {
+        self.ui.hints_visible = !self.ui.hints_visible;
     }
 
     pub fn focused_id(&self) -> Option<&str> {

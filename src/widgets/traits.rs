@@ -4,6 +4,7 @@ use crate::runtime::event::{SystemEvent, ValueChange, WidgetAction};
 use crate::terminal::{CursorPos, KeyEvent, TerminalSize};
 use crate::ui::span::{Span, SpanLine};
 use crate::widgets::inputs::text_edit;
+use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 
 // ---------------------------------------------------------------------------
@@ -127,6 +128,52 @@ pub trait Drawable: Send {
         ""
     }
     fn draw(&self, ctx: &RenderContext) -> DrawOutput;
+    fn hints(&self, _ctx: HintContext) -> Vec<HintItem> {
+        Vec::new()
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct HintContext {
+    pub focused: bool,
+    pub expanded: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum HintGroup {
+    Navigation,
+    Completion,
+    View,
+    Action,
+    Edit,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HintItem {
+    pub key: Cow<'static, str>,
+    pub label: Cow<'static, str>,
+    pub priority: u8,
+    pub group: HintGroup,
+}
+
+impl HintItem {
+    pub fn new(
+        key: impl Into<Cow<'static, str>>,
+        label: impl Into<Cow<'static, str>>,
+        group: HintGroup,
+    ) -> Self {
+        Self {
+            key: key.into(),
+            label: label.into(),
+            priority: 50,
+            group,
+        }
+    }
+
+    pub fn with_priority(mut self, priority: u8) -> Self {
+        self.priority = priority;
+        self
+    }
 }
 
 // ---------------------------------------------------------------------------

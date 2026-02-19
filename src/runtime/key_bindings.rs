@@ -64,6 +64,11 @@ impl KeyBindings {
             KeyBinding::ctrl(KeyCode::Char('o')),
             Intent::OpenOverlayShortcut,
         );
+        // Toggle help/hints: support multiple keyboard layouts/terminal encodings.
+        self.bind(KeyBinding::ctrl(KeyCode::Char('/')), Intent::ToggleHints);
+        self.bind(KeyBinding::ctrl(KeyCode::Char('?')), Intent::ToggleHints);
+        self.bind(KeyBinding::ctrl(KeyCode::Char('_')), Intent::ToggleHints);
+        self.bind(KeyBinding::ctrl(KeyCode::Char('7')), Intent::ToggleHints);
         self.bind(
             KeyBinding::ctrl(KeyCode::Char('1')),
             Intent::OpenOverlayAtIndex(0),

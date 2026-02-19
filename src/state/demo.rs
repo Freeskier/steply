@@ -75,7 +75,7 @@ fn step_repeater() -> Step {
             )),
         ],
     )
-    .with_hint(
+    .with_description(
         "Repeater: Enter/Tab next  •  Shift+Tab previous  •  final Enter fills table and moves focus down",
     )
 }
@@ -101,7 +101,7 @@ fn step_pokemon_search() -> Step {
             )),
         ],
     )
-    .with_hint("Type in Query  •  Ctrl+F inside Results for local fuzzy filter")
+    .with_description("Type in Query  •  Ctrl+F inside Results for local fuzzy filter")
 }
 
 // ── Snippet ───────────────────────────────────────────────────────────────────
@@ -124,7 +124,9 @@ fn step_table() -> Step {
                 .with_initial_rows(2),
         ))],
     )
-    .with_hint("↑/↓ rows  •  Tab/Shift+Tab columns  •  Header: Enter/Space sort  •  + Add record")
+    .with_description(
+        "↑/↓ rows  •  Tab/Shift+Tab columns  •  Header: Enter/Space sort  •  + Add record",
+    )
 }
 
 // ── Snippet ───────────────────────────────────────────────────────────────────
@@ -157,7 +159,7 @@ fn step_snippet() -> Step {
             )))),
         ))],
     )
-    .with_hint("Tab → next field  •  Shift+Tab → prev  •  Enter → next/submit")
+    .with_description("Tab → next field  •  Shift+Tab → prev  •  Enter → next/submit")
 }
 
 // ── Calendar input ────────────────────────────────────────────────────────────
@@ -170,7 +172,7 @@ fn step_calendar() -> Step {
             Calendar::new("cal_dt", "Date").with_mode(CalendarMode::DateTime),
         ))],
     )
-    .with_hint("Tab → month/year/grid  •  ←→ change  •  ↑↓ navigate  •  Enter select")
+    .with_description("Tab → month/year/grid  •  ←→ change  •  ↑↓ navigate  •  Enter select")
 }
 
 // ── Step 1: Text inputs ──────────────────────────────────────────────────────
@@ -317,7 +319,7 @@ fn step_selection() -> Step {
             )),
         ],
     )
-    .with_hint("Choice: Up/Down  •  Select: Up/Down  •  SelectList: Ctrl+F filter fuzzy")
+    .with_description("Choice: Up/Down  •  Select: Up/Down  •  SelectList: Ctrl+F filter fuzzy")
 }
 
 // ── Step 4: Checkbox + multi-select list ─────────────────────────────────────
@@ -355,7 +357,7 @@ fn step_toggles() -> Step {
             )),
         ],
     )
-    .with_hint("Space → toggle checkbox  •  SelectList: Space → check, Enter → confirm")
+    .with_description("Space → toggle checkbox  •  SelectList: Space → check, Enter → confirm")
 }
 
 // ── Step 5: Slider + Progress + Chart ────────────────────────────────────────
@@ -414,7 +416,7 @@ fn step_outputs() -> Step {
             )),
         ],
     )
-    .with_hint("Left/Right → adjust  •  Shift+Left/Right → large step  •  Enter → submit")
+    .with_description("Left/Right → adjust  •  Shift+Left/Right → large step  •  Enter → submit")
 }
 
 // ── Step 6: Color picker ─────────────────────────────────────────────────────
@@ -438,7 +440,7 @@ fn step_color() -> Step {
             )),
         ],
     )
-    .with_hint("Tab between R/G/B channels  •  type hex or adjust with Up/Down")
+    .with_description("Tab between R/G/B channels  •  type hex or adjust with Up/Down")
 }
 
 // ── Step 7: File browser ─────────────────────────────────────────────────────
@@ -447,25 +449,12 @@ fn step_file_browser() -> Step {
     Step::new(
         "step_file_browser",
         "File browser",
-        vec![
-            Node::Output(Box::new(TextOutput::new(
-                "fb_intro",
-                "Type a path directly (Tab/Ctrl+Space for completion) or press Shift+Space (or Alt+Space) to open the browser.",
-            ))),
-            Node::Component(Box::new(
-                FileBrowserInput::new("fb_any", "Any file")
-                    .with_validator(validators::required_msg("Path is required"))
-                    .with_browser_mode(crate::widgets::components::file_browser::BrowserMode::Tree),
-            )),
-            Node::Component(Box::new(
-                FileBrowserInput::new("fb_rust", "Rust file")
-                    .with_ext_filter(&["rs"])
-                    .with_hide_hidden(false)
-                    .with_recursive(true),
-            )),
-        ],
+        vec![Node::Component(Box::new(
+            FileBrowserInput::new("fb_any", "Any file")
+                .with_validator(validators::required_msg("Path is required"))
+                .with_browser_mode(crate::widgets::components::file_browser::BrowserMode::Tree),
+        ))],
     )
-    .with_hint("Tab/Ctrl+Space → completion  •  Shift+Space/Alt+Space → browser  •  ← → navigate dirs  •  Enter → select")
 }
 
 // ── Step 8: Tree view ────────────────────────────────────────────────────────
@@ -507,7 +496,9 @@ fn step_tree_view() -> Step {
             )),
         ],
     )
-    .with_hint("↑/↓ → navigate  •  → expand  •  ← collapse/jump to parent  •  Enter → select")
+    .with_description(
+        "↑/↓ → navigate  •  → expand  •  ← collapse/jump to parent  •  Enter → select",
+    )
 }
 
 // ── Step 9: Object editor ────────────────────────────────────────────────────
@@ -542,7 +533,7 @@ fn step_object_editor() -> Step {
             )),
         ],
     )
-    .with_hint("↑/↓ → navigate  •  Enter/Tab → edit  •  i → insert  •  d → delete  •  m → move")
+    .with_description("↑/↓ → navigate  •  Enter/Tab → edit  •  i → insert  •  d → delete  •  m → move")
 }
 
 // ── Step 10: Diff output ─────────────────────────────────────────────────────
@@ -584,7 +575,7 @@ fn farewell(name: &str) {
             DiffOutput::new("diff_main", "main.rs", old, new).with_max_visible(18),
         ))],
     )
-    .with_hint("↑↓ navigate  Tab next chunk  Shift+Tab prev  Enter expand gap")
+    .with_description("↑↓ navigate  Tab next chunk  Shift+Tab prev  Enter expand gap")
 }
 
 // ── Step 10b: TaskLog demo ────────────────────────────────────────────────────
@@ -611,7 +602,7 @@ fn step_task_log() -> Step {
             )),
         ],
     )
-    .with_hint("Watch the steps complete automatically")
+    .with_description("Watch the steps complete automatically")
 }
 
 // ── Step 11: Summary + button ─────────────────────────────────────────────────
@@ -630,7 +621,7 @@ fn step_finish() -> Step {
             )),
         ],
     )
-    .with_hint("Enter → activate button")
+    .with_description("Enter → activate button")
 }
 
 // ── Back navigation demo steps ───────────────────────────────────────────────
@@ -648,7 +639,7 @@ fn step_back_allowed() -> Step {
         ],
     )
     .with_navigation(StepNavigation::Allowed)
-    .with_hint("Alt+← → go back  •  Enter → next step")
+    .with_description("Alt+← → go back  •  Enter → next step")
 }
 
 fn step_back_reset() -> Step {
@@ -665,7 +656,7 @@ fn step_back_reset() -> Step {
         ],
     )
     .with_navigation(StepNavigation::Reset)
-    .with_hint("Alt+← → go back (resets values)  •  Enter → next step")
+    .with_description("Alt+← → go back (resets values)  •  Enter → next step")
 }
 
 fn step_back_destructive() -> Step {
@@ -686,7 +677,7 @@ fn step_back_destructive() -> Step {
     .with_navigation(StepNavigation::Destructive {
         warning: "Going back will cancel the pending deployment. Are you sure?".into(),
     })
-    .with_hint("Alt+← → go back (shows warning)  •  Enter → next step")
+    .with_description("Alt+← → go back (shows warning)  •  Enter → next step")
 }
 
 // ── TextArea input ────────────────────────────────────────────────────────────
@@ -721,7 +712,7 @@ fn step_confirm() -> Step {
             )),
         ],
     )
-    .with_hint("Relaxed: Enter/y/n  •  Strict: type the word then Enter")
+    .with_description("Relaxed: Enter/y/n  •  Strict: type the word then Enter")
 }
 
 // ── Public API ───────────────────────────────────────────────────────────────

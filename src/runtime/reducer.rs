@@ -84,6 +84,10 @@ impl Reducer {
                 }
             }
             Intent::CloseOverlay => vec![Effect::System(SystemEvent::CloseOverlay)],
+            Intent::ToggleHints => {
+                state.toggle_hints_visibility();
+                vec![Effect::RequestRender]
+            }
             Intent::Tick => collect_effects(state.tick_all_nodes()),
             Intent::Noop => vec![],
             Intent::ScrollUp

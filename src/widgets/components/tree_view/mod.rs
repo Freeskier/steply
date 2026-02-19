@@ -11,7 +11,8 @@ use crate::widgets::base::WidgetBase;
 use crate::widgets::components::scroll::ScrollState;
 use crate::widgets::node::{Component, Node};
 use crate::widgets::traits::{
-    DrawOutput, Drawable, FocusMode, InteractionResult, Interactive, RenderContext,
+    DrawOutput, Drawable, FocusMode, HintContext, HintGroup, HintItem, InteractionResult,
+    Interactive, RenderContext,
 };
 use state::rebuild_visible;
 
@@ -439,6 +440,18 @@ impl<T: TreeItemLabel> Drawable for TreeView<T> {
 
         lines.extend(self.render_lines(focused));
         DrawOutput { lines }
+    }
+
+    fn hints(&self, ctx: HintContext) -> Vec<HintItem> {
+        if !ctx.focused {
+            return Vec::new();
+        }
+        vec![
+            HintItem::new("↑ ↓", "move", HintGroup::Navigation).with_priority(10),
+            HintItem::new("→", "expand", HintGroup::Navigation).with_priority(11),
+            HintItem::new("←", "collapse / parent", HintGroup::Navigation).with_priority(12),
+            HintItem::new("Enter", "select", HintGroup::Action).with_priority(20),
+        ]
     }
 }
 

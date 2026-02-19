@@ -25,7 +25,7 @@ pub enum StepNavigation {
 pub struct Step {
     pub id: String,
     pub prompt: String,
-    pub hint: Option<String>,
+    pub description: Option<String>,
     pub nodes: Vec<Node>,
     pub validators: Vec<StepValidator>,
     pub navigation: StepNavigation,
@@ -36,15 +36,15 @@ impl Step {
         Self {
             id: id.into(),
             prompt: prompt.into(),
-            hint: None,
+            description: None,
             nodes,
             validators: Vec::new(),
             navigation: StepNavigation::default(),
         }
     }
 
-    pub fn with_hint(mut self, hint: impl Into<String>) -> Self {
-        self.hint = Some(hint.into());
+    pub fn with_description(mut self, description: impl Into<String>) -> Self {
+        self.description = Some(description.into());
         self
     }
 

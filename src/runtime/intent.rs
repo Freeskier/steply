@@ -19,6 +19,7 @@ pub enum Intent {
     OpenOverlayAtIndex(usize),
     OpenOverlayShortcut,
     CloseOverlay,
+    ToggleHints,
     Tick,
     Noop,
     ScrollUp,

@@ -2,8 +2,9 @@ use crate::core::value::Value;
 use crate::runtime::event::SystemEvent;
 use crate::terminal::{CursorPos, KeyEvent};
 use crate::widgets::traits::{
-    CompletionState, DrawOutput, FocusMode, InteractionResult, InteractiveNode, OutputNode,
-    OverlayMode, OverlayPlacement, RenderContext, TextAction, ValidationMode,
+    CompletionState, DrawOutput, FocusMode, HintContext, HintItem, InteractionResult,
+    InteractiveNode, OutputNode, OverlayMode, OverlayPlacement, RenderContext, TextAction,
+    ValidationMode,
 };
 
 // ---------------------------------------------------------------------------
@@ -113,6 +114,14 @@ impl Node {
             Self::Input(w) => w.draw(ctx),
             Self::Component(w) => w.draw(ctx),
             Self::Output(w) => w.draw(ctx),
+        }
+    }
+
+    pub fn hints(&self, ctx: HintContext) -> Vec<HintItem> {
+        match self {
+            Self::Input(w) => w.hints(ctx),
+            Self::Component(w) => w.hints(ctx),
+            Self::Output(w) => w.hints(ctx),
         }
     }
 

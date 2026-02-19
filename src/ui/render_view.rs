@@ -16,6 +16,7 @@ pub struct RenderView<'a> {
     pub completion: Option<CompletionSnapshot>,
     pub overlays: Vec<OverlayView<'a>>,
     pub back_confirm: Option<&'a str>,
+    pub hints_visible: bool,
 }
 
 pub struct CompletionSnapshot {
@@ -78,6 +79,7 @@ impl<'a> RenderView<'a> {
             completion,
             overlays,
             back_confirm: state.back_confirm(),
+            hints_visible: state.hints_visible(),
         }
     }
 }

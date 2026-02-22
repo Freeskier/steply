@@ -7,54 +7,54 @@ use crate::widgets::traits::{
     ValidationMode,
 };
 
-// ---------------------------------------------------------------------------
-// Component trait
-// ---------------------------------------------------------------------------
 
-/// A component is an interactive node that owns child nodes.
-///
-/// The renderer never descends into a component's children directly — the
-/// component itself is responsible for drawing them in its `draw()` impl.
-/// The runtime *does* walk children for validation, value hydration, and
-/// tick propagation, using [`NodeWalkScope`].
+
+
+
+
+
+
+
+
+
 pub trait Component: InteractiveNode {
     fn children(&self) -> &[Node];
     fn children_mut(&mut self) -> &mut [Node];
 }
 
-// ---------------------------------------------------------------------------
-// NodeWalkScope
-// ---------------------------------------------------------------------------
 
-/// Controls which children are visited during a node tree walk.
-///
-/// - `Visible`    — only nodes exposed in the current focus/render tree.
-///                  Components return `None` here; the renderer does not
-///                  recurse into them (they draw themselves).
-/// - `Persistent` — all children that always exist, regardless of visual
-///                  state. Used for validation, store hydration, and tick.
+
+
+
+
+
+
+
+
+
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum NodeWalkScope {
     Visible,
     Persistent,
 }
 
-// ---------------------------------------------------------------------------
-// Node enum
-// ---------------------------------------------------------------------------
+
+
+
 
 pub enum Node {
-    /// A focusable leaf input (text, button, checkbox, slider, …).
+
     Input(Box<dyn InteractiveNode>),
-    /// A composite component that owns and manages its own child nodes.
+
     Component(Box<dyn Component>),
-    /// A non-interactive output (text, progress bar, chart, …).
+
     Output(Box<dyn OutputNode>),
 }
 
-// ---------------------------------------------------------------------------
-// Tree walk helpers
-// ---------------------------------------------------------------------------
+
+
+
 
 pub fn walk_nodes(nodes: &[Node], scope: NodeWalkScope, f: &mut impl FnMut(&Node)) {
     for node in nodes {
@@ -79,9 +79,9 @@ fn children_for_scope<'a>(node: &'a Node, scope: NodeWalkScope) -> Option<&'a [N
         return None;
     };
     match scope {
-        // Renderer / focus do not recurse into components — they draw themselves.
+
         NodeWalkScope::Visible => None,
-        // Validation, hydration, and tick always recurse.
+
         NodeWalkScope::Persistent => Some(c.children()),
     }
 }
@@ -96,9 +96,9 @@ fn children_for_scope_mut<'a>(node: &'a mut Node, scope: NodeWalkScope) -> Optio
     }
 }
 
-// ---------------------------------------------------------------------------
-// Node method delegation
-// ---------------------------------------------------------------------------
+
+
+
 
 impl Node {
     pub fn id(&self) -> &str {
@@ -217,7 +217,7 @@ impl Node {
         }
     }
 
-    // --- overlay ---
+
 
     pub fn overlay_placement(&self) -> Option<OverlayPlacement> {
         match self {
@@ -251,7 +251,7 @@ impl Node {
         }
     }
 
-    // --- children (only Components have them) ---
+
 
     pub fn persistent_children(&self) -> Option<&[Node]> {
         match self {
@@ -268,9 +268,9 @@ impl Node {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Search helpers
-// ---------------------------------------------------------------------------
+
+
+
 
 pub fn find_node<'a>(nodes: &'a [Node], id: &str) -> Option<&'a Node> {
     for node in nodes {

@@ -13,7 +13,7 @@ use crate::widgets::traits::{
 };
 use crate::widgets::validators::{Validator, run_validators};
 
-// ── Mode ──────────────────────────────────────────────────────────────────────
+
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum CalendarMode {
@@ -23,7 +23,7 @@ pub enum CalendarMode {
     DateTime,
 }
 
-// ── Focus sections ────────────────────────────────────────────────────────────
+
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Section {
@@ -33,7 +33,7 @@ enum Section {
     Time,
 }
 
-// ── Calendar ─────────────────────────────────────────────────────────────
+
 
 pub struct Calendar {
     base: WidgetBase,
@@ -47,7 +47,7 @@ pub struct Calendar {
 
     section: Section,
 
-    /// Internal masked input for time ("HH:mm:ss")
+
     time_input: MaskedInput,
 
     validators: Vec<Validator>,
@@ -111,7 +111,7 @@ impl Calendar {
         self
     }
 
-    // ── Helpers ───────────────────────────────────────────────────────────────
+
 
     fn clamp_cursor_day(&mut self) {
         let max = calendar::days_in_month(self.view_year, self.view_month);
@@ -233,7 +233,7 @@ impl Calendar {
     }
 }
 
-// ── Drawable ──────────────────────────────────────────────────────────────────
+
 
 impl Drawable for Calendar {
     fn id(&self) -> &str {
@@ -250,7 +250,7 @@ impl Drawable for Calendar {
         ]);
 
         if self.mode != CalendarMode::Time {
-            // ── Month / Year row ──────────────────────────────────────────────
+
             let month_st = if focused && self.section == Section::Month {
                 Style::new().color(Color::Cyan)
             } else {
@@ -270,7 +270,7 @@ impl Drawable for Calendar {
 
             lines.push(vec![Span::new("").no_wrap()]);
 
-            // ── Weekday header ────────────────────────────────────────────────
+
             lines.push(vec![
                 Span::styled(
                     "  Mo  Tu  We  Th  Fr  Sa  Su",
@@ -279,7 +279,7 @@ impl Drawable for Calendar {
                 .no_wrap(),
             ]);
 
-            // ── Grid ──────────────────────────────────────────────────────────
+
             let grid = MonthGrid::new(self.view_year, self.view_month);
             let grid_focused = focused && self.section == Section::Grid;
 
@@ -322,7 +322,7 @@ impl Drawable for Calendar {
             lines.push(vec![Span::new("").no_wrap()]);
         }
 
-        // ── Time row (DateTime or Time mode) ──────────────────────────────────
+
         if self.mode != CalendarMode::Date {
             let time_spans = self.time_input.render_spans();
             let dim = Style::new().color(Color::DarkGrey);
@@ -346,7 +346,7 @@ impl Drawable for Calendar {
     }
 }
 
-// ── Interactive ───────────────────────────────────────────────────────────────
+
 
 impl Interactive for Calendar {
     fn focus_mode(&self) -> FocusMode {
@@ -358,11 +358,11 @@ impl Interactive for Calendar {
             return None;
         }
 
-        // Count lines drawn before the time row.
+
         let row_offset = if self.mode == CalendarMode::Time {
-            1u16 // label only
+            1u16
         } else {
-            // label + month/year + blank + weekday header + grid rows + blank
+
             let grid = MonthGrid::new(self.view_year, self.view_month);
             let grid_rows = grid
                 .cells
@@ -372,7 +372,7 @@ impl Interactive for Calendar {
             1 + 1 + 1 + 1 + grid_rows + 1
         };
 
-        // Col prefix before mask spans: DateTime = "  YYYY-MM-DD   " (16), Time = "  " (2).
+
         let col_offset = if self.mode == CalendarMode::DateTime {
             16u16
         } else {
@@ -388,7 +388,7 @@ impl Interactive for Calendar {
     fn on_key(&mut self, key: KeyEvent) -> InteractionResult {
         let shift = key.modifiers.contains(KeyModifiers::SHIFT);
 
-        // Delegate to time_input when in Time section
+
         if self.is_time_section() {
             match key.code {
                 KeyCode::Tab => {

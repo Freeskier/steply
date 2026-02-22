@@ -14,18 +14,18 @@ use crate::widgets::traits::{
 use crate::widgets::validators::{Validator, run_validators};
 use unicode_width::UnicodeWidthChar;
 
-/// Display mode for a text input field.
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum TextMode {
-    /// Plain visible text with optional completion support.
+
     #[default]
     Plain,
-    /// Value is masked with `*` characters. Word-deletion is disabled
-    /// (Ctrl+W / Alt+D) since the cursor points at a placeholder, not a real
-    /// word boundary.
+
+
+
     Password,
-    /// Value is fully hidden (displayed as spaces). The cursor does not move —
-    /// it is always shown at the start of the input area.
+
+
     Secret,
 }
 
@@ -166,7 +166,7 @@ impl Drawable for TextInput {
             vec![Span::styled(self.display_value(), Style::default()).no_wrap()]
         };
 
-        // Completion ghost text — only in Plain mode
+
         if let Some(suffix) = ghost_suffix {
             first_line.push(Span::styled(suffix, Style::new().color(Color::DarkGrey)).no_wrap());
         }
@@ -200,7 +200,7 @@ impl Interactive for TextInput {
                 }
                 InteractionResult::ignored()
             }
-            // Cursor movement — disabled in Secret mode
+
             KeyCode::Left if self.mode != TextMode::Secret => {
                 if text_edit::move_left(&mut self.cursor, &self.value) {
                     return InteractionResult::handled();
@@ -230,8 +230,8 @@ impl Interactive for TextInput {
     }
 
     fn text_editing(&mut self) -> Option<TextEditState<'_>> {
-        // Password/Secret: word-deletion is disabled. Return None so that
-        // on_text_action (Ctrl+W / Alt+D) is a no-op for these modes.
+
+
         if self.mode != TextMode::Plain {
             return None;
         }
@@ -242,7 +242,7 @@ impl Interactive for TextInput {
     }
 
     fn completion(&mut self) -> Option<CompletionState<'_>> {
-        // Completion only makes sense for plain text
+
         if self.mode != TextMode::Plain {
             return None;
         }

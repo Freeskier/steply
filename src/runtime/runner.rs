@@ -7,6 +7,7 @@ use crate::runtime::scheduler::Scheduler;
 use crate::state::app::AppState;
 use crate::task::{LogLine, TaskExecutor};
 use crate::terminal::{RenderMode, Terminal, TerminalEvent};
+use crate::ui::frame_json::frame_to_json;
 use crate::ui::render_view::RenderView;
 use crate::ui::renderer::{Renderer, RendererConfig};
 use std::io;
@@ -87,6 +88,18 @@ impl Runtime {
         run_result.and(exit_result)
     }
 
+    pub fn print_render_json(&mut self) -> io::Result<()> {
+        let view = RenderView::from_state(&self.state);
+        let size = self.terminal.size();
+        let frame = self.renderer.render(&view, size);
+        let doc = frame_to_json(&frame, size);
+
+        let json = serde_json::to_string_pretty(&doc)
+            .map_err(|err| io::Error::other(format!("failed to encode render json: {err}")))?;
+        println!("{json}");
+        Ok(())
+    }
+
     fn process_scheduled_events(&mut self) -> io::Result<()> {
         for event in self.scheduler.drain_ready(Instant::now()) {
             self.dispatch_app_event(event)?;
@@ -144,8 +157,8 @@ impl Runtime {
 
     fn process_intent(&mut self, intent: Intent) -> io::Result<()> {
         match &intent {
-            // Scroll intents mutate terminal state and re-render; they never
-            // reach the Reducer.
+
+
             Intent::ScrollUp => {
                 self.terminal.scroll(-1);
                 return self.render();
@@ -164,13 +177,13 @@ impl Runtime {
                 self.terminal.scroll(h.saturating_sub(1));
                 return self.render();
             }
-            // Back navigation is not reliable in Inline transcript mode because
-            // previously appended lines in scrollback cannot be retracted.
+
+
             Intent::Back if self.terminal.is_inline() => {
                 return Ok(());
             }
-            // Any real user interaction resets manual scroll so the cursor
-            // stays visible on the next render.
+
+
             Intent::Submit
             | Intent::InputKey(_)
             | Intent::TextAction(_)

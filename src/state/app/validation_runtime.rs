@@ -12,7 +12,7 @@ use std::time::Duration;
 const ERROR_INLINE_TTL: Duration = Duration::from_secs(2);
 
 impl AppState {
-    /// Validate the currently focused node with `Live` mode (keystrokes).
+
     pub(super) fn validate_focused_live(&mut self) -> bool {
         self.validate_focused(ValidationMode::Live)
     }

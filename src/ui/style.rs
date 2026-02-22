@@ -14,14 +14,23 @@ pub enum Color {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Strike {
+    #[default]
+    Inherit,
+    On,
+    Off,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct Style {
     pub color: Option<Color>,
     pub background: Option<Color>,
     pub bold: bool,
-    pub strikethrough: bool,
-    /// Prevents the renderer from applying strikethrough to this span
-    /// even when the parent widget is in a cancelled/done state.
-    pub no_strikethrough: bool,
+
+
+
+
+    pub strike: Strike,
 }
 
 impl Style {
@@ -45,12 +54,17 @@ impl Style {
     }
 
     pub fn strikethrough(mut self) -> Self {
-        self.strikethrough = true;
+        self.strike = Strike::On;
         self
     }
 
     pub fn no_strikethrough(mut self) -> Self {
-        self.no_strikethrough = true;
+        self.strike = Strike::Off;
+        self
+    }
+
+    pub fn strike(mut self, strike: Strike) -> Self {
+        self.strike = strike;
         self
     }
 
@@ -59,8 +73,10 @@ impl Style {
             color: extra.color.or(self.color),
             background: extra.background.or(self.background),
             bold: self.bold || extra.bold,
-            strikethrough: self.strikethrough || extra.strikethrough,
-            no_strikethrough: self.no_strikethrough || extra.no_strikethrough,
+            strike: match extra.strike {
+                Strike::Inherit => self.strike,
+                s => s,
+            },
         }
     }
 
@@ -69,8 +85,7 @@ impl Style {
             color: extra.color.or(self.color),
             background: extra.background.or(self.background),
             bold: extra.bold,
-            strikethrough: extra.strikethrough,
-            no_strikethrough: self.no_strikethrough || extra.no_strikethrough,
+            strike: extra.strike,
         }
     }
 }

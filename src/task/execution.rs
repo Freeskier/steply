@@ -127,8 +127,8 @@ pub fn execute_invocation(invocation: TaskInvocation) -> TaskCompletion {
         }
     };
 
-    // Stream stdout line-by-line in a background thread, forwarding each line
-    // through log_tx (if any) and collecting them for the final TaskCompletion.
+
+
     let stdout_reader = child.stdout.take().map(BufReader::new);
     let log_tx = invocation.log_tx.clone();
     let (lines_tx, lines_rx) = std::sync::mpsc::channel::<String>();
@@ -204,7 +204,7 @@ pub fn execute_invocation(invocation: TaskInvocation) -> TaskCompletion {
         }
     };
 
-    // Wait for the reader thread to finish draining the pipe before collecting.
+
     if let Some(handle) = reader_handle {
         let _ = handle.join();
     }

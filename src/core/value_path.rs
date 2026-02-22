@@ -109,9 +109,9 @@ impl ValueTarget {
         }
     }
 
-    /// Selector format:
-    /// - `root` -> top-level node target
-    /// - `root::field.sub[0]` -> nested path target
+
+
+
     pub fn parse_selector(selector: &str) -> Result<Self, ValuePathParseError> {
         let trimmed = selector.trim();
         if trimmed.is_empty() {

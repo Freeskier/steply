@@ -57,7 +57,7 @@ pub struct TreeNode<T> {
     pub depth: usize,
     pub has_children: bool,
     pub expanded: bool,
-    /// For lazy-loading: true once children have been fetched and inserted.
+
     pub children_loaded: bool,
 }
 
@@ -87,7 +87,7 @@ pub struct TreeView<T: TreeItemLabel> {
     submit_target: Option<ValueTarget>,
     show_label: bool,
     show_indent_guides: bool,
-    /// node_idx pending a lazy-load scan (shows ⟳ icon while loading).
+
     pub pending_expand: Option<usize>,
 }
 
@@ -128,17 +128,17 @@ impl<T: TreeItemLabel> TreeView<T> {
         self
     }
 
-    /// Returns (start, end) of the currently visible window into the visible list.
+
     pub fn visible_range(&self) -> (usize, usize) {
         self.scroll.visible_range(self.visible.len())
     }
 
-    /// The active index within the visible list (not nodes[]).
+
     pub fn active_visible_index(&self) -> usize {
         self.active_index
     }
 
-    /// Set active index within the visible list (clamped).
+
     pub fn set_active_visible_index(&mut self, index: usize) {
         if self.visible.is_empty() {
             self.active_index = 0;
@@ -150,7 +150,7 @@ impl<T: TreeItemLabel> TreeView<T> {
             .ensure_visible(self.active_index, self.visible.len());
     }
 
-    /// The visible list: indices into nodes[].
+
     pub fn visible(&self) -> &[usize] {
         &self.visible
     }
@@ -180,12 +180,12 @@ impl<T: TreeItemLabel> TreeView<T> {
             .and_then(|&idx| self.nodes.get(idx))
     }
 
-    /// Index into `nodes[]` of the currently active visible node.
+
     pub fn active_node_idx(&self) -> Option<usize> {
         self.visible.get(self.active_index).copied()
     }
 
-    /// Direct access to the flat node list.
+
     pub fn nodes(&self) -> &[TreeNode<T>] {
         &self.nodes
     }
@@ -194,8 +194,8 @@ impl<T: TreeItemLabel> TreeView<T> {
         &mut self.nodes
     }
 
-    /// Insert `children` right after `parent_idx`, removing any previously
-    /// loaded children first. Marks the parent as expanded + loaded.
+
+
     pub fn insert_children_after(&mut self, parent_idx: usize, children: Vec<TreeNode<T>>) {
         let Some(parent) = self.nodes.get_mut(parent_idx) else {
             return;
@@ -204,8 +204,8 @@ impl<T: TreeItemLabel> TreeView<T> {
         parent.children_loaded = true;
         parent.expanded = true;
 
-        // Remove stale children (nodes after parent with depth >= child_depth
-        // that are still within the subtree).
+
+
         let end = {
             let parent_depth = self.nodes[parent_idx].depth;
             self.nodes[parent_idx + 1..]
@@ -216,7 +216,7 @@ impl<T: TreeItemLabel> TreeView<T> {
         };
         self.nodes.drain(parent_idx + 1..end);
 
-        // Insert new children (force their depth to child_depth for safety).
+
         for (i, mut child) in children.into_iter().enumerate() {
             child.depth = child_depth;
             self.nodes.insert(parent_idx + 1 + i, child);
@@ -274,7 +274,7 @@ impl<T: TreeItemLabel> TreeView<T> {
             return true;
         }
 
-        // Move to parent: find nearest ancestor (depth - 1) going backwards in nodes[]
+
         if node.depth == 0 {
             return false;
         }

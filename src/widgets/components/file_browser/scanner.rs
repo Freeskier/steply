@@ -22,8 +22,8 @@ pub struct ScanRequest {
     pub display_mode: DisplayMode,
 }
 
-/// Handle to the background scanner thread.
-/// Drop to shut it down (channel closes, worker exits on next recv).
+
+
 pub struct ScannerHandle {
     tx: Sender<ScanRequest>,
     rx: Receiver<(CacheKey, Arc<ScanResult>)>,
@@ -44,7 +44,7 @@ impl ScannerHandle {
         let _ = self.tx.send(request);
     }
 
-    /// Drain all completed scan results. Returns `None` when channel is empty.
+
     pub fn try_recv_all(&self) -> Vec<(CacheKey, Arc<ScanResult>)> {
         drain_receiver(&self.rx)
     }
@@ -54,7 +54,7 @@ fn worker(rx: Receiver<ScanRequest>, tx: Sender<(CacheKey, Arc<ScanResult>)>) {
     while let Some(req) = recv_latest(&rx) {
         let display_root = req.dir.clone();
 
-        // `**` in a glob pattern always implies recursive traversal
+
         let glob_is_recursive = req.is_glob && req.query.contains("**");
         let entries = if req.is_glob && (req.recursive || glob_is_recursive) {
             list_dir_recursive_glob(&req.dir, req.hide_hidden, &req.query)

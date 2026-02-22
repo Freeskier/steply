@@ -13,11 +13,11 @@ use unicode_width::UnicodeWidthChar;
 
 pub struct TextAreaInput {
     id: String,
-    /// Buffer — invariant: always at least one element.
+
     lines: Vec<String>,
-    /// Cursor row (index into `lines`).
+
     row: usize,
-    /// Cursor col (char index within `lines[row]`).
+
     col: usize,
     scroll: ScrollState,
     min_height: usize,
@@ -61,22 +61,22 @@ impl TextAreaInput {
         self
     }
 
-    /// Number of digit columns needed for line numbers.
+
     fn num_width(&self) -> usize {
         self.lines.len().to_string().len()
     }
 
-    /// Gutter prefix width: "│ {num}  " — │ (1) + space (1) + num_width + space (1) + space (1)
+
     fn gutter_width(&self) -> usize {
         1 + 1 + self.num_width() + 2
     }
 
-    /// Number of lines to show in the viewport.
+
     fn visible_height(&self) -> usize {
         self.lines.len().clamp(self.min_height, self.max_height)
     }
 
-    /// Split `lines[row]` at `col`, keeping left on `row`, right on `row+1`.
+
     fn split_line(&mut self) {
         let col = self.col.min(text_edit::char_count(&self.lines[self.row]));
         let line = &self.lines[self.row];
@@ -89,7 +89,7 @@ impl TextAreaInput {
         self.scroll.ensure_visible(self.row, self.lines.len());
     }
 
-    /// Merge `lines[row]` into `lines[row-1]` (backspace at col=0).
+
     fn merge_with_prev(&mut self) {
         if self.row == 0 {
             return;
@@ -102,7 +102,7 @@ impl TextAreaInput {
         self.scroll.ensure_visible(self.row, self.lines.len());
     }
 
-    /// Merge `lines[row+1]` into `lines[row]` (delete at end of line).
+
     fn merge_with_next(&mut self) {
         if self.row + 1 >= self.lines.len() {
             return;
@@ -190,26 +190,26 @@ impl Interactive for TextAreaInput {
 
     fn on_key(&mut self, key: KeyEvent) -> InteractionResult {
         match key.code {
-            // Exit textarea
+
             KeyCode::Esc => InteractionResult::input_done(),
             KeyCode::Enter if key.modifiers.contains(KeyModifiers::CONTROL) => {
                 InteractionResult::input_done()
             }
 
-            // Enter — insert newline
+
             KeyCode::Enter => {
                 self.split_line();
                 InteractionResult::handled()
             }
 
-            // Insert char
+
             KeyCode::Char(ch) => {
                 text_edit::insert_char(&mut self.lines[self.row], &mut self.col, ch);
                 self.scroll.ensure_visible(self.row, self.lines.len());
                 InteractionResult::handled()
             }
 
-            // Backspace
+
             KeyCode::Backspace => {
                 if self.col > 0 {
                     text_edit::backspace_char(&mut self.lines[self.row], &mut self.col);
@@ -220,7 +220,7 @@ impl Interactive for TextAreaInput {
                 InteractionResult::handled()
             }
 
-            // Delete
+
             KeyCode::Delete => {
                 let at_end = self.col >= self.current_line_len();
                 if !at_end {
@@ -232,7 +232,7 @@ impl Interactive for TextAreaInput {
                 InteractionResult::handled()
             }
 
-            // Horizontal movement
+
             KeyCode::Left => {
                 if self.col > 0 {
                     text_edit::move_left(&mut self.col, &self.lines[self.row]);
@@ -254,7 +254,7 @@ impl Interactive for TextAreaInput {
                 InteractionResult::handled()
             }
 
-            // Vertical movement
+
             KeyCode::Up => {
                 if self.row > 0 {
                     self.row -= 1;
@@ -272,7 +272,7 @@ impl Interactive for TextAreaInput {
                 InteractionResult::handled()
             }
 
-            // Home / End
+
             KeyCode::Home => {
                 self.col = 0;
                 InteractionResult::handled()
@@ -294,7 +294,7 @@ impl Interactive for TextAreaInput {
     }
 
     fn on_text_action(&mut self, action: TextAction) -> InteractionResult {
-        // MoveWordLeft at col=0: jump to end of previous line
+
         if action == TextAction::MoveWordLeft && self.col == 0 && self.row > 0 {
             self.row -= 1;
             self.col = text_edit::char_count(&self.lines[self.row]);
@@ -302,7 +302,7 @@ impl Interactive for TextAreaInput {
             return InteractionResult::handled();
         }
 
-        // MoveWordRight at end of line: jump to start of next line
+
         if action == TextAction::MoveWordRight
             && self.col >= text_edit::char_count(&self.lines[self.row])
             && self.row + 1 < self.lines.len()

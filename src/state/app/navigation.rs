@@ -15,17 +15,17 @@ impl AppState {
 
         if self.has_completion_for_focused() {
             match key.code {
-                // Right arrow accepts ghost only when cursor is at end of input
+
                 KeyCode::Right if self.cursor_at_end_for_focused() => {
                     self.accept_and_refresh_completion();
                     return InteractionResult::handled();
                 }
-                // Enter accepts the ghost completion (blocks submit)
+
                 KeyCode::Enter => {
                     self.accept_and_refresh_completion();
                     return InteractionResult::handled();
                 }
-                // Esc dismisses ghost without clearing input
+
                 KeyCode::Esc => {
                     self.clear_completion_session();
                     self.suppress_completion_tab_for_focused();
@@ -74,7 +74,7 @@ impl AppState {
 
     pub fn handle_tab_forward(&mut self) -> InteractionResult {
         if self.is_completion_tab_suppressed_for_focused() {
-            // One-shot suppression after Esc: consume it on first Tab.
+
             self.clear_completion_tab_suppression_for_focused();
             let result = self.dispatch_key_to_focused(KeyEvent {
                 code: KeyCode::Tab,
@@ -95,7 +95,7 @@ impl AppState {
                 self.accept_and_refresh_completion();
                 return InteractionResult::handled();
             }
-            // First expand to longest common prefix, then cycle
+
             if self.expand_common_prefix_for_focused() {
                 self.try_update_ghost_for_focused();
                 return InteractionResult::handled();
@@ -127,7 +127,7 @@ impl AppState {
 
     pub fn handle_tab_backward(&mut self) -> InteractionResult {
         if self.is_completion_tab_suppressed_for_focused() {
-            // One-shot suppression after Esc: consume it on first Shift+Tab.
+
             self.clear_completion_tab_suppression_for_focused();
             let result = self.dispatch_key_to_focused(KeyEvent {
                 code: KeyCode::BackTab,
@@ -185,7 +185,7 @@ impl AppState {
                 &mut |node| merged.merge(node.on_tick()),
             );
         }
-        // If any widget updated (e.g. file browser scan returned), refresh ghost completion
+
         if merged.handled {
             self.try_update_ghost_for_focused();
         }
@@ -220,7 +220,7 @@ impl AppState {
                 }
                 self.clear_completion_session();
                 self.ui.focus.set_focus_by_id(target.as_str());
-                // Broadcast to components (e.g. overlay group focus tracking)
+
                 let focus_event = SystemEvent::RequestFocus { target };
                 let result = self.broadcast_system_event(&focus_event);
                 self.process_broadcast_result(result);
@@ -354,8 +354,8 @@ impl AppState {
             self.focus_first_invalid_on_current_step();
             return;
         }
-        // Step validators passed (no errors). If there are warnings and they
-        // haven't been acknowledged yet, show them and wait for a second Enter.
+
+
         if !self.runtime.validation.step_warnings().is_empty()
             && !self.runtime.validation.warnings_acknowledged()
         {
@@ -456,20 +456,20 @@ impl AppState {
         }
     }
 
-    /// Accept the current ghost completion and refresh validation/ghost state.
+
     fn accept_and_refresh_completion(&mut self) {
         self.accept_completion_for_focused();
         self.refresh_after_input();
     }
 
-    /// Validate focused widget, clear step errors, and refresh ghost completion.
+
     fn refresh_after_input(&mut self) {
         self.validate_focused_live();
         self.clear_step_errors();
         self.try_update_ghost_for_focused();
     }
 
-    /// Find the focused node by id via a tree search.
+
     fn find_focused_node_mut<'a>(&'a mut self, focused_id: &str) -> Option<&'a mut Node> {
         let nodes = self.active_nodes_mut();
         find_node_mut(nodes, focused_id)

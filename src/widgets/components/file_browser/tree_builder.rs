@@ -80,7 +80,7 @@ pub(super) fn build_tree_nodes_for(
                 };
                 let mut node =
                     TreeNode::new(FileTreeItem::new(dir_entry, Vec::new()), anc_depth, true);
-                // Keep synthetic folders open so filtered matches are visible immediately.
+
                 node.expanded = true;
                 node.children_loaded = true;
                 nodes.push(node);
@@ -139,7 +139,7 @@ fn tree_entry_key(entry: &model::FileEntry, root: &Path) -> Vec<(u8, String)> {
         .into_iter()
         .enumerate()
         .map(|(idx, part)| {
-            // Intermediate segments represent directory groups in the tree.
+
             let is_file = idx == last && !entry.kind.is_dir();
             (u8::from(is_file), part)
         })

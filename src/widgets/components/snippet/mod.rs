@@ -10,14 +10,14 @@ use crate::widgets::traits::{
     DrawOutput, Drawable, FocusMode, InteractionResult, Interactive, RenderContext, ValidationMode,
 };
 
-// ── Template parser ───────────────────────────────────────────────────────────
 
-/// A single chunk of the parsed template.
+
+
 #[derive(Debug, Clone)]
 enum Chunk {
-    /// Literal text (may contain newlines).
+
     Text(String),
-    /// A `<key>` placeholder referencing an input by id.
+
     Slot(String),
 }
 
@@ -35,7 +35,7 @@ fn parse_template(template: &str) -> Vec<Chunk> {
                 chunks.push(Chunk::Slot(key));
                 rest = &after_open[close + 1..];
             } else {
-                // No closing `>` — treat rest as literal.
+
                 chunks.push(Chunk::Text(rest.to_string()));
                 break;
             }
@@ -47,16 +47,16 @@ fn parse_template(template: &str) -> Vec<Chunk> {
     chunks
 }
 
-// ── Snippet ───────────────────────────────────────────────────────────────────
+
 
 pub struct Snippet {
     base: WidgetBase,
     chunks: Vec<Chunk>,
-    /// Inputs in insertion order (first `.with_input()` call = index 0).
+
     inputs: Vec<Node>,
-    /// Ordered list of unique slot keys (first occurrence in template).
+
     slot_order: Vec<String>,
-    /// Which slot is currently focused (index into `slot_order`).
+
     active_slot: usize,
     submit_target: Option<ValueTarget>,
 }
@@ -70,7 +70,7 @@ impl Snippet {
         let template = template.into();
         let chunks = parse_template(&template);
 
-        // Collect unique slot keys in order of first appearance.
+
         let mut slot_order: Vec<String> = Vec::new();
         for chunk in &chunks {
             if let Chunk::Slot(key) = chunk {
@@ -105,7 +105,7 @@ impl Snippet {
         self
     }
 
-    // ── Helpers ───────────────────────────────────────────────────────────────
+
 
     fn input_for(&self, key: &str) -> Option<&Node> {
         self.inputs.iter().find(|n| n.id() == key)
@@ -136,9 +136,9 @@ impl Snippet {
             .unwrap_or_default()
     }
 
-    /// Build the rendered output lines from the template, substituting slot
-    /// values inline.  Returns `(lines, cursor_info)` where `cursor_info` is
-    /// `Some((row, col))` for the active slot's cursor position.
+
+
+
     fn render_lines(
         &self,
         focused: bool,
@@ -151,17 +151,17 @@ impl Snippet {
         let mut lines: Vec<Vec<Span>> = Vec::new();
         let mut current_line: Vec<Span> = Vec::new();
 
-        // Track cursor position (row in output, col in line).
+
         let mut cursor: Option<(u16, u16)> = None;
         let mut current_row: u16 = 0;
 
-        // We need to know per-slot: is this the first occurrence?
+
         let mut seen_slots: std::collections::HashSet<String> = std::collections::HashSet::new();
 
         for chunk in &self.chunks {
             match chunk {
                 Chunk::Text(text) => {
-                    // Split by newlines — each `\n` starts a new output line.
+
                     let mut first = true;
                     for part in text.split('\n') {
                         if !first {
@@ -181,10 +181,10 @@ impl Snippet {
                     seen_slots.insert(key.clone());
 
                     if is_first {
-                        // First occurrence — render the actual input inline.
+
                         if let Some(input) = self.input_for(key) {
-                            // Build a context so the input thinks it's focused
-                            // (for cursor styling) only when it's the active slot.
+
+
                             let input_ctx = if is_active {
                                 RenderContext {
                                     focused_id: Some(input.id().to_string()),
@@ -198,14 +198,14 @@ impl Snippet {
                             };
 
                             let out = input.draw(&input_ctx);
-                            // Take only the first line of the input's output
-                            // (inputs are single-line).
+
+
                             if let Some(input_line) = out.lines.into_iter().next() {
-                                // Strip the label prefix — we only want the
-                                // value/mask part.  The input renders as
-                                // "  Label: <value>".  We skip spans until
-                                // we find the value spans.
-                                // Simpler: just use all spans but style them.
+
+
+
+
+
                                 let col_before = col_width(&current_line);
                                 let st = if is_active {
                                     active_st
@@ -216,7 +216,7 @@ impl Snippet {
                                     current_line.push(span.with_style_if_unstyled(st));
                                 }
 
-                                // Record cursor position for this slot.
+
                                 if is_active {
                                     if let Some(input_node) = self.input_for(key) {
                                         if let Some(cp) = input_node.cursor_pos() {
@@ -229,12 +229,12 @@ impl Snippet {
                                 }
                             }
                         } else {
-                            // No input registered for this key — show placeholder.
+
                             let st = if is_active { active_st } else { dim };
                             current_line.push(Span::styled(format!("<{}>", key), st).no_wrap());
                         }
                     } else {
-                        // Repeated occurrence — show current value read-only.
+
                         let val = self.value_of(key);
                         let display = if val.is_empty() {
                             format!("<{}>", key)
@@ -255,13 +255,13 @@ impl Snippet {
     }
 }
 
-// ── Helper: measure display width of a span line ─────────────────────────────
+
 
 fn col_width(spans: &[Span]) -> usize {
     spans.iter().map(|s| s.text.chars().count()).sum()
 }
 
-// ── Span extension — apply style only if span has default style ───────────────
+
 
 trait SpanExt {
     fn with_style_if_unstyled(self, st: Style) -> Span;
@@ -277,7 +277,7 @@ impl SpanExt for Span {
     }
 }
 
-// ── Drawable ──────────────────────────────────────────────────────────────────
+
 
 impl Drawable for Snippet {
     fn id(&self) -> &str {
@@ -291,7 +291,7 @@ impl Drawable for Snippet {
     }
 }
 
-// ── Interactive ───────────────────────────────────────────────────────────────
+
 
 impl Interactive for Snippet {
     fn focus_mode(&self) -> FocusMode {
@@ -303,7 +303,7 @@ impl Interactive for Snippet {
         let input = self.input_for(key)?;
         let local = input.cursor_pos()?;
 
-        // Walk template to find row/col of the first occurrence of `key`.
+
         let mut row: u16 = 0;
         let mut col: u16 = 0;
         let mut seen: std::collections::HashSet<&str> = std::collections::HashSet::new();
@@ -353,7 +353,7 @@ impl Interactive for Snippet {
             }
 
             KeyCode::Enter => {
-                // On last slot, submit; otherwise advance.
+
                 if self.active_slot + 1 >= self.slot_count() {
                     let val = Value::Text(self.formatted_value());
                     InteractionResult::submit_or_produce(self.submit_target.as_ref(), val)
@@ -364,7 +364,7 @@ impl Interactive for Snippet {
             }
 
             _ => {
-                // Delegate to the active input.
+
                 if let Some(key_str) = self.active_key().map(str::to_string) {
                     if let Some(input) = self.input_for_mut(&key_str) {
                         return input.on_key(key);
@@ -396,7 +396,7 @@ impl Interactive for Snippet {
 
 impl Snippet {
     fn formatted_value(&self) -> String {
-        // Render template with all values substituted.
+
         let mut out = String::new();
         let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
         for chunk in &self.chunks {
@@ -412,7 +412,7 @@ impl Snippet {
     }
 }
 
-// ── Component ─────────────────────────────────────────────────────────────────
+
 
 impl Component for Snippet {
     fn children(&self) -> &[Node] {

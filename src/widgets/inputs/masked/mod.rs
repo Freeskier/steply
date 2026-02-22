@@ -314,12 +314,12 @@ impl MaskedInput {
         true
     }
 
-    /// Renders only the mask spans (no label/prefix). Used by composite widgets.
+
     pub fn render_spans(&self) -> Vec<Span> {
         format::render_spans(self.tokens.as_slice())
     }
 
-    /// Column offset of the cursor within the mask spans (no prefix). Used by composite widgets.
+
     pub fn cursor_col(&self) -> usize {
         format::cursor_offset(
             self.tokens.as_slice(),

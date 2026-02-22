@@ -80,7 +80,7 @@ fn collect_targets(nodes: &[Node], out: &mut Vec<FocusTarget>) {
             });
             continue;
         }
-        // Output nodes have no children; Components are Leaf/Group themselves.
-        // Nothing else needs recursion here.
+
+
     }
 }

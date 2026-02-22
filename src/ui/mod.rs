@@ -1,3 +1,4 @@
+pub mod frame_json;
 pub mod highlight;
 pub mod layout;
 pub mod render_view;

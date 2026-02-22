@@ -56,6 +56,17 @@ impl Flow {
         }
     }
 
+    pub fn set_current_running(&mut self, running: bool) {
+        let Some(status) = self.statuses.get_mut(self.current) else {
+            return;
+        };
+        *status = match (*status, running) {
+            (StepStatus::Active, true) => StepStatus::Running,
+            (StepStatus::Running, false) => StepStatus::Active,
+            (current, _) => current,
+        };
+    }
+
     pub fn cancel_current(&mut self) {
         if let Some(status) = self.statuses.get_mut(self.current) {
             *status = StepStatus::Cancelled;

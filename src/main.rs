@@ -25,9 +25,23 @@ fn run() -> std::io::Result<()> {
     let flow = build_demo_flow();
     let (task_specs, task_subscriptions) = build_demo_tasks();
     let state = AppState::with_tasks(flow, task_specs, task_subscriptions);
-    let terminal = Terminal::new()?; //.with_mode(steply_v2::terminal::RenderMode::Inline);
+    let terminal = Terminal::new()?;
     let mut runtime = Runtime::new(state, terminal);
+    if render_json_enabled() {
+        return runtime.print_render_json();
+    }
     runtime.run()
+}
+
+fn render_json_enabled() -> bool {
+    std::env::var("STEPLY_RENDER_JSON")
+        .map(|v| {
+            matches!(
+                v.trim().to_ascii_lowercase().as_str(),
+                "1" | "true" | "yes" | "on"
+            )
+        })
+        .unwrap_or(false)
 }
 
 fn error_log_path() -> PathBuf {

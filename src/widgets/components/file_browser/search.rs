@@ -15,22 +15,16 @@ use super::model::{
 const MAX_MATCHES: usize = 10000;
 const RELATIVE_PREFIX_MAX: usize = 24;
 
-/// Processed result ready to feed into the SelectList and completion items.
 #[derive(Debug, Clone)]
 pub struct ScanResult {
     pub entries: Vec<FileEntry>,
-    /// Highlight ranges (char indices) aligned with `entries`.
     pub highlights: Vec<Vec<(usize, usize)>>,
     pub options: Vec<SelectItem>,
-    /// Plain entry names for TextInput path-segment completion.
     pub completion_items: Vec<String>,
-    /// Total matches before truncation (> entries.len() means results were cut off).
     pub total_matches: usize,
 }
 
-// ── Public search entry points ───────────────────────────────────────────────
 
-/// Fuzzy-match `query` against `entries`, returning a `ScanResult`.
 pub fn fuzzy_search(
     entries: &[FileEntry],
     query: &str,
@@ -68,7 +62,6 @@ pub fn fuzzy_search(
         }
     }
 
-    // Keep fuzzy relevance order within groups, but surface directories first.
     let mut dirs = Vec::new();
     let mut files = Vec::new();
     for row in ranked_rows {
@@ -84,7 +77,6 @@ pub fn fuzzy_search(
     build_result(matched_entries, matched_ranges, root, mode, total_matches)
 }
 
-/// Glob-match `pattern` against `entries`, returning a `ScanResult`.
 pub fn glob_search(
     entries: &[FileEntry],
     pattern: &str,
@@ -135,7 +127,6 @@ pub fn glob_search(
     build_result(matched_entries, ranges, root, mode, total_matches)
 }
 
-/// Plain listing with no filter.
 pub fn plain_result(entries: &[FileEntry], root: &Path, mode: DisplayMode) -> ScanResult {
     let total = entries.len();
     let truncated: Vec<FileEntry> = entries.iter().take(MAX_MATCHES).cloned().collect();
@@ -143,11 +134,8 @@ pub fn plain_result(entries: &[FileEntry], root: &Path, mode: DisplayMode) -> Sc
     build_result(truncated, vec![vec![]; n], root, mode, total)
 }
 
-// ── Recursive glob scan ──────────────────────────────────────────────────────
 
-/// Walk `dir` recursively, collecting entries whose relative path matches `pattern`.
 pub fn list_dir_recursive_glob(dir: &Path, hide_hidden: bool, pattern: &str) -> Vec<FileEntry> {
-    // Normalize `**.ext` → `**/*.ext`
     let normalized =
         if pattern.starts_with("**") && !pattern.starts_with("**/") && pattern.len() > 2 {
             format!("**/*{}", &pattern[2..])
@@ -179,7 +167,6 @@ fn walk_dir_recursive(
             continue;
         }
         let kind = classify_entry_kind(&entry);
-        // Compute relative path from root for matching
         let rel = path
             .strip_prefix(root)
             .map(|r| r.to_string_lossy().replace('\\', "/"))
@@ -200,7 +187,6 @@ fn walk_dir_recursive(
     }
 }
 
-// ── Internal build helpers ───────────────────────────────────────────────────
 
 fn build_result(
     entries: Vec<FileEntry>,
@@ -314,7 +300,6 @@ fn entry_option(
         DisplayMode::Name => {}
     }
 
-    // Name mode (or Relative with no prefix — file is at root level)
     let style = if entry.kind.is_dir() {
         dir_style
     } else {
@@ -351,17 +336,12 @@ fn entry_option(
     }
 }
 
-// ── Glob helpers ─────────────────────────────────────────────────────────────
 
 fn build_glob_matcher(pattern: &str) -> Option<globset::GlobSet> {
     let mut builder = GlobSetBuilder::new();
 
-    // Always include the user pattern as-is.
     builder.add(build_case_insensitive_glob(pattern)?);
 
-    // For patterns without an explicit path segment, also include a recursive
-    // variant so `*.rs` matches both `main.rs` and `src/main.rs` when scanning
-    // recursively.
     if !pattern.contains('/') {
         let recursive = format!("**/{pattern}");
         if let Some(glob) = build_case_insensitive_glob(recursive.as_str()) {
@@ -379,7 +359,6 @@ fn build_case_insensitive_glob(pattern: &str) -> Option<Glob> {
         .ok()
 }
 
-/// Extract literal chunks from a glob pattern for highlight hints.
 fn glob_literal_chunks(pattern: &str) -> Vec<String> {
     let mut chunks: Vec<String> = Vec::new();
     let mut cur = String::new();
@@ -467,7 +446,6 @@ fn merge_ranges(mut ranges: Vec<(usize, usize)>) -> Vec<(usize, usize)> {
     merged
 }
 
-// ── Path display helpers ─────────────────────────────────────────────────────
 
 fn relative_prefix(path: &Path, root: &Path) -> Option<String> {
     let rel = path.strip_prefix(root).ok()?;
@@ -506,7 +484,6 @@ fn elide_middle(text: &str, max_len: usize) -> String {
     format!("{}...{}", head, tail)
 }
 
-// ── Prefilter ────────────────────────────────────────────────────────────────
 
 fn prefilter(entries: &[FileEntry], query: &str) -> Option<Vec<usize>> {
     if query.contains('/') || query.contains('\\') {

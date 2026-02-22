@@ -138,9 +138,9 @@ impl ProgressOutput {
         let target = self.clamp(target);
         self.target_value = target;
 
-        // Advance the current animation to now before starting a new one, so
-        // that rapid updates (held key) continue from the current visual
-        // position rather than always restarting from a stale display_value.
+
+
+
         if let Some(animation) = self.animation {
             let elapsed = animation.started_at.elapsed();
             let duration = animation.duration.as_secs_f64().max(f64::EPSILON);

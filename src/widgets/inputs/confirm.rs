@@ -8,12 +8,12 @@ use crate::widgets::traits::{
     DrawOutput, Drawable, FocusMode, InteractionResult, Interactive, RenderContext, ValidationMode,
 };
 
-/// Confirmation mode for [`ConfirmInput`].
+
 #[derive(Debug, Clone)]
 pub enum ConfirmMode {
-    /// Focused: `[yes] / no` — Enter confirms, n/Esc cancels.
+
     Relaxed,
-    /// Focused: `Type "word" to confirm: _` — must type the word (case-insensitive) before Enter works.
+
     Strict { word: String },
 }
 
@@ -25,17 +25,17 @@ impl Default for ConfirmMode {
 
 pub struct ConfirmInput {
     base: WidgetBase,
-    /// Label for the positive option.
+
     yes_label: String,
-    /// Label for the negative option.
+
     no_label: String,
-    /// Whether the user has confirmed (true) or declined (false).
+
     confirmed: Option<bool>,
     mode: ConfirmMode,
-    /// Buffer for Strict mode text entry.
+
     buffer: String,
     cursor: usize,
-    /// Inline error shown when Strict word is wrong.
+
     strict_error: bool,
 }
 
@@ -99,7 +99,7 @@ impl Drawable for ConfirmInput {
         let focused = self.base.is_focused(ctx);
 
         let spans = if !focused {
-            // Unfocused: show current state or plain options
+
             match self.confirmed {
                 Some(true) => vec![
                     Span::styled(self.yes_label.clone(), Style::new().color(Color::Green))
@@ -117,7 +117,7 @@ impl Drawable for ConfirmInput {
         } else {
             match &self.mode {
                 ConfirmMode::Relaxed => {
-                    // [yes] / no  — yes is highlighted as default action
+
                     vec![
                         Span::styled(
                             format!("[{}]", self.yes_label),
@@ -130,7 +130,7 @@ impl Drawable for ConfirmInput {
                     ]
                 }
                 ConfirmMode::Strict { word } => {
-                    // Type "yes" to confirm: buffer_
+
                     let prompt = format!("Type \"{}\" to confirm: ", word);
                     let mut s = vec![
                         Span::styled(prompt, Style::new().color(Color::DarkGrey)).no_wrap(),
@@ -237,7 +237,7 @@ impl Interactive for ConfirmInput {
 
     fn cursor_pos(&self) -> Option<CursorPos> {
         if let ConfirmMode::Strict { word } = &self.mode {
-            // offset = "Type "word" to confirm: ".len() + cursor position in buffer
+
             let prompt_len = format!("Type \"{}\" to confirm: ", word).chars().count();
             let cursor_chars = self.cursor.min(text_edit::char_count(&self.buffer));
             let col = prompt_len + cursor_chars;

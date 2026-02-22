@@ -8,9 +8,9 @@ use crate::widgets::traits::{DrawOutput, Drawable, InteractionResult, OutputNode
 use std::collections::VecDeque;
 use std::time::Instant;
 
-// ---------------------------------------------------------------------------
-// Public types
-// ---------------------------------------------------------------------------
+
+
+
 
 pub struct TaskLogStep {
     pub label: String,
@@ -42,9 +42,9 @@ struct StepState {
     elapsed_secs: Option<f64>,
 }
 
-// ---------------------------------------------------------------------------
-// TaskLog
-// ---------------------------------------------------------------------------
+
+
+
 
 pub struct TaskLog {
     id: String,
@@ -56,7 +56,7 @@ pub struct TaskLog {
 }
 
 impl TaskLog {
-    /// Multi-step mode — list of (label, task_id) pairs.
+
     pub fn new(id: impl Into<String>, steps: Vec<TaskLogStep>) -> Self {
         let steps = steps
             .into_iter()
@@ -64,7 +64,7 @@ impl TaskLog {
             .map(|(i, s)| StepState {
                 label: s.label,
                 task_id: s.task_id,
-                // First step starts running immediately (triggered by OnStepEnter).
+
                 status: if i == 0 {
                     StepStatus::Running
                 } else {
@@ -84,7 +84,7 @@ impl TaskLog {
         }
     }
 
-    /// Single-task mode — no step labels, just watch one task.
+
     pub fn watching(id: impl Into<String>, task_id: impl Into<TaskId>) -> Self {
         Self::new(id, vec![TaskLogStep::new("", task_id)])
     }
@@ -99,9 +99,9 @@ impl TaskLog {
         self
     }
 
-    // -----------------------------------------------------------------------
-    // Internal
-    // -----------------------------------------------------------------------
+
+
+
 
     fn active_step(&self) -> Option<&StepState> {
         self.steps.get(self.active)
@@ -114,8 +114,8 @@ impl TaskLog {
         }
     }
 
-    /// Called when the active step completes. Returns a TaskRequest for the
-    /// next step if one exists.
+
+
     fn advance(&mut self, succeeded: bool) -> Option<TaskRequest> {
         if let Some(step) = self.steps.get_mut(self.active) {
             step.elapsed_secs = step.started_at.map(|t| t.elapsed().as_secs_f64());
@@ -126,7 +126,7 @@ impl TaskLog {
             };
         }
 
-        // Clear logs — next step gets a fresh buffer.
+
         self.logs.clear();
 
         if !succeeded {
@@ -213,9 +213,9 @@ impl TaskLog {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Drawable
-// ---------------------------------------------------------------------------
+
+
+
 
 impl Drawable for TaskLog {
     fn id(&self) -> &str {
@@ -227,7 +227,7 @@ impl Drawable for TaskLog {
         let single_mode = total == 1 && self.steps[0].label.is_empty();
         let mut lines = Vec::new();
 
-        // Step header lines — show only completed + active, hide pending.
+
         if !single_mode {
             for (i, step) in self.steps.iter().enumerate() {
                 if step.status == StepStatus::Pending {
@@ -236,7 +236,7 @@ impl Drawable for TaskLog {
                 lines.push(Self::render_step_line(step, i, total, &self.spinner));
             }
         } else if let Some(step) = self.steps.first() {
-            // Single-task mode: show spinner + "Running..." or status.
+
             match step.status {
                 StepStatus::Running => lines.push(vec![
                     self.spinner.span(),
@@ -254,7 +254,7 @@ impl Drawable for TaskLog {
             }
         }
 
-        // Live log lines — only for the active running step.
+
         let show_logs = self
             .active_step()
             .is_some_and(|s| s.status == StepStatus::Running);
@@ -271,9 +271,9 @@ impl Drawable for TaskLog {
     }
 }
 
-// ---------------------------------------------------------------------------
-// OutputNode
-// ---------------------------------------------------------------------------
+
+
+
 
 impl OutputNode for TaskLog {
     fn on_tick(&mut self) -> InteractionResult {
@@ -322,20 +322,20 @@ impl OutputNode for TaskLog {
         }
     }
 
-    /// Expose the current active step's task_id as a Value so AppState can
-    /// auto-start the first step on hydration if needed.
+
+
     fn value(&self) -> Option<Value> {
         None
     }
 }
 
-// ---------------------------------------------------------------------------
-// Trigger helpers
-// ---------------------------------------------------------------------------
+
+
+
 
 impl TaskLog {
-    /// Returns the TaskRequest to start the first step. Call this after
-    /// adding the widget to the step to kick off the pipeline.
+
+
     pub fn start_request(&mut self) -> Option<TaskRequest> {
         if let Some(step) = self.steps.first_mut() {
             step.status = StepStatus::Running;

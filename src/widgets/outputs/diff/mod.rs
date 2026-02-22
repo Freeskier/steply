@@ -10,7 +10,7 @@ use crate::widgets::traits::{
     DrawOutput, Drawable, FocusMode, InteractionResult, Interactive, RenderContext, ValidationMode,
 };
 
-// ── Types ─────────────────────────────────────────────────────────────────────
+
 
 #[derive(Clone)]
 enum Side {
@@ -33,18 +33,18 @@ enum DiffRow {
         right: Side,
         kind: RowKind,
     },
-    /// Hidden unchanged lines between chunks. `extra` = how many extra have been
-    /// revealed by pressing Enter on this gap.
+
+
     Gap { hidden: usize },
 }
 
-// ── DiffOutput ────────────────────────────────────────────────────────────────
+
 
 pub struct DiffOutput {
     base: WidgetBase,
     old: String,
     new: String,
-    /// Base context lines shown on each side of a change.
+
     context: usize,
     rows: Vec<DiffRow>,
     nav: CursorNav,
@@ -80,7 +80,7 @@ impl DiffOutput {
         self.rebuild();
     }
 
-    // ── Diff building ─────────────────────────────────────────────────────────
+
 
     fn rebuild(&mut self) {
         self.rows = Self::build_rows(&self.old, &self.new, self.context);
@@ -98,7 +98,7 @@ impl DiffOutput {
         let mut prev_old_end = 0usize;
 
         for group in &groups {
-            // Gap before this chunk
+
             let group_old_start = group.first().map(|op| op.old_range().start).unwrap_or(0);
             let hidden = group_old_start.saturating_sub(prev_old_end);
             if hidden > 0 {
@@ -177,7 +177,7 @@ impl DiffOutput {
                         new_len,
                     } => {
                         let pairs = (*old_len).min(*new_len);
-                        // Paired lines → Changed (~)
+
                         for i in 0..pairs {
                             rows.push(DiffRow::Line {
                                 left: Side::Line {
@@ -199,7 +199,7 @@ impl DiffOutput {
                                 kind: RowKind::Changed,
                             });
                         }
-                        // Extra removed lines
+
                         for i in pairs..*old_len {
                             rows.push(DiffRow::Line {
                                 left: Side::Line {
@@ -214,7 +214,7 @@ impl DiffOutput {
                                 kind: RowKind::Removed,
                             });
                         }
-                        // Extra added lines
+
                         for i in pairs..*new_len {
                             rows.push(DiffRow::Line {
                                 left: Side::Empty,
@@ -239,7 +239,7 @@ impl DiffOutput {
                 .unwrap_or(prev_old_end);
         }
 
-        // Trailing gap
+
         let trailing = old_lines.len().saturating_sub(prev_old_end);
         if trailing > 0 {
             rows.push(DiffRow::Gap { hidden: trailing });
@@ -248,7 +248,7 @@ impl DiffOutput {
         rows
     }
 
-    // ── Navigation ────────────────────────────────────────────────────────────
+
 
     fn move_cursor(&mut self, delta: isize) {
         self.nav.move_by(delta, self.rows.len());
@@ -289,7 +289,7 @@ impl DiffOutput {
         self.nav.set_active(old_active, self.rows.len());
     }
 
-    // ── Rendering helpers ─────────────────────────────────────────────────────
+
 
     fn render_side(side: &Side, col_width: usize, text_style: Style, no_style: Style) -> Vec<Span> {
         match side {
@@ -314,7 +314,7 @@ impl DiffOutput {
     }
 }
 
-// ── Component ─────────────────────────────────────────────────────────────────
+
 
 impl Component for DiffOutput {
     fn children(&self) -> &[Node] {
@@ -325,7 +325,7 @@ impl Component for DiffOutput {
     }
 }
 
-// ── Drawable ─────────────────────────────────────────────────────────────────
+
 
 impl Drawable for DiffOutput {
     fn id(&self) -> &str {
@@ -358,7 +358,7 @@ impl Drawable for DiffOutput {
 
         let mut lines: Vec<Vec<Span>> = Vec::new();
 
-        // Header
+
         if !self.base.label().is_empty() {
             let n_chunks = self
                 .rows
@@ -480,7 +480,7 @@ impl Drawable for DiffOutput {
     }
 }
 
-// ── Interactive ───────────────────────────────────────────────────────────────
+
 
 impl Interactive for DiffOutput {
     fn focus_mode(&self) -> FocusMode {

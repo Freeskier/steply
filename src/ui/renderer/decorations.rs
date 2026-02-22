@@ -6,9 +6,9 @@ use crate::ui::style::{Color, Style};
 const DECOR_GUTTER: &str = "│  ";
 const DECOR_GUTTER_WIDTH: usize = 3;
 
-/// Optional footer message appended as `└  <message>` at the bottom of a
-/// step block.  Also overrides the marker and decoration colour for the whole
-/// block (e.g. `■` red for errors, `▲` yellow for warnings).
+
+
+
 pub(super) enum StepFooter<'a> {
     Error {
         message: &'a str,
@@ -27,23 +27,28 @@ pub(super) fn decorate_step_block(
     status: StepVisualStatus,
     include_top: bool,
     footer: Option<StepFooter<'_>>,
+    running_marker: char,
 ) {
     let (decor_style, marker) = match &footer {
-        Some(StepFooter::Error { .. }) => (Style::new().color(Color::Red), "◆  "),
-        Some(StepFooter::Warning { .. }) => (Style::new().color(Color::Yellow), "▲  "),
+        Some(StepFooter::Error { .. }) => (Style::new().color(Color::Red), "◆  ".to_string()),
+        Some(StepFooter::Warning { .. }) => {
+            (Style::new().color(Color::Yellow), "▲  ".to_string())
+        }
         None => {
             let style = match status {
                 StepVisualStatus::Active => Style::new().color(Color::Green),
+                StepVisualStatus::Running => Style::new().color(Color::Blue),
                 StepVisualStatus::Done | StepVisualStatus::Pending => {
                     Style::new().color(Color::DarkGrey)
                 }
                 StepVisualStatus::Cancelled => Style::new().color(Color::Red),
             };
             let m = match status {
-                StepVisualStatus::Active => "◇  ",
-                StepVisualStatus::Pending => "◇  ",
-                StepVisualStatus::Done => "◈  ",
-                StepVisualStatus::Cancelled => "◆  ",
+                StepVisualStatus::Active => "◇  ".to_string(),
+                StepVisualStatus::Running => format!("{running_marker}  "),
+                StepVisualStatus::Pending => "◇  ".to_string(),
+                StepVisualStatus::Done => "◈  ".to_string(),
+                StepVisualStatus::Cancelled => "◆  ".to_string(),
             };
             (style, m)
         }
@@ -55,7 +60,11 @@ pub(super) fn decorate_step_block(
     }
 
     for (idx, line) in lines.drain(..).enumerate() {
-        let prefix = if idx == 0 { marker } else { "│  " };
+        let prefix = if idx == 0 {
+            marker.as_str()
+        } else {
+            "│  "
+        };
         let mut out_line = Vec::<Span>::with_capacity(line.len().saturating_add(1));
         out_line.push(Span::styled(prefix, decor_style).no_wrap());
         out_line.extend(line);

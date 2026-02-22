@@ -1,13 +1,9 @@
 use std::path::{Path, PathBuf};
 
-/// Result of parsing the raw text-input value.
 #[derive(Debug, Clone)]
 pub struct ParsedInput {
-    /// Directory to scan / display entries from.
     pub view_dir: PathBuf,
-    /// The search/filter segment (last path component being typed).
     pub query: String,
-    /// How to interpret `query`.
     pub mode: QueryMode,
 }
 
@@ -32,13 +28,10 @@ impl QueryMode {
     }
 }
 
-/// Parse a raw input string into a view directory + search segment.
 pub fn parse_input(raw: &str, cwd: &Path) -> ParsedInput {
     let expanded = expand_home(raw);
     let normalized = expanded.replace('\\', "/");
 
-    // Split on the last '/' that is NOT inside a `**/` glob segment.
-    // For `src/**/*.rs` we want dir=`src/` and query=`**/*.rs`.
     let (dir_part, raw_query) = split_dir_query(&normalized);
     let (mode, query) = classify_query(raw_query.as_str());
 
@@ -46,7 +39,11 @@ pub fn parse_input(raw: &str, cwd: &Path) -> ParsedInput {
         cwd.to_path_buf()
     } else {
         let p = PathBuf::from(dir_part);
-        if p.is_absolute() { p } else { cwd.join(p) }
+        if p.is_absolute() {
+            p
+        } else {
+            cwd.join(p)
+        }
     };
 
     let view_dir = normalize_path(&base);
@@ -58,7 +55,6 @@ pub fn parse_input(raw: &str, cwd: &Path) -> ParsedInput {
     }
 }
 
-/// Expand `~` at the start of a path to the home directory.
 fn expand_home(path: &str) -> String {
     if (path == "~" || path.starts_with("~/") || path.starts_with("~\\"))
         && let Some(home) = home_dir()
@@ -69,7 +65,6 @@ fn expand_home(path: &str) -> String {
     path.to_string()
 }
 
-/// Resolve `.` and `..` components without requiring the path to exist.
 fn normalize_path(path: &Path) -> PathBuf {
     let mut out = PathBuf::new();
     for component in path.components() {
@@ -89,16 +84,9 @@ fn home_dir() -> Option<PathBuf> {
     std::env::var_os("HOME").map(PathBuf::from)
 }
 
-/// Split `path` into `(dir_part, query)` at the last `/` that precedes any `**` segment.
-/// Examples:
-///   `"src/**/*.rs"` → `("src/", "**/*.rs")`
-///   `"/home/user/Doc"` → `("/home/user/", "Doc")`
-///   `"foo"` → `("", "foo")`
 fn split_dir_query(path: &str) -> (&str, String) {
-    // Find the position of the first `**` — everything from there on is the query.
     let double_star_pos = path.find("**");
 
-    // Candidate: last `/` before `**` (or last `/` overall if no `**`)
     let split_pos = match double_star_pos {
         Some(ds) => path[..ds].rfind('/'),
         None => path.rfind('/'),

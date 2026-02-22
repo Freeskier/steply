@@ -7,27 +7,27 @@ use crate::widgets::inputs::text_edit;
 use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 
-// ---------------------------------------------------------------------------
-// Focus & overlay modes
-// ---------------------------------------------------------------------------
+
+
+
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FocusMode {
-    /// Node does not participate in focus cycling.
+
     None,
-    /// A single focusable leaf (text input, button, checkbox, …).
+
     Leaf,
-    /// A component that manages focus internally among its children.
+
     Group,
-    /// A container that owns persistent children but defers focus to them.
+
     Container,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OverlayMode {
-    /// Overlay blocks all other focus/input (modal).
+
     Exclusive,
-    /// Overlay shares focus with the base layer.
+
     Shared,
 }
 
@@ -63,26 +63,26 @@ impl OverlayPlacement {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Validation
-// ---------------------------------------------------------------------------
 
-/// Controls how strictly a widget validates its current value.
-///
-/// - `Live`   — called on every keystroke; partial / in-progress input is
-///              acceptable (e.g. a masked date field while the user is still
-///              typing).
-/// - `Submit` — called when the user presses Enter or the step advances;
-///              the value must be complete and valid.
+
+
+
+
+
+
+
+
+
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ValidationMode {
     Live,
     Submit,
 }
 
-// ---------------------------------------------------------------------------
-// Render context & output
-// ---------------------------------------------------------------------------
+
+
+
 
 #[derive(Debug, Clone)]
 pub struct CompletionMenu {
@@ -95,9 +95,9 @@ pub struct CompletionMenu {
 pub struct RenderContext {
     pub focused_id: Option<String>,
     pub terminal_size: TerminalSize,
-    /// Nodes whose validation error should be shown inline.
+
     pub visible_errors: HashMap<String, String>,
-    /// Nodes that failed validation but the error is not yet revealed.
+
     pub invalid_hidden: HashSet<String>,
     pub completion_menus: HashMap<String, CompletionMenu>,
 }
@@ -118,9 +118,9 @@ impl DrawOutput {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Drawable — every node can draw itself
-// ---------------------------------------------------------------------------
+
+
+
 
 pub trait Drawable: Send {
     fn id(&self) -> &str;
@@ -176,9 +176,9 @@ impl HintItem {
     }
 }
 
-// ---------------------------------------------------------------------------
-// InteractionResult
-// ---------------------------------------------------------------------------
+
+
+
 
 #[derive(Debug, Clone, Default)]
 pub struct InteractionResult {
@@ -236,9 +236,9 @@ impl InteractionResult {
     }
 }
 
-// ---------------------------------------------------------------------------
-// TextAction & TextEditState
-// ---------------------------------------------------------------------------
+
+
+
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TextAction {
@@ -257,7 +257,7 @@ pub struct CompletionState<'a> {
     pub value: &'a mut String,
     pub cursor: &'a mut usize,
     pub candidates: &'a [String],
-    /// If set, overrides the default `completion_prefix` token start position.
+
     pub prefix_start: Option<usize>,
 }
 
@@ -272,14 +272,14 @@ impl TextAction {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Interactive — input nodes
-// ---------------------------------------------------------------------------
+
+
+
 
 pub trait Interactive: Send {
     fn focus_mode(&self) -> FocusMode;
 
-    // --- overlay lifecycle (optional) ---
+
 
     fn overlay_placement(&self) -> Option<OverlayPlacement> {
         None
@@ -294,7 +294,7 @@ pub trait Interactive: Send {
         OverlayMode::Exclusive
     }
 
-    // --- input handling ---
+
 
     fn on_key(&mut self, key: KeyEvent) -> InteractionResult;
 
@@ -328,36 +328,36 @@ pub trait Interactive: Send {
         None
     }
 
-    // --- value ---
+
 
     fn value(&self) -> Option<Value> {
         None
     }
     fn set_value(&mut self, _value: Value) {}
 
-    // --- validation ---
 
-    /// Validate the current value.
-    ///
-    /// `Live` mode is called on every keystroke; partial input is acceptable.
-    /// `Submit` mode is called on step submission; the value must be complete.
-    ///
-    /// Most widgets ignore `mode` and apply the same rules regardless.
+
+
+
+
+
+
+
     fn validate(&self, _mode: ValidationMode) -> Result<(), String> {
         Ok(())
     }
 }
 
-// ---------------------------------------------------------------------------
-// InteractiveNode — combined bound used in Node
-// ---------------------------------------------------------------------------
+
+
+
 
 pub trait InteractiveNode: Drawable + Interactive {}
 impl<T> InteractiveNode for T where T: Drawable + Interactive {}
 
-// ---------------------------------------------------------------------------
-// OutputNode — output nodes
-// ---------------------------------------------------------------------------
+
+
+
 
 pub trait OutputNode: Drawable {
     fn value(&self) -> Option<Value> {

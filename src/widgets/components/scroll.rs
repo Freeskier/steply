@@ -1,7 +1,7 @@
-/// Combined cursor position + scroll state for navigable lists.
-///
-/// Encapsulates the common pattern of `active: usize` + `ScrollState` with
-/// wrapping navigation, clamping, and visible-range delegation.
+
+
+
+
 #[derive(Debug, Clone)]
 pub struct CursorNav {
     active: usize,
@@ -24,7 +24,7 @@ impl CursorNav {
         self.scroll.max_visible = Some(n);
     }
 
-    /// Move cursor by `delta` with wrapping. Returns the new active index.
+
     pub fn move_by(&mut self, delta: isize, total: usize) -> usize {
         if total == 0 {
             self.active = 0;
@@ -36,14 +36,14 @@ impl CursorNav {
         self.active
     }
 
-    /// Set cursor to an exact position, clamping to `[0, total)`.
+
     pub fn set_active(&mut self, idx: usize, total: usize) {
         self.active = idx;
         ScrollState::clamp_active(&mut self.active, total);
         self.scroll.ensure_visible(self.active, total);
     }
 
-    /// Clamp cursor after the backing list changed size.
+
     pub fn clamp(&mut self, total: usize) {
         ScrollState::clamp_active(&mut self.active, total);
         self.scroll.ensure_visible(self.active, total);
@@ -62,7 +62,7 @@ impl CursorNav {
     }
 }
 
-/// Shared scroll state used by list/tree components.
+
 #[derive(Debug, Clone, Default)]
 pub struct ScrollState {
     pub offset: usize,
@@ -77,7 +77,7 @@ impl ScrollState {
         }
     }
 
-    /// Adjust offset so `active` is within the visible window.
+
     pub fn ensure_visible(&mut self, active: usize, total: usize) {
         let Some(max) = self.max_visible else {
             return;
@@ -96,7 +96,7 @@ impl ScrollState {
         }
     }
 
-    /// Clamp `active` to `[0, total)`.
+
     pub fn clamp_active(active: &mut usize, total: usize) {
         if total == 0 {
             *active = 0;
@@ -105,7 +105,7 @@ impl ScrollState {
         }
     }
 
-    /// Returns `(start, end)` indices into the visible slice.
+
     pub fn visible_range(&self, total: usize) -> (usize, usize) {
         match self.max_visible {
             Some(limit) => {
@@ -117,7 +117,7 @@ impl ScrollState {
         }
     }
 
-    /// Footer text like `[3-14 of 42] ↓` — `None` when no scroll needed.
+
     pub fn footer(&self, total: usize) -> Option<String> {
         let max = self.max_visible?;
         if total <= max {

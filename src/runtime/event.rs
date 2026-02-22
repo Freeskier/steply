@@ -37,15 +37,15 @@ impl ValueChange {
     }
 }
 
-/// Actions emitted by widgets in `InteractionResult`.
-/// These flow upward from widgets to the runtime.
+
+
 #[derive(Debug, Clone)]
 pub enum WidgetAction {
     ValueChanged {
         change: ValueChange,
     },
-    /// Widget signals it is done with its value.
-    /// Navigation decides: focus next input if one exists, else submit the step.
+
+
     InputDone,
     RequestFocus {
         target: NodeId,
@@ -55,9 +55,9 @@ pub enum WidgetAction {
     },
 }
 
-/// Events dispatched by the runtime to widgets or handled internally.
-/// These flow downward from the runtime to widgets, or are handled
-/// entirely within the runtime layer.
+
+
+
 #[derive(Debug, Clone)]
 pub enum SystemEvent {
     RequestSubmit,

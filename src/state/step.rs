@@ -7,20 +7,21 @@ use crate::widgets::traits::{InteractiveNode, OutputNode};
 pub enum StepStatus {
     Pending,
     Active,
+    Running,
     Done,
     Cancelled,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub enum StepNavigation {
-    /// Going back is not allowed (default).
+
     #[default]
     Locked,
-    /// Going back is allowed — user is aware that side-effects already happened.
+
     Allowed,
-    /// Going back resets all values on this step to their initial state.
+
     Reset,
-    /// Going back is allowed but shows a warning first (e.g. destructive operation).
+
     Destructive { warning: String },
 }
 
@@ -55,7 +56,7 @@ impl Step {
         self
     }
 
-    /// Error if the named field is empty at submit time.
+
     pub fn require(mut self, field_id: impl Into<String>, message: impl Into<String>) -> Self {
         let id = field_id.into();
         let msg = message.into();
@@ -69,7 +70,7 @@ impl Step {
         self
     }
 
-    /// Warning (non-blocking) if the named field is empty at submit time.
+
     pub fn warn_if_empty(
         mut self,
         field_id: impl Into<String>,
@@ -87,7 +88,7 @@ impl Step {
         self
     }
 
-    /// Ergonomic step validator — avoids `Box::new` at the call site.
+
     pub fn validate(
         mut self,
         f: impl Fn(&StepContext) -> Option<StepIssue> + Send + Sync + 'static,

@@ -3,6 +3,7 @@ use crate::state::flow::Flow;
 use crate::state::step::{Step, StepNavigation};
 use crate::task::{TaskAssign, TaskParse, TaskSpec, TaskSubscription, TaskTrigger};
 use crate::widgets::components::calendar::{Calendar, CalendarMode};
+use crate::widgets::components::command_runner::CommandRunner;
 use crate::widgets::components::file_browser::FileBrowserInput;
 use crate::widgets::components::object_editor::ObjectEditor;
 use crate::widgets::components::repeater::{Repeater, RepeaterLayout};
@@ -32,7 +33,7 @@ use crate::widgets::outputs::task_log::{TaskLog, TaskLogStep};
 use crate::widgets::outputs::text::TextOutput;
 use crate::widgets::validators;
 
-// ── Snippet ───────────────────────────────────────────────────────────────────
+
 
 fn step_repeater() -> Step {
     Step::new(
@@ -80,7 +81,7 @@ fn step_repeater() -> Step {
     )
 }
 
-// ── Snippet ───────────────────────────────────────────────────────────────────
+
 
 fn step_pokemon_search() -> Step {
     Step::new(
@@ -104,7 +105,7 @@ fn step_pokemon_search() -> Step {
     .with_description("Type in Query  •  Ctrl+F inside Results for local fuzzy filter")
 }
 
-// ── Snippet ───────────────────────────────────────────────────────────────────
+
 
 fn step_table() -> Step {
     Step::new(
@@ -129,7 +130,7 @@ fn step_table() -> Step {
     )
 }
 
-// ── Snippet ───────────────────────────────────────────────────────────────────
+
 
 fn step_snippet() -> Step {
     Step::new(
@@ -162,7 +163,7 @@ fn step_snippet() -> Step {
     .with_description("Tab → next field  •  Shift+Tab → prev  •  Enter → next/submit")
 }
 
-// ── Calendar input ────────────────────────────────────────────────────────────
+
 
 fn step_calendar() -> Step {
     Step::new(
@@ -175,7 +176,7 @@ fn step_calendar() -> Step {
     .with_description("Tab → month/year/grid  •  ←→ change  •  ↑↓ navigate  •  Enter select")
 }
 
-// ── Step 1: Text inputs ──────────────────────────────────────────────────────
+
 
 fn step_text_inputs() -> Step {
     let completions = vec![
@@ -219,7 +220,7 @@ fn step_text_inputs() -> Step {
     )
 }
 
-// ── Step 2: Masked + Array ───────────────────────────────────────────────────
+
 
 fn step_structured_inputs() -> Step {
     Step::new(
@@ -249,7 +250,7 @@ fn step_structured_inputs() -> Step {
     )
 }
 
-// ── Step 3: Choice + Select + SelectList (fuzzy filter) ──────────────────────
+
 
 fn step_selection() -> Step {
     let languages = vec![
@@ -322,7 +323,7 @@ fn step_selection() -> Step {
     .with_description("Choice: Up/Down  •  Select: Up/Down  •  SelectList: Ctrl+F filter fuzzy")
 }
 
-// ── Step 4: Checkbox + multi-select list ─────────────────────────────────────
+
 
 fn step_toggles() -> Step {
     let features = vec![
@@ -360,7 +361,7 @@ fn step_toggles() -> Step {
     .with_description("Space → toggle checkbox  •  SelectList: Space → check, Enter → confirm")
 }
 
-// ── Step 5: Slider + Progress + Chart ────────────────────────────────────────
+
 
 fn step_outputs() -> Step {
     Step::new(
@@ -419,7 +420,7 @@ fn step_outputs() -> Step {
     .with_description("Left/Right → adjust  •  Shift+Left/Right → large step  •  Enter → submit")
 }
 
-// ── Step 6: Color picker ─────────────────────────────────────────────────────
+
 
 fn step_color() -> Step {
     Step::new(
@@ -443,7 +444,7 @@ fn step_color() -> Step {
     .with_description("Tab between R/G/B channels  •  type hex or adjust with Up/Down")
 }
 
-// ── Step 7: File browser ─────────────────────────────────────────────────────
+
 
 fn step_file_browser() -> Step {
     Step::new(
@@ -457,19 +458,19 @@ fn step_file_browser() -> Step {
     )
 }
 
-// ── Step 8: Tree view ────────────────────────────────────────────────────────
+
 
 fn step_tree_view() -> Step {
-    // Build a small sample tree: project structure
-    //  src/
-    //    main.rs
-    //    lib.rs
-    //    widgets/
-    //      mod.rs
-    //      button.rs
-    //  tests/
-    //    integration.rs
-    //  Cargo.toml
+
+
+
+
+
+
+
+
+
+
 
     let nodes: Vec<TreeNode<String>> = vec![
         TreeNode::new("src/".into(), 0, true).expanded(),
@@ -501,7 +502,7 @@ fn step_tree_view() -> Step {
     )
 }
 
-// ── Step 9: Object editor ────────────────────────────────────────────────────
+
 
 fn step_object_editor() -> Step {
     let value = Value::from_json(
@@ -536,7 +537,7 @@ fn step_object_editor() -> Step {
     .with_description("↑/↓ → navigate  •  Enter/Tab → edit  •  i → insert  •  d → delete  •  m → move")
 }
 
-// ── Step 10: Diff output ─────────────────────────────────────────────────────
+
 
 fn step_diff() -> Step {
     let old = r#"fn main() {
@@ -578,7 +579,7 @@ fn farewell(name: &str) {
     .with_description("↑↓ navigate  Tab next chunk  Shift+Tab prev  Enter expand gap")
 }
 
-// ── Step 10b: TaskLog demo ────────────────────────────────────────────────────
+
 
 fn step_task_log() -> Step {
     Step::new(
@@ -605,7 +606,25 @@ fn step_task_log() -> Step {
     .with_description("Watch the steps complete automatically")
 }
 
-// ── Step 11: Summary + button ─────────────────────────────────────────────────
+fn step_command_runner() -> Step {
+    Step::new(
+        "step_command_runner",
+        "Command runner",
+        vec![
+            Node::Output(Box::new(TextOutput::new(
+                "cmd_intro",
+                "Press Enter on runner to start command. Logs stream below.",
+            ))),
+            Node::Component(Box::new(
+                CommandRunner::new("cmd_run", "Run diagnostics", "cmd_diagnostics")
+                    .with_visible_lines(8),
+            )),
+        ],
+    )
+    .with_description("Enter → run command  •  watch live output")
+}
+
+
 
 fn step_finish() -> Step {
     Step::new(
@@ -624,7 +643,7 @@ fn step_finish() -> Step {
     .with_description("Enter → activate button")
 }
 
-// ── Back navigation demo steps ───────────────────────────────────────────────
+
 
 fn step_back_allowed() -> Step {
     Step::new(
@@ -680,7 +699,7 @@ fn step_back_destructive() -> Step {
     .with_description("Alt+← → go back (shows warning)  •  Enter → next step")
 }
 
-// ── TextArea input ────────────────────────────────────────────────────────────
+
 
 fn step_textarea() -> Step {
     Step::new(
@@ -695,7 +714,7 @@ fn step_textarea() -> Step {
     )
 }
 
-// ── Confirm input ─────────────────────────────────────────────────────────────
+
 
 fn step_confirm() -> Step {
     Step::new(
@@ -715,7 +734,7 @@ fn step_confirm() -> Step {
     .with_description("Relaxed: Enter/y/n  •  Strict: type the word then Enter")
 }
 
-// ── Public API ───────────────────────────────────────────────────────────────
+
 
 fn step_validation_demo() -> Step {
     use crate::state::validation::StepIssue;
@@ -745,6 +764,7 @@ fn step_validation_demo() -> Step {
 
 pub fn build_demo_flow() -> Flow {
     Flow::new(vec![
+        step_command_runner(),
         step_calendar(),
         step_tree_view(),
         step_object_editor(),
@@ -757,7 +777,7 @@ pub fn build_demo_flow() -> Flow {
         step_color(),
         step_textarea(),
         step_confirm(),
-        //        step_finish(),
+
         step_back_allowed(),
         step_back_destructive(),
         step_back_reset(),
@@ -917,6 +937,23 @@ echo '[verify]   line coverage: 91.3%'
 sleep 0.2
 echo '[verify] All checks passed.'
 "#.into(),
+            ],
+        )
+        .with_timeout_ms(30_000),
+        TaskSpec::exec(
+            "cmd_diagnostics",
+            "bash",
+            vec![
+                "-c".into(),
+                r#"
+echo '[diag] Starting diagnostics (~10s)...'
+for i in $(seq 1 10); do
+  echo "[diag] step $i/10"
+  sleep 1
+done
+echo '[diag] Diagnostics complete'
+"#
+                .into(),
             ],
         )
         .with_timeout_ms(30_000),

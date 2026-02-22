@@ -156,6 +156,8 @@ impl AppState {
             self.start_queued_task_if_any(completion.task_id.as_str());
         }
 
+        self.refresh_current_step_running_status();
+
         if stale_restart_completion || completion.cancelled {
             return false;
         }
@@ -306,7 +308,11 @@ impl AppState {
         if !only_when_step_active {
             return true;
         }
-        !self.flow.is_empty() && self.flow.current_status() == StepStatus::Active
+        !self.flow.is_empty()
+            && matches!(
+                self.flow.current_status(),
+                StepStatus::Active | StepStatus::Running
+            )
     }
 
     fn start_task_invocation(&mut self, spec: TaskSpec, fingerprint: Option<u64>, now: Instant) {
@@ -322,6 +328,7 @@ impl AppState {
             cancel_token,
             log_tx: None,
         });
+        self.refresh_current_step_running_status();
     }
 
     fn resolve_task_spec_templates(&self, mut spec: TaskSpec) -> TaskSpec {
@@ -429,6 +436,12 @@ impl AppState {
                 token.cancel();
             }
         }
+        self.refresh_current_step_running_status();
+    }
+
+    fn refresh_current_step_running_status(&mut self) {
+        let any_running = self.runtime.task_runs.values().any(|state| state.is_running());
+        self.flow.set_current_running(any_running);
     }
 }
 

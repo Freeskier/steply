@@ -8,12 +8,14 @@ pub enum SpinnerStyle {
     Dots,
     Arc,
     Line,
+    Squares,
 }
 
 const BRAILLE: &[char] = &['⣾', '⣽', '⣻', '⢿', '⡿', '⣟', '⣯', '⣷'];
 const DOTS: &[char] = &['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
 const ARC: &[char] = &['◜', '◠', '◝', '◞', '◡', '◟'];
 const LINE: &[char] = &['|', '/', '—', '\\'];
+const SQUARES: &[char] = &['◜', '◠', '◝', '◞', '◡', '◟'];
 
 #[derive(Debug, Clone)]
 pub struct Spinner {
@@ -46,6 +48,7 @@ impl Spinner {
             SpinnerStyle::Dots => DOTS,
             SpinnerStyle::Arc => ARC,
             SpinnerStyle::Line => LINE,
+            SpinnerStyle::Squares => SQUARES,
         }
     }
 }

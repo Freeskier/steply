@@ -15,7 +15,7 @@ pub(super) fn rebuild_visible<T: Send + 'static>(nodes: &[TreeNode<T>]) -> Vec<u
             }
         }
 
-        // Visible if root-level, or all ancestors on the current path are expanded.
+
         if d == 0 || collapsed_ancestors == 0 {
             visible.push(idx);
         }

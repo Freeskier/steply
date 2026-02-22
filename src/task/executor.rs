@@ -31,7 +31,7 @@ impl TaskExecutor {
 
     pub fn spawn(&self, mut invocation: TaskInvocation) {
         invocation.log_tx = Some(
-            // wrap the executor's log_tx with a task_id-tagging sender
+
             LogLineSender {
                 task_id: invocation.spec.id.clone(),
                 tx: self.log_tx.clone(),
@@ -70,9 +70,9 @@ impl Default for TaskExecutor {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Internal helpers
-// ---------------------------------------------------------------------------
+
+
+
 
 struct LogLineSender {
     task_id: TaskId,

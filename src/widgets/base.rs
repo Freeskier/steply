@@ -2,9 +2,9 @@ use crate::widgets::traits::{
     FocusMode, OverlayMode, OverlayPlacement, OverlayRenderMode, RenderContext,
 };
 
-// ---------------------------------------------------------------------------
-// WidgetBase — shared identity for all interactive and output nodes
-// ---------------------------------------------------------------------------
+
+
+
 
 #[derive(Debug, Clone)]
 pub struct WidgetBase {
@@ -33,14 +33,14 @@ impl WidgetBase {
     }
 }
 
-// ---------------------------------------------------------------------------
-// OverlayBase — base for overlay components (modals, popovers, …)
-// ---------------------------------------------------------------------------
 
-/// Provides identity and placement configuration for overlay components.
-///
-/// Composes `WidgetBase` for identity (id + label) and adds overlay-specific
-/// state (placement, focus mode, overlay mode).
+
+
+
+
+
+
+
 #[derive(Debug, Clone)]
 pub struct OverlayBase {
     base: WidgetBase,

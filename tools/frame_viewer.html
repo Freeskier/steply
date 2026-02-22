@@ -1,0 +1,280 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Steply Frame Viewer</title>
+  <style>
+    :root {
+      --bg: #0b1220;
+      --panel: #101a2f;
+      --panel-border: #2a3a5f;
+      --text: #dbe4ff;
+      --muted: #8ca0cf;
+      --terminal-bg: #0a0f1a;
+      --terminal-border: #31456f;
+      --terminal-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      background: radial-gradient(circle at top, #13203a 0%, var(--bg) 55%);
+      color: var(--text);
+      display: grid;
+      place-items: center;
+      padding: 24px;
+    }
+
+    .app {
+      width: min(1200px, 100%);
+      display: grid;
+      gap: 16px;
+    }
+
+    .controls {
+      background: var(--panel);
+      border: 1px solid var(--panel-border);
+      border-radius: 10px;
+      padding: 12px;
+    }
+
+    .controls h1 {
+      margin: 0 0 8px;
+      font-size: 16px;
+      font-weight: 700;
+    }
+
+    .controls .muted {
+      margin: 0 0 10px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    textarea {
+      width: 100%;
+      height: 180px;
+      resize: vertical;
+      border-radius: 8px;
+      border: 1px solid var(--panel-border);
+      background: #0b1527;
+      color: var(--text);
+      padding: 10px;
+      font: inherit;
+      line-height: 1.4;
+    }
+
+    .row {
+      display: flex;
+      gap: 8px;
+      margin-top: 10px;
+    }
+
+    button {
+      border: 1px solid #4f6ca8;
+      background: #1a2a4a;
+      color: #e6eeff;
+      border-radius: 8px;
+      padding: 8px 12px;
+      cursor: pointer;
+      font: inherit;
+      font-size: 13px;
+    }
+
+    button:hover {
+      background: #223862;
+    }
+
+    .terminal-wrap {
+      display: grid;
+      place-items: center;
+    }
+
+    .terminal {
+      width: min(100%, 980px);
+      min-height: 320px;
+      background: var(--terminal-bg);
+      border: 1px solid var(--terminal-border);
+      border-radius: 12px;
+      box-shadow: var(--terminal-shadow);
+      overflow: auto;
+      padding: 16px;
+      position: relative;
+    }
+
+    .terminal-header {
+      position: sticky;
+      top: -16px;
+      margin: -16px -16px 12px;
+      padding: 10px 12px;
+      background: #0f1930;
+      border-bottom: 1px solid var(--terminal-border);
+      color: #9fb4e8;
+      font-size: 12px;
+      z-index: 1;
+    }
+
+    .line {
+      white-space: pre;
+      min-height: 1.2em;
+      line-height: 1.2;
+    }
+
+    .cursor {
+      display: inline-block;
+      width: 0.6ch;
+      height: 1.05em;
+      background: #dfe9ff;
+      vertical-align: text-bottom;
+      animation: blink 1s steps(1, start) infinite;
+      margin-left: 1px;
+    }
+
+    .error {
+      margin-top: 8px;
+      color: #ff9ca6;
+      font-size: 12px;
+      white-space: pre-wrap;
+    }
+
+    @keyframes blink {
+      50% { opacity: 0; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <div class="controls">
+      <h1>Steply Frame JSON Viewer</h1>
+      <p class="muted">Wklej JSON z <code>STEPLY_RENDER_JSON=1 cargo run -q</code> i kliknij Render.</p>
+      <textarea id="jsonInput" spellcheck="false"></textarea>
+      <div class="row">
+        <button id="renderBtn">Render</button>
+        <button id="clearBtn">Clear</button>
+      </div>
+      <div class="error" id="error"></div>
+    </div>
+
+    <div class="terminal-wrap">
+      <div class="terminal" id="terminal">
+        <div class="terminal-header" id="meta">terminal</div>
+        <div id="content"></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const inputEl = document.getElementById("jsonInput");
+    const errorEl = document.getElementById("error");
+    const contentEl = document.getElementById("content");
+    const metaEl = document.getElementById("meta");
+    const renderBtn = document.getElementById("renderBtn");
+    const clearBtn = document.getElementById("clearBtn");
+
+    const colorMap = {
+      reset: "inherit",
+      black: "#000000",
+      dark_grey: "#6f7788",
+      red: "#ff6b7d",
+      green: "#67d48a",
+      yellow: "#f5d06a",
+      blue: "#6ea7ff",
+      magenta: "#d98cff",
+      cyan: "#69d2ff",
+      white: "#f1f5ff"
+    };
+
+    function styleFromJson(style) {
+      const css = {};
+      if (!style) return css;
+
+      const fg = toColor(style.color);
+      const bg = toColor(style.background);
+      if (fg) css.color = fg;
+      if (bg) css.backgroundColor = bg;
+      if (style.bold) css.fontWeight = "700";
+      if (style.strike === "on") css.textDecoration = "line-through";
+      if (style.strike === "off") css.textDecoration = "none";
+      return css;
+    }
+
+    function toColor(value) {
+      if (!value) return null;
+      if (typeof value === "string") return colorMap[value] || null;
+      if (value.rgb && Array.isArray(value.rgb) && value.rgb.length === 3) {
+        return `rgb(${value.rgb[0]}, ${value.rgb[1]}, ${value.rgb[2]})`;
+      }
+      return null;
+    }
+
+    function clearRender() {
+      contentEl.innerHTML = "";
+      errorEl.textContent = "";
+      metaEl.textContent = "terminal";
+    }
+
+    function renderFrame(doc) {
+      clearRender();
+      const width = doc?.terminal?.width ?? "?";
+      const height = doc?.terminal?.height ?? "?";
+      const frozen = doc?.frozen_lines ?? 0;
+      const cursor = doc?.cursor;
+      metaEl.textContent = `terminal ${width}x${height} • frozen: ${frozen}`;
+
+      const lines = Array.isArray(doc?.lines) ? doc.lines : [];
+      const cursorRow = cursor?.row ?? null;
+      const cursorCol = cursor?.col ?? null;
+
+      for (let row = 0; row < lines.length; row += 1) {
+        const lineEl = document.createElement("div");
+        lineEl.className = "line";
+        const line = Array.isArray(lines[row]) ? lines[row] : [];
+
+        let colPos = 0;
+        for (const span of line) {
+          const text = String(span?.text ?? "");
+          const spanEl = document.createElement("span");
+          spanEl.textContent = text;
+          Object.assign(spanEl.style, styleFromJson(span?.style));
+          lineEl.appendChild(spanEl);
+          colPos += [...text].length;
+
+          if (row === cursorRow && cursorCol !== null && colPos >= cursorCol) {
+            const c = document.createElement("span");
+            c.className = "cursor";
+            lineEl.appendChild(c);
+            colPos = Number.MAX_SAFE_INTEGER;
+          }
+        }
+
+        if (row === cursorRow && cursorCol !== null && colPos <= cursorCol) {
+          const c = document.createElement("span");
+          c.className = "cursor";
+          lineEl.appendChild(c);
+        }
+
+        contentEl.appendChild(lineEl);
+      }
+    }
+
+    renderBtn.addEventListener("click", () => {
+      try {
+        const doc = JSON.parse(inputEl.value.trim());
+        renderFrame(doc);
+      } catch (err) {
+        errorEl.textContent = `Invalid JSON:\n${err}`;
+      }
+    });
+
+    clearBtn.addEventListener("click", () => {
+      inputEl.value = "";
+      clearRender();
+    });
+  </script>
+</body>
+</html>

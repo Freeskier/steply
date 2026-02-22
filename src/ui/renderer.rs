@@ -4,7 +4,8 @@ use crate::terminal::{CursorPos, TerminalSize};
 use crate::ui::layout::Layout;
 use crate::ui::render_view::{CompletionSnapshot, RenderView};
 use crate::ui::span::{Span, SpanLine};
-use crate::ui::style::{Color, Style};
+use crate::ui::spinner::{Spinner, SpinnerStyle};
+use crate::ui::style::{Color, Strike, Style};
 use crate::widgets::node::{Node, NodeWalkScope, walk_nodes};
 use crate::widgets::traits::{
     CompletionMenu, DrawOutput, HintContext, HintGroup, HintItem, RenderContext,
@@ -23,11 +24,6 @@ use overlay::apply_overlay;
 pub struct RenderFrame {
     pub lines: Vec<SpanLine>,
     pub cursor: Option<CursorPos>,
-    /// Number of lines at the start of `lines` that correspond to
-    /// Done/Cancelled steps.  In Inline mode the terminal commits these lines
-    /// once to scrollback and never re-renders them.  Always 0 in AltScreen
-    /// mode (the terminal renders everything itself).
-    pub frozen_lines: usize,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -45,6 +41,7 @@ impl Default for RendererConfig {
 
 pub struct Renderer {
     config: RendererConfig,
+    running_spinner: Spinner,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -52,6 +49,7 @@ enum StepVisualStatus {
     Pending,
     Done,
     Active,
+    Running,
     Cancelled,
 }
 
@@ -60,6 +58,7 @@ impl From<StepStatus> for StepVisualStatus {
         match value {
             StepStatus::Pending => Self::Pending,
             StepStatus::Active => Self::Active,
+            StepStatus::Running => Self::Running,
             StepStatus::Done => Self::Done,
             StepStatus::Cancelled => Self::Cancelled,
         }
@@ -68,18 +67,28 @@ impl From<StepStatus> for StepVisualStatus {
 
 impl Renderer {
     pub fn new(config: RendererConfig) -> Self {
-        Self { config }
+        Self {
+            config,
+            running_spinner: Spinner::new(SpinnerStyle::Squares),
+        }
     }
 
-    pub fn render(&self, view: &RenderView, terminal_size: TerminalSize) -> RenderFrame {
-        let mut frame = self.render_steps_pass(view, terminal_size);
+    pub fn render(&mut self, view: &RenderView, terminal_size: TerminalSize) -> RenderFrame {
+        let running_marker = self.running_spinner.glyph();
+        self.running_spinner.tick();
+        let mut frame = self.render_steps_pass(view, terminal_size, running_marker);
         self.apply_overlay_pass(view, terminal_size, &mut frame);
         self.finalize_cursor_pass(terminal_size, &mut frame);
         frame
     }
 
-    fn render_steps_pass(&self, view: &RenderView, terminal_size: TerminalSize) -> RenderFrame {
-        build_base_frame(view, terminal_size, self.config)
+    fn render_steps_pass(
+        &self,
+        view: &RenderView,
+        terminal_size: TerminalSize,
+        running_marker: char,
+    ) -> RenderFrame {
+        build_base_frame(view, terminal_size, self.config, running_marker)
     }
 
     fn apply_overlay_pass(
@@ -108,13 +117,13 @@ impl Renderer {
 
     fn finalize_cursor_pass(&self, terminal_size: TerminalSize, frame: &mut RenderFrame) {
         if let Some(cursor) = frame.cursor.as_mut() {
-            // Clamp column within terminal width.
+
             if terminal_size.width > 0 {
                 cursor.col = cursor.col.min(terminal_size.width.saturating_sub(1));
             }
-            // If the cursor row would be outside the rendered area (e.g. the
-            // UI is taller than the terminal), hide it entirely rather than
-            // clamping it to a wrong position.
+
+
+
             let max_row = frame
                 .lines
                 .len()
@@ -138,6 +147,7 @@ fn build_base_frame(
     view: &RenderView,
     terminal_size: TerminalSize,
     config: RendererConfig,
+    running_marker: char,
 ) -> RenderFrame {
     let mut frame = RenderFrame::default();
     let current_idx = view.current_step_index;
@@ -150,7 +160,6 @@ fn build_base_frame(
         return frame;
     }
     let blocking_overlay = view.has_blocking_overlay;
-    let mut frozen_lines = 0usize;
 
     let last_visible_idx = view
         .step_statuses
@@ -175,6 +184,7 @@ fn build_base_frame(
 
         let title_style = match status {
             StepVisualStatus::Active => Style::new().color(Color::Cyan),
+            StepVisualStatus::Running => Style::new().color(Color::Cyan),
             StepVisualStatus::Done | StepVisualStatus::Pending => {
                 Style::new().color(Color::DarkGrey)
             }
@@ -189,6 +199,7 @@ fn build_base_frame(
         if let Some(description) = step.description.as_deref() {
             let description_style = match status {
                 StepVisualStatus::Active => Style::new().color(Color::Yellow),
+                StepVisualStatus::Running => Style::new().color(Color::Yellow),
                 StepVisualStatus::Done | StepVisualStatus::Pending => {
                     Style::new().color(Color::DarkGrey)
                 }
@@ -247,12 +258,13 @@ fn build_base_frame(
             col: col.min(u16::MAX as usize) as u16,
         });
 
-        if status != StepVisualStatus::Active {
+        if !matches!(status, StepVisualStatus::Active | StepVisualStatus::Running) {
             let tint = match status {
                 StepVisualStatus::Cancelled
                 | StepVisualStatus::Done
                 | StepVisualStatus::Pending => Color::DarkGrey,
                 StepVisualStatus::Active => Color::Reset,
+                StepVisualStatus::Running => Color::Reset,
             };
             tint_block(&mut block_lines, tint);
         }
@@ -292,6 +304,7 @@ fn build_base_frame(
                 status,
                 idx == 0,
                 footer,
+                running_marker,
             );
         }
 
@@ -307,15 +320,7 @@ fn build_base_frame(
         if status == StepVisualStatus::Done && !config.decorations_enabled {
             frame.lines.push(vec![Span::new("")]);
         }
-
-        // Track the frozen boundary: lines through Done/Cancelled steps are
-        // committed to scrollback in Inline mode and never re-rendered.
-        if matches!(status, StepVisualStatus::Done | StepVisualStatus::Cancelled) {
-            frozen_lines = frame.lines.len();
-        }
     }
-
-    frame.frozen_lines = frozen_lines;
     frame
 }
 
@@ -376,7 +381,11 @@ fn append_hints_panel(nodes: &[Node], focused_id: Option<&str>, block_lines: &mu
         })
         .collect::<Vec<_>>();
 
-    let max_rows = grouped.iter().map(|(_, items)| items.len()).max().unwrap_or(0);
+    let max_rows = grouped
+        .iter()
+        .map(|(_, items)| items.len())
+        .max()
+        .unwrap_or(0);
     const HINT_COLUMN_GAP: usize = 4;
 
     for row in 0..max_rows {
@@ -504,8 +513,8 @@ fn draw_nodes(
     for node in nodes {
         let mut out = node.draw(ctx);
 
-        // Build label prefix for Input nodes — applied after validation overlay
-        // so the error replaces only the value portion, not the label.
+
+
         let label_prefix: Option<Vec<Span>> = if let Node::Input(w) = node {
             let focused = ctx.focused_id.as_deref().is_some_and(|id| id == w.id());
             let label = w.label();
@@ -527,24 +536,24 @@ fn draw_nodes(
 
         apply_input_validation_overlay(node, ctx, &mut out);
 
-        // Strikethrough only the value spans (before label is prepended),
-        // and only when the value text is non-empty.
+
+
         if strikethrough_inputs && matches!(node, Node::Input(_)) {
             for line in &mut out.lines {
                 let has_content = line
                     .iter()
-                    .any(|s| !s.text.trim().is_empty() && !s.style.no_strikethrough);
+                    .any(|s| !s.text.trim().is_empty() && !matches!(s.style.strike, Strike::Off));
                 if has_content {
                     for span in line.iter_mut() {
-                        if !span.style.no_strikethrough {
-                            span.style.strikethrough = true;
+                        if !matches!(span.style.strike, Strike::Off) {
+                            span.style.strike = Strike::On;
                         }
                     }
                 }
             }
         }
 
-        // Prepend label inline with the first draw line.
+
         if let Some(prefix) = label_prefix {
             if let Some(first) = out.lines.first_mut() {
                 let mut new_first = prefix;
@@ -562,12 +571,12 @@ fn draw_nodes(
                 .is_some_and(|focused| focused == node.id())
             && let Some(local_cursor) = node.cursor_pos()
         {
-            // If this input has a label prepended inline, offset col by the
-            // label prefix width: "> Label: " (marker=2, label+colon+space).
+
+
             let label_offset = if let Node::Input(w) = node {
                 let label = w.label();
                 if !label.is_empty() {
-                    // "Label: " (label.len() + 2)
+
                     label.chars().count() + 2
                 } else {
                     0

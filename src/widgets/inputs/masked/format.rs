@@ -122,8 +122,8 @@ pub(super) fn cursor_offset(
     out
 }
 
-/// Plain display value for unfocused state — literals + filled segment values,
-/// no placeholders.  Empty segments are skipped.
+
+
 pub(super) fn render_plain_value(tokens: &[MaskToken]) -> String {
     let mut out = String::new();
     for token in tokens {

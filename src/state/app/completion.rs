@@ -70,7 +70,7 @@ impl AppState {
         ))
     }
 
-    /// Returns true if the focused widget's cursor is at the end of its value.
+
     pub(crate) fn cursor_at_end_for_focused(&mut self) -> bool {
         let Some(focused_id) = self.ui.focus.current_id().map(ToOwned::to_owned) else {
             return false;
@@ -182,9 +182,9 @@ impl AppState {
         updated
     }
 
-    /// If the current token is shorter than the longest common prefix of
-    /// all matches, expand the input to that common prefix. Returns true
-    /// if the input was modified.
+
+
+
     pub(super) fn expand_common_prefix_for_focused(&mut self) -> bool {
         let Some(session) = self.ui.completion_session.as_ref() else {
             return false;
@@ -248,8 +248,8 @@ impl AppState {
         true
     }
 
-    /// Called after each keypress: silently open/update a ghost completion session
-    /// without modifying the input value. Shows ghost text for the first match.
+
+
     pub(super) fn try_update_ghost_for_focused(&mut self) {
         let Some(focused_id) = self.ui.focus.current_id().map(ToOwned::to_owned) else {
             self.clear_completion_session();
@@ -260,7 +260,7 @@ impl AppState {
             return;
         }
 
-        // Snapshot existing session info before mutable borrow
+
         let existing_session = self
             .ui
             .completion_session
@@ -274,8 +274,8 @@ impl AppState {
 
             let (start, token, allow_empty_token) = completion_token(&state)?;
             if token.is_empty() {
-                // For empty token with prefix_start, only keep an existing session
-                // (opened by Tab) alive — don't create a new one automatically.
+
+
                 if allow_empty_token {
                     let has_existing = existing_session
                         .as_ref()
@@ -288,13 +288,13 @@ impl AppState {
                 }
             }
             let matches = completion_candidates(state.candidates, &token, allow_empty_token);
-            // Only show ghost if the first match is strictly longer than the typed token
+
             let first = matches.first()?;
             if first == &token {
                 return None;
             }
 
-            // Preserve current cycle index if session is already open for same owner+start
+
             let index = existing_session
                 .as_ref()
                 .filter(|(id, s, _)| id == &focused_id && *s == start)

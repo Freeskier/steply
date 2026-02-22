@@ -152,7 +152,10 @@ impl AppState {
 
     pub fn request_exit(&mut self) {
         self.should_exit = true;
-        if self.flow.current_status() == crate::state::step::StepStatus::Active {
+        if matches!(
+            self.flow.current_status(),
+            crate::state::step::StepStatus::Active | crate::state::step::StepStatus::Running
+        ) {
             self.flow.cancel_current();
         }
         self.cancel_interval_tasks();

@@ -22,7 +22,7 @@ impl Reducer {
                 if state.back_confirm().is_some() {
                     state.cancel_back_confirm();
                 } else if state.cancel_completion_for_focused() {
-                    // Esc first closes the completion menu before closing overlays or exiting.
+
                     state.suppress_completion_tab_for_focused();
                 } else if state
                     .dispatch_key_to_focused(KeyEvent {
@@ -31,7 +31,7 @@ impl Reducer {
                     })
                     .handled
                 {
-                    // Focused widget consumed Esc (e.g. file browser clears query).
+
                 } else if state.has_active_overlay() {
                     state.close_overlay();
                 }

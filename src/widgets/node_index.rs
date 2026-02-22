@@ -51,8 +51,8 @@ fn collect_paths(
         path.push(index);
         out.insert(node.id().into(), path.clone());
 
-        // For Visible scope: don't descend into components (they draw themselves).
-        // For Persistent scope: descend into component children.
+
+
         let children = match scope {
             NodeWalkScope::Visible => None,
             NodeWalkScope::Persistent => node.persistent_children(),

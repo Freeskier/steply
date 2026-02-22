@@ -146,7 +146,7 @@ pub fn classify_entry_kind(entry: &fs::DirEntry) -> EntryKind {
         return EntryKind::File;
     };
     if ft.is_symlink() {
-        // Follow symlink target to preserve dir/file behavior in browser logic.
+
         let target_is_dir = fs::metadata(entry.path())
             .map(|m| m.is_dir())
             .unwrap_or(false);

@@ -30,9 +30,9 @@ impl Layout {
             for span in line {
                 match span.wrap_mode {
                     WrapMode::NoWrap => {
-                        // Hard-wrap long no-wrap spans instead of clipping them.
-                        // This keeps full text visible when a single long token
-                        // exceeds the available terminal width.
+
+
+
                         let mut rest = span.text.as_str();
                         while !rest.is_empty() {
                             if current_width >= max_width {

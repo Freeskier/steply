@@ -1,20 +1,20 @@
-/// Pure date/time logic — no external dependencies.
-/// Used by `MaskedInput` (date validation) and the `Calendar` component.
 
-// ── Basic types ───────────────────────────────────────────────────────────────
+
+
+
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Date {
     pub year: i32,
-    pub month: u8, // 1–12
-    pub day: u8,   // 1–31
+    pub month: u8,
+    pub day: u8,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Time {
-    pub hour: u8,   // 0–23
-    pub minute: u8, // 0–59
-    pub second: u8, // 0–59
+    pub hour: u8,
+    pub minute: u8,
+    pub second: u8,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -23,7 +23,7 @@ pub struct DateTime {
     pub time: Time,
 }
 
-/// Day of week, Monday = 0 … Sunday = 6.
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Weekday(pub u8);
 
@@ -41,14 +41,14 @@ impl Weekday {
     }
 }
 
-// ── Calendar arithmetic ───────────────────────────────────────────────────────
 
-/// True if `year` is a leap year.
+
+
 pub fn is_leap_year(year: i32) -> bool {
     (year % 4 == 0 && year % 100 != 0) || (year % 400 == 0)
 }
 
-/// Number of days in a given month (1–12).
+
 pub fn days_in_month(year: i32, month: u8) -> u8 {
     match month {
         1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
@@ -64,19 +64,19 @@ pub fn days_in_month(year: i32, month: u8) -> u8 {
     }
 }
 
-/// Weekday of the 1st of a given month (Tomohiko Sakamoto's algorithm).
-/// Returns Monday=0 … Sunday=6.
+
+
 pub fn first_weekday_of_month(year: i32, month: u8) -> Weekday {
     let t: [i32; 12] = [0, 3, 2, 5, 0, 3, 5, 1, 4, 6, 2, 4];
     let y = if month < 3 { year - 1 } else { year };
     let m = month as i32;
     let d = 1i32;
     let raw = (y + y / 4 - y / 100 + y / 400 + t[(m - 1) as usize] + d) % 7;
-    // raw: 0=Sun, 1=Mon … 6=Sat → convert to Mon=0..Sun=6
+
     Weekday(((raw + 6) % 7) as u8)
 }
 
-/// Weekday of a specific date.
+
 pub fn weekday_of(date: Date) -> Weekday {
     let t: [i32; 12] = [0, 3, 2, 5, 0, 3, 5, 1, 4, 6, 2, 4];
     let y = if date.month < 3 {
@@ -90,9 +90,9 @@ pub fn weekday_of(date: Date) -> Weekday {
     Weekday(((raw + 6) % 7) as u8)
 }
 
-/// Today's date from system time.
+
 pub fn today() -> Date {
-    // Seconds since Unix epoch via std::time.
+
     let secs = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
@@ -100,7 +100,7 @@ pub fn today() -> Date {
     date_from_unix_days(secs / 86400)
 }
 
-/// Current time (UTC) from system time.
+
 pub fn now_time() -> Time {
     let secs = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -116,9 +116,9 @@ pub fn now_time() -> Time {
     }
 }
 
-/// Convert Unix day number (days since 1970-01-01) to a `Date`.
+
 fn date_from_unix_days(days: i64) -> Date {
-    // Algorithm from http://howardhinnant.github.io/date_algorithms.html
+
     let z = days + 719468;
     let era = if z >= 0 { z } else { z - 146096 } / 146097;
     let doe = (z - era * 146097) as u32;
@@ -136,9 +136,9 @@ fn date_from_unix_days(days: i64) -> Date {
     }
 }
 
-// ── Date validation ───────────────────────────────────────────────────────────
 
-/// Validate a date. Returns `Err` with a human-readable message on failure.
+
+
 pub fn validate_date(year: i32, month: u8, day: u8) -> Result<Date, String> {
     if month < 1 || month > 12 {
         return Err(format!("Invalid month: {month}"));
@@ -153,7 +153,7 @@ pub fn validate_date(year: i32, month: u8, day: u8) -> Result<Date, String> {
     Ok(Date { year, month, day })
 }
 
-/// Validate a time. Returns `Err` on out-of-range values.
+
 pub fn validate_time(hour: u8, minute: u8, second: u8) -> Result<Time, String> {
     if hour > 23 {
         return Err(format!("Invalid hour: {hour}"));
@@ -171,7 +171,7 @@ pub fn validate_time(hour: u8, minute: u8, second: u8) -> Result<Time, String> {
     })
 }
 
-// ── Date arithmetic ───────────────────────────────────────────────────────────
+
 
 impl Date {
     pub fn add_months(self, delta: i32) -> Self {
@@ -183,7 +183,7 @@ impl Date {
     }
 
     pub fn add_days(self, delta: i32) -> Self {
-        // Simple loop — fine for ±999 days.
+
         let mut d = self;
         let step = if delta >= 0 { 1i32 } else { -1 };
         let mut remaining = delta.abs();
@@ -214,12 +214,12 @@ impl Date {
         d
     }
 
-    /// Parse from "DD/MM/YYYY", "MM/DD/YYYY" etc. given explicit field order.
+
     pub fn from_parts(year: i32, month: u8, day: u8) -> Result<Self, String> {
         validate_date(year, month, day)
     }
 
-    /// Format as `YYYY-MM-DD`.
+
     pub fn to_iso(self) -> String {
         format!("{:04}-{:02}-{:02}", self.year, self.month, self.day)
     }
@@ -230,12 +230,12 @@ impl Time {
         validate_time(hour, minute, second)
     }
 
-    /// Format as `HH:MM:SS`.
+
     pub fn to_iso(self) -> String {
         format!("{:02}:{:02}:{:02}", self.hour, self.minute, self.second)
     }
 
-    /// Format as `HH:MM`.
+
     pub fn to_hhmm(self) -> String {
         format!("{:02}:{:02}", self.hour, self.minute)
     }
@@ -247,14 +247,14 @@ impl DateTime {
     }
 }
 
-// ── Calendar grid ─────────────────────────────────────────────────────────────
 
-/// A 6×7 calendar grid for a given month.
-/// Each cell is `Some(day)` or `None` (padding outside the month).
+
+
+
 pub struct MonthGrid {
     pub year: i32,
     pub month: u8,
-    /// Row-major, Mon=col0 … Sun=col6. Always 6 rows.
+
     pub cells: [[Option<u8>; 7]; 6],
 }
 
@@ -288,9 +288,9 @@ impl MonthGrid {
     }
 }
 
-// ── Format helpers ────────────────────────────────────────────────────────────
 
-/// Common date/time format strings for `DateTimeInput`.
+
+
 pub mod fmt {
     pub const DATE_DMY: &str = "DD/MM/YYYY";
     pub const DATE_MDY: &str = "MM/DD/YYYY";

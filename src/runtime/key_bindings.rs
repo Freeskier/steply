@@ -64,7 +64,7 @@ impl KeyBindings {
             KeyBinding::ctrl(KeyCode::Char('o')),
             Intent::OpenOverlayShortcut,
         );
-        // Toggle help/hints: support multiple keyboard layouts/terminal encodings.
+
         self.bind(KeyBinding::ctrl(KeyCode::Char('/')), Intent::ToggleHints);
         self.bind(KeyBinding::ctrl(KeyCode::Char('?')), Intent::ToggleHints);
         self.bind(KeyBinding::ctrl(KeyCode::Char('_')), Intent::ToggleHints);
@@ -97,7 +97,7 @@ impl KeyBindings {
         self.bind(KeyBinding::key(KeyCode::Esc), Intent::Cancel);
         self.bind(KeyBinding::alt(KeyCode::Left), Intent::Back);
         self.bind(KeyBinding::key(KeyCode::Tab), Intent::CompleteNext);
-        // Toggle completion menu/ghost for focused input.
+
         self.bind(
             KeyBinding::ctrl(KeyCode::Char(' ')),
             Intent::ToggleCompletion,

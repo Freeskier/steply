@@ -376,7 +376,7 @@ impl Repeater {
         if self.show_label && !self.base.label().is_empty() {
             rows += 1;
         }
-        rows += 1; // header
+        rows += 1;
         if self.progress_line().is_some() {
             rows += 1;
         }

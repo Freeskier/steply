@@ -19,27 +19,27 @@ use crate::widgets::traits::{
     DrawOutput, Drawable, FocusMode, InteractionResult, Interactive, RenderContext, ValidationMode,
 };
 
-// ── ObjNode — one row ────────────────────────────────────────────────────────
+
 
 #[derive(Clone)]
 struct ObjNode {
     key: String,
     value: Value,
-    /// Full dot-path from root, e.g. "address.city".
+
     path: String,
-    /// True for List children (key is the index string).
+
     is_index: bool,
 }
 
 impl TreeItemLabel for ObjNode {
-    /// TreeView uses this only for its own default rendering;
-    /// ObjectEditor replaces the label span in draw().
+
+
     fn label(&self) -> &str {
         &self.key
     }
 }
 
-// ── Modes ────────────────────────────────────────────────────────────────────
+
 
 enum Mode {
     Normal,
@@ -76,7 +76,7 @@ enum InsertValueType {
     Number,
 }
 
-// ── ObjectEditor ─────────────────────────────────────────────────────────────
+
 
 pub struct ObjectEditor {
     base: WidgetBase,
@@ -84,7 +84,7 @@ pub struct ObjectEditor {
     expanded: HashSet<String>,
     tree: TreeView<ObjNode>,
     mode: Mode,
-    /// Reused TextInput for inline key/value editing.
+
     edit_input: TextInput,
     submit_target: Option<ValueTarget>,
 }
@@ -115,7 +115,7 @@ impl ObjectEditor {
     }
 
     pub fn with_max_visible(mut self, n: usize) -> Self {
-        // Re-create tree with max_visible (TreeView builder pattern requires this).
+
         let id = format!("{}_tree", self.base.id());
         let nodes = std::mem::take(self.tree.nodes_mut());
         self.tree = TreeView::new(id, "", nodes)
@@ -134,7 +134,7 @@ impl ObjectEditor {
         self
     }
 
-    // ── Expand helpers ────────────────────────────────────────────────────────
+
 
     fn expand_all_top_level(&mut self) {
         match &self.value {
@@ -152,7 +152,7 @@ impl ObjectEditor {
         }
     }
 
-    // ── Rebuild: Value → TreeNode list ────────────────────────────────────────
+
 
     fn rebuild(&mut self) {
         let nodes = Self::build_nodes(&self.value, &self.expanded, 0, "");
@@ -231,7 +231,7 @@ impl ObjectEditor {
         out
     }
 
-    // ── Accessors using tree.visible() ────────────────────────────────────────
+
 
     fn active_vis(&self) -> usize {
         self.tree.active_visible_index()
@@ -273,7 +273,7 @@ impl ObjectEditor {
         vis + 1..end
     }
 
-    // ── Value mutation helpers ────────────────────────────────────────────────
+
 
     fn value_at_path_mut<'a>(root: &'a mut Value, path: &str) -> Option<&'a mut Value> {
         if path.is_empty() {
@@ -327,7 +327,7 @@ impl ObjectEditor {
         Value::Text(s.to_string())
     }
 
-    // ── Toggle expand ─────────────────────────────────────────────────────────
+
 
     fn toggle_expand(&mut self) {
         let Some(obj) = self.active_obj() else { return };
@@ -343,7 +343,7 @@ impl ObjectEditor {
         self.rebuild();
     }
 
-    // ── Edit value ────────────────────────────────────────────────────────────
+
 
     fn start_edit_value(&mut self) {
         let Some(obj) = self.active_obj() else { return };
@@ -426,7 +426,7 @@ impl ObjectEditor {
         self.rebuild();
     }
 
-    // ── Insert ────────────────────────────────────────────────────────────────
+
 
     fn start_insert(&mut self) {
         let after_vis = self.active_vis();
@@ -553,7 +553,7 @@ impl ObjectEditor {
         }
     }
 
-    // ── Delete ────────────────────────────────────────────────────────────────
+
 
     fn start_delete(&mut self) {
         let Some(obj) = self.active_obj() else { return };
@@ -596,7 +596,7 @@ impl ObjectEditor {
         self.rebuild();
     }
 
-    // ── Move ─────────────────────────────────────────────────────────────────
+
 
     fn start_move(&mut self) {
         let vis = self.active_vis();
@@ -647,7 +647,7 @@ impl ObjectEditor {
 
         self.rebuild();
         let new_vis = self.vis_of_path(&cur_path).unwrap_or(target_vis);
-        // Sync tree's active cursor
+
         while self.tree.active_visible_index() < new_vis {
             if !self.tree.move_active(1) {
                 break;
@@ -661,7 +661,7 @@ impl ObjectEditor {
         self.mode = Mode::Move { vis: new_vis };
     }
 
-    // ── Rendering ────────────────────────────────────────────────────────────
+
 
     fn value_display(val: &Value) -> (String, Style) {
         match val {
@@ -765,7 +765,7 @@ impl ObjectEditor {
     }
 }
 
-// ── Component ─────────────────────────────────────────────────────────────────
+
 
 impl Component for ObjectEditor {
     fn children(&self) -> &[Node] {
@@ -776,7 +776,7 @@ impl Component for ObjectEditor {
     }
 }
 
-// ── Drawable ─────────────────────────────────────────────────────────────────
+
 
 impl Drawable for ObjectEditor {
     fn id(&self) -> &str {
@@ -787,7 +787,7 @@ impl Drawable for ObjectEditor {
         let focused = self.base.is_focused(ctx);
         let inactive = Style::new().color(Color::DarkGrey);
 
-        // Highlight ranges
+
         let red_range: Option<std::ops::Range<usize>> = match &self.mode {
             Mode::ConfirmDelete { vis, .. } => Some(self.subtree_vis_range(*vis)),
             _ => None,
@@ -797,8 +797,8 @@ impl Drawable for ObjectEditor {
             _ => None,
         };
 
-        // Get tree lines (cursor ❯, indent, icon ▼/▶, label) from TreeView.
-        // We'll swap out the label span with our key:value spans.
+
+
         let tree_lines = self.tree.render_lines(focused);
         let (start, _end) = self.tree.visible_range();
         let visible = self.tree.visible();
@@ -806,14 +806,14 @@ impl Drawable for ObjectEditor {
 
         let mut lines: Vec<Vec<Span>> = Vec::new();
 
-        // Label
+
         if !self.base.label().is_empty() {
             lines.push(vec![Span::new(self.base.label()).no_wrap()]);
         }
 
         for (line_idx, mut tree_line) in tree_lines.into_iter().enumerate() {
             let vis = start + line_idx;
-            // Footer line from TreeView (no corresponding node)
+
             if vis >= visible.len() {
                 lines.push(tree_line);
                 continue;
@@ -828,10 +828,10 @@ impl Drawable for ObjectEditor {
                 .unwrap_or(false);
             let in_yellow = yellow_vis == Some(vis);
 
-            // Replace label span (last) with our key:value spans
+
             tree_line.pop();
 
-            // Tint structural spans (cursor/indent/icon) for red/yellow rows
+
             if in_red || in_yellow {
                 let tint = if in_red {
                     Style::new().color(Color::Red)
@@ -848,7 +848,7 @@ impl Drawable for ObjectEditor {
             tree_line.extend(self.row_spans(vis, obj, in_red, in_yellow));
             lines.push(tree_line);
 
-            // Inline confirm-delete row (shown right after the target row)
+
             if let Mode::ConfirmDelete { vis: dv, choice } = &self.mode {
                 if *dv == vis {
                     let prompt = Span::styled(
@@ -876,7 +876,7 @@ impl Drawable for ObjectEditor {
                 }
             }
 
-            // Inline insert-type row
+
             if let Mode::InsertType {
                 after_vis,
                 key_input,
@@ -914,7 +914,7 @@ impl Drawable for ObjectEditor {
                 }
             }
 
-            // Inline insert-value row
+
             if let Mode::InsertValue {
                 after_vis,
                 key,
@@ -937,7 +937,7 @@ impl Drawable for ObjectEditor {
             }
         }
 
-        // Hint bar
+
         if focused {
             let hint = match &self.mode {
                 Mode::Normal => {
@@ -958,7 +958,7 @@ impl Drawable for ObjectEditor {
     }
 }
 
-// ── Interactive ───────────────────────────────────────────────────────────────
+
 
 impl Interactive for ObjectEditor {
     fn focus_mode(&self) -> FocusMode {
@@ -996,7 +996,7 @@ impl Interactive for ObjectEditor {
     }
 }
 
-// ── Key handlers ──────────────────────────────────────────────────────────────
+
 
 impl ObjectEditor {
     fn handle_normal(&mut self, key: KeyEvent) -> InteractionResult {

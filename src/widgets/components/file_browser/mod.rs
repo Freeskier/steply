@@ -11,7 +11,7 @@ mod tree_scanner;
 
 pub use model::EntryFilter;
 
-/// Controls the inline browser rendering style.
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum BrowserMode {
     #[default]
@@ -19,7 +19,7 @@ pub enum BrowserMode {
     Tree,
 }
 
-// ── FileTreeItem ──────────────────────────────────────────────────────────────
+
 
 struct FileTreeItem {
     entry: model::FileEntry,
@@ -73,15 +73,15 @@ impl TreeItemLabel for FileTreeItem {
     }
 }
 
-/// Controls how file paths are displayed in the inline list.
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum DisplayMode {
-    /// Show the full absolute path (e.g. `/home/user/projects/src/main.rs`)
+
     Full,
-    /// Show path relative to cwd (e.g. `src/main.rs`) — default
+
     #[default]
     Relative,
-    /// Show only the file/folder name (e.g. `main.rs`)
+
     Name,
 }
 
@@ -120,15 +120,15 @@ const DEBOUNCE_MS: u64 = 120;
 const SPINNER_INTERVAL_MS: u64 = 80;
 const SPINNER_FRAMES: &[char] = &['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
 
-/// A file-browser input: text field with path completion + Shift/Alt+Space inline list.
+
 pub struct FileBrowserInput {
     base: WidgetBase,
 
-    // Sub-widgets
+
     text: TextInput,
     list: SelectList,
 
-    // Config
+
     cwd: PathBuf,
     recursive: bool,
     hide_hidden: bool,
@@ -138,26 +138,26 @@ pub struct FileBrowserInput {
     submit_target: Option<ValueTarget>,
     validators: Vec<Validator>,
 
-    // Async scan
+
     scanner: ScannerHandle,
     tree_scanner: TreeScannerHandle,
     cache: ScanCache,
     last_scan_result: Option<Arc<ScanResult>>,
 
-    // Debounce
+
     debounce_deadline: Option<Instant>,
 
-    // Inline browser state
+
     overlay_open: bool,
     browse_dir: PathBuf,
 
-    // Spinner
+
     spinner_frame: usize,
     spinner_last_tick: Instant,
     scanning: bool,
     tree_building: bool,
 
-    // Tree mode
+
     browser_mode: BrowserMode,
     tree: Option<TreeView<FileTreeItem>>,
     pending_tree_nodes: Option<(u64, Vec<TreeNode<FileTreeItem>>)>,
@@ -223,7 +223,7 @@ impl FileBrowserInput {
         }
     }
 
-    // ── Builder ──────────────────────────────────────────────────────────────
+
 
     pub fn with_cwd(mut self, cwd: impl Into<PathBuf>) -> Self {
         let p = cwd.into();
@@ -286,7 +286,7 @@ impl FileBrowserInput {
         self
     }
 
-    // ── Helpers ──────────────────────────────────────────────────────────────
+
 
     fn current_input(&self) -> String {
         self.text
@@ -330,7 +330,7 @@ impl FileBrowserInput {
     }
 
     fn submit_scan(&mut self, dir: PathBuf, query: String, is_glob: bool, recursive: bool) {
-        // `**` in a glob pattern implies recursive traversal
+
         let recursive = recursive || (is_glob && query.contains("**"));
         if should_skip_expensive_typing_scan(self.overlay_open, recursive, query.as_str()) {
             self.scanning = false;
@@ -393,7 +393,7 @@ impl FileBrowserInput {
             return;
         }
 
-        // Provide immediate completion candidates without waiting for async scan.
+
         let items = filter_entries(
             list_dir(dir, self.hide_hidden),
             self.entry_filter,
@@ -442,7 +442,7 @@ impl FileBrowserInput {
             .or(fallback)
             .or(Some(FocusRestore::FirstRealEntry));
         self.browse_dir = dir.clone();
-        // Update text input to show the new directory path (relative to cwd if possible)
+
         let path_str = if let Ok(rel) = dir.strip_prefix(&self.cwd) {
             let s = rel.to_string_lossy();
             if s.is_empty() {
@@ -493,8 +493,8 @@ impl FileBrowserInput {
     }
 
     fn child_ctx(&self, ctx: &RenderContext, focused_id: Option<String>) -> RenderContext {
-        // Remap completion menu keyed under our own id to the inner text widget's id,
-        // so TextInput::draw() finds it when rendering ghost text.
+
+
         let mut completion_menus = ctx.completion_menus.clone();
         if let Some(menu) = completion_menus.remove(self.base.id()) {
             completion_menus.insert(self.text.id().to_string(), menu);
@@ -509,7 +509,7 @@ impl FileBrowserInput {
     }
 }
 
-// ── Component ────────────────────────────────────────────────────────────────
+
 
 impl Component for FileBrowserInput {
     fn children(&self) -> &[Node] {
@@ -520,7 +520,7 @@ impl Component for FileBrowserInput {
     }
 }
 
-// ── Drawable ─────────────────────────────────────────────────────────────────
+
 
 impl Drawable for FileBrowserInput {
     fn id(&self) -> &str {
@@ -533,7 +533,7 @@ impl Drawable for FileBrowserInput {
             .as_deref()
             .is_some_and(|id| id == self.base.id());
 
-        // Always pass focus through to inner TextInput so completion ghost text renders
+
         let text_ctx = self.child_ctx(
             ctx,
             if focused {
@@ -560,12 +560,12 @@ impl Drawable for FileBrowserInput {
                         ]);
                     }
                 } else {
-                    // Inline list — pass list's own ID as focused so the ❯ cursor renders
+
                     let list_id = self.list.id().to_string();
                     let list_ctx = self.child_ctx(ctx, Some(list_id));
                     lines.extend(self.list.draw(&list_ctx).lines);
 
-                    // Show truncation notice if results were cut off
+
                     if let Some(result) = &self.last_scan_result {
                         let shown = result.entries.len();
                         let total = result.total_matches;
@@ -653,7 +653,7 @@ impl Drawable for FileBrowserInput {
     }
 }
 
-// ── Interactive ───────────────────────────────────────────────────────────────
+
 
 impl Interactive for FileBrowserInput {
     fn focus_mode(&self) -> FocusMode {
@@ -661,19 +661,19 @@ impl Interactive for FileBrowserInput {
     }
 
     fn on_key(&mut self, key: KeyEvent) -> InteractionResult {
-        // Shift+Space (or Alt+Space) → open inline browser
+
         if key.code == KeyCode::Char(' ')
             && (key.modifiers == KeyModifiers::SHIFT || key.modifiers == KeyModifiers::ALT)
         {
             return self.open_browser();
         }
 
-        // Browser open: route to browser key handler
+
         if self.overlay_open {
             return self.handle_browser_key(key);
         }
 
-        // Enter → submit
+
         if key.code == KeyCode::Enter {
             return InteractionResult::submit_or_produce(
                 self.submit_target.as_ref(),
@@ -681,28 +681,28 @@ impl Interactive for FileBrowserInput {
             );
         }
 
-        // Normal text input
+
         self.handle_text_key_with_rescan(key)
     }
 
     fn text_editing(&mut self) -> Option<TextEditState<'_>> {
-        // Delegate so Ctrl+W / Alt+D work on the inner text field
+
         self.text.text_editing()
     }
 
     fn on_text_edited(&mut self) {
-        // Called after Ctrl+W / Alt+D mutates the inner text — trigger a scan
+
         self.schedule_scan();
     }
 
     fn completion(&mut self) -> Option<CompletionState<'_>> {
-        // Completion candidates are always loaded from the same scan/cache
-        // pipeline as query filtering; only the presentation differs by mode.
+
+
         let parsed = parse_input(&self.current_input(), &self.cwd);
         self.sync_completion_items_for_dir(parsed.view_dir.as_path());
 
         let mut state = self.text.completion()?;
-        // Path-aware completion: token starts after the last '/'
+
         let chars: Vec<char> = state.value.chars().collect();
         let pos = (*state.cursor).min(chars.len());
         let byte_end = state

@@ -30,7 +30,22 @@ use crate::widgets::outputs::progress::{
 };
 use crate::widgets::outputs::task_log::{TaskLog, TaskLogStep};
 use crate::widgets::outputs::text::TextOutput;
+use crate::widgets::outputs::thinking::ThinkingOutput;
 use crate::widgets::validators;
+
+fn step_thinking_output() -> Step {
+    Step::new(
+        "step_thinking_output",
+        "Thinking output",
+        vec![Node::Output(Box::new(
+            ThinkingOutput::new("thinking_rgb", "", "Warming up workflow context...")
+                .with_tail_len(7)
+                .with_tick_ms(48)
+                .with_gradient_rgb((64, 70, 84), (230, 238, 255)),
+        ))],
+    )
+    .with_description("Animated RGB trail")
+}
 
 fn step_repeater() -> Step {
     Step::new(
@@ -297,7 +312,7 @@ fn step_selection() -> Step {
             )),
             Node::Component(Box::new(
                 SelectList::new("ss_lang", "Language", languages)
-                    .with_mode(SelectMode::Single)
+                    .with_mode(SelectMode::List)
                     .with_max_visible(8),
             )),
         ],
@@ -740,6 +755,8 @@ fn step_validation_demo() -> Step {
 
 pub fn build_demo_flow() -> Flow {
     Flow::new(vec![
+        step_selection(),
+        step_thinking_output(),
         step_table(),
         step_object_editor(),
         step_repeater(),
@@ -759,7 +776,6 @@ pub fn build_demo_flow() -> Flow {
         step_back_reset(),
         step_validation_demo(),
         step_pokemon_search(),
-        step_selection(),
         step_task_log(),
         step_snippet(),
         step_diff(),

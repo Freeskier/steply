@@ -397,16 +397,22 @@ impl SelectList {
                 );
                 for (line_idx, option_line) in option_lines.into_iter().enumerate() {
                     let mut spans = Vec::<Span>::new();
-                    if line_idx == 0 {
-                        if focused && active {
+                    if focused && active {
+                        if line_idx == 0 {
                             spans.push(Span::styled(cursor, cursor_style).no_wrap());
+                            spans.push(Span::new(" ").no_wrap());
                         } else {
-                            spans.push(Span::styled(cursor, inactive_style).no_wrap());
+                            spans.push(Span::new(" ").no_wrap());
+                            spans.push(Span::new(" ").no_wrap());
                         }
+                        spans.push(Span::styled("│", inactive_style).no_wrap());
+                        spans.push(Span::new(" ").no_wrap());
                     } else {
-                        spans.push(Span::styled(" ", inactive_style).no_wrap());
+                        spans.push(Span::new(" ").no_wrap());
+                        spans.push(Span::new(" ").no_wrap());
+                        spans.push(Span::new(" ").no_wrap());
+                        spans.push(Span::new(" ").no_wrap());
                     }
-                    spans.push(Span::styled(" ", inactive_style).no_wrap());
                     spans.extend(option_line);
                     lines.push(spans);
                 }

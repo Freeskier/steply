@@ -43,7 +43,13 @@ fn default_render_option_lines(item: &SelectItem, state: SelectItemRenderState) 
             description_style,
         } => {
             let title_base = base_style.merge(*title_style);
-            let description_base = base_style.merge_no_inherit(*description_style);
+            let description_base = if state.mode == SelectMode::List && state.active {
+                let mut style = base_style;
+                style.bold = false;
+                style
+            } else {
+                base_style.merge_no_inherit(*description_style)
+            };
             let mut lines = vec![render_text_spans(
                 title.as_str(),
                 title_highlights,

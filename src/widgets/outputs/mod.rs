@@ -4,3 +4,4 @@ pub mod progress;
 pub mod table;
 pub mod task_log;
 pub mod text;
+pub mod thinking;

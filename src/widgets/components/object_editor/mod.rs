@@ -21,22 +21,28 @@ use crate::widgets::node::{Component, Node};
 use crate::widgets::traits::{
     DrawOutput, Drawable, FocusMode, InteractionResult, Interactive, RenderContext, ValidationMode,
 };
-use inline_key_value::{InlineKeyValueEditor, InlineKeyValueFocus};
+use inline_key_value::{CustomValueInput, InlineKeyValueEditor, InlineKeyValueFocus};
 use unicode_width::UnicodeWidthChar;
 
 #[derive(Clone)]
-pub struct CustomInsertType {
+pub struct InsertType {
     name: String,
+    value_input: Arc<dyn Fn(String) -> CustomValueInput + Send + Sync>,
     parser: Arc<dyn Fn(&str) -> Value + Send + Sync>,
 }
 
-impl CustomInsertType {
-    pub fn new(
+impl InsertType {
+    pub fn custom<I>(
         name: impl Into<String>,
+        value_input: impl Fn(String) -> I + Send + Sync + 'static,
         parser: impl Fn(&str) -> Value + Send + Sync + 'static,
-    ) -> Self {
+    ) -> Self
+    where
+        I: Into<CustomValueInput> + 'static,
+    {
         Self {
             name: name.into(),
+            value_input: Arc::new(move |id| value_input(id).into()),
             parser: Arc::new(parser),
         }
     }
@@ -47,6 +53,15 @@ impl CustomInsertType {
 
     fn parse(&self, text: &str) -> Value {
         (self.parser)(text)
+    }
+
+    fn new_editor(&self, id: String, key: String) -> InlineKeyValueEditor {
+        let value_id = format!("{id}__value");
+        let mut editor = InlineKeyValueEditor::new_custom(id, "", (self.value_input)(value_id))
+            .with_default_key(key)
+            .with_default_value("");
+        editor.set_focus(InlineKeyValueFocus::Value);
+        editor
     }
 }
 
@@ -146,7 +161,7 @@ pub struct ObjectEditor {
     filter: TextInput,
     filter_visible: bool,
     filter_focus: bool,
-    custom_insert_types: Vec<CustomInsertType>,
+    insert_types: Vec<InsertType>,
     mode: Mode,
     submit_target: Option<ValueTarget>,
 }
@@ -213,7 +228,7 @@ impl ObjectEditor {
             filter: TextInput::new(filter_id, ""),
             filter_visible: false,
             filter_focus: false,
-            custom_insert_types: Vec::new(),
+            insert_types: Vec::new(),
             mode: Mode::Normal,
             submit_target: None,
         };
@@ -247,13 +262,13 @@ impl ObjectEditor {
         self
     }
 
-    pub fn with_custom_insert_type(mut self, custom: CustomInsertType) -> Self {
-        self.custom_insert_types.push(custom);
+    pub fn with_insert_type(mut self, insert_type: InsertType) -> Self {
+        self.insert_types.push(insert_type);
         self
     }
 
-    pub fn with_custom_insert_types(mut self, custom: Vec<CustomInsertType>) -> Self {
-        self.custom_insert_types.extend(custom);
+    pub fn with_insert_types(mut self, insert_types: Vec<InsertType>) -> Self {
+        self.insert_types.extend(insert_types);
         self
     }
 
@@ -264,8 +279,8 @@ impl ObjectEditor {
             "object".to_string(),
             "array".to_string(),
         ];
-        for custom in &self.custom_insert_types {
-            options.push(custom.name().to_string());
+        for insert_type in &self.insert_types {
+            options.push(insert_type.name().to_string());
         }
         options
     }
@@ -275,11 +290,39 @@ impl ObjectEditor {
             "number" => InsertValueType::Number,
             "text" => InsertValueType::Text,
             _ => self
-                .custom_insert_types
+                .insert_types
                 .iter()
-                .position(|custom| custom.name() == value_type)
+                .position(|insert_type| insert_type.name() == value_type)
                 .map(InsertValueType::Custom)
                 .unwrap_or(InsertValueType::Text),
+        }
+    }
+
+    fn insert_value_editor(
+        &self,
+        editor_id: String,
+        key: String,
+        value_type: InsertValueType,
+    ) -> InlineKeyValueEditor {
+        match value_type {
+            InsertValueType::Custom(index) => self
+                .insert_types
+                .get(index)
+                .map(|insert_type| insert_type.new_editor(editor_id.clone(), key.clone()))
+                .unwrap_or_else(|| {
+                    let mut editor = InlineKeyValueEditor::new_text(editor_id, "")
+                        .with_default_key(key)
+                        .with_default_value("");
+                    editor.set_focus(InlineKeyValueFocus::Value);
+                    editor
+                }),
+            InsertValueType::Text | InsertValueType::Number => {
+                let mut editor = InlineKeyValueEditor::new_text(editor_id, "")
+                    .with_default_key(key)
+                    .with_default_value("");
+                editor.set_focus(InlineKeyValueFocus::Value);
+                editor
+            }
         }
     }
 

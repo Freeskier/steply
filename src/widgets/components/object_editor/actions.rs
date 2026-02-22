@@ -212,11 +212,8 @@ impl ObjectEditor {
             }
             _ => {
                 let value_type = self.resolve_insert_value_type(tv.as_str());
-                let mut key_value =
-                    InlineKeyValueEditor::new_text(format!("{}_iv", self.base.id()), "")
-                        .with_default_key(k)
-                        .with_default_value("");
-                key_value.set_focus(InlineKeyValueFocus::Value);
+                let key_value =
+                    self.insert_value_editor(format!("{}_iv", self.base.id()), k, value_type);
                 self.mode = Mode::InsertValue {
                     after_vis: av,
                     value_type,
@@ -240,9 +237,9 @@ impl ObjectEditor {
             InsertValueType::Number => Value::Number(text.parse::<f64>().unwrap_or(0.0)),
             InsertValueType::Text => Self::parse_scalar(&text),
             InsertValueType::Custom(index) => self
-                .custom_insert_types
+                .insert_types
                 .get(index)
-                .map(|custom| custom.parse(text.as_str()))
+                .map(|insert_type| insert_type.parse(text.as_str()))
                 .unwrap_or_else(|| Self::parse_scalar(&text)),
         };
         let av = after_vis;

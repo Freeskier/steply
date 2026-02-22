@@ -5,7 +5,7 @@ use crate::task::{TaskAssign, TaskParse, TaskSpec, TaskSubscription, TaskTrigger
 use crate::widgets::components::calendar::{Calendar, CalendarMode};
 use crate::widgets::components::command_runner::{CommandRunner, OnError, RunMode};
 use crate::widgets::components::file_browser::FileBrowserInput;
-use crate::widgets::components::object_editor::ObjectEditor;
+use crate::widgets::components::object_editor::{InsertType, ObjectEditor};
 use crate::widgets::components::repeater::{Repeater, RepeaterLayout};
 use crate::widgets::components::select_list::SelectList;
 use crate::widgets::components::select_list::{SelectItem, SelectMode};
@@ -106,7 +106,7 @@ fn step_table() -> Step {
         "Table",
         vec![Node::Component(Box::new(
             Table::new("tbl_targets", "Deployment targets")
-                .with_style(TableStyle::Grid)
+                .with_style(TableStyle::Clean)
                 .column("Tags", ArrayInput::new)
                 .column("Name", TextInput::new)
                 .column("Port", |id, header| {
@@ -115,12 +115,11 @@ fn step_table() -> Step {
                 .column("Weight", |id, header| {
                     SliderInput::new(id, header, 0, 100).with_step(5)
                 })
+                .with_row_numbers(false)
                 .with_initial_rows(2),
         ))],
     )
-    .with_description(
-        "↑/↓ rows  •  Tab/Shift+Tab columns  •  Header: Enter/Space sort  •  + Add record",
-    )
+    .with_description("↑/↓ rows  •  Tab/Shift+Tab columns  •  Header: Space sort  •  Ctrl+F filter  •  Enter next step (nav)  •  e edit  •  Esc nav  •  i insert  •  d delete  •  m move")
 }
 
 fn step_snippet() -> Step {
@@ -490,6 +489,11 @@ fn step_object_editor() -> Step {
             Node::Component(Box::new(
                 ObjectEditor::new("obj_main", "Config")
                     .with_value(value)
+                    .with_insert_type(InsertType::custom(
+                        "ip",
+                        |id| MaskedInput::ipv4(id, ""),
+                        |raw| Value::Text(raw.trim().to_string()),
+                    ))
                     .with_max_visible(12),
             )),
         ],
@@ -736,9 +740,10 @@ fn step_validation_demo() -> Step {
 
 pub fn build_demo_flow() -> Flow {
     Flow::new(vec![
+        step_table(),
+        step_object_editor(),
         step_repeater(),
         step_command_runner(),
-        step_object_editor(),
         step_tree_view(),
         step_calendar(),
         step_text_inputs(),
@@ -755,7 +760,6 @@ pub fn build_demo_flow() -> Flow {
         step_validation_demo(),
         step_pokemon_search(),
         step_selection(),
-        step_table(),
         step_task_log(),
         step_snippet(),
         step_diff(),

@@ -7,31 +7,10 @@ use crate::widgets::traits::{
     ValidationMode,
 };
 
-
-
-
-
-
-
-
-
-
-
 pub trait Component: InteractiveNode {
     fn children(&self) -> &[Node];
     fn children_mut(&mut self) -> &mut [Node];
 }
-
-
-
-
-
-
-
-
-
-
-
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum NodeWalkScope {
@@ -39,22 +18,13 @@ pub enum NodeWalkScope {
     Persistent,
 }
 
-
-
-
-
 pub enum Node {
-
     Input(Box<dyn InteractiveNode>),
 
     Component(Box<dyn Component>),
 
     Output(Box<dyn OutputNode>),
 }
-
-
-
-
 
 pub fn walk_nodes(nodes: &[Node], scope: NodeWalkScope, f: &mut impl FnMut(&Node)) {
     for node in nodes {
@@ -79,7 +49,6 @@ fn children_for_scope<'a>(node: &'a Node, scope: NodeWalkScope) -> Option<&'a [N
         return None;
     };
     match scope {
-
         NodeWalkScope::Visible => None,
 
         NodeWalkScope::Persistent => Some(c.children()),
@@ -95,10 +64,6 @@ fn children_for_scope_mut<'a>(node: &'a mut Node, scope: NodeWalkScope) -> Optio
         NodeWalkScope::Persistent => Some(c.children_mut()),
     }
 }
-
-
-
-
 
 impl Node {
     pub fn id(&self) -> &str {
@@ -217,8 +182,6 @@ impl Node {
         }
     }
 
-
-
     pub fn overlay_placement(&self) -> Option<OverlayPlacement> {
         match self {
             Self::Input(w) => w.overlay_placement(),
@@ -251,8 +214,6 @@ impl Node {
         }
     }
 
-
-
     pub fn persistent_children(&self) -> Option<&[Node]> {
         match self {
             Self::Component(c) => Some(c.children()),
@@ -267,10 +228,6 @@ impl Node {
         }
     }
 }
-
-
-
-
 
 pub fn find_node<'a>(nodes: &'a [Node], id: &str) -> Option<&'a Node> {
     for node in nodes {

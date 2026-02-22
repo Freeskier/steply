@@ -5,17 +5,23 @@ pub struct FuzzyMatch {
     pub ranges: Vec<(usize, usize)>,
 }
 
+pub fn match_text(query: &str, candidate: &str) -> Option<(i32, Vec<(usize, usize)>)> {
+    let indices = match_indices(query.trim(), candidate)?;
+    let score = score_match(candidate, indices.as_slice(), query);
+    let ranges = indices_to_ranges(indices.as_slice());
+    Some((score, ranges))
+}
+
 pub fn ranked_matches(query: &str, candidates: &[String]) -> Vec<FuzzyMatch> {
     let query = query.trim();
     let mut out = Vec::<FuzzyMatch>::new();
 
     for (index, candidate) in candidates.iter().enumerate() {
-        if let Some(indices) = match_indices(query, candidate.as_str()) {
-            let score = score_match(candidate.as_str(), indices.as_slice(), query);
+        if let Some((score, ranges)) = match_text(query, candidate.as_str()) {
             out.push(FuzzyMatch {
                 index,
                 score,
-                ranges: indices_to_ranges(indices.as_slice()),
+                ranges,
             });
         }
     }

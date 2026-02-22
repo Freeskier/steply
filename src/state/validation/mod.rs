@@ -5,8 +5,6 @@ use crate::core::{
 };
 use std::collections::HashMap;
 
-
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ErrorVisibility {
     Hidden,
@@ -19,10 +17,6 @@ pub struct ValidationEntry {
     pub visibility: ErrorVisibility,
 }
 
-
-
-
-
 pub struct StepContext<'a> {
     pub step_id: &'a str,
     values: &'a HashMap<NodeId, Value>,
@@ -32,7 +26,6 @@ impl<'a> StepContext<'a> {
     pub fn new(step_id: &'a str, values: &'a HashMap<NodeId, Value>) -> Self {
         Self { step_id, values }
     }
-
 
     pub fn get(&self, id: &str) -> &Value {
         self.values.get(id).unwrap_or(&Value::None)
@@ -56,21 +49,17 @@ impl<'a> StepContext<'a> {
         }
     }
 
-
     pub fn text(&self, id: &str) -> &str {
         self.get(id).as_text().unwrap_or("")
     }
-
 
     pub fn bool(&self, id: &str) -> bool {
         self.get(id).as_bool().unwrap_or(false)
     }
 
-
     pub fn number(&self, id: &str) -> f64 {
         self.get(id).as_number().unwrap_or(0.0)
     }
-
 
     pub fn list(&self, id: &str) -> &[Value] {
         match self.values.get(id) {
@@ -79,20 +68,14 @@ impl<'a> StepContext<'a> {
         }
     }
 
-
     pub fn list_len(&self, id: &str) -> usize {
         self.list(id).len()
     }
-
 
     pub fn is_empty(&self, id: &str) -> bool {
         self.get(id).is_empty()
     }
 }
-
-
-
-
 
 pub enum StepIssue {
     Error(String),
@@ -119,14 +102,7 @@ impl StepIssue {
     }
 }
 
-
-
-
-
-
 pub type StepValidator = Box<dyn Fn(&StepContext) -> Option<StepIssue> + Send + Sync>;
-
-
 
 #[derive(Debug, Default, Clone)]
 pub struct ValidationState {
@@ -194,8 +170,8 @@ impl ValidationState {
 
     pub fn visible_error(&self, id: &str) -> Option<&str> {
         self.entries.get(id).and_then(|entry| {
-            matches!(entry.visibility, ErrorVisibility::Inline).then_some(entry.error.as_str())
-        })
+                matches!(entry.visibility, ErrorVisibility::Inline).then_some(entry.error.as_str())
+            })
     }
 
     pub fn is_hidden_invalid(&self, id: &str) -> bool {

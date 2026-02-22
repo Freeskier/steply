@@ -37,26 +37,15 @@ impl ValueChange {
     }
 }
 
-
-
 #[derive(Debug, Clone)]
 pub enum WidgetAction {
-    ValueChanged {
-        change: ValueChange,
-    },
-
+    ValueChanged { change: ValueChange },
 
     InputDone,
-    RequestFocus {
-        target: NodeId,
-    },
-    TaskRequested {
-        request: TaskRequest,
-    },
+    ValidateFocusedSubmit,
+    RequestFocus { target: NodeId },
+    TaskRequested { request: TaskRequest },
 }
-
-
-
 
 #[derive(Debug, Clone)]
 pub enum SystemEvent {

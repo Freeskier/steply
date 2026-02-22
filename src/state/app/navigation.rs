@@ -15,7 +15,6 @@ impl AppState {
 
         if self.has_completion_for_focused() {
             match key.code {
-
                 KeyCode::Right if self.cursor_at_end_for_focused() => {
                     self.accept_and_refresh_completion();
                     return InteractionResult::handled();
@@ -74,7 +73,6 @@ impl AppState {
 
     pub fn handle_tab_forward(&mut self) -> InteractionResult {
         if self.is_completion_tab_suppressed_for_focused() {
-
             self.clear_completion_tab_suppression_for_focused();
             let result = self.dispatch_key_to_focused(KeyEvent {
                 code: KeyCode::Tab,
@@ -127,7 +125,6 @@ impl AppState {
 
     pub fn handle_tab_backward(&mut self) -> InteractionResult {
         if self.is_completion_tab_suppressed_for_focused() {
-
             self.clear_completion_tab_suppression_for_focused();
             let result = self.dispatch_key_to_focused(KeyEvent {
                 code: KeyCode::BackTab,
@@ -210,6 +207,10 @@ impl AppState {
                 } else {
                     self.focus_next();
                 }
+                InteractionResult::handled()
+            }
+            WidgetAction::ValidateFocusedSubmit => {
+                self.validate_focused_submit();
                 InteractionResult::handled()
             }
             WidgetAction::RequestFocus { target } => {
@@ -355,7 +356,6 @@ impl AppState {
             return;
         }
 
-
         if !self.runtime.validation.step_warnings().is_empty()
             && !self.runtime.validation.warnings_acknowledged()
         {
@@ -456,19 +456,16 @@ impl AppState {
         }
     }
 
-
     fn accept_and_refresh_completion(&mut self) {
         self.accept_completion_for_focused();
         self.refresh_after_input();
     }
-
 
     fn refresh_after_input(&mut self) {
         self.validate_focused_live();
         self.clear_step_errors();
         self.try_update_ghost_for_focused();
     }
-
 
     fn find_focused_node_mut<'a>(&'a mut self, focused_id: &str) -> Option<&'a mut Node> {
         let nodes = self.active_nodes_mut();

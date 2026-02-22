@@ -7,13 +7,8 @@ use crate::widgets::inputs::text_edit;
 use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 
-
-
-
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FocusMode {
-
     None,
 
     Leaf,
@@ -25,7 +20,6 @@ pub enum FocusMode {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OverlayMode {
-
     Exclusive,
 
     Shared,
@@ -63,26 +57,11 @@ impl OverlayPlacement {
     }
 }
 
-
-
-
-
-
-
-
-
-
-
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ValidationMode {
     Live,
     Submit,
 }
-
-
-
-
 
 #[derive(Debug, Clone)]
 pub struct CompletionMenu {
@@ -117,10 +96,6 @@ impl DrawOutput {
         }
     }
 }
-
-
-
-
 
 pub trait Drawable: Send {
     fn id(&self) -> &str;
@@ -175,10 +150,6 @@ impl HintItem {
         self
     }
 }
-
-
-
-
 
 #[derive(Debug, Clone, Default)]
 pub struct InteractionResult {
@@ -236,10 +207,6 @@ impl InteractionResult {
     }
 }
 
-
-
-
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TextAction {
     DeleteWordLeft,
@@ -272,14 +239,8 @@ impl TextAction {
     }
 }
 
-
-
-
-
 pub trait Interactive: Send {
     fn focus_mode(&self) -> FocusMode;
-
-
 
     fn overlay_placement(&self) -> Option<OverlayPlacement> {
         None
@@ -293,8 +254,6 @@ pub trait Interactive: Send {
     fn overlay_mode(&self) -> OverlayMode {
         OverlayMode::Exclusive
     }
-
-
 
     fn on_key(&mut self, key: KeyEvent) -> InteractionResult;
 
@@ -328,36 +287,18 @@ pub trait Interactive: Send {
         None
     }
 
-
-
     fn value(&self) -> Option<Value> {
         None
     }
     fn set_value(&mut self, _value: Value) {}
-
-
-
-
-
-
-
-
 
     fn validate(&self, _mode: ValidationMode) -> Result<(), String> {
         Ok(())
     }
 }
 
-
-
-
-
 pub trait InteractiveNode: Drawable + Interactive {}
 impl<T> InteractiveNode for T where T: Drawable + Interactive {}
-
-
-
-
 
 pub trait OutputNode: Drawable {
     fn value(&self) -> Option<Value> {

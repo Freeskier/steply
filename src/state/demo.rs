@@ -33,8 +33,6 @@ use crate::widgets::outputs::task_log::{TaskLog, TaskLogStep};
 use crate::widgets::outputs::text::TextOutput;
 use crate::widgets::validators;
 
-
-
 fn step_repeater() -> Step {
     Step::new(
         "step_repeater",
@@ -81,8 +79,6 @@ fn step_repeater() -> Step {
     )
 }
 
-
-
 fn step_pokemon_search() -> Step {
     Step::new(
         "step_pokemon",
@@ -104,8 +100,6 @@ fn step_pokemon_search() -> Step {
     )
     .with_description("Type in Query  •  Ctrl+F inside Results for local fuzzy filter")
 }
-
-
 
 fn step_table() -> Step {
     Step::new(
@@ -129,8 +123,6 @@ fn step_table() -> Step {
         "↑/↓ rows  •  Tab/Shift+Tab columns  •  Header: Enter/Space sort  •  + Add record",
     )
 }
-
-
 
 fn step_snippet() -> Step {
     Step::new(
@@ -163,8 +155,6 @@ fn step_snippet() -> Step {
     .with_description("Tab → next field  •  Shift+Tab → prev  •  Enter → next/submit")
 }
 
-
-
 fn step_calendar() -> Step {
     Step::new(
         "step_calendar",
@@ -175,8 +165,6 @@ fn step_calendar() -> Step {
     )
     .with_description("Tab → month/year/grid  •  ←→ change  •  ↑↓ navigate  •  Enter select")
 }
-
-
 
 fn step_text_inputs() -> Step {
     let completions = vec![
@@ -220,8 +208,6 @@ fn step_text_inputs() -> Step {
     )
 }
 
-
-
 fn step_structured_inputs() -> Step {
     Step::new(
         "step_structured",
@@ -249,8 +235,6 @@ fn step_structured_inputs() -> Step {
         ],
     )
 }
-
-
 
 fn step_selection() -> Step {
     let languages = vec![
@@ -323,8 +307,6 @@ fn step_selection() -> Step {
     .with_description("Choice: Up/Down  •  Select: Up/Down  •  SelectList: Ctrl+F filter fuzzy")
 }
 
-
-
 fn step_toggles() -> Step {
     let features = vec![
         "Dark mode",
@@ -360,8 +342,6 @@ fn step_toggles() -> Step {
     )
     .with_description("Space → toggle checkbox  •  SelectList: Space → check, Enter → confirm")
 }
-
-
 
 fn step_outputs() -> Step {
     Step::new(
@@ -420,8 +400,6 @@ fn step_outputs() -> Step {
     .with_description("Left/Right → adjust  •  Shift+Left/Right → large step  •  Enter → submit")
 }
 
-
-
 fn step_color() -> Step {
     Step::new(
         "step_color",
@@ -444,8 +422,6 @@ fn step_color() -> Step {
     .with_description("Tab between R/G/B channels  •  type hex or adjust with Up/Down")
 }
 
-
-
 fn step_file_browser() -> Step {
     Step::new(
         "step_file_browser",
@@ -458,20 +434,7 @@ fn step_file_browser() -> Step {
     )
 }
 
-
-
 fn step_tree_view() -> Step {
-
-
-
-
-
-
-
-
-
-
-
     let nodes: Vec<TreeNode<String>> = vec![
         TreeNode::new("src/".into(), 0, true).expanded(),
         TreeNode::new("main.rs".into(), 1, false),
@@ -502,8 +465,6 @@ fn step_tree_view() -> Step {
     )
 }
 
-
-
 fn step_object_editor() -> Step {
     let value = Value::from_json(
         r#"{
@@ -525,7 +486,7 @@ fn step_object_editor() -> Step {
         vec![
             Node::Output(Box::new(TextOutput::new(
                 "obj_intro",
-                "Edit a structured value. Navigate with ↑/↓, edit with Enter/Tab, insert with i, delete with d, move with m.",
+                "Edit a structured value. Navigate with ↑/↓, edit with e/Tab, insert with i, delete with d, move with m.",
             ))),
             Node::Component(Box::new(
                 ObjectEditor::new("obj_main", "Config")
@@ -534,10 +495,8 @@ fn step_object_editor() -> Step {
             )),
         ],
     )
-    .with_description("↑/↓ → navigate  •  Enter/Tab → edit  •  i → insert  •  d → delete  •  m → move")
+    .with_description("↑/↓ → navigate  •  e/Tab → edit  •  i → insert  •  d → delete  •  m → move")
 }
-
-
 
 fn step_diff() -> Step {
     let old = r#"fn main() {
@@ -578,8 +537,6 @@ fn farewell(name: &str) {
     )
     .with_description("↑↓ navigate  Tab next chunk  Shift+Tab prev  Enter expand gap")
 }
-
-
 
 fn step_task_log() -> Step {
     Step::new(
@@ -624,8 +581,6 @@ fn step_command_runner() -> Step {
     .with_description("Enter → run command  •  watch live output")
 }
 
-
-
 fn step_finish() -> Step {
     Step::new(
         "step_finish",
@@ -642,8 +597,6 @@ fn step_finish() -> Step {
     )
     .with_description("Enter → activate button")
 }
-
-
 
 fn step_back_allowed() -> Step {
     Step::new(
@@ -699,8 +652,6 @@ fn step_back_destructive() -> Step {
     .with_description("Alt+← → go back (shows warning)  •  Enter → next step")
 }
 
-
-
 fn step_textarea() -> Step {
     Step::new(
         "step_textarea",
@@ -713,8 +664,6 @@ fn step_textarea() -> Step {
         ))],
     )
 }
-
-
 
 fn step_confirm() -> Step {
     Step::new(
@@ -733,8 +682,6 @@ fn step_confirm() -> Step {
     )
     .with_description("Relaxed: Enter/y/n  •  Strict: type the word then Enter")
 }
-
-
 
 fn step_validation_demo() -> Step {
     use crate::state::validation::StepIssue;
@@ -764,10 +711,10 @@ fn step_validation_demo() -> Step {
 
 pub fn build_demo_flow() -> Flow {
     Flow::new(vec![
+        step_object_editor(),
+        step_tree_view(),
         step_command_runner(),
         step_calendar(),
-        step_tree_view(),
-        step_object_editor(),
         step_text_inputs(),
         step_file_browser(),
         step_repeater(),
@@ -777,7 +724,6 @@ pub fn build_demo_flow() -> Flow {
         step_color(),
         step_textarea(),
         step_confirm(),
-
         step_back_allowed(),
         step_back_destructive(),
         step_back_reset(),

@@ -12,9 +12,12 @@ use std::time::Duration;
 const ERROR_INLINE_TTL: Duration = Duration::from_secs(2);
 
 impl AppState {
-
     pub(super) fn validate_focused_live(&mut self) -> bool {
         self.validate_focused(ValidationMode::Live)
+    }
+
+    pub(super) fn validate_focused_submit(&mut self) -> bool {
+        self.validate_focused(ValidationMode::Submit)
     }
 
     fn validate_focused(&mut self, mode: ValidationMode) -> bool {

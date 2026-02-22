@@ -5,7 +5,7 @@ mod state;
 use std::sync::Arc;
 
 use crate::core::NodeId;
-use crate::core::search::fuzzy::ranked_matches;
+use crate::core::search::fuzzy::match_text;
 use crate::core::value::Value;
 use crate::core::value_path::{ValuePath, ValueTarget};
 
@@ -807,9 +807,7 @@ fn highlight_item_for_query(query: &str, option: &SelectItem) -> Option<(i32, Se
 }
 
 fn fuzzy_match_text(query: &str, text: &str) -> Option<(i32, Vec<(usize, usize)>)> {
-    let matches = ranked_matches(query, &[text.to_string()]);
-    let best = matches.first()?;
-    Some((best.score, best.ranges.clone()))
+    match_text(query, text)
 }
 
 fn options_from_value(value: &Value) -> Option<Vec<SelectItem>> {

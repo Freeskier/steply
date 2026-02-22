@@ -117,12 +117,9 @@ impl Renderer {
 
     fn finalize_cursor_pass(&self, terminal_size: TerminalSize, frame: &mut RenderFrame) {
         if let Some(cursor) = frame.cursor.as_mut() {
-
             if terminal_size.width > 0 {
                 cursor.col = cursor.col.min(terminal_size.width.saturating_sub(1));
             }
-
-
 
             let max_row = frame
                 .lines
@@ -513,8 +510,6 @@ fn draw_nodes(
     for node in nodes {
         let mut out = node.draw(ctx);
 
-
-
         let label_prefix: Option<Vec<Span>> = if let Node::Input(w) = node {
             let focused = ctx.focused_id.as_deref().is_some_and(|id| id == w.id());
             let label = w.label();
@@ -536,8 +531,6 @@ fn draw_nodes(
 
         apply_input_validation_overlay(node, ctx, &mut out);
 
-
-
         if strikethrough_inputs && matches!(node, Node::Input(_)) {
             for line in &mut out.lines {
                 let has_content = line
@@ -552,7 +545,6 @@ fn draw_nodes(
                 }
             }
         }
-
 
         if let Some(prefix) = label_prefix {
             if let Some(first) = out.lines.first_mut() {
@@ -571,12 +563,9 @@ fn draw_nodes(
                 .is_some_and(|focused| focused == node.id())
             && let Some(local_cursor) = node.cursor_pos()
         {
-
-
             let label_offset = if let Node::Input(w) = node {
                 let label = w.label();
                 if !label.is_empty() {
-
                     label.chars().count() + 2
                 } else {
                     0

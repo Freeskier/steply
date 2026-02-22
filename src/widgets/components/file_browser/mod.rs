@@ -11,15 +11,12 @@ mod tree_scanner;
 
 pub use model::EntryFilter;
 
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum BrowserMode {
     #[default]
     List,
     Tree,
 }
-
-
 
 struct FileTreeItem {
     entry: model::FileEntry,
@@ -73,10 +70,8 @@ impl TreeItemLabel for FileTreeItem {
     }
 }
 
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum DisplayMode {
-
     Full,
 
     #[default]
@@ -120,14 +115,11 @@ const DEBOUNCE_MS: u64 = 120;
 const SPINNER_INTERVAL_MS: u64 = 80;
 const SPINNER_FRAMES: &[char] = &['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
 
-
 pub struct FileBrowserInput {
     base: WidgetBase,
 
-
     text: TextInput,
     list: SelectList,
-
 
     cwd: PathBuf,
     recursive: bool,
@@ -138,25 +130,20 @@ pub struct FileBrowserInput {
     submit_target: Option<ValueTarget>,
     validators: Vec<Validator>,
 
-
     scanner: ScannerHandle,
     tree_scanner: TreeScannerHandle,
     cache: ScanCache,
     last_scan_result: Option<Arc<ScanResult>>,
 
-
     debounce_deadline: Option<Instant>,
-
 
     overlay_open: bool,
     browse_dir: PathBuf,
-
 
     spinner_frame: usize,
     spinner_last_tick: Instant,
     scanning: bool,
     tree_building: bool,
-
 
     browser_mode: BrowserMode,
     tree: Option<TreeView<FileTreeItem>>,
@@ -223,8 +210,6 @@ impl FileBrowserInput {
         }
     }
 
-
-
     pub fn with_cwd(mut self, cwd: impl Into<PathBuf>) -> Self {
         let p = cwd.into();
         self.browse_dir = p.clone();
@@ -286,8 +271,6 @@ impl FileBrowserInput {
         self
     }
 
-
-
     fn current_input(&self) -> String {
         self.text
             .value()
@@ -330,7 +313,6 @@ impl FileBrowserInput {
     }
 
     fn submit_scan(&mut self, dir: PathBuf, query: String, is_glob: bool, recursive: bool) {
-
         let recursive = recursive || (is_glob && query.contains("**"));
         if should_skip_expensive_typing_scan(self.overlay_open, recursive, query.as_str()) {
             self.scanning = false;
@@ -392,7 +374,6 @@ impl FileBrowserInput {
                 .set_completion_items(result.completion_items.clone());
             return;
         }
-
 
         let items = filter_entries(
             list_dir(dir, self.hide_hidden),
@@ -493,8 +474,6 @@ impl FileBrowserInput {
     }
 
     fn child_ctx(&self, ctx: &RenderContext, focused_id: Option<String>) -> RenderContext {
-
-
         let mut completion_menus = ctx.completion_menus.clone();
         if let Some(menu) = completion_menus.remove(self.base.id()) {
             completion_menus.insert(self.text.id().to_string(), menu);
@@ -509,8 +488,6 @@ impl FileBrowserInput {
     }
 }
 
-
-
 impl Component for FileBrowserInput {
     fn children(&self) -> &[Node] {
         &[]
@@ -519,8 +496,6 @@ impl Component for FileBrowserInput {
         &mut []
     }
 }
-
-
 
 impl Drawable for FileBrowserInput {
     fn id(&self) -> &str {
@@ -532,7 +507,6 @@ impl Drawable for FileBrowserInput {
             .focused_id
             .as_deref()
             .is_some_and(|id| id == self.base.id());
-
 
         let text_ctx = self.child_ctx(
             ctx,
@@ -560,11 +534,9 @@ impl Drawable for FileBrowserInput {
                         ]);
                     }
                 } else {
-
                     let list_id = self.list.id().to_string();
                     let list_ctx = self.child_ctx(ctx, Some(list_id));
                     lines.extend(self.list.draw(&list_ctx).lines);
-
 
                     if let Some(result) = &self.last_scan_result {
                         let shown = result.entries.len();
@@ -653,26 +625,21 @@ impl Drawable for FileBrowserInput {
     }
 }
 
-
-
 impl Interactive for FileBrowserInput {
     fn focus_mode(&self) -> FocusMode {
         FocusMode::Leaf
     }
 
     fn on_key(&mut self, key: KeyEvent) -> InteractionResult {
-
         if key.code == KeyCode::Char(' ')
             && (key.modifiers == KeyModifiers::SHIFT || key.modifiers == KeyModifiers::ALT)
         {
             return self.open_browser();
         }
 
-
         if self.overlay_open {
             return self.handle_browser_key(key);
         }
-
 
         if key.code == KeyCode::Enter {
             return InteractionResult::submit_or_produce(
@@ -681,23 +648,18 @@ impl Interactive for FileBrowserInput {
             );
         }
 
-
         self.handle_text_key_with_rescan(key)
     }
 
     fn text_editing(&mut self) -> Option<TextEditState<'_>> {
-
         self.text.text_editing()
     }
 
     fn on_text_edited(&mut self) {
-
         self.schedule_scan();
     }
 
     fn completion(&mut self) -> Option<CompletionState<'_>> {
-
-
         let parsed = parse_input(&self.current_input(), &self.cwd);
         self.sync_completion_items_for_dir(parsed.view_dir.as_path());
 

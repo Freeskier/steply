@@ -1,32 +1,42 @@
 mod state;
 
+use std::borrow::Cow;
+
 use crate::core::NodeId;
+use crate::core::search::fuzzy::match_text;
 use crate::core::value::Value;
 use crate::core::value_path::{ValuePath, ValueTarget};
 
-use crate::terminal::{KeyCode, KeyEvent, KeyModifiers};
+use crate::terminal::{CursorPos, KeyCode, KeyEvent, KeyModifiers};
+use crate::ui::highlight::render_text_spans;
 use crate::ui::span::Span;
 use crate::ui::style::{Color, Style};
 use crate::widgets::base::WidgetBase;
 use crate::widgets::components::scroll::ScrollState;
+use crate::widgets::inputs::text::TextInput;
 use crate::widgets::node::{Component, Node};
 use crate::widgets::traits::{
-    DrawOutput, Drawable, FocusMode, HintContext, HintGroup, HintItem, InteractionResult,
-    Interactive, RenderContext,
+    CompletionState, DrawOutput, Drawable, FocusMode, HintContext, HintGroup, HintItem,
+    InteractionResult, Interactive, RenderContext, TextAction,
 };
-use state::rebuild_visible;
+use state::{rebuild_visible, rebuild_visible_filtered};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TreeItemRenderState {
     pub focused: bool,
     pub active: bool,
     pub has_children: bool,
     pub expanded: bool,
     pub loading: bool,
+    pub highlights: Vec<(usize, usize)>,
 }
 
 pub trait TreeItemLabel: Send + 'static {
     fn label(&self) -> &str;
+
+    fn search_text(&self) -> Cow<'_, str> {
+        Cow::Borrowed(self.label())
+    }
 
     fn render_spans(&self, state: TreeItemRenderState) -> Vec<Span> {
         let style = if state.focused && state.active {
@@ -36,7 +46,12 @@ pub trait TreeItemLabel: Send + 'static {
         } else {
             Style::default()
         };
-        vec![Span::styled(self.label().to_string(), style).no_wrap()]
+        render_text_spans(
+            self.label(),
+            state.highlights.as_slice(),
+            style,
+            Style::new().color(Color::Yellow).bold(),
+        )
     }
 }
 
@@ -87,14 +102,19 @@ pub struct TreeView<T: TreeItemLabel> {
     submit_target: Option<ValueTarget>,
     show_label: bool,
     show_indent_guides: bool,
+    filter: TextInput,
+    filter_visible: bool,
+    filter_focus: bool,
+    filter_query: String,
 
     pub pending_expand: Option<usize>,
 }
 
 impl<T: TreeItemLabel> TreeView<T> {
     pub fn new(id: impl Into<String>, label: impl Into<String>, nodes: Vec<TreeNode<T>>) -> Self {
+        let id = id.into();
         let mut this = Self {
-            base: WidgetBase::new(id, label),
+            base: WidgetBase::new(id.clone(), label),
             nodes,
             visible: Vec::new(),
             active_index: 0,
@@ -102,6 +122,10 @@ impl<T: TreeItemLabel> TreeView<T> {
             submit_target: None,
             show_label: true,
             show_indent_guides: false,
+            filter: TextInput::new(format!("{id}__filter"), ""),
+            filter_visible: false,
+            filter_focus: false,
+            filter_query: String::new(),
             pending_expand: None,
         };
         this.rebuild();
@@ -128,16 +152,13 @@ impl<T: TreeItemLabel> TreeView<T> {
         self
     }
 
-
     pub fn visible_range(&self) -> (usize, usize) {
         self.scroll.visible_range(self.visible.len())
     }
 
-
     pub fn active_visible_index(&self) -> usize {
         self.active_index
     }
-
 
     pub fn set_active_visible_index(&mut self, index: usize) {
         if self.visible.is_empty() {
@@ -149,7 +170,6 @@ impl<T: TreeItemLabel> TreeView<T> {
         self.scroll
             .ensure_visible(self.active_index, self.visible.len());
     }
-
 
     pub fn visible(&self) -> &[usize] {
         &self.visible
@@ -174,17 +194,94 @@ impl<T: TreeItemLabel> TreeView<T> {
         self.rebuild();
     }
 
+    pub fn set_filter_query(&mut self, query: impl Into<String>) {
+        let next = query.into();
+        if self.filter_query != next && !next.trim().is_empty() {
+            self.expand_ancestors_for_filter(next.as_str());
+        }
+        self.filter_query = next;
+        self.rebuild();
+    }
+
+    pub fn clear_filter(&mut self) {
+        self.filter.set_value(Value::Text(String::new()));
+        self.filter_query.clear();
+        self.rebuild();
+    }
+
+    pub fn filter_query(&self) -> &str {
+        self.filter_query.as_str()
+    }
+
+    fn filter_text(&self) -> String {
+        self.filter
+            .value()
+            .and_then(|value| value.to_text_scalar())
+            .unwrap_or_default()
+    }
+
+    fn sync_filter_from_input(&mut self) {
+        self.filter_query = self.filter_text();
+        self.rebuild();
+    }
+
+    fn toggle_filter_visibility(&mut self) {
+        self.filter_visible = !self.filter_visible;
+        if self.filter_visible {
+            self.filter_focus = true;
+            return;
+        }
+        self.filter_focus = false;
+        self.clear_filter();
+    }
+
+    fn child_context(&self, ctx: &RenderContext, focused_id: Option<String>) -> RenderContext {
+        RenderContext {
+            focused_id,
+            terminal_size: ctx.terminal_size,
+            visible_errors: ctx.visible_errors.clone(),
+            invalid_hidden: ctx.invalid_hidden.clone(),
+            completion_menus: ctx.completion_menus.clone(),
+        }
+    }
+
+    fn handle_filter_key(&mut self, key: KeyEvent) -> InteractionResult {
+        if key.modifiers != KeyModifiers::NONE {
+            return InteractionResult::ignored();
+        }
+        match key.code {
+            KeyCode::Esc => {
+                self.filter_focus = false;
+                InteractionResult::handled()
+            }
+            KeyCode::Enter | KeyCode::Down => {
+                self.filter_focus = false;
+                InteractionResult::handled()
+            }
+            _ => {
+                let before = self.filter_text();
+                let mut result = self.filter.on_key(key);
+                result.actions.retain(|action| {
+                    !matches!(action, crate::runtime::event::WidgetAction::InputDone)
+                });
+                if self.filter_text() != before {
+                    self.sync_filter_from_input();
+                    return InteractionResult::handled();
+                }
+                result
+            }
+        }
+    }
+
     pub fn active_node(&self) -> Option<&TreeNode<T>> {
         self.visible
             .get(self.active_index)
             .and_then(|&idx| self.nodes.get(idx))
     }
 
-
     pub fn active_node_idx(&self) -> Option<usize> {
         self.visible.get(self.active_index).copied()
     }
-
 
     pub fn nodes(&self) -> &[TreeNode<T>] {
         &self.nodes
@@ -194,8 +291,6 @@ impl<T: TreeItemLabel> TreeView<T> {
         &mut self.nodes
     }
 
-
-
     pub fn insert_children_after(&mut self, parent_idx: usize, children: Vec<TreeNode<T>>) {
         let Some(parent) = self.nodes.get_mut(parent_idx) else {
             return;
@@ -203,8 +298,6 @@ impl<T: TreeItemLabel> TreeView<T> {
         let child_depth = parent.depth + 1;
         parent.children_loaded = true;
         parent.expanded = true;
-
-
 
         let end = {
             let parent_depth = self.nodes[parent_idx].depth;
@@ -216,7 +309,6 @@ impl<T: TreeItemLabel> TreeView<T> {
         };
         self.nodes.drain(parent_idx + 1..end);
 
-
         for (i, mut child) in children.into_iter().enumerate() {
             child.depth = child_depth;
             self.nodes.insert(parent_idx + 1 + i, child);
@@ -226,10 +318,44 @@ impl<T: TreeItemLabel> TreeView<T> {
     }
 
     fn rebuild(&mut self) {
-        self.visible = rebuild_visible(&self.nodes);
+        self.visible = if self.filter_query.trim().is_empty() {
+            rebuild_visible(&self.nodes)
+        } else {
+            rebuild_visible_filtered(&self.nodes, self.filter_query.as_str())
+        };
         ScrollState::clamp_active(&mut self.active_index, self.visible.len());
         self.scroll
             .ensure_visible(self.active_index, self.visible.len());
+    }
+
+    fn expand_ancestors_for_filter(&mut self, query: &str) {
+        let q = query.trim();
+        if q.is_empty() {
+            return;
+        }
+
+        let mut parents = Vec::<Option<usize>>::with_capacity(self.nodes.len());
+        let mut stack = Vec::<usize>::new();
+        for (idx, node) in self.nodes.iter().enumerate() {
+            stack.truncate(node.depth);
+            parents.push(stack.last().copied());
+            stack.push(idx);
+        }
+
+        for idx in 0..self.nodes.len() {
+            let search = self.nodes[idx].item.search_text();
+            let matched = match_text(q, search.as_ref()).is_some();
+            if !matched {
+                continue;
+            }
+            let mut cur = parents[idx];
+            while let Some(parent) = cur {
+                if self.nodes[parent].has_children {
+                    self.nodes[parent].expanded = true;
+                }
+                cur = parents[parent];
+            }
+        }
     }
 
     pub fn move_active(&mut self, delta: isize) -> bool {
@@ -273,7 +399,6 @@ impl<T: TreeItemLabel> TreeView<T> {
             self.rebuild();
             return true;
         }
-
 
         if node.depth == 0 {
             return false;
@@ -340,12 +465,20 @@ impl<T: TreeItemLabel> TreeView<T> {
             let mut line = vec![cursor_span];
             line.extend(self.render_indent_spans(node_idx, node.depth, focused, active));
             line.push(icon_span);
+            let highlights = if self.filter_query.trim().is_empty() {
+                Vec::new()
+            } else {
+                match_text(self.filter_query.as_str(), node.item.label())
+                    .map(|(_, ranges)| ranges)
+                    .unwrap_or_default()
+            };
             line.extend(node.item.render_spans(TreeItemRenderState {
                 focused,
                 active,
                 has_children: node.has_children,
                 expanded: node.expanded,
                 loading,
+                highlights,
             }));
             lines.push(line);
         }
@@ -438,6 +571,28 @@ impl<T: TreeItemLabel> Drawable for TreeView<T> {
             lines.push(vec![Span::new(self.base.label()).no_wrap()]);
         }
 
+        if self.filter_visible {
+            let filter_ctx = self.child_context(
+                ctx,
+                if focused && self.filter_focus {
+                    Some(self.filter.id().to_string())
+                } else {
+                    None
+                },
+            );
+            let mut filter_line =
+                vec![Span::styled("Filter: ", Style::new().color(Color::DarkGrey)).no_wrap()];
+            filter_line.extend(
+                self.filter
+                    .draw(&filter_ctx)
+                    .lines
+                    .into_iter()
+                    .next()
+                    .unwrap_or_else(|| vec![Span::new("").no_wrap()]),
+            );
+            lines.push(filter_line);
+        }
+
         lines.extend(self.render_lines(focused));
         DrawOutput { lines }
     }
@@ -446,12 +601,17 @@ impl<T: TreeItemLabel> Drawable for TreeView<T> {
         if !ctx.focused {
             return Vec::new();
         }
-        vec![
+        let mut hints = vec![
             HintItem::new("↑ ↓", "move", HintGroup::Navigation).with_priority(10),
             HintItem::new("→", "expand", HintGroup::Navigation).with_priority(11),
             HintItem::new("←", "collapse / parent", HintGroup::Navigation).with_priority(12),
             HintItem::new("Enter", "select", HintGroup::Action).with_priority(20),
-        ]
+            HintItem::new("Ctrl+F", "toggle filter", HintGroup::View).with_priority(30),
+        ];
+        if self.filter_focus {
+            hints.push(HintItem::new("Esc", "leave filter", HintGroup::View).with_priority(31));
+        }
+        hints
     }
 }
 
@@ -461,6 +621,15 @@ impl<T: TreeItemLabel> Interactive for TreeView<T> {
     }
 
     fn on_key(&mut self, key: KeyEvent) -> InteractionResult {
+        if key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('f') {
+            self.toggle_filter_visibility();
+            return InteractionResult::handled();
+        }
+
+        if self.filter_focus {
+            return self.handle_filter_key(key);
+        }
+
         if key.modifiers != KeyModifiers::NONE {
             return InteractionResult::ignored();
         }
@@ -522,5 +691,43 @@ impl<T: TreeItemLabel> Interactive for TreeView<T> {
             self.scroll
                 .ensure_visible(self.active_index, self.visible.len());
         }
+    }
+
+    fn on_text_action(&mut self, action: TextAction) -> InteractionResult {
+        if !self.filter_focus {
+            return InteractionResult::ignored();
+        }
+        let before = self.filter_text();
+        let mut result = self.filter.on_text_action(action);
+        result
+            .actions
+            .retain(|a| !matches!(a, crate::runtime::event::WidgetAction::InputDone));
+        if self.filter_text() != before {
+            self.sync_filter_from_input();
+            return InteractionResult::handled();
+        }
+        result
+    }
+
+    fn completion(&mut self) -> Option<CompletionState<'_>> {
+        if !self.filter_focus {
+            return None;
+        }
+        self.filter.completion()
+    }
+
+    fn cursor_pos(&self) -> Option<CursorPos> {
+        if !self.filter_focus {
+            return None;
+        }
+        let local = self.filter.cursor_pos()?;
+        let mut row: u16 = 0;
+        if self.show_label && !self.base.label().is_empty() {
+            row = row.saturating_add(1);
+        }
+        Some(CursorPos {
+            col: local.col.saturating_add(8),
+            row,
+        })
     }
 }

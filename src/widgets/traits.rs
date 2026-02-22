@@ -1,6 +1,7 @@
 use crate::core::value::Value;
 use crate::core::value_path::ValueTarget;
 use crate::runtime::event::{SystemEvent, ValueChange, WidgetAction};
+use crate::task::{TaskSpec, TaskSubscription};
 use crate::terminal::{CursorPos, KeyEvent, TerminalSize};
 use crate::ui::span::{Span, SpanLine};
 use crate::widgets::inputs::text_edit;
@@ -295,6 +296,14 @@ pub trait Interactive: Send {
     fn validate(&self, _mode: ValidationMode) -> Result<(), String> {
         Ok(())
     }
+
+    fn task_specs(&self) -> Vec<TaskSpec> {
+        Vec::new()
+    }
+
+    fn task_subscriptions(&self) -> Vec<TaskSubscription> {
+        Vec::new()
+    }
 }
 
 pub trait InteractiveNode: Drawable + Interactive {}
@@ -313,5 +322,13 @@ pub trait OutputNode: Drawable {
     }
     fn validate(&self) -> Result<(), String> {
         Ok(())
+    }
+
+    fn task_specs(&self) -> Vec<TaskSpec> {
+        Vec::new()
+    }
+
+    fn task_subscriptions(&self) -> Vec<TaskSubscription> {
+        Vec::new()
     }
 }

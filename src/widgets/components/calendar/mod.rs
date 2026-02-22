@@ -13,8 +13,6 @@ use crate::widgets::traits::{
 };
 use crate::widgets::validators::{Validator, run_validators};
 
-
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum CalendarMode {
     #[default]
@@ -23,8 +21,6 @@ pub enum CalendarMode {
     DateTime,
 }
 
-
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Section {
     Month,
@@ -32,8 +28,6 @@ enum Section {
     Grid,
     Time,
 }
-
-
 
 pub struct Calendar {
     base: WidgetBase,
@@ -46,7 +40,6 @@ pub struct Calendar {
     cursor_day: u8,
 
     section: Section,
-
 
     time_input: MaskedInput,
 
@@ -68,6 +61,7 @@ const MONTH_NAMES: [&str; 12] = [
     "November",
     "December",
 ];
+const WEEKDAY_NAMES: [&str; 7] = ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"];
 
 impl Calendar {
     pub fn new(id: impl Into<String>, label: impl Into<String>) -> Self {
@@ -110,8 +104,6 @@ impl Calendar {
         self.submit_target = Some(ValueTarget::path(root, path));
         self
     }
-
-
 
     fn clamp_cursor_day(&mut self) {
         let max = calendar::days_in_month(self.view_year, self.view_month);
@@ -233,8 +225,6 @@ impl Calendar {
     }
 }
 
-
-
 impl Drawable for Calendar {
     fn id(&self) -> &str {
         self.base.id()
@@ -250,7 +240,6 @@ impl Drawable for Calendar {
         ]);
 
         if self.mode != CalendarMode::Time {
-
             let month_st = if focused && self.section == Section::Month {
                 Style::new().color(Color::Cyan)
             } else {
@@ -264,21 +253,23 @@ impl Drawable for Calendar {
 
             let month_name = MONTH_NAMES[(self.view_month as usize).saturating_sub(1) % 12];
             lines.push(vec![
-                Span::styled(format!("  ‹ {:<9} ›", month_name), month_st).no_wrap(),
+                Span::styled(format!("  ‹ {:^9} ›", month_name), month_st).no_wrap(),
                 Span::styled(format!("   ‹ {:4} ›", self.view_year), year_st).no_wrap(),
             ]);
 
             lines.push(vec![Span::new("").no_wrap()]);
 
-
-            lines.push(vec![
-                Span::styled(
-                    "  Mo  Tu  We  Th  Fr  Sa  Su",
-                    Style::new().color(Color::DarkGrey),
-                )
-                .no_wrap(),
-            ]);
-
+            let mut weekday_line = vec![Span::new("  ").no_wrap()];
+            for name in WEEKDAY_NAMES {
+                weekday_line.push(
+                    Span::styled(
+                        format!(" {:^2} ", name),
+                        Style::new().color(Color::DarkGrey),
+                    )
+                    .no_wrap(),
+                );
+            }
+            lines.push(weekday_line);
 
             let grid = MonthGrid::new(self.view_year, self.view_month);
             let grid_focused = focused && self.section == Section::Grid;
@@ -322,7 +313,6 @@ impl Drawable for Calendar {
             lines.push(vec![Span::new("").no_wrap()]);
         }
 
-
         if self.mode != CalendarMode::Date {
             let time_spans = self.time_input.render_spans();
             let dim = Style::new().color(Color::DarkGrey);
@@ -346,8 +336,6 @@ impl Drawable for Calendar {
     }
 }
 
-
-
 impl Interactive for Calendar {
     fn focus_mode(&self) -> FocusMode {
         FocusMode::Leaf
@@ -358,11 +346,9 @@ impl Interactive for Calendar {
             return None;
         }
 
-
         let row_offset = if self.mode == CalendarMode::Time {
             1u16
         } else {
-
             let grid = MonthGrid::new(self.view_year, self.view_month);
             let grid_rows = grid
                 .cells
@@ -371,7 +357,6 @@ impl Interactive for Calendar {
                 .count() as u16;
             1 + 1 + 1 + 1 + grid_rows + 1
         };
-
 
         let col_offset = if self.mode == CalendarMode::DateTime {
             16u16
@@ -387,7 +372,6 @@ impl Interactive for Calendar {
 
     fn on_key(&mut self, key: KeyEvent) -> InteractionResult {
         let shift = key.modifiers.contains(KeyModifiers::SHIFT);
-
 
         if self.is_time_section() {
             match key.code {

@@ -108,8 +108,17 @@ impl Runtime {
     }
 
     fn process_task_log_lines(&mut self) -> io::Result<()> {
-        for LogLine { task_id, line } in self.task_executor.drain_log_lines() {
-            self.dispatch_app_event(AppEvent::System(SystemEvent::TaskLogLine { task_id, line }))?;
+        for LogLine {
+            task_id,
+            run_id,
+            line,
+        } in self.task_executor.drain_log_lines()
+        {
+            self.dispatch_app_event(AppEvent::System(SystemEvent::TaskLogLine {
+                task_id,
+                run_id,
+                line,
+            }))?;
         }
         Ok(())
     }
@@ -157,8 +166,6 @@ impl Runtime {
 
     fn process_intent(&mut self, intent: Intent) -> io::Result<()> {
         match &intent {
-
-
             Intent::ScrollUp => {
                 self.terminal.scroll(-1);
                 return self.render();
@@ -178,11 +185,9 @@ impl Runtime {
                 return self.render();
             }
 
-
             Intent::Back if self.terminal.is_inline() => {
                 return Ok(());
             }
-
 
             Intent::Submit
             | Intent::InputKey(_)
@@ -235,14 +240,22 @@ impl Runtime {
 
     fn apply_action(&mut self, action: WidgetAction) -> bool {
         let result = self.state.handle_action(action);
+        self.flush_pending_scheduler_commands();
         self.flush_pending_task_invocations();
         result.request_render
     }
 
     fn apply_system_event(&mut self, event: SystemEvent) -> bool {
         let result = self.state.handle_system_event(event);
+        self.flush_pending_scheduler_commands();
         self.flush_pending_task_invocations();
         result.request_render
+    }
+
+    fn flush_pending_scheduler_commands(&mut self) {
+        for cmd in self.state.take_pending_scheduler_commands() {
+            self.scheduler.schedule(cmd, Instant::now());
+        }
     }
 
     fn flush_pending_task_invocations(&mut self) {

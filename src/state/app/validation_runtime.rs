@@ -32,27 +32,46 @@ impl AppState {
         self.runtime.validation.clear_step_warnings();
 
         let validations = {
-            let mut out = Vec::<(String, Result<(), String>)>::new();
+            let mut out = Vec::<(String, bool, Result<(), String>)>::new();
             walk_nodes(
                 self.flow.current_step().nodes.as_slice(),
                 NodeWalkScope::Persistent,
                 &mut |node| {
-                    out.push((node.id().to_string(), node.validate(mode)));
+                    out.push((
+                        node.id().to_string(),
+                        matches!(node, Node::Input(_)),
+                        node.validate(mode),
+                    ));
                 },
             );
             out
         };
 
         let mut valid = true;
-        for (id, result) in validations {
+        let mut component_step_errors = Vec::<String>::new();
+        for (id, is_input, result) in validations {
+            let non_input_error = if mode == ValidationMode::Submit && !is_input {
+                result.as_ref().err().cloned()
+            } else {
+                None
+            };
             if !self.apply_validation_result(&id, Some(result), mode) {
                 valid = false;
+                if let Some(error) = non_input_error {
+                    component_step_errors.push(error);
+                }
             }
         }
 
-        if !self.apply_step_validators() {
+        let (validator_errors, step_warnings) = self.collect_step_validator_issues();
+        if !validator_errors.is_empty() {
             valid = false;
         }
+        let mut step_errors = component_step_errors;
+        step_errors.extend(validator_errors);
+
+        self.runtime.validation.set_step_errors(step_errors);
+        self.runtime.validation.set_step_warnings(step_warnings);
 
         valid
     }
@@ -121,11 +140,11 @@ impl AppState {
         self.runtime.pending_scheduler.drain(..).collect()
     }
 
-    fn apply_step_validators(&mut self) -> bool {
+    fn collect_step_validator_issues(&self) -> (Vec<String>, Vec<String>) {
         let issues: Vec<StepIssue> = {
             let step = self.flow.current_step();
             if step.validators.is_empty() {
-                return true;
+                return (Vec::new(), Vec::new());
             }
             let values = collect_node_values(step.nodes.as_slice());
             let ctx = StepContext::new(&step.id, &values);
@@ -137,12 +156,10 @@ impl AppState {
 
         let mut step_errors = Vec::new();
         let mut step_warnings = Vec::new();
-        let mut valid = true;
 
         for issue in issues {
             match &issue {
                 StepIssue::Error(msg) => {
-                    valid = false;
                     step_errors.push(msg.clone());
                 }
                 StepIssue::Warning(msg) => {
@@ -151,10 +168,7 @@ impl AppState {
             }
         }
 
-        self.runtime.validation.set_step_errors(step_errors);
-        self.runtime.validation.set_step_warnings(step_warnings);
-
-        valid
+        (step_errors, step_warnings)
     }
 }
 

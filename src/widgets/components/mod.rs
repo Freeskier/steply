@@ -1,7 +1,6 @@
 pub mod calendar;
 pub mod command_runner;
 pub mod file_browser;
-pub mod key_value;
 pub mod object_editor;
 pub mod overlay;
 pub mod repeater;

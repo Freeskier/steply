@@ -1,5 +1,6 @@
 use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
 
 use indexmap::IndexMap;
 
@@ -13,7 +14,6 @@ use crate::ui::highlight::render_text_spans;
 use crate::ui::span::Span;
 use crate::ui::style::{Color, Style};
 use crate::widgets::base::WidgetBase;
-use crate::widgets::components::key_value::{KeyValueComponent, KeyValueFocus};
 use crate::widgets::components::tree_view::{TreeItemLabel, TreeNode, TreeView};
 use crate::widgets::inputs::select::SelectInput;
 use crate::widgets::inputs::text::TextInput;
@@ -21,7 +21,34 @@ use crate::widgets::node::{Component, Node};
 use crate::widgets::traits::{
     DrawOutput, Drawable, FocusMode, InteractionResult, Interactive, RenderContext, ValidationMode,
 };
+use inline_key_value::{InlineKeyValueEditor, InlineKeyValueFocus};
 use unicode_width::UnicodeWidthChar;
+
+#[derive(Clone)]
+pub struct CustomInsertType {
+    name: String,
+    parser: Arc<dyn Fn(&str) -> Value + Send + Sync>,
+}
+
+impl CustomInsertType {
+    pub fn new(
+        name: impl Into<String>,
+        parser: impl Fn(&str) -> Value + Send + Sync + 'static,
+    ) -> Self {
+        Self {
+            name: name.into(),
+            parser: Arc::new(parser),
+        }
+    }
+
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    fn parse(&self, text: &str) -> Value {
+        (self.parser)(text)
+    }
+}
 
 #[derive(Clone)]
 struct ObjNode {
@@ -63,20 +90,20 @@ enum Mode {
     Normal,
     EditValue {
         vis: usize,
-        key_value: KeyValueComponent,
+        key_value: InlineKeyValueEditor,
     },
     EditKey {
         vis: usize,
-        key_value: KeyValueComponent,
+        key_value: InlineKeyValueEditor,
     },
     InsertType {
         after_vis: usize,
-        key_value: KeyValueComponent,
+        key_value: InlineKeyValueEditor,
     },
     InsertValue {
         after_vis: usize,
         value_type: InsertValueType,
-        key_value: KeyValueComponent,
+        key_value: InlineKeyValueEditor,
     },
     ConfirmDelete {
         vis: usize,
@@ -91,6 +118,7 @@ enum Mode {
 enum InsertValueType {
     Text,
     Number,
+    Custom(usize),
 }
 
 #[derive(Debug, Clone)]
@@ -118,6 +146,7 @@ pub struct ObjectEditor {
     filter: TextInput,
     filter_visible: bool,
     filter_focus: bool,
+    custom_insert_types: Vec<CustomInsertType>,
     mode: Mode,
     submit_target: Option<ValueTarget>,
 }
@@ -184,6 +213,7 @@ impl ObjectEditor {
             filter: TextInput::new(filter_id, ""),
             filter_visible: false,
             filter_focus: false,
+            custom_insert_types: Vec::new(),
             mode: Mode::Normal,
             submit_target: None,
         };
@@ -215,6 +245,42 @@ impl ObjectEditor {
     pub fn with_submit_target_path(mut self, root: impl Into<NodeId>, path: ValuePath) -> Self {
         self.submit_target = Some(ValueTarget::path(root, path));
         self
+    }
+
+    pub fn with_custom_insert_type(mut self, custom: CustomInsertType) -> Self {
+        self.custom_insert_types.push(custom);
+        self
+    }
+
+    pub fn with_custom_insert_types(mut self, custom: Vec<CustomInsertType>) -> Self {
+        self.custom_insert_types.extend(custom);
+        self
+    }
+
+    fn insert_type_options(&self) -> Vec<String> {
+        let mut options = vec![
+            "text".to_string(),
+            "number".to_string(),
+            "object".to_string(),
+            "array".to_string(),
+        ];
+        for custom in &self.custom_insert_types {
+            options.push(custom.name().to_string());
+        }
+        options
+    }
+
+    fn resolve_insert_value_type(&self, value_type: &str) -> InsertValueType {
+        match value_type {
+            "number" => InsertValueType::Number,
+            "text" => InsertValueType::Text,
+            _ => self
+                .custom_insert_types
+                .iter()
+                .position(|custom| custom.name() == value_type)
+                .map(InsertValueType::Custom)
+                .unwrap_or(InsertValueType::Text),
+        }
     }
 
     fn expand_all_top_level(&mut self) {
@@ -287,6 +353,7 @@ impl ObjectEditor {
 }
 
 mod actions;
+mod inline_key_value;
 mod interaction;
 mod model;
 mod render;

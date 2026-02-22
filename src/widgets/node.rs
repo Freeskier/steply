@@ -1,5 +1,6 @@
 use crate::core::value::Value;
 use crate::runtime::event::SystemEvent;
+use crate::task::{TaskSpec, TaskSubscription};
 use crate::terminal::{CursorPos, KeyEvent};
 use crate::widgets::traits::{
     CompletionState, DrawOutput, FocusMode, HintContext, HintItem, InteractionResult,
@@ -211,6 +212,22 @@ impl Node {
             Self::Input(w) => w.overlay_mode(),
             Self::Component(w) => w.overlay_mode(),
             Self::Output(_) => OverlayMode::Exclusive,
+        }
+    }
+
+    pub fn task_specs(&self) -> Vec<TaskSpec> {
+        match self {
+            Self::Input(w) => w.task_specs(),
+            Self::Component(w) => w.task_specs(),
+            Self::Output(w) => w.task_specs(),
+        }
+    }
+
+    pub fn task_subscriptions(&self) -> Vec<TaskSubscription> {
+        match self {
+            Self::Input(w) => w.task_subscriptions(),
+            Self::Component(w) => w.task_subscriptions(),
+            Self::Output(w) => w.task_subscriptions(),
         }
     }
 

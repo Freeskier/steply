@@ -43,6 +43,7 @@ pub enum WidgetAction {
 
     InputDone,
     ValidateFocusedSubmit,
+    ValidateCurrentStepSubmit,
     RequestFocus { target: NodeId },
     TaskRequested { request: TaskRequest },
 }
@@ -67,8 +68,17 @@ pub enum SystemEvent {
     TaskRequested {
         request: TaskRequest,
     },
+    TaskStarted {
+        task_id: TaskId,
+        run_id: u64,
+    },
+    TaskStartRejected {
+        task_id: TaskId,
+        reason: String,
+    },
     TaskLogLine {
         task_id: TaskId,
+        run_id: u64,
         line: String,
     },
     TaskCompleted {

@@ -5,6 +5,7 @@ use std::sync::{Arc, Mutex};
 
 pub struct LogLine {
     pub task_id: TaskId,
+    pub run_id: u64,
     pub line: String,
 }
 
@@ -31,9 +32,9 @@ impl TaskExecutor {
 
     pub fn spawn(&self, mut invocation: TaskInvocation) {
         invocation.log_tx = Some(
-
             LogLineSender {
                 task_id: invocation.spec.id.clone(),
+                run_id: invocation.run_id,
                 tx: self.log_tx.clone(),
             }
             .into_sender(),
@@ -70,12 +71,9 @@ impl Default for TaskExecutor {
     }
 }
 
-
-
-
-
 struct LogLineSender {
     task_id: TaskId,
+    run_id: u64,
     tx: Sender<LogLine>,
 }
 
@@ -86,6 +84,7 @@ impl LogLineSender {
             while let Ok(line) = line_rx.recv() {
                 let _ = self.tx.send(LogLine {
                     task_id: self.task_id.clone(),
+                    run_id: self.run_id,
                     line,
                 });
             }

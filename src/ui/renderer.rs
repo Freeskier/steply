@@ -69,7 +69,7 @@ impl Renderer {
     pub fn new(config: RendererConfig) -> Self {
         Self {
             config,
-            running_spinner: Spinner::new(SpinnerStyle::Squares),
+            running_spinner: Spinner::new(SpinnerStyle::Arc),
         }
     }
 

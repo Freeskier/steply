@@ -25,10 +25,10 @@ impl ObjectEditor {
         }
         let text = obj.value.to_text_scalar().unwrap_or_else(|| "null".into());
         let vis = self.active_vis();
-        let mut key_value = KeyValueComponent::new_text(format!("{}_ekv", self.base.id()), "")
+        let mut key_value = InlineKeyValueEditor::new_text(format!("{}_ekv", self.base.id()), "")
             .with_default_key(obj.key.clone())
             .with_default_value(text);
-        key_value.set_focus(KeyValueFocus::Value);
+        key_value.set_focus(InlineKeyValueFocus::Value);
         self.mode = Mode::EditValue { vis, key_value };
     }
 
@@ -74,10 +74,10 @@ impl ObjectEditor {
                 .unwrap_or_else(|| "null".to_string()),
         };
         let vis = self.active_vis();
-        let mut key_value = KeyValueComponent::new_text(format!("{}_ekv", self.base.id()), "")
+        let mut key_value = InlineKeyValueEditor::new_text(format!("{}_ekv", self.base.id()), "")
             .with_default_key(obj.key.clone())
             .with_default_value(value);
-        key_value.set_focus(KeyValueFocus::Key);
+        key_value.set_focus(InlineKeyValueFocus::Key);
         self.mode = Mode::EditKey { vis, key_value };
     }
 
@@ -148,10 +148,11 @@ impl ObjectEditor {
                     .map(|idx| idx + 1)
                     .unwrap_or(0)
             };
-            let mut key_value = KeyValueComponent::new_text(format!("{}_iv", self.base.id()), "")
-                .with_default_key(next_index.to_string())
-                .with_default_value("");
-            key_value.set_focus(KeyValueFocus::Value);
+            let mut key_value =
+                InlineKeyValueEditor::new_text(format!("{}_iv", self.base.id()), "")
+                    .with_default_key(next_index.to_string())
+                    .with_default_value("");
+            key_value.set_focus(InlineKeyValueFocus::Value);
             self.mode = Mode::InsertValue {
                 after_vis,
                 value_type: InsertValueType::Text,
@@ -161,15 +162,10 @@ impl ObjectEditor {
         }
         self.mode = Mode::InsertType {
             after_vis,
-            key_value: KeyValueComponent::new(
+            key_value: InlineKeyValueEditor::new(
                 format!("{}_ikv", self.base.id()),
                 "",
-                vec![
-                    "text".into(),
-                    "number".into(),
-                    "object".into(),
-                    "array".into(),
-                ],
+                self.insert_type_options(),
             ),
         };
     }
@@ -214,17 +210,13 @@ impl ObjectEditor {
                     self.tree.set_active_visible_index(vis);
                 }
             }
-            vt => {
-                let value_type = if vt == "number" {
-                    InsertValueType::Number
-                } else {
-                    InsertValueType::Text
-                };
+            _ => {
+                let value_type = self.resolve_insert_value_type(tv.as_str());
                 let mut key_value =
-                    KeyValueComponent::new_text(format!("{}_iv", self.base.id()), "")
+                    InlineKeyValueEditor::new_text(format!("{}_iv", self.base.id()), "")
                         .with_default_key(k)
                         .with_default_value("");
-                key_value.set_focus(KeyValueFocus::Value);
+                key_value.set_focus(InlineKeyValueFocus::Value);
                 self.mode = Mode::InsertValue {
                     after_vis: av,
                     value_type,
@@ -247,6 +239,11 @@ impl ObjectEditor {
         let new_val = match value_type {
             InsertValueType::Number => Value::Number(text.parse::<f64>().unwrap_or(0.0)),
             InsertValueType::Text => Self::parse_scalar(&text),
+            InsertValueType::Custom(index) => self
+                .custom_insert_types
+                .get(index)
+                .map(|custom| custom.parse(text.as_str()))
+                .unwrap_or_else(|| Self::parse_scalar(&text)),
         };
         let av = after_vis;
         let k = key_value.key();
@@ -260,7 +257,12 @@ impl ObjectEditor {
         }
     }
 
-    pub(super) fn do_insert(&mut self, after_vis: usize, new_key: String, new_val: Value) -> Option<String> {
+    pub(super) fn do_insert(
+        &mut self,
+        after_vis: usize,
+        new_key: String,
+        new_val: Value,
+    ) -> Option<String> {
         let Some(anchor) = self.obj_at_vis(after_vis) else {
             return None;
         };
@@ -372,7 +374,11 @@ impl ObjectEditor {
         self.mode = Mode::Move { vis };
     }
 
-    pub(super) fn move_target_for_step(&self, current_vis: usize, step: isize) -> Option<(usize, bool)> {
+    pub(super) fn move_target_for_step(
+        &self,
+        current_vis: usize,
+        step: isize,
+    ) -> Option<(usize, bool)> {
         let total = self.tree.visible().len();
         if total <= 1 {
             return None;

@@ -127,9 +127,9 @@ impl ObjectEditor {
         spans
     }
 
-    fn insert_value_spans(&self, key_value: &KeyValueComponent, error: Option<&str>) -> Vec<Span> {
+    fn insert_value_spans(&self, key_value: &InlineKeyValueEditor, error: Option<&str>) -> Vec<Span> {
         if let Some(error) = error {
-            let key_style = if key_value.focus() == KeyValueFocus::Key {
+            let key_style = if key_value.focus() == InlineKeyValueFocus::Key {
                 Style::new().color(Color::Cyan)
             } else {
                 Style::new().color(Color::DarkGrey)
@@ -307,7 +307,7 @@ impl Drawable for ObjectEditor {
             let hint = match &self.mode {
                 Mode::Normal if self.filter_focus => "  Type to filter  Enter/Esc back to tree",
                 Mode::Normal => {
-                    "  ↑↓ nav  Space expand  e edit val  r rename  i insert  d delete  m move"
+                    "  ↑↓ nav  Space expand  e edit  r rename  i insert  d delete  m move"
                 }
                 Mode::EditValue { .. } | Mode::EditKey { .. } => {
                     "  Enter confirm  Tab key↔val  Esc cancel"

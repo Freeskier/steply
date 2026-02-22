@@ -1,11 +1,12 @@
 use crate::core::value::Value;
 use crate::task::policy::ConcurrencyPolicy;
 use crate::task::spec::{TaskAssign, TaskId, TaskKind, TaskParse, TaskSpec};
-use std::io::{BufRead, BufReader};
+use std::io::{BufRead, BufReader, Read};
 use std::process::{Command, Stdio};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::Sender;
+use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
 #[derive(Debug, Clone)]
@@ -127,24 +128,28 @@ pub fn execute_invocation(invocation: TaskInvocation) -> TaskCompletion {
         }
     };
 
-
-
-    let stdout_reader = child.stdout.take().map(BufReader::new);
     let log_tx = invocation.log_tx.clone();
-    let (lines_tx, lines_rx) = std::sync::mpsc::channel::<String>();
-    let reader_handle = if let Some(reader) = stdout_reader {
-        Some(std::thread::spawn(move || {
+    let mut stdout_handle = child.stdout.take().map(|stdout| {
+        std::thread::spawn(move || {
+            let reader = BufReader::new(stdout);
+            let mut lines = Vec::new();
             for line in reader.lines() {
                 let line = line.unwrap_or_default();
                 if let Some(ref tx) = log_tx {
                     let _ = tx.send(line.clone());
                 }
-                let _ = lines_tx.send(line);
+                lines.push(line);
             }
-        }))
-    } else {
-        None
-    };
+            lines.join("\n")
+        })
+    });
+    let mut stderr_handle = child.stderr.take().map(|stderr| {
+        std::thread::spawn(move || {
+            let mut buf = String::new();
+            let _ = BufReader::new(stderr).read_to_string(&mut buf);
+            buf
+        })
+    });
 
     let timeout = Duration::from_millis(timeout_ms.max(1));
     let started_at = Instant::now();
@@ -152,6 +157,8 @@ pub fn execute_invocation(invocation: TaskInvocation) -> TaskCompletion {
         if invocation.cancel_token.is_cancelled() {
             let _ = child.kill();
             let _ = child.wait();
+            let stdout = take_output(&mut stdout_handle);
+            let stderr = take_output(&mut stderr_handle);
             return TaskCompletion {
                 task_id,
                 run_id: invocation.run_id,
@@ -159,8 +166,8 @@ pub fn execute_invocation(invocation: TaskInvocation) -> TaskCompletion {
                 concurrency_policy,
                 value: None,
                 status_code: None,
-                stdout: String::new(),
-                stderr: String::new(),
+                stdout,
+                stderr,
                 error: Some("cancelled".to_string()),
                 cancelled: true,
             };
@@ -172,6 +179,8 @@ pub fn execute_invocation(invocation: TaskInvocation) -> TaskCompletion {
                 if started_at.elapsed() >= timeout {
                     let _ = child.kill();
                     let _ = child.wait();
+                    let stdout = take_output(&mut stdout_handle);
+                    let stderr = take_output(&mut stderr_handle);
                     return TaskCompletion {
                         task_id,
                         run_id: invocation.run_id,
@@ -179,8 +188,8 @@ pub fn execute_invocation(invocation: TaskInvocation) -> TaskCompletion {
                         concurrency_policy,
                         value: None,
                         status_code: None,
-                        stdout: String::new(),
-                        stderr: String::new(),
+                        stdout,
+                        stderr,
                         error: Some(format!("timeout after {}ms", timeout_ms.max(1))),
                         cancelled: false,
                     };
@@ -188,6 +197,10 @@ pub fn execute_invocation(invocation: TaskInvocation) -> TaskCompletion {
                 std::thread::sleep(Duration::from_millis(10));
             }
             Err(err) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                let stdout = take_output(&mut stdout_handle);
+                let stderr = take_output(&mut stderr_handle);
                 return TaskCompletion {
                     task_id,
                     run_id: invocation.run_id,
@@ -195,8 +208,8 @@ pub fn execute_invocation(invocation: TaskInvocation) -> TaskCompletion {
                     concurrency_policy,
                     value: None,
                     status_code: None,
-                    stdout: String::new(),
-                    stderr: String::new(),
+                    stdout,
+                    stderr,
                     error: Some(format!("wait failed: {err}")),
                     cancelled: false,
                 };
@@ -204,22 +217,8 @@ pub fn execute_invocation(invocation: TaskInvocation) -> TaskCompletion {
         }
     };
 
-
-    if let Some(handle) = reader_handle {
-        let _ = handle.join();
-    }
-    let stdout: String = lines_rx.try_iter().collect::<Vec<_>>().join("\n");
-
-    let stderr = child
-        .stderr
-        .take()
-        .map(|s| {
-            let mut buf = String::new();
-            use std::io::Read;
-            BufReader::new(s).read_to_string(&mut buf).ok();
-            buf
-        })
-        .unwrap_or_default();
+    let stdout = take_output(&mut stdout_handle);
+    let stderr = take_output(&mut stderr_handle);
 
     let status_code = status.code();
 
@@ -251,6 +250,13 @@ pub fn execute_invocation(invocation: TaskInvocation) -> TaskCompletion {
         error: status_error.or(parse_error),
         cancelled: false,
     }
+}
+
+fn take_output(handle: &mut Option<JoinHandle<String>>) -> String {
+    handle
+        .take()
+        .and_then(|join| join.join().ok())
+        .unwrap_or_default()
 }
 
 fn parse_value(parse: TaskParse, stdout: &str) -> Result<Value, String> {

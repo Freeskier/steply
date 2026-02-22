@@ -30,13 +30,20 @@ struct DataState {
     store: ValueStore,
 }
 
+#[derive(Clone)]
+struct RunningTaskHandle {
+    run_id: u64,
+    cancel_token: TaskCancelToken,
+    origin_step_id: Option<String>,
+}
+
 #[derive(Default)]
 struct RuntimeState {
     validation: ValidationState,
     pending_scheduler: Vec<SchedulerCommand>,
     pending_task_invocations: Vec<TaskInvocation>,
     queued_task_requests: HashMap<TaskId, Vec<TaskRequest>>,
-    running_task_cancellations: HashMap<TaskId, Vec<(u64, TaskCancelToken)>>,
+    running_task_cancellations: HashMap<TaskId, Vec<RunningTaskHandle>>,
     task_runs: HashMap<TaskId, TaskRunState>,
     task_specs: HashMap<TaskId, TaskSpec>,
     task_subscriptions: Vec<TaskSubscription>,
@@ -62,10 +69,16 @@ impl AppState {
         task_specs: Vec<TaskSpec>,
         task_subscriptions: Vec<TaskSubscription>,
     ) -> Self {
+        let (inline_specs, inline_subscriptions) = collect_inline_tasks(&flow);
         let mut spec_map = HashMap::<TaskId, TaskSpec>::new();
+        for spec in inline_specs {
+            spec_map.insert(spec.id.clone(), spec);
+        }
         for spec in task_specs {
             spec_map.insert(spec.id.clone(), spec);
         }
+        let mut subscriptions = inline_subscriptions;
+        subscriptions.extend(task_subscriptions);
 
         let mut state = Self {
             flow,
@@ -79,7 +92,7 @@ impl AppState {
                 running_task_cancellations: HashMap::new(),
                 task_runs: HashMap::new(),
                 task_specs: spec_map,
-                task_subscriptions,
+                task_subscriptions: subscriptions,
             },
             scratch_nodes: Vec::new(),
             should_exit: false,
@@ -348,3 +361,21 @@ mod overlay_runtime;
 mod task_runtime;
 mod validation_runtime;
 mod value_sync;
+
+fn collect_inline_tasks(flow: &Flow) -> (Vec<TaskSpec>, Vec<TaskSubscription>) {
+    let mut specs = Vec::<TaskSpec>::new();
+    let mut subscriptions = Vec::<TaskSubscription>::new();
+
+    for step in flow.steps() {
+        walk_nodes(
+            step.nodes.as_slice(),
+            NodeWalkScope::Persistent,
+            &mut |node| {
+                specs.extend(node.task_specs());
+                subscriptions.extend(node.task_subscriptions());
+            },
+        );
+    }
+
+    (specs, subscriptions)
+}

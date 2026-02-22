@@ -182,7 +182,16 @@ impl ObjectEditor {
                 InteractionResult::handled()
             }
             KeyCode::Char('e') => {
-                self.start_edit_value();
+                if let Some(obj) = self.active_obj() {
+                    if !obj.is_index
+                        && !obj.is_placeholder
+                        && matches!(obj.value, Value::Object(_) | Value::List(_))
+                    {
+                        self.start_edit_key();
+                    } else {
+                        self.start_edit_value();
+                    }
+                }
                 InteractionResult::handled()
             }
             KeyCode::Char('r') => {

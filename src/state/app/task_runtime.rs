@@ -12,14 +12,14 @@ use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 use std::time::{Duration, Instant};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TaskStartResult {
-    Started,
-    Queued,
-    SpecNotFound,
-    Disabled,
-    Skipped,
-    Dropped,
+    Started { task_id: TaskId, run_id: u64 },
+    Queued { task_id: TaskId },
+    SpecNotFound { task_id: TaskId },
+    Disabled { task_id: TaskId },
+    Skipped { task_id: TaskId },
+    Dropped { task_id: TaskId },
 }
 
 impl AppState {
@@ -72,16 +72,25 @@ impl AppState {
     }
 
     pub(super) fn request_task_run(&mut self, request: TaskRequest) -> TaskStartResult {
+        let requested_task_id = request.task_id.clone();
         let Some(spec) = self
             .runtime
             .task_specs
             .get(request.task_id.as_str())
             .cloned()
         else {
-            return TaskStartResult::SpecNotFound;
+            let result = TaskStartResult::SpecNotFound {
+                task_id: requested_task_id,
+            };
+            self.emit_task_start_feedback(&result);
+            return result;
         };
         if !spec.enabled {
-            return TaskStartResult::Disabled;
+            let result = TaskStartResult::Disabled {
+                task_id: spec.id.clone(),
+            };
+            self.emit_task_start_feedback(&result);
+            return result;
         }
 
         if let Some(interval) = request.interval.as_ref() {
@@ -100,7 +109,11 @@ impl AppState {
             run_state.should_start(spec.rerun_policy, now, request.fingerprint)
         };
         if !should_start {
-            return TaskStartResult::Skipped;
+            let result = TaskStartResult::Skipped {
+                task_id: spec.id.clone(),
+            };
+            self.emit_task_start_feedback(&result);
+            return result;
         }
 
         match spec.concurrency_policy {
@@ -111,7 +124,11 @@ impl AppState {
                     .get(spec.id.as_str())
                     .is_some_and(|s| s.is_running())
                 {
-                    return TaskStartResult::Dropped;
+                    let result = TaskStartResult::Dropped {
+                        task_id: spec.id.clone(),
+                    };
+                    self.emit_task_start_feedback(&result);
+                    return result;
                 }
             }
             ConcurrencyPolicy::Queue => {
@@ -122,7 +139,11 @@ impl AppState {
                     .is_some_and(|s| s.is_running())
                 {
                     self.enqueue_task_request(spec.id.clone(), request);
-                    return TaskStartResult::Queued;
+                    let result = TaskStartResult::Queued {
+                        task_id: spec.id.clone(),
+                    };
+                    self.emit_task_start_feedback(&result);
+                    return result;
                 }
             }
             ConcurrencyPolicy::Restart => {
@@ -132,8 +153,13 @@ impl AppState {
         }
 
         let invocation_spec = self.resolve_task_spec_templates(spec);
-        self.start_task_invocation(invocation_spec, request.fingerprint, now);
-        TaskStartResult::Started
+        let origin_step_id = (!self.flow.is_empty()).then(|| self.current_step_id().to_string());
+        let task_id = invocation_spec.id.clone();
+        let run_id =
+            self.start_task_invocation(invocation_spec, request.fingerprint, now, origin_step_id);
+        let result = TaskStartResult::Started { task_id, run_id };
+        self.emit_task_start_feedback(&result);
+        result
     }
 
     pub(super) fn complete_task_run(&mut self, completion: TaskCompletion) -> bool {
@@ -315,12 +341,23 @@ impl AppState {
             )
     }
 
-    fn start_task_invocation(&mut self, spec: TaskSpec, fingerprint: Option<u64>, now: Instant) {
+    fn start_task_invocation(
+        &mut self,
+        spec: TaskSpec,
+        fingerprint: Option<u64>,
+        now: Instant,
+        origin_step_id: Option<String>,
+    ) -> u64 {
         let cancel_token = TaskCancelToken::new();
         let run_state = self.runtime.task_runs.entry(spec.id.clone()).or_default();
         let run_id = run_state.next_run_id();
         run_state.on_started(run_id, now, fingerprint);
-        self.register_running_cancel_token(spec.id.clone(), run_id, cancel_token.clone());
+        self.register_running_cancel_token(
+            spec.id.clone(),
+            run_id,
+            cancel_token.clone(),
+            origin_step_id,
+        );
         self.runtime.pending_task_invocations.push(TaskInvocation {
             spec,
             run_id,
@@ -329,6 +366,7 @@ impl AppState {
             log_tx: None,
         });
         self.refresh_current_step_running_status();
+        run_id
     }
 
     fn resolve_task_spec_templates(&self, mut spec: TaskSpec) -> TaskSpec {
@@ -404,19 +442,24 @@ impl AppState {
         task_id: TaskId,
         run_id: u64,
         cancel_token: TaskCancelToken,
+        origin_step_id: Option<String>,
     ) {
         self.runtime
             .running_task_cancellations
             .entry(task_id)
             .or_default()
-            .push((run_id, cancel_token));
+            .push(super::RunningTaskHandle {
+                run_id,
+                cancel_token,
+                origin_step_id,
+            });
     }
 
     fn remove_running_cancel_token(&mut self, task_id: &str, run_id: u64) {
         let Some(tokens) = self.runtime.running_task_cancellations.get_mut(task_id) else {
             return;
         };
-        tokens.retain(|(id, _)| *id != run_id);
+        tokens.retain(|handle| handle.run_id != run_id);
         if tokens.is_empty() {
             self.runtime.running_task_cancellations.remove(task_id);
         }
@@ -424,24 +467,66 @@ impl AppState {
 
     fn cancel_running_task(&mut self, task_id: &str) {
         if let Some(tokens) = self.runtime.running_task_cancellations.get(task_id) {
-            for (_, token) in tokens {
-                token.cancel();
+            for handle in tokens {
+                handle.cancel_token.cancel();
             }
         }
     }
 
     pub(super) fn cancel_all_running_tasks(&mut self) {
         for tokens in self.runtime.running_task_cancellations.values() {
-            for (_, token) in tokens {
-                token.cancel();
+            for handle in tokens {
+                handle.cancel_token.cancel();
             }
         }
         self.refresh_current_step_running_status();
     }
 
     fn refresh_current_step_running_status(&mut self) {
-        let any_running = self.runtime.task_runs.values().any(|state| state.is_running());
+        let active_step = (!self.flow.is_empty()).then(|| self.current_step_id().to_string());
+        let any_running = active_step.is_some_and(|step_id| {
+            self.runtime
+                .running_task_cancellations
+                .values()
+                .any(|handles| {
+                    handles
+                        .iter()
+                        .any(|handle| handle.origin_step_id.as_deref() == Some(step_id.as_str()))
+                })
+        });
         self.flow.set_current_running(any_running);
+    }
+
+    fn emit_task_start_feedback(&mut self, result: &TaskStartResult) {
+        let event = match result {
+            TaskStartResult::Started { task_id, run_id } => SystemEvent::TaskStarted {
+                task_id: task_id.clone(),
+                run_id: *run_id,
+            },
+            TaskStartResult::Queued { task_id } => SystemEvent::TaskStartRejected {
+                task_id: task_id.clone(),
+                reason: "queued: task already running".to_string(),
+            },
+            TaskStartResult::SpecNotFound { task_id } => SystemEvent::TaskStartRejected {
+                task_id: task_id.clone(),
+                reason: "task spec not found".to_string(),
+            },
+            TaskStartResult::Disabled { task_id } => SystemEvent::TaskStartRejected {
+                task_id: task_id.clone(),
+                reason: "task is disabled".to_string(),
+            },
+            TaskStartResult::Skipped { task_id } => SystemEvent::TaskStartRejected {
+                task_id: task_id.clone(),
+                reason: "task skipped by rerun policy".to_string(),
+            },
+            TaskStartResult::Dropped { task_id } => SystemEvent::TaskStartRejected {
+                task_id: task_id.clone(),
+                reason: "task dropped by concurrency policy".to_string(),
+            },
+        };
+        self.runtime
+            .pending_scheduler
+            .push(SchedulerCommand::EmitNow(AppEvent::System(event)));
     }
 }
 

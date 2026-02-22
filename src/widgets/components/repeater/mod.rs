@@ -279,9 +279,10 @@ impl Repeater {
         Some(format!("progress: {completed}/{total} completed"))
     }
 
-    fn build_rows_value(&self) -> Value {
-        let mut rows = Vec::<Value>::with_capacity(self.rows.len());
-        for row in &self.rows {
+    fn build_rows_value_for_count(&self, count: usize) -> Value {
+        let limit = count.min(self.rows.len());
+        let mut rows = Vec::<Value>::with_capacity(limit);
+        for row in self.rows.iter().take(limit) {
             let mut map = IndexMap::<String, Value>::new();
             map.insert("item".to_string(), row.item.clone());
             for (idx, field) in self.fields.iter().enumerate() {
@@ -295,6 +296,14 @@ impl Repeater {
             rows.push(Value::Object(map));
         }
         Value::List(rows)
+    }
+
+    fn build_rows_value(&self) -> Value {
+        self.build_rows_value_for_count(self.rows.len())
+    }
+
+    fn build_committed_rows_value(&self) -> Value {
+        self.build_rows_value_for_count(self.completed_items())
     }
 
     fn apply_rows_seed(&mut self, rows_seed: &[Value]) {
@@ -465,7 +474,6 @@ impl Repeater {
         if should_advance {
             result.merge(self.advance_cursor_and_submit_if_done());
         }
-        self.ensure_live_sync(&mut result);
         if result.handled {
             result.request_render = true;
         }
@@ -489,7 +497,16 @@ impl Repeater {
         if self.active_item + 1 < self.rows.len() {
             self.active_item += 1;
             self.active_field = 0;
-            return InteractionResult::handled();
+            let mut result = InteractionResult::handled();
+            if let Some(target) = &self.submit_target {
+                result.actions.push(WidgetAction::ValueChanged {
+                    change: ValueChange::with_target(
+                        target.clone(),
+                        self.build_committed_rows_value(),
+                    ),
+                });
+            }
+            return result;
         }
 
         self.finished = true;
@@ -531,27 +548,6 @@ impl Repeater {
         InteractionResult::input_done()
     }
 
-    fn ensure_live_sync(&self, result: &mut InteractionResult) {
-        let Some(target) = &self.submit_target else {
-            return;
-        };
-        if !result.handled {
-            return;
-        }
-        let has_target_update = result.actions.iter().any(|action| {
-            matches!(
-                action,
-                WidgetAction::ValueChanged { change } if change.target == *target
-            )
-        });
-        if has_target_update {
-            return;
-        }
-        result.actions.push(WidgetAction::ValueChanged {
-            change: ValueChange::with_target(target.clone(), self.build_rows_value()),
-        });
-    }
-
     fn handle_group_key(&mut self, key: KeyEvent) -> InteractionResult {
         if !self.has_work() {
             return match key.code {
@@ -567,12 +563,11 @@ impl Repeater {
             }
         }
 
-        let mut result = match key.code {
+        let result = match key.code {
             KeyCode::Enter | KeyCode::Tab => self.advance_cursor_and_submit_if_done(),
             KeyCode::BackTab => self.retreat_cursor(),
             _ => InteractionResult::ignored(),
         };
-        self.ensure_live_sync(&mut result);
         result
     }
 }

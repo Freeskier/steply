@@ -213,6 +213,10 @@ impl AppState {
                 self.validate_focused_submit();
                 InteractionResult::handled()
             }
+            WidgetAction::ValidateCurrentStepSubmit => {
+                self.validate_current_step(ValidationMode::Submit);
+                InteractionResult::handled()
+            }
             WidgetAction::RequestFocus { target } => {
                 if !self.ui.active_node_index.has_visible(target.as_str())
                     && find_node(self.active_nodes(), target.as_str()).is_none()
@@ -258,19 +262,20 @@ impl AppState {
                 self.request_task_run(request);
                 InteractionResult::handled()
             }
-            SystemEvent::TaskLogLine { .. } => {
+            SystemEvent::TaskStarted { .. }
+            | SystemEvent::TaskStartRejected { .. }
+            | SystemEvent::TaskLogLine { .. } => {
                 let result = self.broadcast_system_event(&event);
                 self.process_broadcast_result(result);
                 InteractionResult::handled()
             }
             SystemEvent::TaskCompleted { ref completion } => {
-                let result = self.broadcast_system_event(&event);
-                self.process_broadcast_result(result);
-                if self.complete_task_run(completion.clone()) {
-                    InteractionResult::handled()
-                } else {
-                    InteractionResult::ignored()
+                let accepted = self.complete_task_run(completion.clone());
+                if accepted {
+                    let result = self.broadcast_system_event(&event);
+                    self.process_broadcast_result(result);
                 }
+                InteractionResult::handled()
             }
             SystemEvent::RequestSubmit => {
                 if self.has_blocking_overlay() {
@@ -340,6 +345,12 @@ impl AppState {
         }
         if prune_validation {
             self.prune_validation_for_active_nodes();
+        }
+        if let Some(focused_id) = self.ui.focus.current_id().map(|id| id.to_string()) {
+            let result = self.broadcast_system_event(&SystemEvent::RequestFocus {
+                target: focused_id.into(),
+            });
+            self.process_broadcast_result(result);
         }
     }
 

@@ -3,7 +3,7 @@ use crate::state::flow::Flow;
 use crate::state::step::{Step, StepNavigation};
 use crate::task::{TaskAssign, TaskParse, TaskSpec, TaskSubscription, TaskTrigger};
 use crate::widgets::components::calendar::{Calendar, CalendarMode};
-use crate::widgets::components::command_runner::CommandRunner;
+use crate::widgets::components::command_runner::{CommandRunner, OnError, RunMode};
 use crate::widgets::components::file_browser::FileBrowserInput;
 use crate::widgets::components::object_editor::ObjectEditor;
 use crate::widgets::components::repeater::{Repeater, RepeaterLayout};
@@ -13,7 +13,6 @@ use crate::widgets::components::snippet::Snippet;
 use crate::widgets::components::table::{Table, TableStyle};
 use crate::widgets::components::tree_view::{TreeNode, TreeView};
 use crate::widgets::inputs::array::ArrayInput;
-use crate::widgets::inputs::button::ButtonInput;
 use crate::widgets::inputs::checkbox::CheckboxInput;
 use crate::widgets::inputs::choice::ChoiceInput;
 use crate::widgets::inputs::color::ColorInput;
@@ -573,29 +572,55 @@ fn step_command_runner() -> Step {
                 "Press Enter on runner to start command. Logs stream below.",
             ))),
             Node::Component(Box::new(
-                CommandRunner::new("cmd_run", "Run diagnostics", "cmd_diagnostics")
+                CommandRunner::new("cmd_run", "Run diagnostics")
+                    .command(
+                        "Prepare",
+                        "bash",
+                        [
+                            "-c",
+                            r#"
+echo '[prep] Preparing environment...'
+sleep 1
+echo '[prep] Ready'
+"#,
+                        ],
+                    )
+                    .command(
+                        "Diagnostics",
+                        "bash",
+                        [
+                            "-c",
+                            r#"
+echo '[diag] Starting diagnostics (~10s)...'
+for i in $(seq 1 3); do
+  echo "[diag] step $i/3"
+  sleep 0.6
+done
+echo '[diag] Fatal check failed'
+exit 1
+"#,
+                        ],
+                    )
+                    .command(
+                        "Finalize",
+                        "bash",
+                        [
+                            "-c",
+                            r#"
+echo '[finalize] This should run only if diagnostics pass'
+sleep 1
+echo '[finalize] Done'
+"#,
+                        ],
+                    )
+                    .with_run_mode(RunMode::Auto)
+                    .with_advance_on_success(true)
+                    .with_on_error(OnError::Continue)
                     .with_visible_lines(8),
             )),
         ],
     )
-    .with_description("Enter → run command  •  watch live output")
-}
-
-fn step_finish() -> Step {
-    Step::new(
-        "step_finish",
-        "All done!",
-        vec![
-            Node::Output(Box::new(TextOutput::new(
-                "fin_text",
-                "You have reached the end of the demo. Press the button below to finish.",
-            ))),
-            Node::Input(Box::new(
-                ButtonInput::new("btn_finish", "Finish demo").with_text("  Finish  "),
-            )),
-        ],
-    )
-    .with_description("Enter → activate button")
+    .with_description("Auto run on enter  •  Enter → rerun  •  watch live output")
 }
 
 fn step_back_allowed() -> Step {
@@ -711,13 +736,13 @@ fn step_validation_demo() -> Step {
 
 pub fn build_demo_flow() -> Flow {
     Flow::new(vec![
+        step_repeater(),
+        step_command_runner(),
         step_object_editor(),
         step_tree_view(),
-        step_command_runner(),
         step_calendar(),
         step_text_inputs(),
         step_file_browser(),
-        step_repeater(),
         step_structured_inputs(),
         step_toggles(),
         step_outputs(),
@@ -756,14 +781,14 @@ if not query:
     raise SystemExit(0)
 
 url = "https://pokeapi.co/api/v2/pokemon?limit=2000"
-    req = urllib.request.Request(
-        url,
-        headers={
-            "User-Agent": "steply-demo/1.0 (+https://pokeapi.co)",
-            "Accept": "application/json",
-        },
-    )
-    with urllib.request.urlopen(req, timeout=8) as response:
+req = urllib.request.Request(
+    url,
+    headers={
+        "User-Agent": "steply-demo/1.0 (+https://pokeapi.co)",
+        "Accept": "application/json",
+    },
+)
+with urllib.request.urlopen(req, timeout=8) as response:
     payload = json.load(response)
 
 out = []
@@ -883,23 +908,6 @@ echo '[verify]   line coverage: 91.3%'
 sleep 0.2
 echo '[verify] All checks passed.'
 "#.into(),
-            ],
-        )
-        .with_timeout_ms(30_000),
-        TaskSpec::exec(
-            "cmd_diagnostics",
-            "bash",
-            vec![
-                "-c".into(),
-                r#"
-echo '[diag] Starting diagnostics (~10s)...'
-for i in $(seq 1 10); do
-  echo "[diag] step $i/10"
-  sleep 1
-done
-echo '[diag] Diagnostics complete'
-"#
-                .into(),
             ],
         )
         .with_timeout_ms(30_000),

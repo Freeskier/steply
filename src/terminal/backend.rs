@@ -93,6 +93,7 @@ pub struct CursorPos {
 pub struct TerminalState {
     pub size: TerminalSize,
     pub cursor: Option<CursorPos>,
+    pub cursor_visible: bool,
 }
 
 struct AltScreenState {
@@ -127,6 +128,7 @@ struct InlineState {
     last_frame: Vec<SpanLine>,
 
     last_rendered_cursor: Option<CursorPos>,
+    last_rendered_cursor_visible: bool,
 
     last_rendered_size: TerminalSize,
 
@@ -149,6 +151,7 @@ impl InlineState {
             last_rendered_block_start_row: 0,
             last_frame: Vec::new(),
             last_rendered_cursor: None,
+            last_rendered_cursor_visible: false,
             last_rendered_size: TerminalSize {
                 width: 0,
                 height: 0,
@@ -224,6 +227,7 @@ impl Terminal {
             state: TerminalState {
                 size: TerminalSize { width, height },
                 cursor: None,
+                cursor_visible: false,
             },
             mode: RenderMode::default(),
             alt_screen: Some(AltScreenState::new()),
@@ -290,6 +294,7 @@ impl Terminal {
     pub fn render_frame(&mut self, frame: &RenderFrame) -> io::Result<()> {
         self.refresh_size()?;
         self.state.cursor = frame.cursor;
+        self.state.cursor_visible = frame.cursor_visible;
         match self.mode {
             RenderMode::AltScreen => self.render_altscreen(frame),
             RenderMode::Inline => self.render_inline(frame),
@@ -558,7 +563,12 @@ impl Terminal {
                 let screen_row = frame_row - scroll_offset;
                 if screen_row < height {
                     let col = cur.col.min(width.saturating_sub(1));
-                    queue!(self.stdout, MoveTo(col, screen_row as u16), Show)?;
+                    queue!(self.stdout, MoveTo(col, screen_row as u16))?;
+                    if frame.cursor_visible {
+                        queue!(self.stdout, Show)?;
+                    } else {
+                        queue!(self.stdout, Hide)?;
+                    }
                 } else {
                     queue!(self.stdout, Hide)?;
                 }
@@ -596,11 +606,14 @@ impl Terminal {
             .map(|inline| {
                 let same_frame = inline.last_frame == frame.lines;
                 let same_cursor = inline.last_rendered_cursor == frame.cursor;
+                let same_cursor_visibility =
+                    inline.last_rendered_cursor_visible == frame.cursor_visible;
                 let same_size = inline.last_rendered_size == self.state.size;
                 let should_skip = inline.has_rendered_once
                     && !inline.reanchor_after_resize
                     && same_frame
                     && same_cursor
+                    && same_cursor_visibility
                     && same_size;
                 (
                     inline.block_start_row,
@@ -667,7 +680,12 @@ impl Terminal {
                 let col = cursor.col.min(width.saturating_sub(1));
                 next_last_cursor_row = visible_row.min(u16::MAX as usize) as u16;
                 next_last_cursor_col = col;
-                queue!(self.stdout, MoveTo(col, target_row as u16), Show)?;
+                queue!(self.stdout, MoveTo(col, target_row as u16))?;
+                if frame.cursor_visible {
+                    queue!(self.stdout, Show)?;
+                } else {
+                    queue!(self.stdout, Hide)?;
+                }
             } else {
                 queue!(self.stdout, MoveTo(0, block_start_row), Hide)?;
             }
@@ -682,6 +700,7 @@ impl Terminal {
             inline.block_start_row = next_anchor_row;
             inline.last_rendered_block_start_row = block_start_row;
             inline.last_rendered_cursor = frame.cursor;
+            inline.last_rendered_cursor_visible = frame.cursor_visible;
             inline.last_rendered_size = self.state.size;
             inline.has_rendered_once = true;
         }

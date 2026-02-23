@@ -11,6 +11,7 @@ use crate::widgets::components::select_list::SelectList;
 use crate::widgets::components::select_list::{SelectItem, SelectMode};
 use crate::widgets::components::snippet::Snippet;
 use crate::widgets::components::table::{Table, TableStyle};
+use crate::widgets::components::textarea::TextAreaComponent;
 use crate::widgets::components::tree_view::{TreeNode, TreeView};
 use crate::widgets::inputs::array::ArrayInput;
 use crate::widgets::inputs::checkbox::CheckboxInput;
@@ -21,7 +22,6 @@ use crate::widgets::inputs::masked::MaskedInput;
 use crate::widgets::inputs::select::SelectInput;
 use crate::widgets::inputs::slider::SliderInput;
 use crate::widgets::inputs::text::{TextInput, TextMode};
-use crate::widgets::inputs::textarea::TextAreaInput;
 use crate::widgets::node::Node;
 use crate::widgets::outputs::chart::{ChartOutput, ChartRenderMode};
 use crate::widgets::outputs::diff::DiffOutput;
@@ -30,21 +30,31 @@ use crate::widgets::outputs::progress::{
 };
 use crate::widgets::outputs::task_log::{TaskLog, TaskLogStep};
 use crate::widgets::outputs::text::TextOutput;
-use crate::widgets::outputs::thinking::ThinkingOutput;
+use crate::widgets::outputs::thinking::{ThinkingMode, ThinkingOutput};
 use crate::widgets::validators;
 
 fn step_thinking_output() -> Step {
     Step::new(
         "step_thinking_output",
         "Thinking output",
-        vec![Node::Output(Box::new(
-            ThinkingOutput::new("thinking_rgb", "", "Warming up workflow context...")
-                .with_tail_len(7)
-                .with_tick_ms(48)
-                .with_gradient_rgb((64, 70, 84), (230, 238, 255)),
-        ))],
+        vec![
+            Node::Output(Box::new(
+                ThinkingOutput::new("thinking_beam", "Beam", "Warming up workflow context...")
+                    .with_mode(ThinkingMode::Beam)
+                    .with_tail_len(7)
+                    .with_tick_ms(48)
+                    .with_gradient_rgb((64, 70, 84), (230, 238, 255)),
+            )),
+            Node::Output(Box::new(
+                ThinkingOutput::new("thinking_wave", "Wave", "Warming up workflow context...")
+                    .with_mode(ThinkingMode::Wave)
+                    .with_tail_len(8)
+                    .with_tick_ms(48)
+                    .with_gradient_rgb((64, 70, 84), (230, 238, 255)),
+            )),
+        ],
     )
-    .with_description("Animated RGB trail")
+    .with_description("Animated RGB trail modes: Beam and Wave")
 }
 
 fn step_repeater() -> Step {
@@ -700,8 +710,8 @@ fn step_textarea() -> Step {
     Step::new(
         "step_textarea",
         "Text area",
-        vec![Node::Input(Box::new(
-            TextAreaInput::new("notes")
+        vec![Node::Component(Box::new(
+            TextAreaComponent::new("notes")
                 .with_min_height(3)
                 .with_max_height(6)
                 .with_default(Value::Text("First line\nSecond line".into())),

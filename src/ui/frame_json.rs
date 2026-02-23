@@ -46,6 +46,7 @@ pub fn frame_to_json(frame: &RenderFrame, size: TerminalSize) -> serde_json::Val
             "height": size.height,
         },
         "cursor": cursor,
+        "cursor_visible": frame.cursor_visible,
         "lines": lines,
     })
 }

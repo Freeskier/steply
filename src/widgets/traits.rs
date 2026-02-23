@@ -4,7 +4,7 @@ use crate::runtime::event::{SystemEvent, ValueChange, WidgetAction};
 use crate::task::{TaskSpec, TaskSubscription};
 use crate::terminal::{CursorPos, KeyEvent, TerminalSize};
 use crate::ui::span::{Span, SpanLine};
-use crate::widgets::inputs::text_edit;
+use crate::widgets::shared::text_edit;
 use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 
@@ -286,6 +286,9 @@ pub trait Interactive: Send {
     }
     fn cursor_pos(&self) -> Option<CursorPos> {
         None
+    }
+    fn cursor_visible(&self) -> bool {
+        true
     }
 
     fn value(&self) -> Option<Value> {

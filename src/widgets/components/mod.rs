@@ -8,4 +8,5 @@ pub mod scroll;
 pub mod select_list;
 pub mod snippet;
 pub mod table;
+pub mod textarea;
 pub mod tree_view;

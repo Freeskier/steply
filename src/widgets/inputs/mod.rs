@@ -8,5 +8,3 @@ pub mod masked;
 pub mod select;
 pub mod slider;
 pub mod text;
-pub(crate) mod text_edit;
-pub mod textarea;

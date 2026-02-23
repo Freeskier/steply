@@ -12,6 +12,7 @@ use crate::ui::span::{Span, SpanLine};
 use crate::ui::style::{Color, Style};
 use crate::widgets::base::WidgetBase;
 use crate::widgets::node::{Component, Node};
+use crate::widgets::shared::cursor_anchor;
 use crate::widgets::traits::{
     CompletionMenu, CompletionState, DrawOutput, Drawable, FocusMode, InteractionResult,
     Interactive, InteractiveNode, RenderContext, TextAction, ValidationMode,
@@ -670,18 +671,31 @@ impl Interactive for Repeater {
         if !self.has_work() {
             return None;
         }
-        let local = self.active_field_widget()?.cursor_pos()?;
         let base = self.line_prefix_rows();
         let row = match self.layout {
             RepeaterLayout::SingleField => base,
             RepeaterLayout::Stacked => base.saturating_add(self.active_field),
         };
-        Some(CursorPos {
-            col: local
-                .col
-                .saturating_add(self.active_field_label().len() as u16 + 4),
-            row: row as u16 + local.row,
-        })
+        let local = self
+            .active_field_widget()
+            .and_then(|widget| widget.cursor_pos());
+        if let Some(local) = local {
+            return Some(CursorPos {
+                col: local
+                    .col
+                    .saturating_add(self.active_field_label().len() as u16 + 4),
+                row: row as u16 + local.row,
+            });
+        }
+        Some(cursor_anchor::first_col_cursor(row))
+    }
+
+    fn cursor_visible(&self) -> bool {
+        cursor_anchor::visible_when_text_cursor(
+            self.active_field_widget()
+                .and_then(|widget| widget.cursor_pos())
+                .is_some(),
+        )
     }
 
     fn value(&self) -> Option<Value> {

@@ -4,12 +4,19 @@ use crate::ui::span::Span;
 use crate::ui::style::{Color, Style};
 use crate::widgets::traits::{DrawOutput, Drawable, InteractionResult, OutputNode, RenderContext};
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ThinkingMode {
+    Beam,
+    Wave,
+}
+
 pub struct ThinkingOutput {
     id: String,
     label: String,
     text: String,
     chars: Vec<char>,
     frame: usize,
+    mode: ThinkingMode,
     tail_len: usize,
     tick_interval: Duration,
     last_tick: Instant,
@@ -26,12 +33,18 @@ impl ThinkingOutput {
             chars: text.chars().collect(),
             text,
             frame: 0,
+            mode: ThinkingMode::Beam,
             tail_len: 6,
             tick_interval: Duration::from_millis(70),
             last_tick: Instant::now(),
             base_rgb: (70, 78, 92),
             peak_rgb: (228, 236, 252),
         }
+    }
+
+    pub fn with_mode(mut self, mode: ThinkingMode) -> Self {
+        self.mode = mode;
+        self
     }
 
     pub fn with_tail_len(mut self, tail_len: usize) -> Self {
@@ -56,14 +69,35 @@ impl ThinkingOutput {
             return self.base_rgb;
         }
 
+        let t = match self.mode {
+            ThinkingMode::Beam => self.beam_mix(idx, len),
+            ThinkingMode::Wave => self.wave_mix(idx, len),
+        };
+        lerp_rgb(self.base_rgb, self.peak_rgb, t)
+    }
+
+    fn beam_mix(&self, idx: usize, len: usize) -> f32 {
         let distance = (self.frame + len - (idx % len)) % len;
         if distance >= self.tail_len {
-            return self.base_rgb;
+            return 0.0;
         }
 
         let max = (self.tail_len - 1) as f32;
-        let t = 1.0 - (distance as f32 / max);
-        lerp_rgb(self.base_rgb, self.peak_rgb, t)
+        1.0 - (distance as f32 / max)
+    }
+
+    fn wave_mix(&self, idx: usize, len: usize) -> f32 {
+        let frame = self.frame % len;
+        let forward = (idx + len - frame) % len;
+        let backward = (frame + len - idx) % len;
+        let distance = forward.min(backward);
+
+        if distance >= self.tail_len {
+            return 1.0;
+        }
+
+        let max = (self.tail_len - 1) as f32;
+        distance as f32 / max
     }
 }
 

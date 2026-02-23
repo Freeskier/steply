@@ -1,4 +1,4 @@
-use super::text_edit;
+use crate::widgets::shared::text_edit;
 use crate::core::value::Value;
 use crate::terminal::{CursorPos, KeyCode, KeyEvent};
 use crate::ui::span::Span;

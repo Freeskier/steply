@@ -1,4 +1,5 @@
 use crate::core::value::Value;
+use crate::ui::layout::Layout;
 use crate::ui::span::Span;
 use crate::ui::style::{Color, Style};
 use crate::widgets::traits::{DrawOutput, Drawable, OutputNode, RenderContext};
@@ -307,11 +308,10 @@ fn grid_row(cells: Vec<Vec<Span>>, widths: &[usize]) -> Vec<Span> {
             .get(idx)
             .cloned()
             .unwrap_or_else(|| vec![Span::new("").no_wrap()]);
-        let used = span_line_width(cell.as_slice());
-        line.extend(cell);
-        if *width > used {
-            line.push(Span::new(" ".repeat(*width - used)).no_wrap());
-        }
+        line.extend(Layout::fit_line(
+            cell.as_slice(),
+            (*width).min(u16::MAX as usize) as u16,
+        ));
         line.push(Span::new(" ").no_wrap());
         line.push(Span::styled("│", Style::new().color(Color::DarkGrey)).no_wrap());
     }
@@ -328,17 +328,10 @@ fn clean_row(cells: Vec<Vec<Span>>, widths: &[usize]) -> Vec<Span> {
             .get(idx)
             .cloned()
             .unwrap_or_else(|| vec![Span::new("").no_wrap()]);
-        let used = span_line_width(cell.as_slice());
-        line.extend(cell);
-        if *width > used {
-            line.push(Span::new(" ".repeat(*width - used)).no_wrap());
-        }
+        line.extend(Layout::fit_line(
+            cell.as_slice(),
+            (*width).min(u16::MAX as usize) as u16,
+        ));
     }
     line
-}
-
-fn span_line_width(line: &[Span]) -> usize {
-    line.iter()
-        .map(|span| UnicodeWidthStr::width(span.text.as_str()))
-        .sum()
 }

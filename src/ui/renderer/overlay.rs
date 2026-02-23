@@ -100,6 +100,7 @@ fn apply_floating_overlay(
                 .saturating_add(1)
                 .saturating_add(local_cursor.row),
         });
+        frame.cursor_visible = body.cursor_visible;
     }
 }
 
@@ -150,6 +151,7 @@ fn apply_inline_overlay(
                 .saturating_add(geometry.insert_row.min(u16::MAX as usize) as u16)
                 .saturating_add(1),
         });
+        frame.cursor_visible = body.cursor_visible;
     } else if let Some(cursor) = frame.cursor.as_mut()
         && cursor.row as usize >= geometry.insert_row
     {
@@ -160,6 +162,7 @@ fn apply_inline_overlay(
 struct OverlayBody {
     lines: Vec<SpanLine>,
     cursor: Option<CursorPos>,
+    cursor_visible: bool,
 }
 
 fn render_overlay_body(
@@ -172,6 +175,7 @@ fn render_overlay_body(
 ) -> OverlayBody {
     let mut lines = Vec::<SpanLine>::new();
     let mut cursor = None;
+    let mut cursor_visible = true;
     let mut row_offset: u16 = 0;
 
     let ctx = render_context_for_nodes(
@@ -187,6 +191,7 @@ fn render_overlay_body(
         &ctx,
         &mut lines,
         &mut cursor,
+        &mut cursor_visible,
         &mut row_offset,
         true,
         false,
@@ -199,7 +204,11 @@ fn render_overlay_body(
         col: col.min(content_width.saturating_sub(1) as usize) as u16,
     });
 
-    OverlayBody { lines, cursor }
+    OverlayBody {
+        lines,
+        cursor,
+        cursor_visible,
+    }
 }
 
 fn render_overlay_box(width: usize, height: usize, content_lines: &[SpanLine]) -> Vec<SpanLine> {

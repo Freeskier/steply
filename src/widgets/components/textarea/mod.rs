@@ -1,9 +1,10 @@
-use super::text_edit;
+use crate::widgets::shared::text_edit;
 use crate::core::value::Value;
 use crate::terminal::{CursorPos, KeyCode, KeyEvent, KeyModifiers};
 use crate::ui::span::Span;
 use crate::ui::style::{Color, Style};
 use crate::widgets::components::scroll::ScrollState;
+use crate::widgets::node::{Component, Node};
 use crate::widgets::traits::{
     DrawOutput, Drawable, FocusMode, InteractionResult, Interactive, RenderContext, TextAction,
     TextEditState, ValidationMode,
@@ -11,7 +12,7 @@ use crate::widgets::traits::{
 use crate::widgets::validators::{Validator, run_validators};
 use unicode_width::UnicodeWidthChar;
 
-pub struct TextAreaInput {
+pub struct TextAreaComponent {
     id: String,
 
     lines: Vec<String>,
@@ -25,7 +26,7 @@ pub struct TextAreaInput {
     validators: Vec<Validator>,
 }
 
-impl TextAreaInput {
+impl TextAreaComponent {
     pub fn new(id: impl Into<String>) -> Self {
         let max_height = 8;
         Self {
@@ -61,21 +62,17 @@ impl TextAreaInput {
         self
     }
 
-
     fn num_width(&self) -> usize {
         self.lines.len().to_string().len()
     }
-
 
     fn gutter_width(&self) -> usize {
         1 + 1 + self.num_width() + 2
     }
 
-
     fn visible_height(&self) -> usize {
         self.lines.len().clamp(self.min_height, self.max_height)
     }
-
 
     fn split_line(&mut self) {
         let col = self.col.min(text_edit::char_count(&self.lines[self.row]));
@@ -89,7 +86,6 @@ impl TextAreaInput {
         self.scroll.ensure_visible(self.row, self.lines.len());
     }
 
-
     fn merge_with_prev(&mut self) {
         if self.row == 0 {
             return;
@@ -101,7 +97,6 @@ impl TextAreaInput {
         self.col = prev_len;
         self.scroll.ensure_visible(self.row, self.lines.len());
     }
-
 
     fn merge_with_next(&mut self) {
         if self.row + 1 >= self.lines.len() {
@@ -139,7 +134,7 @@ impl TextAreaInput {
     }
 }
 
-impl Drawable for TextAreaInput {
+impl Drawable for TextAreaComponent {
     fn id(&self) -> &str {
         &self.id
     }
@@ -183,32 +178,38 @@ impl Drawable for TextAreaInput {
     }
 }
 
-impl Interactive for TextAreaInput {
+impl Component for TextAreaComponent {
+    fn children(&self) -> &[Node] {
+        &[]
+    }
+
+    fn children_mut(&mut self) -> &mut [Node] {
+        &mut []
+    }
+}
+
+impl Interactive for TextAreaComponent {
     fn focus_mode(&self) -> FocusMode {
         FocusMode::Leaf
     }
 
     fn on_key(&mut self, key: KeyEvent) -> InteractionResult {
         match key.code {
-
             KeyCode::Esc => InteractionResult::input_done(),
             KeyCode::Enter if key.modifiers.contains(KeyModifiers::CONTROL) => {
                 InteractionResult::input_done()
             }
-
 
             KeyCode::Enter => {
                 self.split_line();
                 InteractionResult::handled()
             }
 
-
             KeyCode::Char(ch) => {
                 text_edit::insert_char(&mut self.lines[self.row], &mut self.col, ch);
                 self.scroll.ensure_visible(self.row, self.lines.len());
                 InteractionResult::handled()
             }
-
 
             KeyCode::Backspace => {
                 if self.col > 0 {
@@ -220,7 +221,6 @@ impl Interactive for TextAreaInput {
                 InteractionResult::handled()
             }
 
-
             KeyCode::Delete => {
                 let at_end = self.col >= self.current_line_len();
                 if !at_end {
@@ -231,7 +231,6 @@ impl Interactive for TextAreaInput {
                 self.scroll.ensure_visible(self.row, self.lines.len());
                 InteractionResult::handled()
             }
-
 
             KeyCode::Left => {
                 if self.col > 0 {
@@ -254,7 +253,6 @@ impl Interactive for TextAreaInput {
                 InteractionResult::handled()
             }
 
-
             KeyCode::Up => {
                 if self.row > 0 {
                     self.row -= 1;
@@ -271,7 +269,6 @@ impl Interactive for TextAreaInput {
                 }
                 InteractionResult::handled()
             }
-
 
             KeyCode::Home => {
                 self.col = 0;
@@ -294,14 +291,12 @@ impl Interactive for TextAreaInput {
     }
 
     fn on_text_action(&mut self, action: TextAction) -> InteractionResult {
-
         if action == TextAction::MoveWordLeft && self.col == 0 && self.row > 0 {
             self.row -= 1;
             self.col = text_edit::char_count(&self.lines[self.row]);
             self.scroll.ensure_visible(self.row, self.lines.len());
             return InteractionResult::handled();
         }
-
 
         if action == TextAction::MoveWordRight
             && self.col >= text_edit::char_count(&self.lines[self.row])

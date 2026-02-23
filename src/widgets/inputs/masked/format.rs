@@ -1,7 +1,7 @@
 use super::model::{MaskToken, SegmentKind, SegmentRole};
 use crate::ui::span::Span;
 use crate::ui::style::{Color, Style};
-use crate::widgets::inputs::text_edit;
+use crate::widgets::shared::text_edit;
 use crate::widgets::shared::calendar;
 
 pub(super) fn token_accepts(kind: SegmentKind, ch: char) -> bool {

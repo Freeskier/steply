@@ -37,3 +37,8 @@ DateInput` / `TimeInput` — oparte na masked, ale z walidacją zakresu i nawiga
 - timer do jakiegoś czasu
 - - text effect że tak "błyszczy" - falowo zmienia się kolor czcionki
 - WEB BUILDER
+- conditional rendering
+- poprawa renderowania itemów w tree view/select list tak żeby wpierało multi line na select + wyszukiwanie fuzzy. Może do object edytowa też dodać filter na ctrl + f?
+- wsparcie na linki/url
+- output collapsing
+- na / otwiera sie command palette i mozna użyć ai

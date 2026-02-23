@@ -167,6 +167,10 @@ pub struct ObjectEditor {
 }
 
 impl ObjectEditor {
+    fn tree_id(base_id: &str) -> String {
+        format!("{base_id}__tree")
+    }
+
     fn spans_width(spans: &[Span]) -> u16 {
         spans
             .iter()
@@ -217,7 +221,7 @@ impl ObjectEditor {
 
     pub fn new(id: impl Into<String>, label: impl Into<String>) -> Self {
         let id = id.into();
-        let tree_id = format!("{id}__tree");
+        let tree_id = Self::tree_id(id.as_str());
         let filter_id = format!("{id}__filter");
         let mut this = Self {
             base: WidgetBase::new(id, label),
@@ -244,7 +248,7 @@ impl ObjectEditor {
     }
 
     pub fn with_max_visible(mut self, n: usize) -> Self {
-        let id = format!("{}_tree", self.base.id());
+        let id = Self::tree_id(self.base.id());
         let nodes = std::mem::take(self.tree.nodes_mut());
         self.tree = TreeView::new(id, "", nodes)
             .with_show_label(false)
@@ -358,13 +362,15 @@ impl ObjectEditor {
     }
 
     fn toggle_filter_visibility(&mut self) {
-        self.filter_visible = !self.filter_visible;
-        if self.filter_visible {
-            self.filter_focus = true;
+        let visible = crate::widgets::shared::filter::toggle_visibility(
+            &mut self.filter,
+            &mut self.filter_visible,
+            &mut self.filter_focus,
+            false,
+        );
+        if visible {
             return;
         }
-        self.filter_focus = false;
-        self.filter.set_value(Value::Text(String::new()));
         self.tree.clear_filter();
     }
 

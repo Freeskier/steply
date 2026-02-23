@@ -15,6 +15,8 @@ use crate::widgets::base::WidgetBase;
 use crate::widgets::components::scroll::ScrollState;
 use crate::widgets::inputs::text::TextInput;
 use crate::widgets::node::{Component, Node};
+use crate::widgets::shared::cursor_anchor;
+use crate::widgets::shared::filter;
 use crate::widgets::traits::{
     CompletionState, DrawOutput, Drawable, FocusMode, HintContext, HintGroup, HintItem,
     InteractionResult, Interactive, RenderContext, TextAction,
@@ -226,13 +228,15 @@ impl<T: TreeItemLabel> TreeView<T> {
     }
 
     fn toggle_filter_visibility(&mut self) {
-        self.filter_visible = !self.filter_visible;
-        if self.filter_visible {
-            self.filter_focus = true;
-            return;
+        let visible = filter::toggle_visibility(
+            &mut self.filter,
+            &mut self.filter_visible,
+            &mut self.filter_focus,
+            false,
+        );
+        if !visible {
+            self.clear_filter();
         }
-        self.filter_focus = false;
-        self.clear_filter();
     }
 
     fn child_context(&self, ctx: &RenderContext, focused_id: Option<String>) -> RenderContext {
@@ -246,29 +250,20 @@ impl<T: TreeItemLabel> TreeView<T> {
     }
 
     fn handle_filter_key(&mut self, key: KeyEvent) -> InteractionResult {
-        if key.modifiers != KeyModifiers::NONE {
-            return InteractionResult::ignored();
-        }
-        match key.code {
-            KeyCode::Esc => {
+        let before = self.filter_text();
+        match filter::handle_key(&mut self.filter, key, filter::FilterEscBehavior::Blur) {
+            filter::FilterKeyOutcome::Ignored => InteractionResult::ignored(),
+            filter::FilterKeyOutcome::Hide | filter::FilterKeyOutcome::Blur => {
                 self.filter_focus = false;
                 InteractionResult::handled()
             }
-            KeyCode::Enter | KeyCode::Down => {
-                self.filter_focus = false;
-                InteractionResult::handled()
-            }
-            _ => {
-                let before = self.filter_text();
-                let mut result = self.filter.on_key(key);
-                result.actions.retain(|action| {
-                    !matches!(action, crate::runtime::event::WidgetAction::InputDone)
-                });
+            filter::FilterKeyOutcome::Edited(result) => {
                 if self.filter_text() != before {
                     self.sync_filter_from_input();
-                    return InteractionResult::handled();
+                    InteractionResult::handled()
+                } else {
+                    result
                 }
-                result
             }
         }
     }
@@ -546,6 +541,21 @@ impl<T: TreeItemLabel> TreeView<T> {
         }
         guides
     }
+
+    fn marker_cursor_pos(&self) -> Option<CursorPos> {
+        if self.visible.is_empty() {
+            return None;
+        }
+        let (start, end) = self.scroll.visible_range(self.visible.len());
+        let mut row = 0usize;
+        if self.show_label && !self.base.label().is_empty() {
+            row += 1;
+        }
+        if self.filter_visible {
+            row += 1;
+        }
+        cursor_anchor::visible_row_cursor(self.active_index, start, end, row, 0)
+    }
 }
 
 impl<T: TreeItemLabel> Component for TreeView<T> {
@@ -698,10 +708,7 @@ impl<T: TreeItemLabel> Interactive for TreeView<T> {
             return InteractionResult::ignored();
         }
         let before = self.filter_text();
-        let mut result = self.filter.on_text_action(action);
-        result
-            .actions
-            .retain(|a| !matches!(a, crate::runtime::event::WidgetAction::InputDone));
+        let result = filter::handle_text_action(&mut self.filter, action);
         if self.filter_text() != before {
             self.sync_filter_from_input();
             return InteractionResult::handled();
@@ -717,17 +724,21 @@ impl<T: TreeItemLabel> Interactive for TreeView<T> {
     }
 
     fn cursor_pos(&self) -> Option<CursorPos> {
-        if !self.filter_focus {
-            return None;
+        if self.filter_focus {
+            let local = self.filter.cursor_pos()?;
+            let mut row: u16 = 0;
+            if self.show_label && !self.base.label().is_empty() {
+                row = row.saturating_add(1);
+            }
+            return Some(CursorPos {
+                col: local.col.saturating_add(8),
+                row,
+            });
         }
-        let local = self.filter.cursor_pos()?;
-        let mut row: u16 = 0;
-        if self.show_label && !self.base.label().is_empty() {
-            row = row.saturating_add(1);
-        }
-        Some(CursorPos {
-            col: local.col.saturating_add(8),
-            row,
-        })
+        self.marker_cursor_pos()
+    }
+
+    fn cursor_visible(&self) -> bool {
+        self.filter_focus
     }
 }

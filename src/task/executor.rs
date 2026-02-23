@@ -1,6 +1,6 @@
 use crate::task::execution::{TaskCompletion, TaskInvocation, execute_invocation};
 use crate::task::spec::TaskId;
-use std::sync::mpsc::{self, Receiver, Sender, SyncSender, TryRecvError};
+use std::sync::mpsc::{self, Receiver, Sender, SyncSender, TryRecvError, TrySendError};
 use std::sync::{Arc, Mutex};
 
 pub struct LogLine {
@@ -12,6 +12,7 @@ pub struct LogLine {
 pub struct TaskExecutor {
     invocation_tx: SyncSender<TaskInvocation>,
     completion_rx: Receiver<TaskCompletion>,
+    completion_tx: Sender<TaskCompletion>,
     log_rx: Receiver<LogLine>,
     log_tx: Sender<LogLine>,
 }
@@ -21,10 +22,11 @@ impl TaskExecutor {
         let (invocation_tx, invocation_rx) = mpsc::sync_channel::<TaskInvocation>(256);
         let (completion_tx, completion_rx) = mpsc::channel::<TaskCompletion>();
         let (log_tx, log_rx) = mpsc::channel::<LogLine>();
-        spawn_workers(invocation_rx, completion_tx);
+        spawn_workers(invocation_rx, completion_tx.clone());
         Self {
             invocation_tx,
             completion_rx,
+            completion_tx,
             log_rx,
             log_tx,
         }
@@ -39,7 +41,19 @@ impl TaskExecutor {
             }
             .into_sender(),
         );
-        let _ = self.invocation_tx.send(invocation);
+        match self.invocation_tx.try_send(invocation) {
+            Ok(()) => {}
+            Err(TrySendError::Full(invocation)) => {
+                let _ = self
+                    .completion_tx
+                    .send(rejected_completion(invocation, "task queue is full"));
+            }
+            Err(TrySendError::Disconnected(invocation)) => {
+                let _ = self
+                    .completion_tx
+                    .send(rejected_completion(invocation, "task queue is unavailable"));
+            }
+        }
     }
 
     pub fn drain_ready(&self) -> Vec<TaskCompletion> {
@@ -118,5 +132,20 @@ fn spawn_workers(invocation_rx: Receiver<TaskInvocation>, completion_tx: Sender<
                 let _ = tx.send(completion);
             }
         });
+    }
+}
+
+fn rejected_completion(invocation: TaskInvocation, reason: &str) -> TaskCompletion {
+    TaskCompletion {
+        task_id: invocation.spec.id,
+        run_id: invocation.run_id,
+        assign: invocation.spec.assign,
+        concurrency_policy: invocation.spec.concurrency_policy,
+        value: None,
+        status_code: None,
+        stdout: String::new(),
+        stderr: String::new(),
+        error: Some(reason.to_string()),
+        cancelled: false,
     }
 }

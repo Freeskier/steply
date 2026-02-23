@@ -3,17 +3,19 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use indexmap::IndexMap;
-use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
+use unicode_width::UnicodeWidthStr;
 
 use crate::core::search::fuzzy::match_text;
 use crate::core::value::Value;
-use crate::runtime::event::WidgetAction;
 use crate::terminal::{CursorPos, KeyCode, KeyEvent, KeyModifiers, TerminalSize};
+use crate::ui::layout::Layout;
 use crate::ui::span::{Span, SpanLine};
 use crate::ui::style::{Color, Style};
 use crate::widgets::base::WidgetBase;
 use crate::widgets::inputs::text::TextInput;
 use crate::widgets::node::{Component, Node};
+use crate::widgets::shared::cursor_anchor;
+use crate::widgets::shared::filter as filter_utils;
 use crate::widgets::traits::{
     CompletionMenu, CompletionState, DrawOutput, Drawable, FocusMode, InteractionResult,
     Interactive, InteractiveNode, RenderContext, TextAction, ValidationMode,
@@ -325,14 +327,15 @@ impl Table {
     }
 
     fn toggle_filter_visibility(&mut self) {
-        self.filter_visible = !self.filter_visible;
-        if self.filter_visible {
-            self.filter_focus = true;
-            return;
+        let visible = filter_utils::toggle_visibility(
+            &mut self.filter,
+            &mut self.filter_visible,
+            &mut self.filter_focus,
+            true,
+        );
+        if !visible {
+            self.apply_filter(self.active_row_id());
         }
-        self.filter_focus = false;
-        self.filter.set_value(Value::Text(String::new()));
-        self.apply_filter(self.active_row_id());
     }
 
     fn filter_query(&self) -> String {
@@ -593,7 +596,7 @@ impl Table {
                         && self.active_row == row_idx
                         && self.active_col == col_idx;
                     let line = self.render_cell_line(row_idx, col_idx, ctx, focused);
-                    width = width.max(span_line_width(line.as_slice()));
+                    width = width.max(Layout::line_width(line.as_slice()));
                 }
                 width
             })
@@ -969,7 +972,7 @@ impl Table {
         let Some(cell) = self.active_cell_mut() else {
             return InteractionResult::ignored();
         };
-        let result = sanitize_child_result(cell.on_key(key));
+        let result = filter_utils::sanitize_interaction_result(cell.on_key(key));
         if result.handled {
             self.apply_filter(self.active_row_id());
         }
@@ -977,26 +980,25 @@ impl Table {
     }
 
     fn handle_filter_key(&mut self, key: KeyEvent) -> InteractionResult {
-        if key.modifiers != KeyModifiers::NONE {
-            return InteractionResult::ignored();
-        }
-        match key.code {
-            KeyCode::Esc => {
+        let before = self.filter_query();
+        match filter_utils::handle_key(&mut self.filter, key, filter_utils::FilterEscBehavior::Hide)
+        {
+            filter_utils::FilterKeyOutcome::Ignored => InteractionResult::ignored(),
+            filter_utils::FilterKeyOutcome::Hide => {
                 self.toggle_filter_visibility();
                 InteractionResult::handled()
             }
-            KeyCode::Enter | KeyCode::Down => {
+            filter_utils::FilterKeyOutcome::Blur => {
                 self.filter_focus = false;
                 InteractionResult::handled()
             }
-            _ => {
-                let before = self.filter_query();
-                let result = sanitize_child_result(self.filter.on_key(key));
+            filter_utils::FilterKeyOutcome::Edited(result) => {
                 if self.filter_query() != before {
                     self.apply_filter(self.active_row_id());
-                    return InteractionResult::handled();
+                    InteractionResult::handled()
+                } else {
+                    result
                 }
-                result
             }
         }
     }
@@ -1077,7 +1079,7 @@ impl Interactive for Table {
     fn on_text_action(&mut self, action: TextAction) -> InteractionResult {
         if self.filter_focus {
             let before = self.filter_query();
-            let result = sanitize_child_result(self.filter.on_text_action(action));
+            let result = filter_utils::handle_text_action(&mut self.filter, action);
             if self.filter_query() != before {
                 self.apply_filter(self.active_row_id());
                 return InteractionResult::handled();
@@ -1090,7 +1092,7 @@ impl Interactive for Table {
         let Some(cell) = self.active_cell_mut() else {
             return InteractionResult::ignored();
         };
-        let result = sanitize_child_result(cell.on_text_action(action));
+        let result = filter_utils::sanitize_interaction_result(cell.on_text_action(action));
         if result.handled {
             self.apply_filter(self.active_row_id());
         }
@@ -1116,8 +1118,13 @@ impl Interactive for Table {
                 row,
             });
         }
-        if self.focus != TableFocus::Body || !self.edit_mode {
+        if self.focus != TableFocus::Body {
             return None;
+        }
+        if !self.edit_mode {
+            let row_offset = self.active_visible_pos()? as u16;
+            let row = self.body_row_start().saturating_add(row_offset);
+            return Some(cursor_anchor::anchored_cursor(row as usize, 0));
         }
         let local = self.active_cell().and_then(|cell| cell.cursor_pos())?;
 
@@ -1140,6 +1147,12 @@ impl Interactive for Table {
             .saturating_add(row_offset)
             .saturating_add(local.row);
         Some(CursorPos { col, row })
+    }
+
+    fn cursor_visible(&self) -> bool {
+        cursor_anchor::visible_when_text_cursor(
+            self.filter_focus || (self.focus == TableFocus::Body && self.edit_mode),
+        )
     }
 
     fn value(&self) -> Option<Value> {
@@ -1208,16 +1221,6 @@ impl Interactive for Table {
         }
         Ok(())
     }
-}
-
-fn sanitize_child_result(mut result: InteractionResult) -> InteractionResult {
-    result
-        .actions
-        .retain(|action| !matches!(action, WidgetAction::InputDone));
-    if result.handled {
-        result.request_render = true;
-    }
-    result
 }
 
 fn normalize_key(header: &str) -> String {
@@ -1362,56 +1365,6 @@ fn highlight_span_line(spans: &mut SpanLine, ranges: &[(usize, usize)], highligh
     }
 }
 
-fn span_line_width(spans: &[Span]) -> usize {
-    spans
-        .iter()
-        .map(|span| UnicodeWidthStr::width(span.text.as_str()))
-        .sum()
-}
-
-fn fit_spans_to_width(spans: SpanLine, width: usize) -> SpanLine {
-    if width == 0 {
-        return vec![];
-    }
-
-    let mut out = Vec::<Span>::new();
-    let mut used = 0usize;
-    for span in spans {
-        if used >= width {
-            break;
-        }
-        let available = width.saturating_sub(used);
-        let clipped = clip_text_to_width(span.text.as_str(), available);
-        if clipped.is_empty() {
-            continue;
-        }
-        used = used.saturating_add(UnicodeWidthStr::width(clipped.as_str()));
-        out.push(Span::styled(clipped, span.style).no_wrap());
-    }
-
-    if used < width {
-        out.push(Span::new(" ".repeat(width - used)).no_wrap());
-    }
-    out
-}
-
-fn clip_text_to_width(text: &str, max_width: usize) -> String {
-    if max_width == 0 {
-        return String::new();
-    }
-    let mut used = 0usize;
-    let mut out = String::new();
-    for ch in text.chars() {
-        let ch_width = UnicodeWidthChar::width(ch).unwrap_or(0);
-        if used.saturating_add(ch_width) > max_width {
-            break;
-        }
-        out.push(ch);
-        used = used.saturating_add(ch_width);
-    }
-    out
-}
-
 fn grid_border_line(left: char, middle: char, right: char, widths: &[usize]) -> SpanLine {
     let border_style = Style::new().color(Color::DarkGrey);
     let mut line = Vec::<Span>::new();
@@ -1431,9 +1384,10 @@ fn grid_row(cells: Vec<SpanLine>, widths: &[usize]) -> SpanLine {
     let mut line = Vec::<Span>::new();
     for (idx, width) in widths.iter().enumerate() {
         line.push(Span::styled("│ ", border_style).no_wrap());
-        line.extend(fit_spans_to_width(
-            cells.get(idx).cloned().unwrap_or_default(),
-            *width,
+        let cell = cells.get(idx).cloned().unwrap_or_default();
+        line.extend(Layout::fit_line(
+            cell.as_slice(),
+            (*width).min(u16::MAX as usize) as u16,
         ));
         line.push(Span::new(" ").no_wrap());
     }
@@ -1447,9 +1401,10 @@ fn clean_row(cells: Vec<SpanLine>, widths: &[usize]) -> SpanLine {
         if idx > 0 {
             line.push(Span::new("  ").no_wrap());
         }
-        line.extend(fit_spans_to_width(
-            cells.get(idx).cloned().unwrap_or_default(),
-            *width,
+        let cell = cells.get(idx).cloned().unwrap_or_default();
+        line.extend(Layout::fit_line(
+            cell.as_slice(),
+            (*width).min(u16::MAX as usize) as u16,
         ));
     }
     line

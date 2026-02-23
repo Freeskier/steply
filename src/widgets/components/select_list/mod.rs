@@ -10,12 +10,15 @@ use crate::core::value::Value;
 use crate::core::value_path::{ValuePath, ValueTarget};
 
 use crate::terminal::{CursorPos, KeyCode, KeyEvent, KeyModifiers};
+use crate::ui::layout::{Layout, LineContinuation, RenderBlock};
 use crate::ui::span::Span;
 use crate::ui::style::{Color, Style};
 use crate::widgets::base::WidgetBase;
 use crate::widgets::components::scroll::ScrollState;
 use crate::widgets::inputs::text::TextInput;
 use crate::widgets::node::{Component, Node};
+use crate::widgets::shared::cursor_anchor;
+use crate::widgets::shared::filter;
 use crate::widgets::traits::{
     CompletionState, DrawOutput, Drawable, FocusMode, HintContext, HintGroup, HintItem,
     InteractionResult, Interactive, RenderContext, TextAction,
@@ -218,15 +221,15 @@ impl SelectList {
     }
 
     fn toggle_filter_visibility(&mut self) {
-        self.filter_visible = !self.filter_visible;
-        if self.filter_visible {
-            self.filter_focus = true;
-            return;
+        let visible = filter::toggle_visibility(
+            &mut self.filter,
+            &mut self.filter_visible,
+            &mut self.filter_focus,
+            true,
+        );
+        if !visible {
+            self.apply_filter(None);
         }
-
-        self.filter_focus = false;
-        self.filter.set_value(Value::Text(String::new()));
-        self.apply_filter(None);
     }
 
     fn filter_query(&self) -> String {
@@ -303,6 +306,48 @@ impl SelectList {
             .ensure_visible(self.active_index, self.options.len());
     }
 
+    fn marker_cursor_pos(&self) -> Option<CursorPos> {
+        if self.options.is_empty() {
+            return None;
+        }
+
+        let total = self.options.len();
+        let (start, end) = self.scroll.visible_range(total);
+
+        let mut row = 0usize;
+        if self.show_label && !self.base.label().is_empty() {
+            row += 1;
+        }
+        if self.filter_visible {
+            row += 1;
+        }
+
+        for index in start..self.active_index {
+            let Some(option) = self.options.get(index) else {
+                continue;
+            };
+            let selected = self
+                .visible_to_source
+                .get(index)
+                .is_some_and(|source| self.selected.contains(source));
+            let line_count = (self.option_renderer)(
+                option,
+                SelectItemRenderState {
+                    focused: true,
+                    active: false,
+                    selected,
+                    mode: self.mode,
+                    base_style: Style::default(),
+                    highlight_style: Style::new().color(Color::Yellow).bold(),
+                },
+            )
+            .len()
+            .max(1);
+            row = row.saturating_add(line_count);
+        }
+        cursor_anchor::visible_row_cursor(self.active_index, start, end, row, 0)
+    }
+
     fn toggle(&mut self, index: usize) {
         let Some(source_index) = self.visible_to_source.get(index).copied() else {
             return;
@@ -355,7 +400,64 @@ impl SelectList {
         self.selected != before
     }
 
-    fn line_items(&self, focused: bool) -> Vec<Vec<Span>> {
+    fn plain_gap_prefix() -> Vec<Span> {
+        vec![Span::new("   ").no_wrap()]
+    }
+
+    fn muted_gap_prefix(style: Style) -> Vec<Span> {
+        vec![
+            Span::styled(" ", style).no_wrap(),
+            Span::styled(" ", style).no_wrap(),
+            Span::styled(" ", style).no_wrap(),
+            Span::styled(" ", style).no_wrap(),
+        ]
+    }
+
+    fn list_active_prefix(cursor: &str, cursor_style: Style, inactive_style: Style) -> Vec<Span> {
+        vec![
+            Span::styled(cursor, cursor_style).no_wrap(),
+            Span::new(" ").no_wrap(),
+            Span::styled("│", inactive_style).no_wrap(),
+        ]
+    }
+
+    fn list_next_prefix(inactive_style: Style) -> Vec<Span> {
+        vec![
+            Span::new(" ").no_wrap(),
+            Span::new(" ").no_wrap(),
+            Span::styled("│", inactive_style).no_wrap(),
+        ]
+    }
+
+    fn option_active_prefix(
+        cursor: &str,
+        cursor_style: Style,
+        marker: &str,
+        marker_style: Style,
+    ) -> Vec<Span> {
+        vec![
+            Span::styled(cursor, cursor_style).no_wrap(),
+            Span::new(" ").no_wrap(),
+            Span::styled(marker, marker_style).no_wrap(),
+            Span::new(" ").no_wrap(),
+        ]
+    }
+
+    fn option_inactive_prefix(
+        cursor: &str,
+        inactive_style: Style,
+        marker: &str,
+        marker_style: Style,
+    ) -> Vec<Span> {
+        vec![
+            Span::styled(cursor, inactive_style).no_wrap(),
+            Span::styled(" ", inactive_style).no_wrap(),
+            Span::styled(marker, marker_style).no_wrap(),
+            Span::styled(" ", inactive_style).no_wrap(),
+        ]
+    }
+
+    fn line_items(&self, focused: bool, wrap_width: u16) -> Vec<Vec<Span>> {
         let mut lines = Vec::<Vec<Span>>::new();
         let inactive_style = Style::new().color(Color::DarkGrey);
         let marker_selected_style = Style::new().color(Color::Green);
@@ -396,25 +498,31 @@ impl SelectList {
                     },
                 );
                 for (line_idx, option_line) in option_lines.into_iter().enumerate() {
-                    let mut spans = Vec::<Span>::new();
-                    if focused && active {
-                        if line_idx == 0 {
-                            spans.push(Span::styled(cursor, cursor_style).no_wrap());
-                            spans.push(Span::new(" ").no_wrap());
-                        } else {
-                            spans.push(Span::new(" ").no_wrap());
-                            spans.push(Span::new(" ").no_wrap());
-                        }
-                        spans.push(Span::styled("│", inactive_style).no_wrap());
-                        spans.push(Span::new(" ").no_wrap());
+                    let first_prefix = if focused && active && line_idx == 0 {
+                        Self::list_active_prefix(cursor, cursor_style, inactive_style)
+                    } else if focused && active {
+                        Self::list_next_prefix(inactive_style)
                     } else {
-                        spans.push(Span::new(" ").no_wrap());
-                        spans.push(Span::new(" ").no_wrap());
-                        spans.push(Span::new(" ").no_wrap());
-                        spans.push(Span::new(" ").no_wrap());
-                    }
-                    spans.extend(option_line);
-                    lines.push(spans);
+                        Self::plain_gap_prefix()
+                    };
+                    let next_prefix = if focused && active {
+                        Self::list_next_prefix(inactive_style)
+                    } else {
+                        Self::plain_gap_prefix()
+                    };
+
+                    lines.extend(Layout::compose_block(
+                        &RenderBlock {
+                            start_col: 0,
+                            end_col: Some(wrap_width),
+                            lines: vec![option_line],
+                        },
+                        wrap_width,
+                        Some(&LineContinuation {
+                            first_prefix,
+                            next_prefix,
+                        }),
+                    ));
                 }
                 continue;
             }
@@ -445,27 +553,28 @@ impl SelectList {
             );
 
             for (line_idx, option_line) in option_lines.into_iter().enumerate() {
-                let mut spans = Vec::<Span>::new();
-                if line_idx == 0 {
+                let first_prefix = if line_idx == 0 {
                     if active {
-                        spans.push(Span::styled(cursor, cursor_style).no_wrap());
-                        spans.push(Span::new(" ").no_wrap());
-                        spans.push(Span::styled(marker, marker_style).no_wrap());
-                        spans.push(Span::new(" ").no_wrap());
+                        Self::option_active_prefix(cursor, cursor_style, marker, marker_style)
                     } else {
-                        spans.push(Span::styled(cursor, inactive_style).no_wrap());
-                        spans.push(Span::styled(" ", inactive_style).no_wrap());
-                        spans.push(Span::styled(marker, marker_style).no_wrap());
-                        spans.push(Span::styled(" ", inactive_style).no_wrap());
+                        Self::option_inactive_prefix(cursor, inactive_style, marker, marker_style)
                     }
                 } else {
-                    spans.push(Span::styled(" ", inactive_style).no_wrap());
-                    spans.push(Span::styled(" ", inactive_style).no_wrap());
-                    spans.push(Span::styled(" ", inactive_style).no_wrap());
-                    spans.push(Span::styled(" ", inactive_style).no_wrap());
-                }
-                spans.extend(option_line);
-                lines.push(spans);
+                    Self::muted_gap_prefix(inactive_style)
+                };
+                let next_prefix = Self::muted_gap_prefix(inactive_style);
+                lines.extend(Layout::compose_block(
+                    &RenderBlock {
+                        start_col: 0,
+                        end_col: Some(wrap_width),
+                        lines: vec![option_line],
+                    },
+                    wrap_width,
+                    Some(&LineContinuation {
+                        first_prefix,
+                        next_prefix,
+                    }),
+                ));
             }
         }
 
@@ -489,24 +598,18 @@ impl SelectList {
     }
 
     fn handle_filter_key(&mut self, key: KeyEvent) -> InteractionResult {
-        if key.modifiers != KeyModifiers::NONE {
-            return InteractionResult::ignored();
-        }
-
-        match key.code {
-            KeyCode::Esc => {
+        let before = self.filter_query();
+        match filter::handle_key(&mut self.filter, key, filter::FilterEscBehavior::Hide) {
+            filter::FilterKeyOutcome::Ignored => InteractionResult::ignored(),
+            filter::FilterKeyOutcome::Hide => {
                 self.toggle_filter_visibility();
                 InteractionResult::handled()
             }
-            KeyCode::Enter | KeyCode::Down => {
+            filter::FilterKeyOutcome::Blur => {
                 self.filter_focus = false;
                 InteractionResult::handled()
             }
-            _ => {
-                let before = self.filter_query();
-                let result = sanitize_child_result(self.filter.on_key(key));
-                self.apply_filter_on_edit(before, result)
-            }
+            filter::FilterKeyOutcome::Edited(result) => self.apply_filter_on_edit(before, result),
         }
     }
 
@@ -602,7 +705,8 @@ impl Drawable for SelectList {
             lines.push(filter_line);
         }
 
-        lines.extend(self.line_items(focused && !self.filter_focus));
+        let wrap_width = ctx.terminal_size.width.max(1);
+        lines.extend(self.line_items(focused && !self.filter_focus, wrap_width));
         DrawOutput { lines }
     }
 
@@ -652,7 +756,7 @@ impl Interactive for SelectList {
         }
 
         let before = self.filter_query();
-        let result = sanitize_child_result(self.filter.on_text_action(action));
+        let result = filter::handle_text_action(&mut self.filter, action);
         self.apply_filter_on_edit(before, result)
     }
 
@@ -664,19 +768,23 @@ impl Interactive for SelectList {
     }
 
     fn cursor_pos(&self) -> Option<CursorPos> {
-        if !self.filter_focus {
-            return None;
+        if self.filter_focus {
+            let local = self.filter.cursor_pos()?;
+            let row = if self.show_label && !self.base.label().is_empty() {
+                1
+            } else {
+                0
+            };
+            return Some(CursorPos {
+                col: local.col.saturating_add(8),
+                row,
+            });
         }
-        let local = self.filter.cursor_pos()?;
-        let row = if self.show_label && !self.base.label().is_empty() {
-            1
-        } else {
-            0
-        };
-        Some(CursorPos {
-            col: local.col.saturating_add(8),
-            row,
-        })
+        self.marker_cursor_pos()
+    }
+
+    fn cursor_visible(&self) -> bool {
+        self.filter_focus
     }
 
     fn value(&self) -> Option<Value> {
@@ -724,16 +832,6 @@ impl Interactive for SelectList {
 
         self.apply_filter(None);
     }
-}
-
-fn sanitize_child_result(mut result: InteractionResult) -> InteractionResult {
-    result
-        .actions
-        .retain(|action| !matches!(action, crate::runtime::event::WidgetAction::InputDone));
-    if result.handled {
-        result.request_render = true;
-    }
-    result
 }
 
 fn fuzzy_filter_options(

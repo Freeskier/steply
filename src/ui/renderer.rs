@@ -24,6 +24,7 @@ use overlay::apply_overlay;
 pub struct RenderFrame {
     pub lines: Vec<SpanLine>,
     pub cursor: Option<CursorPos>,
+    pub cursor_visible: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -129,6 +130,7 @@ impl Renderer {
                 as u16;
             if cursor.row > max_row {
                 frame.cursor = None;
+                frame.cursor_visible = false;
             }
         }
     }
@@ -157,6 +159,18 @@ fn build_base_frame(
         return frame;
     }
     let blocking_overlay = view.has_blocking_overlay;
+    let compose_width = if config.decorations_enabled {
+        terminal_size
+            .width
+            .saturating_sub(decoration_gutter_width().min(u16::MAX as usize) as u16)
+            .max(1)
+    } else {
+        terminal_size.width
+    };
+    let node_terminal_size = TerminalSize {
+        width: compose_width,
+        height: terminal_size.height,
+    };
 
     let last_visible_idx = view
         .step_statuses
@@ -177,6 +191,7 @@ fn build_base_frame(
 
         let mut block_lines = Vec::<SpanLine>::new();
         let mut block_cursor: Option<CursorPos> = None;
+        let mut block_cursor_visible = true;
         let mut row_offset: u16 = 0;
 
         let title_style = match status {
@@ -217,7 +232,7 @@ fn build_base_frame(
         let ctx = render_context_for_nodes(
             view.validation,
             view.completion.as_ref(),
-            terminal_size,
+            node_terminal_size,
             status,
             step.nodes.as_slice(),
             focused_id,
@@ -229,6 +244,7 @@ fn build_base_frame(
             &ctx,
             &mut block_lines,
             &mut block_cursor,
+            &mut block_cursor_visible,
             &mut row_offset,
             track_cursor,
             strikethrough_inputs,
@@ -239,14 +255,6 @@ fn build_base_frame(
         }
 
         let layout_cursor = block_cursor.map(|cursor| (cursor.row as usize, cursor.col as usize));
-        let compose_width = if config.decorations_enabled {
-            terminal_size
-                .width
-                .saturating_sub(decoration_gutter_width().min(u16::MAX as usize) as u16)
-                .max(1)
-        } else {
-            terminal_size.width
-        };
         let (composed_lines, mapped_cursor) =
             Layout::compose_with_cursor(&block_lines, compose_width, layout_cursor);
         block_lines = composed_lines;
@@ -312,6 +320,7 @@ fn build_base_frame(
         {
             cursor.row = cursor.row.saturating_add(start_row);
             frame.cursor = Some(cursor);
+            frame.cursor_visible = block_cursor_visible;
         }
 
         if status == StepVisualStatus::Done && !config.decorations_enabled {
@@ -503,6 +512,7 @@ fn draw_nodes(
     ctx: &RenderContext,
     lines: &mut Vec<SpanLine>,
     cursor: &mut Option<CursorPos>,
+    cursor_visible: &mut bool,
     row_offset: &mut u16,
     track_cursor: bool,
     strikethrough_inputs: bool,
@@ -577,6 +587,7 @@ fn draw_nodes(
                 col: local_cursor.col.saturating_add(label_offset as u16),
                 row: row_offset.saturating_add(local_cursor.row),
             });
+            *cursor_visible = node.cursor_visible();
         }
         *row_offset = row_offset.saturating_add(out.lines.len() as u16);
         lines.extend(out.lines);

@@ -159,6 +159,14 @@ impl Node {
         }
     }
 
+    pub fn cursor_visible(&self) -> bool {
+        match self {
+            Self::Input(w) => w.cursor_visible(),
+            Self::Component(w) => w.cursor_visible(),
+            Self::Output(_) => false,
+        }
+    }
+
     pub fn value(&self) -> Option<Value> {
         match self {
             Self::Input(w) => w.value(),

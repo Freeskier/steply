@@ -3,7 +3,7 @@ use super::model::{SelectItem, SelectItemView};
 use crate::ui::highlight::render_text_spans;
 use crate::ui::span::{Span, SpanLine};
 use crate::ui::style::Style;
-use crate::widgets::inputs::text_edit;
+use crate::widgets::shared::text_edit;
 use std::sync::Arc;
 
 #[derive(Debug, Clone, Copy)]

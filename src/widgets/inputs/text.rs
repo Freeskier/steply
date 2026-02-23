@@ -1,4 +1,4 @@
-use super::text_edit;
+use crate::widgets::shared::text_edit;
 use crate::core::NodeId;
 use crate::core::value::Value;
 use crate::core::value_path::{ValuePath, ValueTarget};

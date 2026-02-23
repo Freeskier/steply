@@ -99,17 +99,24 @@ impl Interactive for ObjectEditor {
                         .saturating_add(if inline_on_placeholder { 0 } else { 1 }),
                 })
             }
-            _ => None,
+            _ => {
+                let active_vis = self.tree.active_visible_index();
+                if active_vis < start || active_vis >= end {
+                    return None;
+                }
+                Some(crate::widgets::shared::cursor_anchor::anchored_cursor(
+                    header_rows.saturating_add((active_vis - start) as u16) as usize,
+                    0,
+                ))
+            }
         }
     }
 
     fn on_text_action(&mut self, action: crate::widgets::traits::TextAction) -> InteractionResult {
         if self.filter_focus {
             let before = self.filter_query();
-            let mut result = self.filter.on_text_action(action);
-            result
-                .actions
-                .retain(|a| !matches!(a, crate::runtime::event::WidgetAction::InputDone));
+            let result =
+                crate::widgets::shared::filter::handle_text_action(&mut self.filter, action);
             if self.filter_query() != before {
                 self.apply_filter_from_input();
                 return InteractionResult::handled();
@@ -132,34 +139,48 @@ impl Interactive for ObjectEditor {
         }
         self.filter.completion()
     }
+
+    fn cursor_visible(&self) -> bool {
+        crate::widgets::shared::cursor_anchor::visible_when_text_cursor(if self.filter_focus {
+            true
+        } else {
+            matches!(
+                self.mode,
+                Mode::EditValue { .. }
+                    | Mode::EditKey { .. }
+                    | Mode::InsertType { .. }
+                    | Mode::InsertValue { .. }
+            )
+        })
+    }
 }
 
 impl ObjectEditor {
     fn handle_filter_key(&mut self, key: KeyEvent) -> InteractionResult {
-        if key.modifiers != KeyModifiers::NONE {
-            return InteractionResult::ignored();
-        }
-        match key.code {
-            KeyCode::Esc | KeyCode::Enter => {
+        let before = self.filter_query();
+        match crate::widgets::shared::filter::handle_key(
+            &mut self.filter,
+            key,
+            crate::widgets::shared::filter::FilterEscBehavior::Blur,
+        ) {
+            crate::widgets::shared::filter::FilterKeyOutcome::Ignored => {
+                InteractionResult::ignored()
+            }
+            crate::widgets::shared::filter::FilterKeyOutcome::Hide
+            | crate::widgets::shared::filter::FilterKeyOutcome::Blur => {
                 self.filter_focus = false;
+                if key.code == KeyCode::Down {
+                    self.tree.move_active(1);
+                }
                 InteractionResult::handled()
             }
-            KeyCode::Down => {
-                self.filter_focus = false;
-                self.tree.move_active(1);
-                InteractionResult::handled()
-            }
-            _ => {
-                let before = self.filter_query();
-                let mut result = self.filter.on_key(key);
-                result
-                    .actions
-                    .retain(|a| !matches!(a, crate::runtime::event::WidgetAction::InputDone));
+            crate::widgets::shared::filter::FilterKeyOutcome::Edited(result) => {
                 if self.filter_query() != before {
                     self.apply_filter_from_input();
-                    return InteractionResult::handled();
+                    InteractionResult::handled()
+                } else {
+                    result
                 }
-                result
             }
         }
     }

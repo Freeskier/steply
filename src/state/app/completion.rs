@@ -1,6 +1,6 @@
 use super::AppState;
 use crate::core::NodeId;
-use crate::widgets::inputs::text_edit;
+use crate::widgets::shared::text_edit;
 use crate::widgets::node::find_node_mut;
 use crate::widgets::traits::CompletionState as WidgetCompletionState;
 

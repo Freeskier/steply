@@ -8,7 +8,7 @@ use crate::core::value_path::{ValuePath, ValueTarget};
 use crate::terminal::{CursorPos, KeyCode, KeyEvent};
 use crate::ui::span::Span;
 use crate::widgets::base::WidgetBase;
-use crate::widgets::inputs::text_edit;
+use crate::widgets::shared::text_edit;
 use crate::widgets::traits::{
     DrawOutput, Drawable, FocusMode, InteractionResult, Interactive, RenderContext, ValidationMode,
 };

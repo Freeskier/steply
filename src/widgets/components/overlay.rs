@@ -147,7 +147,6 @@ impl Interactive for Overlay {
 
         InteractionResult::ignored()
     }
-
     fn on_system_event(&mut self, event: &SystemEvent) -> InteractionResult {
         let targeted_lifecycle = matches!(
             event,

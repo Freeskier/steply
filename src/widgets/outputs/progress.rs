@@ -138,9 +138,6 @@ impl ProgressOutput {
         let target = self.clamp(target);
         self.target_value = target;
 
-
-
-
         if let Some(animation) = self.animation {
             let elapsed = animation.started_at.elapsed();
             let duration = animation.duration.as_secs_f64().max(f64::EPSILON);

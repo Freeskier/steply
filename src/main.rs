@@ -26,7 +26,8 @@ fn run() -> std::io::Result<()> {
     let (task_specs, task_subscriptions) = build_demo_tasks();
     let state = AppState::with_tasks(flow, task_specs, task_subscriptions);
     let terminal = Terminal::new()?;
-    let mut runtime = Runtime::new(state, terminal);
+    let mut runtime =
+        Runtime::new(state, terminal).with_render_mode(steply_v2::terminal::RenderMode::AltScreen);
     if render_json_enabled() {
         return runtime.print_render_json();
     }

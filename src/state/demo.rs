@@ -31,6 +31,7 @@ use crate::widgets::outputs::progress::{
 use crate::widgets::outputs::task_log::{TaskLog, TaskLogStep};
 use crate::widgets::outputs::text::TextOutput;
 use crate::widgets::outputs::thinking::{ThinkingMode, ThinkingOutput};
+use crate::widgets::outputs::url::UrlOutput;
 use crate::widgets::validators;
 
 fn step_thinking_output() -> Step {
@@ -38,6 +39,9 @@ fn step_thinking_output() -> Step {
         "step_thinking_output",
         "Thinking output",
         vec![
+            Node::Output(Box::new(
+                UrlOutput::new("out_docs", "https://docs.rs").with_name("Docs"),
+            )),
             Node::Output(Box::new(
                 ThinkingOutput::new("thinking_beam", "Beam", "Warming up workflow context...")
                     .with_mode(ThinkingMode::Beam)

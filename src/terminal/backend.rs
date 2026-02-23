@@ -102,6 +102,11 @@ struct AltScreenState {
     manually_scrolled: bool,
 
     last_frame: Vec<SpanLine>,
+    last_rendered_cursor: Option<CursorPos>,
+    last_rendered_cursor_visible: bool,
+    last_rendered_size: TerminalSize,
+    last_rendered_scroll_offset: usize,
+    has_rendered_once: bool,
 }
 
 impl AltScreenState {
@@ -110,6 +115,14 @@ impl AltScreenState {
             scroll_offset: 0,
             manually_scrolled: false,
             last_frame: Vec::new(),
+            last_rendered_cursor: None,
+            last_rendered_cursor_visible: false,
+            last_rendered_size: TerminalSize {
+                width: 0,
+                height: 0,
+            },
+            last_rendered_scroll_offset: 0,
+            has_rendered_once: false,
         }
     }
 }
@@ -526,35 +539,60 @@ impl Terminal {
         }
 
         let frame_len = frame.lines.len();
-
-        let alt = self
-            .alt_screen
-            .as_mut()
-            .expect("alt_screen must be Some in AltScreen mode");
-
-        alt.last_frame.clone_from(&frame.lines);
-
         let max_offset = frame_len.saturating_sub(height);
+        let scroll_offset = {
+            let alt = self
+                .alt_screen
+                .as_mut()
+                .expect("alt_screen must be Some in AltScreen mode");
 
-        if !alt.manually_scrolled {
-            alt.scroll_offset = match frame.cursor {
-                Some(cur) => (cur.row as usize).saturating_sub(height.saturating_sub(1)),
-                None => max_offset,
-            };
+            if !alt.manually_scrolled {
+                alt.scroll_offset = match frame.cursor {
+                    Some(cur) => (cur.row as usize).saturating_sub(height.saturating_sub(1)),
+                    None => max_offset,
+                };
+            }
+
+            alt.scroll_offset = alt.scroll_offset.min(max_offset);
+            alt.scroll_offset
+        };
+
+        let (dirty_rows, skip_noop) = {
+            let alt = self
+                .alt_screen
+                .as_ref()
+                .expect("alt_screen must be Some in AltScreen mode");
+            let size_changed = alt.last_rendered_size != self.state.size;
+            let dirty = compute_dirty_rows(
+                if alt.has_rendered_once {
+                    Some(alt.last_frame.as_slice())
+                } else {
+                    None
+                },
+                alt.last_rendered_scroll_offset,
+                frame.lines.as_slice(),
+                scroll_offset,
+                height,
+                size_changed,
+            );
+            let cursor_same = alt.last_rendered_cursor == frame.cursor
+                && alt.last_rendered_cursor_visible == frame.cursor_visible
+                && alt.last_rendered_size == self.state.size
+                && alt.last_rendered_scroll_offset == scroll_offset;
+            let dirty_is_empty = dirty.is_empty();
+            (dirty, cursor_same && dirty_is_empty)
+        };
+        if skip_noop {
+            return Ok(());
         }
 
-        alt.scroll_offset = alt.scroll_offset.min(max_offset);
-        let scroll_offset = alt.scroll_offset;
-
-        queue!(self.stdout, MoveTo(0, 0), Clear(ClearType::All))?;
-
-        for row_idx in 0..height {
-            let frame_line_idx = scroll_offset + row_idx;
-            let Some(line) = frame.lines.get(frame_line_idx) else {
-                break;
-            };
-            queue!(self.stdout, MoveTo(0, row_idx as u16))?;
-            self.write_span_line(line, width)?;
+        queue!(self.stdout, BeginSynchronizedUpdate, Hide)?;
+        for row in dirty_rows {
+            let frame_line_idx = scroll_offset + row as usize;
+            queue!(self.stdout, MoveTo(0, row), Clear(ClearType::CurrentLine))?;
+            if let Some(line) = frame.lines.get(frame_line_idx) {
+                self.write_span_line(line, width)?;
+            }
         }
 
         if let Some(cur) = frame.cursor {
@@ -578,6 +616,16 @@ impl Terminal {
         } else {
             queue!(self.stdout, Hide)?;
         }
+        queue!(self.stdout, EndSynchronizedUpdate)?;
+
+        if let Some(alt) = self.alt_screen.as_mut() {
+            alt.last_frame.clone_from(&frame.lines);
+            alt.last_rendered_cursor = frame.cursor;
+            alt.last_rendered_cursor_visible = frame.cursor_visible;
+            alt.last_rendered_size = self.state.size;
+            alt.last_rendered_scroll_offset = scroll_offset;
+            alt.has_rendered_once = true;
+        }
 
         self.stdout.flush()
     }
@@ -597,7 +645,7 @@ impl Terminal {
         let (
             prev_anchor_row,
             prev_rendered_block_start_row,
-            _prev_drawn,
+            prev_drawn,
             _prev_cursor_row,
             skip_noop,
         ) = self
@@ -627,9 +675,6 @@ impl Terminal {
         if skip_noop {
             return Ok(());
         }
-        if let Some(inline) = self.inline_state.as_mut() {
-            inline.last_frame.clone_from(&frame.lines);
-        }
 
         let mut next_anchor_row = prev_anchor_row;
         let mut prev_rendered_row = prev_rendered_block_start_row;
@@ -646,26 +691,69 @@ impl Terminal {
             prev_rendered_row = prev_rendered_row.saturating_sub(scroll_up_lines);
         }
         let clear_start_row = prev_rendered_row.min(block_start_row);
+        let can_diff_render = scroll_up_lines == 0 && block_start_row == prev_rendered_row;
+
+        let (dirty_rows, size_changed) = if can_diff_render {
+            let inline = self
+                .inline_state
+                .as_ref()
+                .expect("inline_state must be Some");
+            let old_skip = inline.last_frame.len().saturating_sub(prev_drawn);
+            let row_count = draw_count.max(prev_drawn as usize);
+            let size_changed = inline.last_rendered_size != self.state.size;
+            (
+                compute_dirty_rows(
+                    if inline.has_rendered_once {
+                        Some(inline.last_frame.as_slice())
+                    } else {
+                        None
+                    },
+                    old_skip,
+                    frame.lines.as_slice(),
+                    skip,
+                    row_count,
+                    size_changed,
+                ),
+                size_changed,
+            )
+        } else {
+            (Vec::new(), false)
+        };
 
         queue!(self.stdout, BeginSynchronizedUpdate, Hide)?;
-        if scroll_up_lines > 0 {
+        if !can_diff_render || size_changed {
+            if scroll_up_lines > 0 {
+                queue!(
+                    self.stdout,
+                    MoveTo(0, self.state.size.height.saturating_sub(1)),
+                    ScrollUp(scroll_up_lines)
+                )?;
+            }
             queue!(
                 self.stdout,
-                MoveTo(0, self.state.size.height.saturating_sub(1)),
-                ScrollUp(scroll_up_lines)
+                MoveTo(0, clear_start_row),
+                Clear(ClearType::FromCursorDown)
             )?;
-        }
-        queue!(
-            self.stdout,
-            MoveTo(0, clear_start_row),
-            Clear(ClearType::FromCursorDown)
-        )?;
-
-        for visible_row in 0..draw_count {
-            let target_row = block_start.saturating_add(visible_row) as u16;
-            queue!(self.stdout, MoveTo(0, target_row))?;
-            if let Some(line) = frame.lines.get(skip + visible_row) {
-                self.write_span_line(line, width)?;
+            for visible_row in 0..draw_count {
+                let target_row = block_start.saturating_add(visible_row) as u16;
+                queue!(self.stdout, MoveTo(0, target_row))?;
+                if let Some(line) = frame.lines.get(skip + visible_row) {
+                    self.write_span_line(line, width)?;
+                }
+            }
+        } else {
+            for row in dirty_rows {
+                let target_row = block_start.saturating_add(row as usize) as u16;
+                queue!(
+                    self.stdout,
+                    MoveTo(0, target_row),
+                    Clear(ClearType::CurrentLine)
+                )?;
+                if (row as usize) < draw_count {
+                    if let Some(line) = frame.lines.get(skip + row as usize) {
+                        self.write_span_line(line, width)?;
+                    }
+                }
             }
         }
 
@@ -694,6 +782,7 @@ impl Terminal {
         }
 
         if let Some(inline) = self.inline_state.as_mut() {
+            inline.last_frame.clone_from(&frame.lines);
             inline.last_drawn_count = draw_count;
             inline.last_cursor_row = next_last_cursor_row;
             inline.last_cursor_col = next_last_cursor_col;
@@ -843,6 +932,35 @@ fn clip_to_width(text: &str, max_width: usize) -> String {
         used = used.saturating_add(ch_width);
     }
     out
+}
+
+fn compute_dirty_rows(
+    prev_lines: Option<&[SpanLine]>,
+    prev_offset: usize,
+    next_lines: &[SpanLine],
+    next_offset: usize,
+    row_count: usize,
+    force_all: bool,
+) -> Vec<u16> {
+    if force_all || prev_lines.is_none() {
+        return (0..row_count.min(u16::MAX as usize))
+            .map(|row| row as u16)
+            .collect();
+    }
+
+    let prev_lines = prev_lines.expect("checked above");
+    let mut dirty = Vec::new();
+    for row in 0..row_count {
+        let prev_line = prev_lines.get(prev_offset + row);
+        let next_line = next_lines.get(next_offset + row);
+        if prev_line != next_line {
+            if row > u16::MAX as usize {
+                break;
+            }
+            dirty.push(row as u16);
+        }
+    }
+    dirty
 }
 
 fn estimate_self_reflow_cursor_delta(inline: &InlineState, new_width: u16) -> i32 {

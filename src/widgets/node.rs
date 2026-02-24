@@ -45,7 +45,7 @@ pub fn walk_nodes_mut(nodes: &mut [Node], scope: NodeWalkScope, f: &mut impl FnM
     }
 }
 
-fn children_for_scope<'a>(node: &'a Node, scope: NodeWalkScope) -> Option<&'a [Node]> {
+fn children_for_scope(node: &Node, scope: NodeWalkScope) -> Option<&[Node]> {
     let Node::Component(c) = node else {
         return None;
     };
@@ -56,7 +56,7 @@ fn children_for_scope<'a>(node: &'a Node, scope: NodeWalkScope) -> Option<&'a [N
     }
 }
 
-fn children_for_scope_mut<'a>(node: &'a mut Node, scope: NodeWalkScope) -> Option<&'a mut [Node]> {
+fn children_for_scope_mut(node: &mut Node, scope: NodeWalkScope) -> Option<&mut [Node]> {
     let Node::Component(c) = node else {
         return None;
     };

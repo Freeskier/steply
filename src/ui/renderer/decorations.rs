@@ -6,9 +6,6 @@ use crate::ui::style::{Color, Style};
 const DECOR_GUTTER: &str = "│  ";
 const DECOR_GUTTER_WIDTH: usize = 3;
 
-
-
-
 pub(super) enum StepFooter<'a> {
     Error {
         message: &'a str,
@@ -31,9 +28,7 @@ pub(super) fn decorate_step_block(
 ) {
     let (decor_style, marker) = match &footer {
         Some(StepFooter::Error { .. }) => (Style::new().color(Color::Red), "◆  ".to_string()),
-        Some(StepFooter::Warning { .. }) => {
-            (Style::new().color(Color::Yellow), "▲  ".to_string())
-        }
+        Some(StepFooter::Warning { .. }) => (Style::new().color(Color::Yellow), "▲  ".to_string()),
         None => {
             let style = match status {
                 StepVisualStatus::Active => Style::new().color(Color::Green),
@@ -60,11 +55,7 @@ pub(super) fn decorate_step_block(
     }
 
     for (idx, line) in lines.drain(..).enumerate() {
-        let prefix = if idx == 0 {
-            marker.as_str()
-        } else {
-            "│  "
-        };
+        let prefix = if idx == 0 { marker.as_str() } else { "│  " };
         let mut out_line = Vec::<Span>::with_capacity(line.len().saturating_add(1));
         out_line.push(Span::styled(prefix, decor_style).no_wrap());
         out_line.extend(line);

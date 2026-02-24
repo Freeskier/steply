@@ -27,9 +27,6 @@ pub struct Style {
     pub background: Option<Color>,
     pub bold: bool,
 
-
-
-
     pub strike: Strike,
 }
 

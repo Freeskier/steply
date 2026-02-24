@@ -304,6 +304,10 @@ impl MaskedInput {
             }
         }
 
+        if idx != chars.len() {
+            return false;
+        }
+
         for (token_idx, token) in self.tokens.iter_mut().enumerate() {
             if let MaskToken::Segment(segment) = token {
                 segment.value = parsed[token_idx].take().unwrap_or_default();
@@ -314,11 +318,9 @@ impl MaskedInput {
         true
     }
 
-
     pub fn render_spans(&self) -> Vec<Span> {
         format::render_spans(self.tokens.as_slice())
     }
-
 
     pub fn cursor_col(&self) -> usize {
         format::cursor_offset(

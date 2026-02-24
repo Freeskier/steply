@@ -5,7 +5,6 @@ pub mod value_path;
 use std::borrow::Borrow;
 use std::fmt;
 
-
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct NodeId(String);
 

@@ -170,8 +170,8 @@ impl ValidationState {
 
     pub fn visible_error(&self, id: &str) -> Option<&str> {
         self.entries.get(id).and_then(|entry| {
-                matches!(entry.visibility, ErrorVisibility::Inline).then_some(entry.error.as_str())
-            })
+            matches!(entry.visibility, ErrorVisibility::Inline).then_some(entry.error.as_str())
+        })
     }
 
     pub fn is_hidden_invalid(&self, id: &str) -> bool {

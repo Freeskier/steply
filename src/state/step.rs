@@ -14,7 +14,6 @@ pub enum StepStatus {
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub enum StepNavigation {
-
     #[default]
     Locked,
 
@@ -22,7 +21,9 @@ pub enum StepNavigation {
 
     Reset,
 
-    Destructive { warning: String },
+    Destructive {
+        warning: String,
+    },
 }
 
 pub struct Step {
@@ -56,38 +57,21 @@ impl Step {
         self
     }
 
-
     pub fn require(mut self, field_id: impl Into<String>, message: impl Into<String>) -> Self {
-        let id = field_id.into();
-        let msg = message.into();
-        self.validators.push(Box::new(move |ctx: &StepContext| {
-            if ctx.is_empty(&id) {
-                Some(StepIssue::error(&msg))
-            } else {
-                None
-            }
-        }));
+        self.validators
+            .push(required_validator(field_id.into(), message.into()));
         self
     }
-
 
     pub fn warn_if_empty(
         mut self,
         field_id: impl Into<String>,
         message: impl Into<String>,
     ) -> Self {
-        let id = field_id.into();
-        let msg = message.into();
-        self.validators.push(Box::new(move |ctx: &StepContext| {
-            if ctx.is_empty(&id) {
-                Some(StepIssue::warning(&msg))
-            } else {
-                None
-            }
-        }));
+        self.validators
+            .push(warning_if_empty_validator(field_id.into(), message.into()));
         self
     }
-
 
     pub fn validate(
         mut self,
@@ -164,15 +148,8 @@ impl StepBuilder {
     }
 
     pub fn require(mut self, field_id: impl Into<String>, message: impl Into<String>) -> Self {
-        let id = field_id.into();
-        let msg = message.into();
-        self.validators.push(Box::new(move |ctx: &StepContext| {
-            if ctx.is_empty(&id) {
-                Some(StepIssue::error(&msg))
-            } else {
-                None
-            }
-        }));
+        self.validators
+            .push(required_validator(field_id.into(), message.into()));
         self
     }
 
@@ -181,15 +158,8 @@ impl StepBuilder {
         field_id: impl Into<String>,
         message: impl Into<String>,
     ) -> Self {
-        let id = field_id.into();
-        let msg = message.into();
-        self.validators.push(Box::new(move |ctx: &StepContext| {
-            if ctx.is_empty(&id) {
-                Some(StepIssue::warning(&msg))
-            } else {
-                None
-            }
-        }));
+        self.validators
+            .push(warning_if_empty_validator(field_id.into(), message.into()));
         self
     }
 
@@ -216,4 +186,24 @@ impl StepBuilder {
             navigation: self.navigation,
         }
     }
+}
+
+fn required_validator(field_id: String, message: String) -> StepValidator {
+    Box::new(move |ctx: &StepContext| {
+        if ctx.is_empty(&field_id) {
+            Some(StepIssue::error(&message))
+        } else {
+            None
+        }
+    })
+}
+
+fn warning_if_empty_validator(field_id: String, message: String) -> StepValidator {
+    Box::new(move |ctx: &StepContext| {
+        if ctx.is_empty(&field_id) {
+            Some(StepIssue::warning(&message))
+        } else {
+            None
+        }
+    })
 }

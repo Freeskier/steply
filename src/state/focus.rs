@@ -80,7 +80,5 @@ fn collect_targets(nodes: &[Node], out: &mut Vec<FocusTarget>) {
             });
             continue;
         }
-
-
     }
 }

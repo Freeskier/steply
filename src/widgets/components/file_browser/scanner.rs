@@ -22,8 +22,6 @@ pub struct ScanRequest {
     pub display_mode: DisplayMode,
 }
 
-
-
 pub struct ScannerHandle {
     tx: Sender<ScanRequest>,
     rx: Receiver<(CacheKey, Arc<ScanResult>)>,
@@ -44,7 +42,6 @@ impl ScannerHandle {
         let _ = self.tx.send(request);
     }
 
-
     pub fn try_recv_all(&self) -> Vec<(CacheKey, Arc<ScanResult>)> {
         drain_receiver(&self.rx)
     }
@@ -53,7 +50,6 @@ impl ScannerHandle {
 fn worker(rx: Receiver<ScanRequest>, tx: Sender<(CacheKey, Arc<ScanResult>)>) {
     while let Some(req) = recv_latest(&rx) {
         let display_root = req.dir.clone();
-
 
         let glob_is_recursive = req.is_glob && req.query.contains("**");
         let entries = if req.is_glob && (req.recursive || glob_is_recursive) {

@@ -64,31 +64,24 @@ pub enum TaskKind {
     },
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub enum TaskParse {
+    #[default]
     RawText,
     Number,
     Json,
     Lines,
-    Regex { pattern: String, group: usize },
+    Regex {
+        pattern: String,
+        group: usize,
+    },
 }
 
-impl Default for TaskParse {
-    fn default() -> Self {
-        Self::RawText
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub enum TaskAssign {
+    #[default]
     Ignore,
     SetValue(String),
-}
-
-impl Default for TaskAssign {
-    fn default() -> Self {
-        Self::Ignore
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

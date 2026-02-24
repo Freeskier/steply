@@ -1,27 +1,19 @@
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum RerunPolicy {
     Never,
+    #[default]
     Always,
     IfChanged,
-    Cooldown { ms: u64 },
+    Cooldown {
+        ms: u64,
+    },
 }
 
-impl Default for RerunPolicy {
-    fn default() -> Self {
-        Self::Always
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ConcurrencyPolicy {
     DropNew,
+    #[default]
     Restart,
     Queue,
     Parallel,
-}
-
-impl Default for ConcurrencyPolicy {
-    fn default() -> Self {
-        Self::Restart
-    }
 }

@@ -95,8 +95,6 @@ impl Interactive for CheckboxInput {
     fn set_value(&mut self, value: Value) {
         if let Some(flag) = value.to_bool() {
             self.checked = flag;
-        } else if let Some(text) = value.as_text() {
-            self.checked = matches!(text.to_ascii_lowercase().as_str(), "true" | "1" | "yes");
         }
     }
 

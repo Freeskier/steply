@@ -1,4 +1,3 @@
-use crate::widgets::shared::text_edit;
 use crate::core::NodeId;
 use crate::core::value::Value;
 use crate::core::value_path::{ValuePath, ValueTarget};
@@ -7,6 +6,7 @@ use crate::terminal::{CursorPos, KeyCode, KeyEvent};
 use crate::ui::span::Span;
 use crate::ui::style::{Color, Style};
 use crate::widgets::base::WidgetBase;
+use crate::widgets::shared::text_edit;
 use crate::widgets::traits::{
     CompletionState, DrawOutput, Drawable, FocusMode, InteractionResult, Interactive,
     RenderContext, TextAction, TextEditState, ValidationMode,
@@ -14,17 +14,12 @@ use crate::widgets::traits::{
 use crate::widgets::validators::{Validator, run_validators};
 use unicode_width::UnicodeWidthChar;
 
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum TextMode {
-
     #[default]
     Plain,
 
-
-
     Password,
-
 
     Secret,
 }
@@ -36,7 +31,7 @@ pub struct TextInput {
     mode: TextMode,
     placeholder: Option<String>,
     submit_target: Option<ValueTarget>,
-    change_target: Option<ValueTarget>,
+    change_targets: Vec<ValueTarget>,
     validators: Vec<Validator>,
     completion_items: Vec<String>,
 }
@@ -50,7 +45,7 @@ impl TextInput {
             mode: TextMode::Plain,
             placeholder: None,
             submit_target: None,
-            change_target: None,
+            change_targets: Vec::new(),
             validators: Vec::new(),
             completion_items: Vec::new(),
         }
@@ -82,12 +77,12 @@ impl TextInput {
     }
 
     pub fn with_change_target(mut self, target: impl Into<NodeId>) -> Self {
-        self.change_target = Some(ValueTarget::node(target));
+        self.change_targets.push(ValueTarget::node(target));
         self
     }
 
     pub fn with_change_target_path(mut self, root: impl Into<NodeId>, path: ValuePath) -> Self {
-        self.change_target = Some(ValueTarget::path(root, path));
+        self.change_targets.push(ValueTarget::path(root, path));
         self
     }
 
@@ -119,10 +114,26 @@ impl TextInput {
     }
 
     fn edited_result(&self) -> InteractionResult {
-        if let Some(target) = &self.change_target {
+        if self.change_targets.len() == 1 {
+            let target = &self.change_targets[0];
             return InteractionResult::with_action(WidgetAction::ValueChanged {
                 change: ValueChange::with_target(target.clone(), Value::Text(self.value.clone())),
             });
+        }
+        if self.change_targets.len() > 1 {
+            let actions = self
+                .change_targets
+                .iter()
+                .cloned()
+                .map(|target| WidgetAction::ValueChanged {
+                    change: ValueChange::with_target(target, Value::Text(self.value.clone())),
+                })
+                .collect();
+            return InteractionResult {
+                handled: true,
+                request_render: true,
+                actions,
+            };
         }
         InteractionResult::handled()
     }
@@ -165,7 +176,6 @@ impl Drawable for TextInput {
         } else {
             vec![Span::styled(self.display_value(), Style::default()).no_wrap()]
         };
-
 
         if let Some(suffix) = ghost_suffix {
             first_line.push(Span::styled(suffix, Style::new().color(Color::DarkGrey)).no_wrap());
@@ -230,8 +240,6 @@ impl Interactive for TextInput {
     }
 
     fn text_editing(&mut self) -> Option<TextEditState<'_>> {
-
-
         if self.mode != TextMode::Plain {
             return None;
         }
@@ -242,7 +250,6 @@ impl Interactive for TextInput {
     }
 
     fn completion(&mut self) -> Option<CompletionState<'_>> {
-
         if self.mode != TextMode::Plain {
             return None;
         }

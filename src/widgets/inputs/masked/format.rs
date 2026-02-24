@@ -1,8 +1,8 @@
 use super::model::{MaskToken, SegmentKind, SegmentRole};
 use crate::ui::span::Span;
 use crate::ui::style::{Color, Style};
-use crate::widgets::shared::text_edit;
 use crate::widgets::shared::calendar;
+use crate::widgets::shared::text_edit;
 
 pub(super) fn token_accepts(kind: SegmentKind, ch: char) -> bool {
     match kind {
@@ -122,8 +122,6 @@ pub(super) fn cursor_offset(
     out
 }
 
-
-
 pub(super) fn render_plain_value(tokens: &[MaskToken]) -> String {
     let mut out = String::new();
     for token in tokens {
@@ -186,7 +184,7 @@ pub(super) fn is_complete(tokens: &[MaskToken]) -> bool {
 
     if let (Some(month), Some(day)) = (month, day) {
         let y = year.unwrap_or(2000) as i32;
-        if month < 1 || month > 12 {
+        if !(1..=12).contains(&month) {
             return false;
         }
         let max_day = calendar::days_in_month(y, month as u8) as i64;

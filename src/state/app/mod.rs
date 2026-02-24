@@ -13,7 +13,7 @@ use crate::widgets::node::{Node, NodeWalkScope, find_overlay, find_overlay_mut, 
 use crate::widgets::node_index::NodeIndex;
 use crate::widgets::traits::{FocusMode, OverlayMode, OverlayPlacement};
 use completion::CompletionSession;
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 
 #[derive(Default)]
 struct ViewState {
@@ -42,7 +42,7 @@ struct RuntimeState {
     validation: ValidationState,
     pending_scheduler: Vec<SchedulerCommand>,
     pending_task_invocations: Vec<TaskInvocation>,
-    queued_task_requests: HashMap<TaskId, Vec<TaskRequest>>,
+    queued_task_requests: HashMap<TaskId, VecDeque<TaskRequest>>,
     running_task_cancellations: HashMap<TaskId, Vec<RunningTaskHandle>>,
     task_runs: HashMap<TaskId, TaskRunState>,
     task_specs: HashMap<TaskId, TaskSpec>,
@@ -181,15 +181,16 @@ impl AppState {
             return &[];
         }
         let step_nodes = self.flow.current_step().nodes.as_slice();
-        if let Some(entry) = self.ui.overlays.active_blocking()
-            && let Some(overlay) = find_overlay(step_nodes, entry.id.as_str())
+        let Some((overlay_id, focus_mode)) = self.active_blocking_overlay_info() else {
+            return step_nodes;
+        };
+        if focus_mode == FocusMode::Group {
+            return step_nodes;
+        }
+        if let Some(children) =
+            find_overlay(step_nodes, overlay_id.as_str()).and_then(Node::persistent_children)
         {
-            if overlay.focus_mode() == FocusMode::Group {
-                return step_nodes;
-            }
-            if let Some(children) = overlay.persistent_children() {
-                return children;
-            }
+            return children;
         }
         step_nodes
     }
@@ -198,48 +199,47 @@ impl AppState {
         if self.flow.is_empty() {
             return self.scratch_nodes.as_mut_slice();
         }
-        let active_blocking = self.ui.overlays.active_blocking().cloned();
-        if let Some(active_blocking) = active_blocking {
-            if active_blocking.focus_mode == FocusMode::Group {
-                return self.flow.current_step_mut().nodes.as_mut_slice();
-            }
-
-            let has_overlay_children = find_overlay(
-                self.flow.current_step().nodes.as_slice(),
-                active_blocking.id.as_str(),
-            )
-            .and_then(Node::persistent_children)
-            .is_some();
-
-            if has_overlay_children {
-                let step_nodes = self.flow.current_step_mut().nodes.as_mut_slice();
-                if let Some(overlay) = find_overlay_mut(step_nodes, active_blocking.id.as_str())
-                    && let Some(children) = overlay.persistent_children_mut()
-                {
-                    return children;
-                }
-                return self.scratch_nodes.as_mut_slice();
-            }
-
+        let Some((overlay_id, focus_mode)) = self.active_blocking_overlay_info() else {
+            return self.flow.current_step_mut().nodes.as_mut_slice();
+        };
+        if focus_mode == FocusMode::Group {
             return self.flow.current_step_mut().nodes.as_mut_slice();
         }
+
+        if self.overlay_has_persistent_children(overlay_id.as_str()) {
+            let step_nodes = self.flow.current_step_mut().nodes.as_mut_slice();
+            if let Some(overlay) = find_overlay_mut(step_nodes, overlay_id.as_str())
+                && let Some(children) = overlay.persistent_children_mut()
+            {
+                return children;
+            }
+            return self.scratch_nodes.as_mut_slice();
+        }
+
         self.flow.current_step_mut().nodes.as_mut_slice()
     }
 
     pub fn clean_broken_overlays(&mut self) {
-        let Some(entry) = self.ui.overlays.active_blocking().cloned() else {
+        let Some((overlay_id, focus_mode)) = self.active_blocking_overlay_info() else {
             return;
         };
-        if entry.focus_mode == FocusMode::Group {
+        if focus_mode == FocusMode::Group {
             return;
         }
-        let has_children =
-            find_overlay(self.flow.current_step().nodes.as_slice(), entry.id.as_str())
-                .and_then(Node::persistent_children)
-                .is_some();
-        if !has_children {
+        if !self.overlay_has_persistent_children(overlay_id.as_str()) {
             self.ui.overlays.clear();
         }
+    }
+
+    fn active_blocking_overlay_info(&self) -> Option<(NodeId, FocusMode)> {
+        let entry = self.ui.overlays.active_blocking()?;
+        Some((entry.id.clone(), entry.focus_mode))
+    }
+
+    fn overlay_has_persistent_children(&self, overlay_id: &str) -> bool {
+        find_overlay(self.flow.current_step().nodes.as_slice(), overlay_id)
+            .and_then(Node::persistent_children)
+            .is_some()
     }
 
     pub fn has_active_overlay(&self) -> bool {
@@ -346,6 +346,11 @@ impl AppState {
         self.runtime.validation.reset_warnings_acknowledged();
     }
 
+    pub(super) fn refresh_validation_after_change(&mut self) {
+        self.validate_focused_live();
+        self.clear_step_errors();
+    }
+
     pub fn current_step_errors(&self) -> &[String] {
         self.runtime.validation.step_errors()
     }
@@ -356,8 +361,14 @@ impl AppState {
 }
 
 mod completion;
+mod completion_engine;
+mod completion_session;
+mod effect_dispatcher;
+mod input_dispatch;
 mod navigation;
 mod overlay_runtime;
+mod step_flow;
+mod task_engine;
 mod task_runtime;
 mod validation_runtime;
 mod value_sync;

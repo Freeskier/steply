@@ -51,8 +51,6 @@ fn collect_paths(
         path.push(index);
         out.insert(node.id().into(), path.clone());
 
-
-
         let children = match scope {
             NodeWalkScope::Visible => None,
             NodeWalkScope::Persistent => node.persistent_children(),

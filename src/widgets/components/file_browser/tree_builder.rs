@@ -139,7 +139,6 @@ fn tree_entry_key(entry: &model::FileEntry, root: &Path) -> Vec<(u8, String)> {
         .into_iter()
         .enumerate()
         .map(|(idx, part)| {
-
             let is_file = idx == last && !entry.kind.is_dir();
             (u8::from(is_file), part)
         })

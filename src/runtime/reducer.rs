@@ -22,7 +22,6 @@ impl Reducer {
                 if state.back_confirm().is_some() {
                     state.cancel_back_confirm();
                 } else if state.cancel_completion_for_focused() {
-
                     state.suppress_completion_tab_for_focused();
                 } else if state
                     .dispatch_key_to_focused(KeyEvent {
@@ -31,7 +30,6 @@ impl Reducer {
                     })
                     .handled
                 {
-
                 } else if state.has_active_overlay() {
                     state.close_overlay();
                 }

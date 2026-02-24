@@ -59,10 +59,10 @@ pub(super) fn rebuild_visible_filtered<T: TreeItemLabel>(
 
     let mut has_match_subtree = matched.clone();
     for idx in (0..nodes.len()).rev() {
-        if has_match_subtree[idx] {
-            if let Some(parent) = parents[idx] {
-                has_match_subtree[parent] = true;
-            }
+        if has_match_subtree[idx]
+            && let Some(parent) = parents[idx]
+        {
+            has_match_subtree[parent] = true;
         }
     }
 

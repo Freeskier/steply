@@ -109,9 +109,6 @@ impl ValueTarget {
         }
     }
 
-
-
-
     pub fn parse_selector(selector: &str) -> Result<Self, ValuePathParseError> {
         let trimmed = selector.trim();
         if trimmed.is_empty() {

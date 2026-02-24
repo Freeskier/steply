@@ -403,13 +403,13 @@ impl<T: TreeItemLabel> TreeView<T> {
             .rev()
             .find(|&i| self.nodes[i].depth == target_depth);
 
-        if let Some(parent_node_idx) = parent_node_idx {
-            if let Some(pos) = self.visible.iter().position(|&i| i == parent_node_idx) {
-                self.active_index = pos;
-                self.scroll
-                    .ensure_visible(self.active_index, self.visible.len());
-                return true;
-            }
+        if let Some(parent_node_idx) = parent_node_idx
+            && let Some(pos) = self.visible.iter().position(|&i| i == parent_node_idx)
+        {
+            self.active_index = pos;
+            self.scroll
+                .ensure_visible(self.active_index, self.visible.len());
+            return true;
         }
 
         false

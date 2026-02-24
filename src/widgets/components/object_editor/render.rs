@@ -127,7 +127,11 @@ impl ObjectEditor {
         spans
     }
 
-    fn insert_value_spans(&self, key_value: &InlineKeyValueEditor, error: Option<&str>) -> Vec<Span> {
+    fn insert_value_spans(
+        &self,
+        key_value: &InlineKeyValueEditor,
+        error: Option<&str>,
+    ) -> Vec<Span> {
         if let Some(error) = error {
             let key_style = if key_value.focus() == InlineKeyValueFocus::Key {
                 Style::new().color(Color::Cyan)
@@ -280,12 +284,11 @@ impl Drawable for ObjectEditor {
                 after_vis,
                 key_value,
             } = &self.mode
+                && *after_vis == vis
             {
-                if *after_vis == vis {
-                    let mut row = insert_prefix.clone();
-                    row.extend(key_value.inline_spans());
-                    lines.push(row);
-                }
+                let mut row = insert_prefix.clone();
+                row.extend(key_value.inline_spans());
+                lines.push(row);
             }
 
             if let Mode::InsertValue {
@@ -293,13 +296,12 @@ impl Drawable for ObjectEditor {
                 key_value,
                 ..
             } = &self.mode
+                && *after_vis == vis
             {
-                if *after_vis == vis {
-                    let mut row = insert_prefix.clone();
-                    row.extend(self.insert_value_spans(key_value, insert_value_error));
-                    row.push(Span::styled("  Enter confirm  Esc cancel", inactive).no_wrap());
-                    lines.push(row);
-                }
+                let mut row = insert_prefix.clone();
+                row.extend(self.insert_value_spans(key_value, insert_value_error));
+                row.push(Span::styled("  Enter confirm  Esc cancel", inactive).no_wrap());
+                lines.push(row);
             }
         }
 

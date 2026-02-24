@@ -565,16 +565,14 @@ impl Drawable for FileBrowserInput {
                         ]);
                     }
                 }
-            } else {
-                if self.scanning || self.tree_building {
-                    lines.push(vec![
-                        Span::styled(
-                            format!("  {} scanning…", self.spinner_char()),
-                            Style::new().color(Color::DarkGrey),
-                        )
-                        .no_wrap(),
-                    ]);
-                }
+            } else if self.scanning || self.tree_building {
+                lines.push(vec![
+                    Span::styled(
+                        format!("  {} scanning…", self.spinner_char()),
+                        Style::new().color(Color::DarkGrey),
+                    )
+                    .no_wrap(),
+                ]);
             }
         }
 

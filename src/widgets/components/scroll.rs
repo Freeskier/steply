@@ -1,7 +1,3 @@
-
-
-
-
 #[derive(Debug, Clone)]
 pub struct CursorNav {
     active: usize,
@@ -24,7 +20,6 @@ impl CursorNav {
         self.scroll.max_visible = Some(n);
     }
 
-
     pub fn move_by(&mut self, delta: isize, total: usize) -> usize {
         if total == 0 {
             self.active = 0;
@@ -36,13 +31,11 @@ impl CursorNav {
         self.active
     }
 
-
     pub fn set_active(&mut self, idx: usize, total: usize) {
         self.active = idx;
         ScrollState::clamp_active(&mut self.active, total);
         self.scroll.ensure_visible(self.active, total);
     }
-
 
     pub fn clamp(&mut self, total: usize) {
         ScrollState::clamp_active(&mut self.active, total);
@@ -62,7 +55,6 @@ impl CursorNav {
     }
 }
 
-
 #[derive(Debug, Clone, Default)]
 pub struct ScrollState {
     pub offset: usize,
@@ -76,7 +68,6 @@ impl ScrollState {
             max_visible,
         }
     }
-
 
     pub fn ensure_visible(&mut self, active: usize, total: usize) {
         let Some(max) = self.max_visible else {
@@ -96,7 +87,6 @@ impl ScrollState {
         }
     }
 
-
     pub fn clamp_active(active: &mut usize, total: usize) {
         if total == 0 {
             *active = 0;
@@ -104,7 +94,6 @@ impl ScrollState {
             *active = total - 1;
         }
     }
-
 
     pub fn visible_range(&self, total: usize) -> (usize, usize) {
         match self.max_visible {
@@ -116,7 +105,6 @@ impl ScrollState {
             None => (0, total),
         }
     }
-
 
     pub fn footer(&self, total: usize) -> Option<String> {
         let max = self.max_visible?;

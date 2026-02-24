@@ -47,10 +47,10 @@ impl ObjectEditor {
                     map.insert(key, new_val);
                 }
                 Value::List(arr) => {
-                    if let Ok(i) = key.parse::<usize>() {
-                        if i < arr.len() {
-                            arr[i] = new_val;
-                        }
+                    if let Ok(i) = key.parse::<usize>()
+                        && i < arr.len()
+                    {
+                        arr[i] = new_val;
                     }
                 }
                 _ => {}
@@ -94,25 +94,24 @@ impl ObjectEditor {
         let ppath = Self::parent_path(&path);
         let old_key = Self::leaf_key(&path);
         let mut remap_paths: Option<(String, String)> = None;
-        if let Some(parent) = Self::value_at_path_mut(&mut self.value, &ppath) {
-            if let Value::Object(map) = parent {
-                if old_key != new_key {
-                    let mut insert_idx = map.get_index_of(old_key.as_str()).unwrap_or(map.len());
-                    if let Some(val) = map.shift_remove(&old_key) {
-                        if let Some(existing_idx) = map.get_index_of(new_key.as_str()) {
-                            map.shift_remove(&new_key);
-                            if existing_idx < insert_idx {
-                                insert_idx = insert_idx.saturating_sub(1);
-                            }
-                        }
-                        let insert_idx = insert_idx.min(map.len());
-                        map.shift_insert(insert_idx, new_key.clone(), val);
-                        remap_paths = Some((
-                            path.clone(),
-                            Self::append_key(ppath.as_str(), new_key.as_str()),
-                        ));
+        if let Some(parent) = Self::value_at_path_mut(&mut self.value, &ppath)
+            && let Value::Object(map) = parent
+            && old_key != new_key
+        {
+            let mut insert_idx = map.get_index_of(old_key.as_str()).unwrap_or(map.len());
+            if let Some(val) = map.shift_remove(&old_key) {
+                if let Some(existing_idx) = map.get_index_of(new_key.as_str()) {
+                    map.shift_remove(&new_key);
+                    if existing_idx < insert_idx {
+                        insert_idx = insert_idx.saturating_sub(1);
                     }
                 }
+                let insert_idx = insert_idx.min(map.len());
+                map.shift_insert(insert_idx, new_key.clone(), val);
+                remap_paths = Some((
+                    path.clone(),
+                    Self::append_key(ppath.as_str(), new_key.as_str()),
+                ));
             }
         }
         if let Some((old_path, new_path)) = remap_paths {
@@ -260,9 +259,7 @@ impl ObjectEditor {
         new_key: String,
         new_val: Value,
     ) -> Option<String> {
-        let Some(anchor) = self.obj_at_vis(after_vis) else {
-            return None;
-        };
+        let anchor = self.obj_at_vis(after_vis)?;
         let placeholder_anchor = anchor.is_placeholder;
         let anchor_path = anchor.path.clone();
         let placeholder_parent = anchor.placeholder_parent.clone();
@@ -349,10 +346,10 @@ impl ObjectEditor {
                         map.shift_remove(&key);
                     }
                     Value::List(arr) => {
-                        if let Ok(i) = key.parse::<usize>() {
-                            if i < arr.len() {
-                                arr.remove(i);
-                            }
+                        if let Ok(i) = key.parse::<usize>()
+                            && i < arr.len()
+                        {
+                            arr.remove(i);
                         }
                     }
                     _ => {}

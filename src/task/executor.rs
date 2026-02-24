@@ -1,6 +1,6 @@
 use crate::task::execution::{TaskCompletion, TaskInvocation, execute_invocation};
 use crate::task::spec::TaskId;
-use std::sync::mpsc::{self, Receiver, Sender, SyncSender, TryRecvError, TrySendError};
+use std::sync::mpsc::{self, Receiver, Sender, SyncSender, TrySendError};
 use std::sync::{Arc, Mutex};
 
 pub struct LogLine {
@@ -58,22 +58,16 @@ impl TaskExecutor {
 
     pub fn drain_ready(&self) -> Vec<TaskCompletion> {
         let mut out = Vec::new();
-        loop {
-            match self.completion_rx.try_recv() {
-                Ok(completion) => out.push(completion),
-                Err(TryRecvError::Empty) | Err(TryRecvError::Disconnected) => break,
-            }
+        while let Ok(completion) = self.completion_rx.try_recv() {
+            out.push(completion);
         }
         out
     }
 
     pub fn drain_log_lines(&self) -> Vec<LogLine> {
         let mut out = Vec::new();
-        loop {
-            match self.log_rx.try_recv() {
-                Ok(line) => out.push(line),
-                Err(TryRecvError::Empty) | Err(TryRecvError::Disconnected) => break,
-            }
+        while let Ok(line) = self.log_rx.try_recv() {
+            out.push(line);
         }
         out
     }
@@ -109,7 +103,7 @@ impl LogLineSender {
 
 fn spawn_workers(invocation_rx: Receiver<TaskInvocation>, completion_tx: Sender<TaskCompletion>) {
     let worker_count = std::thread::available_parallelism()
-        .map(|count| count.get().min(4).max(1))
+        .map(|count| count.get().clamp(1, 4))
         .unwrap_or(2);
     let shared_rx = Arc::new(Mutex::new(invocation_rx));
 

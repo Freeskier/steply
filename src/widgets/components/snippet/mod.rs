@@ -10,12 +10,8 @@ use crate::widgets::traits::{
     DrawOutput, Drawable, FocusMode, InteractionResult, Interactive, RenderContext, ValidationMode,
 };
 
-
-
-
 #[derive(Debug, Clone)]
 enum Chunk {
-
     Text(String),
 
     Slot(String),
@@ -35,7 +31,6 @@ fn parse_template(template: &str) -> Vec<Chunk> {
                 chunks.push(Chunk::Slot(key));
                 rest = &after_open[close + 1..];
             } else {
-
                 chunks.push(Chunk::Text(rest.to_string()));
                 break;
             }
@@ -46,8 +41,6 @@ fn parse_template(template: &str) -> Vec<Chunk> {
     }
     chunks
 }
-
-
 
 pub struct Snippet {
     base: WidgetBase,
@@ -70,13 +63,12 @@ impl Snippet {
         let template = template.into();
         let chunks = parse_template(&template);
 
-
         let mut slot_order: Vec<String> = Vec::new();
         for chunk in &chunks {
-            if let Chunk::Slot(key) = chunk {
-                if !slot_order.contains(key) {
-                    slot_order.push(key.clone());
-                }
+            if let Chunk::Slot(key) = chunk
+                && !slot_order.contains(key)
+            {
+                slot_order.push(key.clone());
             }
         }
 
@@ -104,8 +96,6 @@ impl Snippet {
         self.submit_target = Some(ValueTarget::path(root, path));
         self
     }
-
-
 
     fn input_for(&self, key: &str) -> Option<&Node> {
         self.inputs.iter().find(|n| n.id() == key)
@@ -136,9 +126,6 @@ impl Snippet {
             .unwrap_or_default()
     }
 
-
-
-
     fn render_lines(
         &self,
         focused: bool,
@@ -151,17 +138,14 @@ impl Snippet {
         let mut lines: Vec<Vec<Span>> = Vec::new();
         let mut current_line: Vec<Span> = Vec::new();
 
-
         let mut cursor: Option<(u16, u16)> = None;
         let mut current_row: u16 = 0;
-
 
         let mut seen_slots: std::collections::HashSet<String> = std::collections::HashSet::new();
 
         for chunk in &self.chunks {
             match chunk {
                 Chunk::Text(text) => {
-
                     let mut first = true;
                     for part in text.split('\n') {
                         if !first {
@@ -181,10 +165,7 @@ impl Snippet {
                     seen_slots.insert(key.clone());
 
                     if is_first {
-
                         if let Some(input) = self.input_for(key) {
-
-
                             let input_ctx = if is_active {
                                 RenderContext {
                                     focused_id: Some(input.id().to_string()),
@@ -199,13 +180,7 @@ impl Snippet {
 
                             let out = input.draw(&input_ctx);
 
-
                             if let Some(input_line) = out.lines.into_iter().next() {
-
-
-
-
-
                                 let col_before = col_width(&current_line);
                                 let st = if is_active {
                                     active_st
@@ -216,25 +191,19 @@ impl Snippet {
                                     current_line.push(span.with_style_if_unstyled(st));
                                 }
 
-
-                                if is_active {
-                                    if let Some(input_node) = self.input_for(key) {
-                                        if let Some(cp) = input_node.cursor_pos() {
-                                            cursor = Some((
-                                                current_row + cp.row,
-                                                col_before as u16 + cp.col,
-                                            ));
-                                        }
-                                    }
+                                if is_active
+                                    && let Some(input_node) = self.input_for(key)
+                                    && let Some(cp) = input_node.cursor_pos()
+                                {
+                                    cursor =
+                                        Some((current_row + cp.row, col_before as u16 + cp.col));
                                 }
                             }
                         } else {
-
                             let st = if is_active { active_st } else { dim };
                             current_line.push(Span::styled(format!("<{}>", key), st).no_wrap());
                         }
                     } else {
-
                         let val = self.value_of(key);
                         let display = if val.is_empty() {
                             format!("<{}>", key)
@@ -255,13 +224,9 @@ impl Snippet {
     }
 }
 
-
-
 fn col_width(spans: &[Span]) -> usize {
     spans.iter().map(|s| s.text.chars().count()).sum()
 }
-
-
 
 trait SpanExt {
     fn with_style_if_unstyled(self, st: Style) -> Span;
@@ -277,8 +242,6 @@ impl SpanExt for Span {
     }
 }
 
-
-
 impl Drawable for Snippet {
     fn id(&self) -> &str {
         self.base.id()
@@ -291,8 +254,6 @@ impl Drawable for Snippet {
     }
 }
 
-
-
 impl Interactive for Snippet {
     fn focus_mode(&self) -> FocusMode {
         FocusMode::Leaf
@@ -302,7 +263,6 @@ impl Interactive for Snippet {
         let key = self.active_key()?;
         let input = self.input_for(key)?;
         let local = input.cursor_pos()?;
-
 
         let mut row: u16 = 0;
         let mut col: u16 = 0;
@@ -353,7 +313,6 @@ impl Interactive for Snippet {
             }
 
             KeyCode::Enter => {
-
                 if self.active_slot + 1 >= self.slot_count() {
                     let val = Value::Text(self.formatted_value());
                     InteractionResult::submit_or_produce(self.submit_target.as_ref(), val)
@@ -364,11 +323,10 @@ impl Interactive for Snippet {
             }
 
             _ => {
-
-                if let Some(key_str) = self.active_key().map(str::to_string) {
-                    if let Some(input) = self.input_for_mut(&key_str) {
-                        return input.on_key(key);
-                    }
+                if let Some(key_str) = self.active_key().map(str::to_string)
+                    && let Some(input) = self.input_for_mut(&key_str)
+                {
+                    return input.on_key(key);
                 }
                 InteractionResult::ignored()
             }
@@ -396,7 +354,6 @@ impl Interactive for Snippet {
 
 impl Snippet {
     fn formatted_value(&self) -> String {
-
         let mut out = String::new();
         let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
         for chunk in &self.chunks {
@@ -411,8 +368,6 @@ impl Snippet {
         out
     }
 }
-
-
 
 impl Component for Snippet {
     fn children(&self) -> &[Node] {

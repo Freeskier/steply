@@ -1,8 +1,3 @@
-
-
-
-
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Date {
     pub year: i32,
@@ -23,7 +18,6 @@ pub struct DateTime {
     pub time: Time,
 }
 
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Weekday(pub u8);
 
@@ -41,13 +35,9 @@ impl Weekday {
     }
 }
 
-
-
-
 pub fn is_leap_year(year: i32) -> bool {
     (year % 4 == 0 && year % 100 != 0) || (year % 400 == 0)
 }
-
 
 pub fn days_in_month(year: i32, month: u8) -> u8 {
     match month {
@@ -64,8 +54,6 @@ pub fn days_in_month(year: i32, month: u8) -> u8 {
     }
 }
 
-
-
 pub fn first_weekday_of_month(year: i32, month: u8) -> Weekday {
     let t: [i32; 12] = [0, 3, 2, 5, 0, 3, 5, 1, 4, 6, 2, 4];
     let y = if month < 3 { year - 1 } else { year };
@@ -75,7 +63,6 @@ pub fn first_weekday_of_month(year: i32, month: u8) -> Weekday {
 
     Weekday(((raw + 6) % 7) as u8)
 }
-
 
 pub fn weekday_of(date: Date) -> Weekday {
     let t: [i32; 12] = [0, 3, 2, 5, 0, 3, 5, 1, 4, 6, 2, 4];
@@ -90,16 +77,13 @@ pub fn weekday_of(date: Date) -> Weekday {
     Weekday(((raw + 6) % 7) as u8)
 }
 
-
 pub fn today() -> Date {
-
     let secs = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
         .as_secs() as i64;
     date_from_unix_days(secs / 86400)
 }
-
 
 pub fn now_time() -> Time {
     let secs = std::time::SystemTime::now()
@@ -116,9 +100,7 @@ pub fn now_time() -> Time {
     }
 }
 
-
 fn date_from_unix_days(days: i64) -> Date {
-
     let z = days + 719468;
     let era = if z >= 0 { z } else { z - 146096 } / 146097;
     let doe = (z - era * 146097) as u32;
@@ -136,11 +118,8 @@ fn date_from_unix_days(days: i64) -> Date {
     }
 }
 
-
-
-
 pub fn validate_date(year: i32, month: u8, day: u8) -> Result<Date, String> {
-    if month < 1 || month > 12 {
+    if !(1..=12).contains(&month) {
         return Err(format!("Invalid month: {month}"));
     }
     let max_day = days_in_month(year, month);
@@ -152,7 +131,6 @@ pub fn validate_date(year: i32, month: u8, day: u8) -> Result<Date, String> {
     }
     Ok(Date { year, month, day })
 }
-
 
 pub fn validate_time(hour: u8, minute: u8, second: u8) -> Result<Time, String> {
     if hour > 23 {
@@ -171,8 +149,6 @@ pub fn validate_time(hour: u8, minute: u8, second: u8) -> Result<Time, String> {
     })
 }
 
-
-
 impl Date {
     pub fn add_months(self, delta: i32) -> Self {
         let total = self.month as i32 - 1 + delta;
@@ -183,7 +159,6 @@ impl Date {
     }
 
     pub fn add_days(self, delta: i32) -> Self {
-
         let mut d = self;
         let step = if delta >= 0 { 1i32 } else { -1 };
         let mut remaining = delta.abs();
@@ -201,24 +176,20 @@ impl Date {
                     .add_months(1);
                     d.day = 1;
                 }
+            } else if d.day > 1 {
+                d.day -= 1;
             } else {
-                if d.day > 1 {
-                    d.day -= 1;
-                } else {
-                    d = d.add_months(-1);
-                    d.day = days_in_month(d.year, d.month);
-                }
+                d = d.add_months(-1);
+                d.day = days_in_month(d.year, d.month);
             }
             remaining -= 1;
         }
         d
     }
 
-
     pub fn from_parts(year: i32, month: u8, day: u8) -> Result<Self, String> {
         validate_date(year, month, day)
     }
-
 
     pub fn to_iso(self) -> String {
         format!("{:04}-{:02}-{:02}", self.year, self.month, self.day)
@@ -230,11 +201,9 @@ impl Time {
         validate_time(hour, minute, second)
     }
 
-
     pub fn to_iso(self) -> String {
         format!("{:02}:{:02}:{:02}", self.hour, self.minute, self.second)
     }
-
 
     pub fn to_hhmm(self) -> String {
         format!("{:02}:{:02}", self.hour, self.minute)
@@ -246,10 +215,6 @@ impl DateTime {
         format!("{}T{}", self.date.to_iso(), self.time.to_iso())
     }
 }
-
-
-
-
 
 pub struct MonthGrid {
     pub year: i32,
@@ -287,9 +252,6 @@ impl MonthGrid {
         ][(self.month as usize).saturating_sub(1) % 12]
     }
 }
-
-
-
 
 pub mod fmt {
     pub const DATE_DMY: &str = "DD/MM/YYYY";

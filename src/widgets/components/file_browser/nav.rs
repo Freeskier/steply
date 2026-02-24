@@ -4,7 +4,6 @@ use crate::widgets::components::tree_view::TreeNode;
 
 impl FileBrowserInput {
     pub(super) fn handle_browser_key(&mut self, key: KeyEvent) -> InteractionResult {
-
         if key.code == KeyCode::Char('t') && key.modifiers.contains(KeyModifiers::CONTROL) {
             self.browser_mode = match self.browser_mode {
                 BrowserMode::List => BrowserMode::Tree,
@@ -17,12 +16,10 @@ impl FileBrowserInput {
                     self.apply_result(result);
                 }
             } else if let Some(result) = self.last_scan_result.clone() {
-
                 self.apply_result(result);
             }
             return InteractionResult::handled();
         }
-
 
         if self.browser_mode == BrowserMode::Tree {
             return self.handle_tree_key(key);
@@ -55,7 +52,6 @@ impl FileBrowserInput {
             }
 
             KeyCode::Up | KeyCode::Down => self.list.on_key(key),
-
 
             _ => self.handle_text_key_with_rescan(key),
         }

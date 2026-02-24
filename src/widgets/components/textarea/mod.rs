@@ -1,10 +1,10 @@
-use crate::widgets::shared::text_edit;
 use crate::core::value::Value;
 use crate::terminal::{CursorPos, KeyCode, KeyEvent, KeyModifiers};
 use crate::ui::span::Span;
 use crate::ui::style::{Color, Style};
 use crate::widgets::components::scroll::ScrollState;
 use crate::widgets::node::{Component, Node};
+use crate::widgets::shared::text_edit;
 use crate::widgets::traits::{
     DrawOutput, Drawable, FocusMode, InteractionResult, Interactive, RenderContext, TextAction,
     TextEditState, ValidationMode,

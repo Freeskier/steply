@@ -39,11 +39,7 @@ pub fn parse_input(raw: &str, cwd: &Path) -> ParsedInput {
         cwd.to_path_buf()
     } else {
         let p = PathBuf::from(dir_part);
-        if p.is_absolute() {
-            p
-        } else {
-            cwd.join(p)
-        }
+        if p.is_absolute() { p } else { cwd.join(p) }
     };
 
     let view_dir = normalize_path(&base);

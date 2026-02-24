@@ -132,7 +132,7 @@ impl Calendar {
         let (mut row, mut col) = self.day_grid_pos(&grid, self.cursor_day);
         let new_col = col as i32 + dc;
         let new_row = row as i32 + dr;
-        if new_col >= 0 && new_col <= 6 && new_row >= 0 && new_row <= 5 {
+        if (0..=6).contains(&new_col) && (0..=5).contains(&new_row) {
             col = new_col as usize;
             row = new_row as usize;
             if let Some(day) = grid.cells[row][col] {
@@ -472,21 +472,21 @@ impl Interactive for Calendar {
         let parts: Vec<&str> = text.splitn(2, ' ').collect();
         if let Some(date_str) = parts.first() {
             let segs: Vec<&str> = date_str.split('-').collect();
-            if segs.len() == 3 {
-                if let (Ok(y), Ok(m), Ok(d)) = (
+            if segs.len() == 3
+                && let (Ok(y), Ok(m), Ok(d)) = (
                     segs[0].parse::<i32>(),
                     segs[1].parse::<u8>(),
                     segs[2].parse::<u8>(),
-                ) {
-                    self.view_year = y;
-                    self.view_month = m;
-                    self.cursor_day = d;
-                    self.selected_date = Some(Date {
-                        year: y,
-                        month: m,
-                        day: d,
-                    });
-                }
+                )
+            {
+                self.view_year = y;
+                self.view_month = m;
+                self.cursor_day = d;
+                self.selected_date = Some(Date {
+                    year: y,
+                    month: m,
+                    day: d,
+                });
             }
         }
         if let Some(time_str) = parts.get(1) {

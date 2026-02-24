@@ -24,7 +24,6 @@ pub struct ScanResult {
     pub total_matches: usize,
 }
 
-
 pub fn fuzzy_search(
     entries: &[FileEntry],
     query: &str,
@@ -134,7 +133,6 @@ pub fn plain_result(entries: &[FileEntry], root: &Path, mode: DisplayMode) -> Sc
     build_result(truncated, vec![vec![]; n], root, mode, total)
 }
 
-
 pub fn list_dir_recursive_glob(dir: &Path, hide_hidden: bool, pattern: &str) -> Vec<FileEntry> {
     let normalized =
         if pattern.starts_with("**") && !pattern.starts_with("**/") && pattern.len() > 2 {
@@ -186,7 +184,6 @@ fn walk_dir_recursive(
         }
     }
 }
-
 
 fn build_result(
     entries: Vec<FileEntry>,
@@ -336,7 +333,6 @@ fn entry_option(
     }
 }
 
-
 fn build_glob_matcher(pattern: &str) -> Option<globset::GlobSet> {
     let mut builder = GlobSetBuilder::new();
 
@@ -446,7 +442,6 @@ fn merge_ranges(mut ranges: Vec<(usize, usize)>) -> Vec<(usize, usize)> {
     merged
 }
 
-
 fn relative_prefix(path: &Path, root: &Path) -> Option<String> {
     let rel = path.strip_prefix(root).ok()?;
     let parent = rel.parent()?;
@@ -483,7 +478,6 @@ fn elide_middle(text: &str, max_len: usize) -> String {
         .collect();
     format!("{}...{}", head, tail)
 }
-
 
 fn prefilter(entries: &[FileEntry], query: &str) -> Option<Vec<usize>> {
     if query.contains('/') || query.contains('\\') {

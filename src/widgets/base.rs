@@ -2,10 +2,6 @@ use crate::widgets::traits::{
     FocusMode, OverlayMode, OverlayPlacement, OverlayRenderMode, RenderContext,
 };
 
-
-
-
-
 #[derive(Debug, Clone)]
 pub struct WidgetBase {
     id: String,
@@ -32,14 +28,6 @@ impl WidgetBase {
         ctx.focused_id.as_deref().is_some_and(|id| id == self.id())
     }
 }
-
-
-
-
-
-
-
-
 
 #[derive(Debug, Clone)]
 pub struct OverlayBase {

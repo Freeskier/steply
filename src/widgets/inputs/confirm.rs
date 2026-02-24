@@ -1,26 +1,21 @@
-use crate::widgets::shared::text_edit;
 use crate::core::value::Value;
 use crate::terminal::{CursorPos, KeyCode, KeyEvent};
 use crate::ui::span::Span;
 use crate::ui::style::{Color, Style};
 use crate::widgets::base::WidgetBase;
+use crate::widgets::shared::text_edit;
 use crate::widgets::traits::{
     DrawOutput, Drawable, FocusMode, InteractionResult, Interactive, RenderContext, ValidationMode,
 };
 
-
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub enum ConfirmMode {
-
+    #[default]
     Relaxed,
 
-    Strict { word: String },
-}
-
-impl Default for ConfirmMode {
-    fn default() -> Self {
-        Self::Relaxed
-    }
+    Strict {
+        word: String,
+    },
 }
 
 pub struct ConfirmInput {
@@ -99,7 +94,6 @@ impl Drawable for ConfirmInput {
         let focused = self.base.is_focused(ctx);
 
         let spans = if !focused {
-
             match self.confirmed {
                 Some(true) => vec![
                     Span::styled(self.yes_label.clone(), Style::new().color(Color::Green))
@@ -117,7 +111,6 @@ impl Drawable for ConfirmInput {
         } else {
             match &self.mode {
                 ConfirmMode::Relaxed => {
-
                     vec![
                         Span::styled(
                             format!("[{}]", self.yes_label),
@@ -130,7 +123,6 @@ impl Drawable for ConfirmInput {
                     ]
                 }
                 ConfirmMode::Strict { word } => {
-
                     let prompt = format!("Type \"{}\" to confirm: ", word);
                     let mut s = vec![
                         Span::styled(prompt, Style::new().color(Color::DarkGrey)).no_wrap(),
@@ -182,7 +174,7 @@ impl Interactive for ConfirmInput {
                 let word = word.clone();
                 match key.code {
                     KeyCode::Enter => {
-                        if self.buffer.to_ascii_lowercase() == word.to_ascii_lowercase() {
+                        if self.buffer.eq_ignore_ascii_case(&word) {
                             self.confirm();
                             InteractionResult::input_done()
                         } else {
@@ -223,11 +215,6 @@ impl Interactive for ConfirmInput {
     fn set_value(&mut self, value: Value) {
         if let Some(flag) = value.to_bool() {
             self.confirmed = Some(flag);
-        } else if let Some(text) = value.as_text() {
-            self.confirmed = Some(matches!(
-                text.to_ascii_lowercase().as_str(),
-                "true" | "1" | "yes"
-            ));
         }
     }
 
@@ -237,7 +224,6 @@ impl Interactive for ConfirmInput {
 
     fn cursor_pos(&self) -> Option<CursorPos> {
         if let ConfirmMode::Strict { word } = &self.mode {
-
             let prompt_len = format!("Type \"{}\" to confirm: ", word).chars().count();
             let cursor_chars = self.cursor.min(text_edit::char_count(&self.buffer));
             let col = prompt_len + cursor_chars;

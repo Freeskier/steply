@@ -291,13 +291,11 @@ fn build_base_frame(
                         message: msg.as_str(),
                         description: None,
                     })
-                } else if let Some(msg) = view.step_warnings.first() {
-                    Some(StepFooter::Warning {
+                } else {
+                    view.step_warnings.first().map(|msg| StepFooter::Warning {
                         message: msg.as_str(),
                         description: Some("[Enter] confirm  •  [Esc] cancel"),
                     })
-                } else {
-                    None
                 }
             } else {
                 None
@@ -559,7 +557,7 @@ fn draw_nodes(
         if let Some(prefix) = label_prefix {
             if let Some(first) = out.lines.first_mut() {
                 let mut new_first = prefix;
-                new_first.extend(first.drain(..));
+                new_first.append(first);
                 *first = new_first;
             } else {
                 out.lines.insert(0, prefix);

@@ -437,12 +437,10 @@ impl Terminal {
             let measured_delta = actual_row as i32 - expected_cursor_row as i32;
             let mut delta = measured_delta - self_reflow_delta;
 
-            if height_delta == 0 {
-                if width_delta > 0 && delta > 0 {
-                    delta = 0;
-                } else if width_delta < 0 && delta < 0 {
-                    delta = 0;
-                }
+            if height_delta == 0
+                && ((width_delta > 0 && delta > 0) || (width_delta < 0 && delta < 0))
+            {
+                delta = 0;
             }
             if delta != 0 {
                 new_block_start_row =
@@ -699,7 +697,7 @@ impl Terminal {
                 .as_ref()
                 .expect("inline_state must be Some");
             let old_skip = inline.last_frame.len().saturating_sub(prev_drawn);
-            let row_count = draw_count.max(prev_drawn as usize);
+            let row_count = draw_count.max(prev_drawn);
             let size_changed = inline.last_rendered_size != self.state.size;
             (
                 compute_dirty_rows(
@@ -749,10 +747,10 @@ impl Terminal {
                     MoveTo(0, target_row),
                     Clear(ClearType::CurrentLine)
                 )?;
-                if (row as usize) < draw_count {
-                    if let Some(line) = frame.lines.get(skip + row as usize) {
-                        self.write_span_line(line, width)?;
-                    }
+                if (row as usize) < draw_count
+                    && let Some(line) = frame.lines.get(skip + row as usize)
+                {
+                    self.write_span_line(line, width)?;
                 }
             }
         }

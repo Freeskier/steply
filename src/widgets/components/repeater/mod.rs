@@ -250,10 +250,10 @@ impl Repeater {
         let Some(row) = self.rows.get(row_idx) else {
             return String::new();
         };
-        if let Some(path) = &self.item_label_path {
-            if let Some(nested) = row.item.get_path(path) {
-                return display_scalar_or_json(nested);
-            }
+        if let Some(path) = &self.item_label_path
+            && let Some(nested) = row.item.get_path(path)
+        {
+            return display_scalar_or_json(nested);
         }
         display_scalar_or_json(&row.item)
     }
@@ -564,12 +564,11 @@ impl Repeater {
             }
         }
 
-        let result = match key.code {
+        match key.code {
             KeyCode::Enter | KeyCode::Tab => self.advance_cursor_and_submit_if_done(),
             KeyCode::BackTab => self.retreat_cursor(),
             _ => InteractionResult::ignored(),
-        };
-        result
+        }
     }
 }
 

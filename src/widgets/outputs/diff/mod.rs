@@ -10,8 +10,6 @@ use crate::widgets::traits::{
     DrawOutput, Drawable, FocusMode, InteractionResult, Interactive, RenderContext, ValidationMode,
 };
 
-
-
 #[derive(Clone)]
 enum Side {
     Line { no: usize, text: String },
@@ -34,11 +32,10 @@ enum DiffRow {
         kind: RowKind,
     },
 
-
-    Gap { hidden: usize },
+    Gap {
+        hidden: usize,
+    },
 }
-
-
 
 pub struct DiffOutput {
     base: WidgetBase,
@@ -80,8 +77,6 @@ impl DiffOutput {
         self.rebuild();
     }
 
-
-
     fn rebuild(&mut self) {
         self.rows = Self::build_rows(&self.old, &self.new, self.context);
         self.nav.clamp(self.rows.len());
@@ -98,7 +93,6 @@ impl DiffOutput {
         let mut prev_old_end = 0usize;
 
         for group in &groups {
-
             let group_old_start = group.first().map(|op| op.old_range().start).unwrap_or(0);
             let hidden = group_old_start.saturating_sub(prev_old_end);
             if hidden > 0 {
@@ -239,7 +233,6 @@ impl DiffOutput {
                 .unwrap_or(prev_old_end);
         }
 
-
         let trailing = old_lines.len().saturating_sub(prev_old_end);
         if trailing > 0 {
             rows.push(DiffRow::Gap { hidden: trailing });
@@ -247,8 +240,6 @@ impl DiffOutput {
 
         rows
     }
-
-
 
     fn move_cursor(&mut self, delta: isize) {
         self.nav.move_by(delta, self.rows.len());
@@ -289,8 +280,6 @@ impl DiffOutput {
         self.nav.set_active(old_active, self.rows.len());
     }
 
-
-
     fn render_side(side: &Side, col_width: usize, text_style: Style, no_style: Style) -> Vec<Span> {
         match side {
             Side::Line { no, text } => {
@@ -314,8 +303,6 @@ impl DiffOutput {
     }
 }
 
-
-
 impl Component for DiffOutput {
     fn children(&self) -> &[Node] {
         &[]
@@ -324,8 +311,6 @@ impl Component for DiffOutput {
         &mut []
     }
 }
-
-
 
 impl Drawable for DiffOutput {
     fn id(&self) -> &str {
@@ -357,7 +342,6 @@ impl Drawable for DiffOutput {
         let col_width = 38usize;
 
         let mut lines: Vec<Vec<Span>> = Vec::new();
-
 
         if !self.base.label().is_empty() {
             let n_chunks = self
@@ -479,8 +463,6 @@ impl Drawable for DiffOutput {
         DrawOutput { lines }
     }
 }
-
-
 
 impl Interactive for DiffOutput {
     fn focus_mode(&self) -> FocusMode {

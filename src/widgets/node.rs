@@ -7,7 +7,8 @@ use crate::widgets::traits::{
     InteractiveCursorCapability, InteractiveFocusCapability, InteractiveInputCapability,
     InteractiveNode, InteractiveOverlayCapability, InteractiveRuntimeCapability,
     InteractiveTaskCapability, InteractiveValidationCapability, InteractiveValueCapability,
-    OutputNode, OverlayMode, OverlayPlacement, RenderContext, TextAction, ValidationMode,
+    OutputNode, OverlayMode, OverlayPlacement, PointerRowMap, RenderContext, TextAction,
+    ValidationMode,
 };
 
 pub trait Component: InteractiveNode {
@@ -149,6 +150,14 @@ impl Node {
             Self::Input(w) => w.hints(ctx),
             Self::Component(w) => w.hints(ctx),
             Self::Output(w) => w.hints(ctx),
+        }
+    }
+
+    pub fn pointer_rows(&self, ctx: &RenderContext) -> Vec<PointerRowMap> {
+        match self {
+            Self::Input(w) => w.pointer_rows(ctx),
+            Self::Component(w) => w.pointer_rows(ctx),
+            Self::Output(w) => w.pointer_rows(ctx),
         }
     }
 

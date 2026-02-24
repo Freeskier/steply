@@ -10,7 +10,7 @@ use crate::ui::style::{Color, Strike, Style};
 use crate::ui::text::text_display_width;
 use crate::widgets::node::{Node, NodeWalkScope, walk_nodes};
 use crate::widgets::traits::{
-    CompletionMenu, DrawOutput, HintContext, HintGroup, HintItem, RenderContext,
+    CompletionMenu, DrawOutput, HintContext, HintGroup, HintItem, PointerRowMap, RenderContext,
 };
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -588,13 +588,41 @@ fn draw_nodes(
             && let Some(hit_row_offset) = state.hit_row_offset.as_deref_mut()
         {
             let composed_lines = Layout::compose(&out.lines, state.compose_width.max(1));
-            hit_map.push_node_rows(
-                node.id(),
-                *hit_row_offset,
-                composed_lines.len().min(u16::MAX as usize) as u16,
-                state.hit_col_start,
-                label_offset,
-            );
+            let pointer_rows = node
+                .pointer_rows(ctx)
+                .into_iter()
+                .map(|entry| (entry.rendered_row, entry))
+                .collect::<HashMap<u16, PointerRowMap>>();
+            for (local_row, line) in composed_lines.iter().enumerate() {
+                let local_row_u16 = local_row.min(u16::MAX as usize) as u16;
+                let row = hit_row_offset.saturating_add(local_row_u16);
+                let width = Layout::line_width(line.as_slice()).min(u16::MAX as usize) as u16;
+                if pointer_rows.is_empty() {
+                    let local_col_offset = if local_row == 0 { label_offset } else { 0 };
+                    hit_map.push_node_row(
+                        node.id(),
+                        row,
+                        local_row_u16,
+                        state.hit_col_start,
+                        state.hit_col_start.saturating_add(width),
+                        local_col_offset,
+                    );
+                } else if let Some(PointerRowMap {
+                    local_row,
+                    local_col_offset,
+                    ..
+                }) = pointer_rows.get(&local_row_u16)
+                {
+                    hit_map.push_node_row(
+                        node.id(),
+                        row,
+                        *local_row,
+                        state.hit_col_start,
+                        state.hit_col_start.saturating_add(width),
+                        *local_col_offset,
+                    );
+                }
+            }
             *hit_row_offset =
                 hit_row_offset.saturating_add(composed_lines.len().min(u16::MAX as usize) as u16);
         }

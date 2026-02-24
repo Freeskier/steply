@@ -1,4 +1,3 @@
-use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use indexmap::IndexMap;
@@ -6,18 +5,23 @@ use indexmap::IndexMap;
 use crate::core::NodeId;
 use crate::core::value::Value;
 use crate::core::value_path::{ValuePath, ValueTarget};
-use crate::runtime::event::{ValueChange, WidgetAction};
+use crate::runtime::event::ValueChange;
 use crate::terminal::{CursorPos, KeyCode, KeyEvent};
 use crate::ui::span::{Span, SpanLine};
 use crate::ui::style::{Color, Style};
 use crate::widgets::base::WidgetBase;
 use crate::widgets::node::StaticChildrenComponent;
 use crate::widgets::shared::cursor_anchor;
+use crate::widgets::shared::list_core;
 use crate::widgets::shared::validation::decorate_component_validation;
+use crate::widgets::shared::value_seed::{normalize_ascii_key, seed_value_from_record};
 use crate::widgets::traits::{
-    CompletionMenu, CompletionState, DrawOutput, Drawable, FocusMode, InteractionResult,
-    Interactive, InteractiveNode, RenderContext, TextAction, ValidationMode,
+    CompletionState, DrawOutput, Drawable, FocusMode, InteractionResult, Interactive,
+    InteractiveNode, RenderContext, TextAction, ValidationMode,
 };
+
+mod interaction;
+mod render;
 
 pub type RepeaterFieldFactory =
     Arc<dyn Fn(String, String) -> Box<dyn InteractiveNode> + Send + Sync>;
@@ -136,7 +140,7 @@ impl Repeater {
         F: Fn(String, String) -> I + Send + Sync + 'static,
     {
         let label = label.into();
-        let key = normalize_key(label.as_str());
+        let key = normalize_ascii_key(label.as_str(), "field");
         self.push_field(
             key,
             label,
@@ -223,17 +227,8 @@ impl Repeater {
     }
 
     fn clamp_cursor(&mut self) {
-        if self.rows.is_empty() {
-            self.active_item = 0;
-        } else {
-            self.active_item = self.active_item.min(self.rows.len().saturating_sub(1));
-        }
-
-        if self.fields.is_empty() {
-            self.active_field = 0;
-        } else {
-            self.active_field = self.active_field.min(self.fields.len().saturating_sub(1));
-        }
+        self.active_item = list_core::clamp_index(self.active_item, self.rows.len());
+        self.active_field = list_core::clamp_index(self.active_field, self.fields.len());
     }
 
     fn completed_items(&self) -> usize {
@@ -314,8 +309,8 @@ impl Repeater {
                 break;
             };
             for (field_idx, field) in self.fields.iter().enumerate() {
-                if let Some(seed) = seed_value(
-                    row_seed,
+                if let Some(seed) = seed_value_from_record(
+                    Some(row_seed),
                     field_idx,
                     field.key.as_str(),
                     field.label.as_str(),
@@ -332,425 +327,12 @@ impl Repeater {
         self.set_items(items);
         self.apply_rows_seed(rows);
     }
-
-    fn child_context(
-        &self,
-        ctx: &RenderContext,
-        focused_child_id: Option<String>,
-    ) -> RenderContext {
-        let mut completion_menus = HashMap::<String, CompletionMenu>::new();
-        if let Some(child_id) = focused_child_id.as_deref()
-            && let Some(menu) = ctx.completion_menus.get(self.base.id())
-        {
-            completion_menus.insert(child_id.to_string(), menu.clone());
-        }
-
-        RenderContext {
-            focused_id: focused_child_id,
-            terminal_size: ctx.terminal_size,
-            visible_errors: Arc::new(HashMap::new()),
-            invalid_hidden: Arc::new(HashSet::new()),
-            completion_menus: Arc::new(completion_menus),
-        }
-    }
-
-    fn child_draw_line(
-        &self,
-        ctx: &RenderContext,
-        row_idx: usize,
-        field_idx: usize,
-        focused: bool,
-    ) -> SpanLine {
-        let Some(row) = self.rows.get(row_idx) else {
-            return vec![Span::new("").no_wrap()];
-        };
-        let Some(widget) = row.fields.get(field_idx) else {
-            return vec![Span::new("").no_wrap()];
-        };
-
-        let focused_id = if focused {
-            Some(widget.id().to_string())
-        } else {
-            None
-        };
-        let child_ctx = self.child_context(ctx, focused_id);
-        widget
-            .draw(&child_ctx)
-            .lines
-            .into_iter()
-            .next()
-            .unwrap_or_else(|| vec![Span::new("").no_wrap()])
-    }
-
-    fn line_prefix_rows(&self) -> usize {
-        let mut rows = 0usize;
-        if self.show_label && !self.base.label().is_empty() {
-            rows += 1;
-        }
-        rows += 1;
-        if self.progress_line().is_some() {
-            rows += 1;
-        }
-        rows
-    }
-
-    fn draw_single_field(&self, ctx: &RenderContext, focused: bool) -> Vec<SpanLine> {
-        let mut lines = Vec::<SpanLine>::new();
-        let field_label = self.active_field_label();
-        let marker_style = if focused {
-            Style::new().color(Color::Cyan).bold()
-        } else {
-            Style::new().color(Color::DarkGrey)
-        };
-        let mut line = vec![
-            Span::styled("❯ ", marker_style).no_wrap(),
-            Span::styled(format!("{field_label}: "), Style::new().bold()).no_wrap(),
-        ];
-        line.extend(self.child_draw_line(ctx, self.active_item, self.active_field, focused));
-        lines.push(line);
-        lines
-    }
-
-    fn draw_stacked_fields(&self, ctx: &RenderContext, focused: bool) -> Vec<SpanLine> {
-        let mut lines = Vec::<SpanLine>::new();
-        for (field_idx, field) in self.fields.iter().enumerate() {
-            let is_active = field_idx == self.active_field;
-            let marker = if is_active { "❯ " } else { "  " };
-            let marker_style = if is_active && focused {
-                Style::new().color(Color::Cyan).bold()
-            } else {
-                Style::new().color(Color::DarkGrey)
-            };
-            let label_style = if is_active && focused {
-                Style::new().color(Color::Cyan).bold()
-            } else {
-                Style::new().bold()
-            };
-            let mut line = vec![
-                Span::styled(marker, marker_style).no_wrap(),
-                Span::styled(format!("{}: ", field.label), label_style).no_wrap(),
-            ];
-            line.extend(self.child_draw_line(
-                ctx,
-                self.active_item,
-                field_idx,
-                focused && is_active,
-            ));
-            lines.push(line);
-        }
-        lines
-    }
-
-    fn draw_empty_state(&self) -> Vec<SpanLine> {
-        if self.rows.is_empty() {
-            return vec![vec![
-                Span::styled(
-                    "No items to configure.",
-                    Style::new().color(Color::DarkGrey),
-                )
-                .no_wrap(),
-            ]];
-        }
-        if self.fields.is_empty() {
-            return vec![vec![
-                Span::styled(
-                    "No repeater fields configured.",
-                    Style::new().color(Color::DarkGrey),
-                )
-                .no_wrap(),
-            ]];
-        }
-        vec![]
-    }
-
-    fn process_child_result(&mut self, mut result: InteractionResult) -> InteractionResult {
-        let mut should_advance = false;
-        result.actions.retain(|action| match action {
-            WidgetAction::InputDone => {
-                should_advance = true;
-                false
-            }
-            _ => true,
-        });
-
-        if should_advance {
-            result.merge(self.advance_cursor_and_submit_if_done());
-        }
-        if result.handled {
-            result.request_render = true;
-        }
-        result
-    }
-
-    fn advance_cursor_and_submit_if_done(&mut self) -> InteractionResult {
-        if !self.has_work() {
-            return self.submit_or_done();
-        }
-
-        if self.finished {
-            return self.submit_or_done();
-        }
-
-        if self.active_field + 1 < self.fields.len() {
-            self.active_field += 1;
-            return InteractionResult::handled();
-        }
-
-        if self.active_item + 1 < self.rows.len() {
-            self.active_item += 1;
-            self.active_field = 0;
-            let mut result = InteractionResult::handled();
-            if let Some(target) = &self.submit_target {
-                result.actions.push(WidgetAction::ValueChanged {
-                    change: ValueChange::with_target(
-                        target.clone(),
-                        self.build_committed_rows_value(),
-                    ),
-                });
-            }
-            return result;
-        }
-
-        self.finished = true;
-        self.submit_or_done()
-    }
-
-    fn retreat_cursor(&mut self) -> InteractionResult {
-        if !self.has_work() {
-            return InteractionResult::ignored();
-        }
-
-        if self.finished {
-            self.finished = false;
-            return InteractionResult::handled();
-        }
-
-        if self.active_field > 0 {
-            self.active_field -= 1;
-            return InteractionResult::handled();
-        }
-
-        if self.active_item > 0 {
-            self.active_item -= 1;
-            self.active_field = self.fields.len().saturating_sub(1);
-            return InteractionResult::handled();
-        }
-
-        InteractionResult::ignored()
-    }
-
-    fn submit_or_done(&self) -> InteractionResult {
-        if let Some(target) = &self.submit_target {
-            let mut result = InteractionResult::with_action(WidgetAction::ValueChanged {
-                change: ValueChange::with_target(target.clone(), self.build_rows_value()),
-            });
-            result.actions.push(WidgetAction::InputDone);
-            return result;
-        }
-        InteractionResult::input_done()
-    }
-
-    fn handle_group_key(&mut self, key: KeyEvent) -> InteractionResult {
-        if !self.has_work() {
-            return match key.code {
-                KeyCode::Enter => self.submit_or_done(),
-                _ => InteractionResult::ignored(),
-            };
-        }
-
-        if let Some(widget) = self.active_field_widget_mut() {
-            let result = widget.on_key(key);
-            if result.handled {
-                return self.process_child_result(result);
-            }
-        }
-
-        match key.code {
-            KeyCode::Enter | KeyCode::Tab => self.advance_cursor_and_submit_if_done(),
-            KeyCode::BackTab => self.retreat_cursor(),
-            _ => InteractionResult::ignored(),
-        }
-    }
 }
 
 impl StaticChildrenComponent for Repeater {}
 
-impl Drawable for Repeater {
-    fn id(&self) -> &str {
-        self.base.id()
-    }
-
-    fn label(&self) -> &str {
-        self.base.label()
-    }
-
-    fn draw(&self, ctx: &RenderContext) -> DrawOutput {
-        let focused = self.base.is_focused(ctx);
-        let mut lines = Vec::<SpanLine>::new();
-
-        if self.show_label && !self.base.label().is_empty() {
-            lines.push(vec![Span::new(self.base.label()).no_wrap()]);
-        }
-
-        lines.push(vec![
-            Span::styled(self.header_line(), Style::new().color(Color::Yellow).bold()).no_wrap(),
-        ]);
-
-        if let Some(progress) = self.progress_line() {
-            lines.push(vec![
-                Span::styled(progress, Style::new().color(Color::DarkGrey)).no_wrap(),
-            ]);
-        }
-
-        let mut body = self.draw_empty_state();
-        if body.is_empty() {
-            body = match self.layout {
-                RepeaterLayout::SingleField => self.draw_single_field(ctx, focused),
-                RepeaterLayout::Stacked => self.draw_stacked_fields(ctx, focused),
-            };
-        }
-        lines.extend(body);
-
-        decorate_component_validation(&mut lines, ctx, self.base.id());
-
-        DrawOutput { lines }
-    }
-}
-
-impl Interactive for Repeater {
-    fn focus_mode(&self) -> FocusMode {
-        FocusMode::Group
-    }
-
-    fn on_key(&mut self, key: KeyEvent) -> InteractionResult {
-        self.handle_group_key(key)
-    }
-
-    fn on_text_action(&mut self, action: TextAction) -> InteractionResult {
-        let result = {
-            let Some(widget) = self.active_field_widget_mut() else {
-                return InteractionResult::ignored();
-            };
-            widget.on_text_action(action)
-        };
-        if !result.handled {
-            return InteractionResult::ignored();
-        }
-        self.process_child_result(result)
-    }
-
-    fn completion(&mut self) -> Option<CompletionState<'_>> {
-        self.active_field_widget_mut()?.completion()
-    }
-
-    fn cursor_pos(&self) -> Option<CursorPos> {
-        if !self.has_work() {
-            return None;
-        }
-        let base = self.line_prefix_rows();
-        let row = match self.layout {
-            RepeaterLayout::SingleField => base,
-            RepeaterLayout::Stacked => base.saturating_add(self.active_field),
-        };
-        let local = self
-            .active_field_widget()
-            .and_then(|widget| widget.cursor_pos());
-        if let Some(local) = local {
-            return Some(CursorPos {
-                col: local
-                    .col
-                    .saturating_add(self.active_field_label().len() as u16 + 4),
-                row: row as u16 + local.row,
-            });
-        }
-        Some(cursor_anchor::first_col_cursor(row))
-    }
-
-    fn cursor_visible(&self) -> bool {
-        cursor_anchor::visible_when_text_cursor(
-            self.active_field_widget()
-                .and_then(|widget| widget.cursor_pos())
-                .is_some(),
-        )
-    }
-
-    fn value(&self) -> Option<Value> {
-        Some(self.build_rows_value())
-    }
-
-    fn set_value(&mut self, value: Value) {
-        match value {
-            Value::None => self.set_items(Vec::new()),
-            Value::List(rows_or_items) => {
-                if looks_like_rows_list(rows_or_items.as_slice(), self.fields.as_slice()) {
-                    self.set_rows_value(rows_or_items.as_slice());
-                } else {
-                    self.set_items(rows_or_items);
-                }
-            }
-            Value::Object(map) => {
-                if let Some(Value::List(rows)) = map.get("rows") {
-                    self.set_rows_value(rows.as_slice());
-                } else {
-                    self.set_items(Vec::new());
-                }
-            }
-            scalar => self.set_items(vec![scalar]),
-        }
-        self.finished = false;
-        self.clamp_cursor();
-    }
-
-    fn validate(&self, mode: ValidationMode) -> Result<(), String> {
-        for (row_idx, row) in self.rows.iter().enumerate() {
-            for (field_idx, widget) in row.fields.iter().enumerate() {
-                if let Err(err) = widget.validate(mode) {
-                    let field_label = self
-                        .fields
-                        .get(field_idx)
-                        .map(|f| f.label.as_str())
-                        .unwrap_or("field");
-                    let item = self.item_label(row_idx);
-                    return Err(format!(
-                        "item {} [{}], {}: {}",
-                        row_idx + 1,
-                        item,
-                        field_label,
-                        err
-                    ));
-                }
-            }
-        }
-        Ok(())
-    }
-}
-
-fn normalize_key(input: &str) -> String {
-    let mut key = String::new();
-    let mut prev_underscore = false;
-    for ch in input.chars() {
-        if ch.is_ascii_alphanumeric() {
-            key.push(ch.to_ascii_lowercase());
-            prev_underscore = false;
-            continue;
-        }
-        if !prev_underscore && !key.is_empty() {
-            key.push('_');
-            prev_underscore = true;
-        }
-    }
-    while key.ends_with('_') {
-        key.pop();
-    }
-    if key.is_empty() {
-        "field".to_string()
-    } else {
-        key
-    }
-}
-
 fn unique_field_key(fields: &[RepeaterFieldDef], requested: &str) -> String {
-    let base = normalize_key(requested);
+    let base = normalize_ascii_key(requested, "field");
     if !fields.iter().any(|field| field.key == base) {
         return base;
     }
@@ -774,16 +356,6 @@ fn looks_like_rows_list(rows: &[Value], fields: &[RepeaterFieldDef]) -> bool {
         }
         _ => false,
     })
-}
-
-fn seed_value(seed: &Value, field_idx: usize, key: &str, label: &str) -> Option<Value> {
-    match seed {
-        Value::Object(map) => map.get(key).cloned().or_else(|| map.get(label).cloned()),
-        Value::List(list) => list.get(field_idx).cloned(),
-        Value::None => None,
-        scalar if field_idx == 0 => Some(scalar.clone()),
-        _ => None,
-    }
 }
 
 fn extract_item_from_row(row: &Value) -> Value {

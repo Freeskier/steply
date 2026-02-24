@@ -8,8 +8,11 @@ use crate::core::NodeId;
 use crate::core::search::fuzzy::match_text;
 use crate::core::value::Value;
 use crate::core::value_path::{ValuePath, ValueTarget};
+use crate::runtime::event::WidgetAction;
 
-use crate::terminal::{CursorPos, KeyCode, KeyEvent, KeyModifiers};
+use crate::terminal::{
+    CursorPos, KeyCode, KeyEvent, KeyModifiers, PointerButton, PointerEvent, PointerKind,
+};
 use crate::ui::layout::{Layout, LineContinuation, RenderBlock};
 use crate::ui::span::Span;
 use crate::ui::style::{Color, Style};
@@ -20,7 +23,7 @@ use crate::widgets::shared::cursor_anchor;
 use crate::widgets::shared::filter;
 use crate::widgets::traits::{
     CompletionState, DrawOutput, Drawable, FocusMode, HintContext, HintGroup, HintItem,
-    InteractionResult, Interactive, RenderContext, TextAction,
+    InteractionResult, Interactive, PointerRowMap, RenderContext, TextAction,
 };
 use model::item_search_text;
 use render::{OptionRenderer, default_option_renderer};
@@ -28,6 +31,8 @@ use state::marker_symbol;
 
 pub use model::{SelectItem, SelectItemView, SelectMode};
 pub use render::SelectItemRenderState;
+
+const FILTER_POINTER_ROW: u16 = u16::MAX;
 
 pub struct SelectList {
     base: WidgetBase,
@@ -222,6 +227,14 @@ impl SelectList {
         }
     }
 
+    fn handled_with_focus(&self) -> InteractionResult {
+        let mut result = InteractionResult::handled();
+        result.actions.push(WidgetAction::RequestFocus {
+            target: self.base.id().to_string().into(),
+        });
+        result
+    }
+
     fn filter_query(&self) -> String {
         self.filter.query()
     }
@@ -327,6 +340,69 @@ impl SelectList {
         cursor_anchor::visible_row_cursor(self.active_index, start, end, row, 0)
     }
 
+    fn option_line_count_for_pointer(&self, index: usize, wrap_width: u16) -> usize {
+        let Some(option) = self.options.get(index) else {
+            return 0;
+        };
+        let inactive_style = Style::new().color(Color::DarkGrey);
+        let selected = self
+            .visible_to_source
+            .get(index)
+            .is_some_and(|source| self.selected.contains(source));
+        let base_style = if selected {
+            Style::new().color(Color::Green)
+        } else {
+            inactive_style
+        };
+        let option_lines = (self.option_renderer)(
+            option,
+            SelectItemRenderState {
+                focused: false,
+                active: false,
+                selected,
+                mode: self.mode,
+                base_style,
+                highlight_style: Style::new().color(Color::Yellow).bold(),
+            },
+        );
+
+        let mut wrapped_lines = 0usize;
+        for option_line in option_lines {
+            let (first_prefix, next_prefix) = if self.mode == SelectMode::List {
+                (
+                    Self::list_next_prefix(inactive_style),
+                    Self::list_next_prefix(inactive_style),
+                )
+            } else {
+                (
+                    Self::option_inactive_prefix(
+                        " ",
+                        inactive_style,
+                        marker_symbol(self.mode, false),
+                        inactive_style,
+                    ),
+                    Self::muted_gap_prefix(inactive_style),
+                )
+            };
+            wrapped_lines = wrapped_lines.saturating_add(
+                Layout::compose_block(
+                    &RenderBlock {
+                        start_col: 0,
+                        end_col: Some(wrap_width),
+                        lines: vec![option_line],
+                    },
+                    wrap_width,
+                    Some(&LineContinuation {
+                        first_prefix,
+                        next_prefix,
+                    }),
+                )
+                .len(),
+            );
+        }
+        wrapped_lines.max(1)
+    }
+
     fn toggle(&mut self, index: usize) {
         let Some(source_index) = self.visible_to_source.get(index).copied() else {
             return;
@@ -377,6 +453,49 @@ impl SelectList {
         let before = self.selected.clone();
         self.toggle(self.active_index);
         self.selected != before
+    }
+
+    fn handle_pointer_left_down(&mut self, event: PointerEvent) -> InteractionResult {
+        if event.row == FILTER_POINTER_ROW {
+            self.filter.set_focused(true);
+            return self.handled_with_focus();
+        }
+
+        self.filter.set_focused(false);
+        let index = event.row as usize;
+        if index >= self.options.len() {
+            return InteractionResult::ignored();
+        }
+        self.set_active_index(index);
+        self.toggle(index);
+        self.handled_with_focus()
+    }
+
+    fn pointer_rows_for_draw(&self, wrap_width: u16) -> Vec<PointerRowMap> {
+        let mut rows = Vec::<PointerRowMap>::new();
+        let mut rendered_row = 0u16;
+
+        if self.show_label && !self.base.label().is_empty() {
+            rendered_row = rendered_row.saturating_add(1);
+        }
+
+        if self.filter.is_visible() {
+            rows.push(PointerRowMap::new(rendered_row, FILTER_POINTER_ROW));
+            rendered_row = rendered_row.saturating_add(1);
+        }
+
+        let total = self.options.len();
+        let (start, end) = self.scroll.visible_range(total);
+        for index in start..end {
+            let local_row = index.min((u16::MAX - 1) as usize) as u16;
+            let wrapped = self.option_line_count_for_pointer(index, wrap_width);
+            for _ in 0..wrapped {
+                rows.push(PointerRowMap::new(rendered_row, local_row));
+                rendered_row = rendered_row.saturating_add(1);
+            }
+        }
+
+        rows
     }
 
     fn plain_gap_prefix() -> Vec<Span> {
@@ -655,6 +774,10 @@ impl Drawable for SelectList {
         DrawOutput { lines }
     }
 
+    fn pointer_rows(&self, ctx: &RenderContext) -> Vec<PointerRowMap> {
+        self.pointer_rows_for_draw(ctx.terminal_size.width.max(1))
+    }
+
     fn hints(&self, ctx: HintContext) -> Vec<HintItem> {
         if !ctx.focused {
             return Vec::new();
@@ -693,6 +816,13 @@ impl Interactive for SelectList {
         }
 
         self.handle_list_key(key)
+    }
+
+    fn on_pointer(&mut self, event: PointerEvent) -> InteractionResult {
+        match event.kind {
+            PointerKind::Down(PointerButton::Left) => self.handle_pointer_left_down(event),
+            _ => InteractionResult::ignored(),
+        }
     }
 
     fn on_text_action(&mut self, action: TextAction) -> InteractionResult {

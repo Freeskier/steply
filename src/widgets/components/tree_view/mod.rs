@@ -6,9 +6,13 @@ use crate::core::NodeId;
 use crate::core::search::fuzzy::match_text;
 use crate::core::value::Value;
 use crate::core::value_path::{ValuePath, ValueTarget};
+use crate::runtime::event::WidgetAction;
 
-use crate::terminal::{CursorPos, KeyCode, KeyEvent, KeyModifiers};
+use crate::terminal::{
+    CursorPos, KeyCode, KeyEvent, KeyModifiers, PointerButton, PointerEvent, PointerKind,
+};
 use crate::ui::highlight::render_text_spans;
+use crate::ui::layout::Layout;
 use crate::ui::span::Span;
 use crate::ui::style::{Color, Style};
 use crate::widgets::base::WidgetBase;
@@ -18,9 +22,13 @@ use crate::widgets::shared::cursor_anchor;
 use crate::widgets::shared::filter;
 use crate::widgets::traits::{
     CompletionState, DrawOutput, Drawable, FocusMode, HintContext, HintGroup, HintItem,
-    InteractionResult, Interactive, RenderContext, TextAction,
+    InteractionResult, Interactive, PointerRowMap, RenderContext, TextAction,
 };
 use state::{rebuild_visible, rebuild_visible_filtered};
+
+const FILTER_POINTER_ROW: u16 = u16::MAX;
+const POINTER_CONTINUATION_BIT: u16 = 1 << 15;
+const POINTER_ROW_MASK: u16 = POINTER_CONTINUATION_BIT - 1;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TreeItemRenderState {
@@ -222,6 +230,14 @@ impl<T: TreeItemLabel> TreeView<T> {
         }
     }
 
+    fn handled_with_focus(&self) -> InteractionResult {
+        let mut result = InteractionResult::handled();
+        result.actions.push(WidgetAction::RequestFocus {
+            target: self.base.id().to_string().into(),
+        });
+        result
+    }
+
     fn handle_filter_key(&mut self, key: KeyEvent) -> InteractionResult {
         match self
             .filter
@@ -385,67 +401,72 @@ impl<T: TreeItemLabel> TreeView<T> {
         false
     }
 
-    pub fn render_lines(&self, focused: bool) -> Vec<Vec<Span>> {
-        let mut lines = Vec::new();
-        let total = self.visible.len();
-        let (start, end) = self.scroll.visible_range(total);
-
+    fn render_visible_line(&self, vis_pos: usize, focused: bool) -> Vec<Span> {
         let inactive_style = Style::new().color(Color::DarkGrey);
         let cursor_style = Style::new().color(Color::Yellow);
         let active_style = Style::new().color(Color::Cyan).bold();
         let loading_style = Style::new().color(Color::Yellow);
 
+        let Some(node_idx) = self.visible.get(vis_pos).copied() else {
+            return Vec::new();
+        };
+        let node = &self.nodes[node_idx];
+
+        let active = vis_pos == self.active_index;
+        let loading = self.pending_expand == Some(node_idx);
+
+        let cursor = if focused && active { "❯" } else { " " };
+        let cursor_span = if focused && active {
+            Span::styled(cursor, cursor_style).no_wrap()
+        } else {
+            Span::styled(cursor, inactive_style).no_wrap()
+        };
+
+        let icon = if node.has_children {
+            if loading {
+                "⟳ "
+            } else if node.expanded {
+                "▼ "
+            } else {
+                "▶ "
+            }
+        } else {
+            "  "
+        };
+        let icon_span = if focused && active {
+            let icon_st = if loading { loading_style } else { active_style };
+            Span::styled(icon, icon_st).no_wrap()
+        } else {
+            Span::styled(icon, inactive_style).no_wrap()
+        };
+
+        let mut line = vec![cursor_span];
+        line.extend(self.render_indent_spans(node_idx, node.depth, focused, active));
+        line.push(icon_span);
+        let highlights = if self.filter_query.trim().is_empty() {
+            Vec::new()
+        } else {
+            match_text(self.filter_query.as_str(), node.item.label())
+                .map(|(_, ranges)| ranges)
+                .unwrap_or_default()
+        };
+        line.extend(node.item.render_spans(TreeItemRenderState {
+            focused,
+            active,
+            has_children: node.has_children,
+            expanded: node.expanded,
+            loading,
+            highlights,
+        }));
+        line
+    }
+
+    pub fn render_lines(&self, focused: bool) -> Vec<Vec<Span>> {
+        let mut lines = Vec::new();
+        let total = self.visible.len();
+        let (start, end) = self.scroll.visible_range(total);
         for vis_pos in start..end {
-            let node_idx = self.visible[vis_pos];
-            let node = &self.nodes[node_idx];
-
-            let active = vis_pos == self.active_index;
-            let loading = self.pending_expand == Some(node_idx);
-
-            let cursor = if focused && active { "❯" } else { " " };
-            let cursor_span = if focused && active {
-                Span::styled(cursor, cursor_style).no_wrap()
-            } else {
-                Span::styled(cursor, inactive_style).no_wrap()
-            };
-
-            let icon = if node.has_children {
-                if loading {
-                    "⟳ "
-                } else if node.expanded {
-                    "▼ "
-                } else {
-                    "▶ "
-                }
-            } else {
-                "  "
-            };
-            let icon_span = if focused && active {
-                let icon_st = if loading { loading_style } else { active_style };
-                Span::styled(icon, icon_st).no_wrap()
-            } else {
-                Span::styled(icon, inactive_style).no_wrap()
-            };
-
-            let mut line = vec![cursor_span];
-            line.extend(self.render_indent_spans(node_idx, node.depth, focused, active));
-            line.push(icon_span);
-            let highlights = if self.filter_query.trim().is_empty() {
-                Vec::new()
-            } else {
-                match_text(self.filter_query.as_str(), node.item.label())
-                    .map(|(_, ranges)| ranges)
-                    .unwrap_or_default()
-            };
-            line.extend(node.item.render_spans(TreeItemRenderState {
-                focused,
-                active,
-                has_children: node.has_children,
-                expanded: node.expanded,
-                loading,
-                highlights,
-            }));
-            lines.push(line);
+            lines.push(self.render_visible_line(vis_pos, focused));
         }
 
         if let Some(text) = self.scroll.footer(total) {
@@ -526,6 +547,84 @@ impl<T: TreeItemLabel> TreeView<T> {
         }
         cursor_anchor::visible_row_cursor(self.active_index, start, end, row, 0)
     }
+
+    fn pointer_rows_for_draw(&self, wrap_width: u16) -> Vec<PointerRowMap> {
+        let mut rows = Vec::<PointerRowMap>::new();
+        let mut rendered_row = 0u16;
+
+        if self.show_label && !self.base.label().is_empty() {
+            rendered_row = rendered_row.saturating_add(1);
+        }
+        if self.filter.is_visible() {
+            rows.push(PointerRowMap::new(rendered_row, FILTER_POINTER_ROW));
+            rendered_row = rendered_row.saturating_add(1);
+        }
+
+        let total = self.visible.len();
+        let (start, end) = self.scroll.visible_range(total);
+        for vis_pos in start..end {
+            let line = self.render_visible_line(vis_pos, false);
+            let wrapped = Layout::compose(std::slice::from_ref(&line), wrap_width)
+                .len()
+                .max(1);
+            let base_row = vis_pos.min(POINTER_ROW_MASK as usize) as u16;
+            for wrapped_idx in 0..wrapped {
+                let row_code = if wrapped_idx == 0 {
+                    base_row
+                } else {
+                    base_row | POINTER_CONTINUATION_BIT
+                };
+                rows.push(PointerRowMap::new(rendered_row, row_code));
+                rendered_row = rendered_row.saturating_add(1);
+            }
+        }
+
+        rows
+    }
+
+    fn icon_col_range(depth: usize) -> (u16, u16) {
+        let start = (depth.saturating_mul(2).saturating_add(2)).min(u16::MAX as usize) as u16;
+        (start, start.saturating_add(2))
+    }
+
+    fn handle_pointer_left_down(&mut self, event: PointerEvent) -> InteractionResult {
+        if event.row == FILTER_POINTER_ROW {
+            self.filter.set_focused(true);
+            return self.handled_with_focus();
+        }
+
+        self.filter.set_focused(false);
+        let continuation = (event.row & POINTER_CONTINUATION_BIT) != 0;
+        let vis_pos = (event.row & POINTER_ROW_MASK) as usize;
+        let Some(node_idx) = self.visible.get(vis_pos).copied() else {
+            return InteractionResult::ignored();
+        };
+        self.active_index = vis_pos;
+        self.scroll
+            .ensure_visible(self.active_index, self.visible.len());
+
+        let depth = self.nodes.get(node_idx).map(|node| node.depth).unwrap_or(0);
+        let has_children = self
+            .nodes
+            .get(node_idx)
+            .is_some_and(|node| node.has_children);
+        if has_children {
+            let (icon_start, icon_end) = Self::icon_col_range(depth);
+            if !continuation && event.col >= icon_start && event.col < icon_end {
+                if let Some(node) = self.nodes.get_mut(node_idx) {
+                    node.expanded = !node.expanded;
+                }
+                self.rebuild();
+                if let Some(pos) = self.visible.iter().position(|idx| *idx == node_idx) {
+                    self.active_index = pos;
+                    self.scroll
+                        .ensure_visible(self.active_index, self.visible.len());
+                }
+            }
+        }
+
+        self.handled_with_focus()
+    }
 }
 
 impl<T: TreeItemLabel> StaticChildrenComponent for TreeView<T> {}
@@ -549,6 +648,10 @@ impl<T: TreeItemLabel> Drawable for TreeView<T> {
 
         lines.extend(self.render_lines(focused));
         DrawOutput { lines }
+    }
+
+    fn pointer_rows(&self, ctx: &RenderContext) -> Vec<PointerRowMap> {
+        self.pointer_rows_for_draw(ctx.terminal_size.width.max(1))
     }
 
     fn hints(&self, ctx: HintContext) -> Vec<HintItem> {
@@ -623,6 +726,13 @@ impl<T: TreeItemLabel> Interactive for TreeView<T> {
                 };
                 InteractionResult::submit_or_produce(self.submit_target.as_ref(), value)
             }
+            _ => InteractionResult::ignored(),
+        }
+    }
+
+    fn on_pointer(&mut self, event: PointerEvent) -> InteractionResult {
+        match event.kind {
+            PointerKind::Down(PointerButton::Left) => self.handle_pointer_left_down(event),
             _ => InteractionResult::ignored(),
         }
     }

@@ -127,8 +127,33 @@ pub trait Drawable: Send {
         ""
     }
     fn draw(&self, ctx: &RenderContext) -> DrawOutput;
+    fn pointer_rows(&self, _ctx: &RenderContext) -> Vec<PointerRowMap> {
+        Vec::new()
+    }
     fn hints(&self, _ctx: HintContext) -> Vec<HintItem> {
         Vec::new()
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PointerRowMap {
+    pub rendered_row: u16,
+    pub local_row: u16,
+    pub local_col_offset: u16,
+}
+
+impl PointerRowMap {
+    pub fn new(rendered_row: u16, local_row: u16) -> Self {
+        Self {
+            rendered_row,
+            local_row,
+            local_col_offset: 0,
+        }
+    }
+
+    pub fn with_local_col_offset(mut self, offset: u16) -> Self {
+        self.local_col_offset = offset;
+        self
     }
 }
 

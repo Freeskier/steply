@@ -1,7 +1,9 @@
 use crate::core::value::Value;
+use crate::runtime::event::WidgetAction;
+use crate::terminal::{PointerButton, PointerEvent, PointerKind};
 use crate::ui::span::Span;
 use crate::ui::style::{Color, Style};
-use crate::widgets::traits::{DrawOutput, Drawable, OutputNode, RenderContext};
+use crate::widgets::traits::{DrawOutput, Drawable, InteractionResult, OutputNode, RenderContext};
 
 pub struct UrlOutput {
     id: String,
@@ -44,13 +46,22 @@ impl Drawable for UrlOutput {
         DrawOutput {
             lines: vec![vec![
                 Span::styled(linked, Style::new().color(Color::Blue).bold()).no_wrap(),
-                Span::styled(" ↗", Style::new().color(Color::DarkGrey)).no_wrap(),
+                Span::styled("↗", Style::new().color(Color::DarkGrey)).no_wrap(),
             ]],
         }
     }
 }
 
 impl OutputNode for UrlOutput {
+    fn on_pointer(&mut self, event: PointerEvent) -> InteractionResult {
+        if matches!(event.kind, PointerKind::Down(PointerButton::Left)) {
+            return InteractionResult::with_action(WidgetAction::OpenUrl {
+                url: self.url.clone(),
+            });
+        }
+        InteractionResult::ignored()
+    }
+
     fn value(&self) -> Option<Value> {
         Some(Value::Text(self.url.clone()))
     }

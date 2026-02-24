@@ -190,9 +190,13 @@ impl Node {
     }
 
     pub fn on_pointer(&mut self, event: PointerEvent) -> InteractionResult {
-        self.interactive_mut()
-            .map(|widget| widget.on_pointer_cap(event))
-            .unwrap_or_else(InteractionResult::ignored)
+        if let Some(widget) = self.interactive_mut() {
+            widget.on_pointer_cap(event)
+        } else if let Some(widget) = self.output_mut() {
+            widget.on_pointer(event)
+        } else {
+            InteractionResult::ignored()
+        }
     }
 
     pub fn on_text_action(&mut self, action: TextAction) -> InteractionResult {

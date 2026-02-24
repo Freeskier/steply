@@ -40,6 +40,7 @@ impl ValueChange {
 #[derive(Debug, Clone)]
 pub enum WidgetAction {
     ValueChanged { change: ValueChange },
+    OpenUrl { url: String },
 
     InputDone,
     ValidateFocusedSubmit,

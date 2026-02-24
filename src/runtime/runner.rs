@@ -258,10 +258,20 @@ impl Runtime {
     }
 
     fn apply_action(&mut self, action: WidgetAction) -> bool {
-        let result = self.state.handle_action(action);
-        self.flush_pending_scheduler_commands();
-        self.flush_pending_task_invocations();
-        result.request_render
+        match action {
+            WidgetAction::OpenUrl { url } => {
+                if let Err(err) = Self::open_external_url(url.as_str()) {
+                    eprintln!("failed to open URL '{}': {err}", url);
+                }
+                false
+            }
+            action => {
+                let result = self.state.handle_action(action);
+                self.flush_pending_scheduler_commands();
+                self.flush_pending_task_invocations();
+                result.request_render
+            }
+        }
     }
 
     fn apply_system_event(&mut self, event: SystemEvent) -> bool {
@@ -288,5 +298,31 @@ impl Runtime {
         let frame = self.renderer.render(&view, self.terminal.size());
         self.last_hit_map = frame.hit_map.clone();
         self.terminal.render_frame(&frame)
+    }
+
+    fn open_external_url(url: &str) -> io::Result<()> {
+        #[cfg(target_os = "windows")]
+        {
+            std::process::Command::new("cmd")
+                .args(["/C", "start", ""])
+                .arg(url)
+                .spawn()?;
+            return Ok(());
+        }
+
+        #[cfg(target_os = "macos")]
+        {
+            std::process::Command::new("open").arg(url).spawn()?;
+            return Ok(());
+        }
+
+        #[cfg(all(unix, not(target_os = "macos")))]
+        {
+            std::process::Command::new("xdg-open").arg(url).spawn()?;
+            return Ok(());
+        }
+
+        #[allow(unreachable_code)]
+        Err(io::Error::other("unsupported platform for URL opening"))
     }
 }

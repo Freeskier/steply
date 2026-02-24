@@ -22,6 +22,7 @@ impl<'a> EffectDispatcher<'a> {
                 self.state.clear_step_errors();
                 InteractionResult::handled()
             }
+            WidgetAction::OpenUrl { .. } => InteractionResult::consumed(),
             WidgetAction::InputDone => {
                 if self.state.has_blocking_overlay() {
                     self.state.close_overlay();

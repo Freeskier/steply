@@ -534,6 +534,9 @@ pub trait OutputNode: Drawable {
         None
     }
     fn set_value(&mut self, _value: Value) {}
+    fn on_pointer(&mut self, _event: PointerEvent) -> InteractionResult {
+        InteractionResult::ignored()
+    }
     fn on_tick(&mut self) -> InteractionResult {
         InteractionResult::ignored()
     }

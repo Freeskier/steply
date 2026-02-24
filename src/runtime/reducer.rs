@@ -36,14 +36,15 @@ impl Reducer {
                 vec![Effect::RequestRender]
             }
             Intent::Submit => {
-                if state.back_confirm().is_some() {
-                    state.confirm_back();
-                    return vec![Effect::RequestRender];
-                }
                 if let Some(result) = state.submit_focused() {
-                    collect_effects(result)
+                    let effects = collect_effects(result);
+                    if !effects.is_empty() {
+                        effects
+                    } else {
+                        fallback_submit(state)
+                    }
                 } else {
-                    vec![Effect::RequestRender]
+                    fallback_submit(state)
                 }
             }
             Intent::ToggleCompletion => {
@@ -60,7 +61,16 @@ impl Reducer {
                 state.focus_prev();
                 vec![Effect::RequestRender]
             }
-            Intent::InputKey(key) => collect_effects(state.dispatch_key_to_focused(key)),
+            Intent::InputKey(key) => {
+                let result = state.dispatch_key_to_focused(key);
+                if result.handled {
+                    collect_effects(result)
+                } else if is_plain_enter(key) {
+                    fallback_submit(state)
+                } else {
+                    vec![]
+                }
+            }
             Intent::TextAction(action) => {
                 collect_effects(state.dispatch_text_action_to_focused(action))
             }
@@ -115,4 +125,21 @@ fn collect_effects(result: InteractionResult) -> Vec<Effect> {
         effects.push(Effect::RequestRender);
     }
     effects
+}
+
+fn is_plain_enter(key: KeyEvent) -> bool {
+    key.code == KeyCode::Enter && key.modifiers == KeyModifiers::NONE
+}
+
+fn fallback_submit(state: &mut AppState) -> Vec<Effect> {
+    if state.back_confirm().is_some() {
+        state.confirm_back();
+        return vec![Effect::RequestRender];
+    }
+    let effects = collect_effects(state.handle_system_event(SystemEvent::RequestSubmit));
+    if effects.is_empty() {
+        vec![Effect::RequestRender]
+    } else {
+        effects
+    }
 }

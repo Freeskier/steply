@@ -19,7 +19,9 @@ mod decorations;
 mod overlay;
 mod overlay_geometry;
 
-use decorations::{StepFooter, decorate_step_block, decoration_gutter_width};
+use decorations::{
+    StepFooter, append_step_footer_plain, decorate_step_block, decoration_gutter_width,
+};
 use overlay::apply_overlay;
 
 #[derive(Debug, Default, Clone)]
@@ -282,8 +284,9 @@ fn build_base_frame(
             tint_block(&mut block_lines, tint);
         }
 
+        let footer = step_footer(status, view);
+
         if config.decorations_enabled {
-            let footer = step_footer(status, view);
             let include_top = idx == 0;
             decorate_step_block(
                 &mut block_lines,
@@ -298,6 +301,8 @@ fn build_base_frame(
                 block_hit_map.shift_rows(1);
             }
             block_hit_map.shift_cols(decoration_gutter_width().min(u16::MAX as usize) as u16);
+        } else {
+            append_step_footer_plain(&mut block_lines, footer);
         }
 
         let start_row = frame.lines.len() as u16;
@@ -349,6 +354,7 @@ fn step_footer<'a>(status: StepVisualStatus, view: &'a RenderView<'a>) -> Option
         return Some(StepFooter::Error {
             message: "Exiting.",
             description: None,
+            show_help_toggle: false,
         });
     }
 
@@ -356,10 +362,15 @@ fn step_footer<'a>(status: StepVisualStatus, view: &'a RenderView<'a>) -> Option
         return None;
     }
 
+    if let Some(choice) = view.exit_confirm {
+        return Some(StepFooter::ExitConfirm { choice });
+    }
+
     if let Some(msg) = view.back_confirm {
         return Some(StepFooter::Warning {
             message: msg,
             description: Some("[Enter] confirm  •  [Esc] cancel"),
+            show_help_toggle: true,
         });
     }
 
@@ -367,13 +378,19 @@ fn step_footer<'a>(status: StepVisualStatus, view: &'a RenderView<'a>) -> Option
         return Some(StepFooter::Error {
             message: msg.as_str(),
             description: None,
+            show_help_toggle: true,
         });
     }
 
-    view.step_warnings.first().map(|msg| StepFooter::Warning {
-        message: msg.as_str(),
-        description: Some("[Enter] confirm  •  [Esc] cancel"),
-    })
+    if let Some(msg) = view.step_warnings.first() {
+        return Some(StepFooter::Warning {
+            message: msg.as_str(),
+            description: Some("[Enter] confirm  •  [Esc] cancel"),
+            show_help_toggle: true,
+        });
+    }
+
+    Some(StepFooter::HelpToggle)
 }
 
 fn append_hints_panel(nodes: &[Node], focused_id: Option<&str>, block_lines: &mut Vec<SpanLine>) {

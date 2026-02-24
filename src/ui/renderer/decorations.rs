@@ -1,4 +1,5 @@
 use super::StepVisualStatus;
+use crate::state::app::ExitConfirmChoice;
 use crate::terminal::CursorPos;
 use crate::ui::span::{Span, SpanLine};
 use crate::ui::style::{Color, Style};
@@ -10,11 +11,17 @@ pub(super) enum StepFooter<'a> {
     Error {
         message: &'a str,
         description: Option<&'a str>,
+        show_help_toggle: bool,
     },
     Warning {
         message: &'a str,
         description: Option<&'a str>,
+        show_help_toggle: bool,
     },
+    ExitConfirm {
+        choice: ExitConfirmChoice,
+    },
+    HelpToggle,
 }
 
 pub(super) fn decorate_step_block(
@@ -28,7 +35,27 @@ pub(super) fn decorate_step_block(
 ) {
     let (decor_style, marker) = match &footer {
         Some(StepFooter::Error { .. }) => (Style::new().color(Color::Red), "◆  ".to_string()),
-        Some(StepFooter::Warning { .. }) => (Style::new().color(Color::Yellow), "▲  ".to_string()),
+        Some(StepFooter::Warning { .. } | StepFooter::ExitConfirm { .. }) => {
+            (Style::new().color(Color::Yellow), "▲  ".to_string())
+        }
+        Some(StepFooter::HelpToggle) => {
+            let style = match status {
+                StepVisualStatus::Active => Style::new().color(Color::Green),
+                StepVisualStatus::Running => Style::new().color(Color::Blue),
+                StepVisualStatus::Done | StepVisualStatus::Pending => {
+                    Style::new().color(Color::DarkGrey)
+                }
+                StepVisualStatus::Cancelled => Style::new().color(Color::Red),
+            };
+            let marker = match status {
+                StepVisualStatus::Active => "◇  ".to_string(),
+                StepVisualStatus::Running => format!("{running_marker}  "),
+                StepVisualStatus::Pending => "◇  ".to_string(),
+                StepVisualStatus::Done => "◈  ".to_string(),
+                StepVisualStatus::Cancelled => "◆  ".to_string(),
+            };
+            (style, marker)
+        }
         None => {
             let style = match status {
                 StepVisualStatus::Active => Style::new().color(Color::Green),
@@ -63,28 +90,78 @@ pub(super) fn decorate_step_block(
     }
 
     match footer {
-        Some(
-            StepFooter::Error {
-                message,
-                description,
-            }
-            | StepFooter::Warning {
-                message,
-                description,
-            },
-        ) => {
+        Some(StepFooter::Error {
+            message,
+            description,
+            show_help_toggle,
+        }) => {
             let bottom = if connect_to_next { "├  " } else { "└  " };
-            decorated.push(vec![
-                Span::styled(bottom, decor_style).no_wrap(),
-                Span::styled(message, decor_style).no_wrap(),
-            ]);
+            decorated.push(with_gutter_prefix(
+                bottom,
+                decor_style,
+                vec![Span::styled(message, decor_style).no_wrap()],
+            ));
             if let Some(desc) = description {
                 let cont = if connect_to_next { "│  " } else { "   " };
-                decorated.push(vec![
-                    Span::styled(cont, decor_style).no_wrap(),
-                    Span::styled(desc, Style::new().color(Color::DarkGrey)).no_wrap(),
-                ]);
+                decorated.push(with_gutter_prefix(
+                    cont,
+                    decor_style,
+                    vec![Span::styled(desc, Style::new().color(Color::DarkGrey)).no_wrap()],
+                ));
             }
+            if show_help_toggle {
+                let cont = if connect_to_next { "│  " } else { "   " };
+                decorated.push(with_gutter_prefix(cont, decor_style, help_toggle_line()));
+            }
+        }
+        Some(StepFooter::Warning {
+            message,
+            description,
+            show_help_toggle,
+        }) => {
+            let bottom = if connect_to_next { "├  " } else { "└  " };
+            decorated.push(with_gutter_prefix(
+                bottom,
+                decor_style,
+                vec![Span::styled(message, decor_style).no_wrap()],
+            ));
+            if let Some(desc) = description {
+                let cont = if connect_to_next { "│  " } else { "   " };
+                decorated.push(with_gutter_prefix(
+                    cont,
+                    decor_style,
+                    vec![Span::styled(desc, Style::new().color(Color::DarkGrey)).no_wrap()],
+                ));
+            }
+            if show_help_toggle {
+                let cont = if connect_to_next { "│  " } else { "   " };
+                decorated.push(with_gutter_prefix(cont, decor_style, help_toggle_line()));
+            }
+        }
+        Some(StepFooter::ExitConfirm { choice }) => {
+            let bottom = if connect_to_next { "├  " } else { "└  " };
+            let cont = if connect_to_next { "│  " } else { "   " };
+            decorated.push(with_gutter_prefix(
+                bottom,
+                decor_style,
+                exit_confirm_line(choice),
+            ));
+            decorated.push(with_gutter_prefix(
+                cont,
+                decor_style,
+                vec![
+                    Span::styled(
+                        "[←/→ Tab] switch  •  [Enter] confirm  •  [Esc] cancel  •  [Ctrl+C] force",
+                        Style::new().color(Color::DarkGrey),
+                    )
+                    .no_wrap(),
+                ],
+            ));
+            decorated.push(with_gutter_prefix(cont, decor_style, help_toggle_line()));
+        }
+        Some(StepFooter::HelpToggle) => {
+            let bottom = if connect_to_next { "├  " } else { "└  " };
+            decorated.push(with_gutter_prefix(bottom, decor_style, help_toggle_line()));
         }
         None => {
             if connect_to_next {
@@ -103,6 +180,90 @@ pub(super) fn decorate_step_block(
         }
         cursor.col = cursor.col.saturating_add(3);
     }
+}
+
+pub(super) fn append_step_footer_plain(lines: &mut Vec<SpanLine>, footer: Option<StepFooter<'_>>) {
+    match footer {
+        Some(StepFooter::Error {
+            message,
+            description,
+            show_help_toggle,
+        }) => {
+            lines.push(vec![
+                Span::styled(message, Style::new().color(Color::Red)).no_wrap(),
+            ]);
+            if let Some(desc) = description {
+                lines.push(vec![
+                    Span::styled(desc, Style::new().color(Color::DarkGrey)).no_wrap(),
+                ]);
+            }
+            if show_help_toggle {
+                lines.push(help_toggle_line());
+            }
+        }
+        Some(StepFooter::Warning {
+            message,
+            description,
+            show_help_toggle,
+        }) => {
+            lines.push(vec![
+                Span::styled(message, Style::new().color(Color::Yellow)).no_wrap(),
+            ]);
+            if let Some(desc) = description {
+                lines.push(vec![
+                    Span::styled(desc, Style::new().color(Color::DarkGrey)).no_wrap(),
+                ]);
+            }
+            if show_help_toggle {
+                lines.push(help_toggle_line());
+            }
+        }
+        Some(StepFooter::ExitConfirm { choice }) => {
+            lines.push(exit_confirm_line(choice));
+            lines.push(vec![
+                Span::styled(
+                    "[←/→ Tab] switch  •  [Enter] confirm  •  [Esc] cancel  •  [Ctrl+C] force",
+                    Style::new().color(Color::DarkGrey),
+                )
+                .no_wrap(),
+            ]);
+            lines.push(help_toggle_line());
+        }
+        Some(StepFooter::HelpToggle) => {
+            lines.push(help_toggle_line());
+        }
+        None => {}
+    }
+}
+
+fn with_gutter_prefix(prefix: &str, gutter_style: Style, mut content: SpanLine) -> SpanLine {
+    let mut line = Vec::<Span>::with_capacity(content.len().saturating_add(1));
+    line.push(Span::styled(prefix, gutter_style).no_wrap());
+    line.append(&mut content);
+    line
+}
+
+fn help_toggle_line() -> SpanLine {
+    vec![
+        Span::styled("Ctrl+h", Style::new().color(Color::DarkGrey).bold()).no_wrap(),
+        Span::styled(" Toggle help", Style::new().color(Color::DarkGrey)).no_wrap(),
+    ]
+}
+
+fn exit_confirm_line(choice: ExitConfirmChoice) -> SpanLine {
+    let inactive = Style::new().color(Color::DarkGrey);
+    let active = inactive.bold();
+    let (no_style, yes_style) = match choice {
+        ExitConfirmChoice::Stay => (active, inactive),
+        ExitConfirmChoice::Exit => (inactive, active),
+    };
+
+    vec![
+        Span::styled("Exit application? ", Style::new().color(Color::Yellow)).no_wrap(),
+        Span::styled("No", no_style).no_wrap(),
+        Span::styled(" / ", inactive).no_wrap(),
+        Span::styled("Yes", yes_style).no_wrap(),
+    ]
 }
 
 pub(super) fn decoration_gutter_width() -> usize {

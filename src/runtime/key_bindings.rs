@@ -69,6 +69,7 @@ impl KeyBindings {
         self.bind(KeyBinding::ctrl(KeyCode::Char('?')), Intent::ToggleHints);
         self.bind(KeyBinding::ctrl(KeyCode::Char('_')), Intent::ToggleHints);
         self.bind(KeyBinding::ctrl(KeyCode::Char('7')), Intent::ToggleHints);
+        self.bind(KeyBinding::ctrl(KeyCode::Char('h')), Intent::ToggleHints);
         self.bind(
             KeyBinding::ctrl(KeyCode::Char('1')),
             Intent::OpenOverlayAtIndex(0),
@@ -130,5 +131,15 @@ impl KeyBindings {
         );
         self.bind(KeyBinding::key(KeyCode::PageUp), Intent::ScrollPageUp);
         self.bind(KeyBinding::key(KeyCode::PageDown), Intent::ScrollPageDown);
+        let ctrl_shift = KeyModifiers::CONTROL.union(KeyModifiers::SHIFT);
+        self.bind(
+            KeyBinding::new(KeyCode::Char('c'), ctrl_shift),
+            Intent::CopySelection,
+        );
+        self.bind(
+            KeyBinding::new(KeyCode::Char('C'), ctrl_shift),
+            Intent::CopySelection,
+        );
+        self.bind(KeyBinding::alt(KeyCode::Char('c')), Intent::CopySelection);
     }
 }

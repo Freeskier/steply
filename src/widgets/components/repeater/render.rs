@@ -160,4 +160,27 @@ impl Drawable for Repeater {
 
         DrawOutput { lines }
     }
+
+    fn hints(&self, ctx: HintContext) -> Vec<HintItem> {
+        if !ctx.focused {
+            return Vec::new();
+        }
+        if !self.has_work() {
+            return vec![HintItem::new("Enter", "submit", HintGroup::Action).with_priority(20)];
+        }
+
+        let mut hints = vec![
+            HintItem::new("Enter / Tab", "next field", HintGroup::Navigation).with_priority(10),
+            HintItem::new("Shift+Tab", "previous field", HintGroup::Navigation).with_priority(11),
+        ];
+        if self.submit_target.is_some() {
+            hints.push(
+                HintItem::new("final Enter", "commit rows + submit", HintGroup::Action)
+                    .with_priority(20),
+            );
+        } else {
+            hints.push(HintItem::new("final Enter", "submit", HintGroup::Action).with_priority(20));
+        }
+        hints
+    }
 }

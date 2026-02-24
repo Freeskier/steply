@@ -26,6 +26,7 @@ pub enum Intent {
     ScrollDown,
     ScrollPageUp,
     ScrollPageDown,
+    CopySelection,
     Pointer(PointerEvent),
     PointerOn { target: NodeId, event: PointerEvent },
 }

@@ -4,12 +4,14 @@ use crate::core::value_path::{ValuePath, ValueTarget};
 use crate::terminal::{KeyCode, KeyEvent, KeyModifiers};
 use crate::ui::span::Span;
 use crate::ui::style::{Color, Style};
+use crate::ui::text::text_display_width;
 use crate::widgets::base::WidgetBase;
 use crate::widgets::inputs::masked::MaskedInput;
 use crate::widgets::node::LeafComponent;
 use crate::widgets::shared::calendar::{self, Date, MonthGrid};
 use crate::widgets::traits::{
-    DrawOutput, Drawable, FocusMode, InteractionResult, Interactive, RenderContext, ValidationMode,
+    DrawOutput, Drawable, FocusMode, HintContext, HintGroup, HintItem, InteractionResult,
+    Interactive, RenderContext, ValidationMode,
 };
 use crate::widgets::validators::{Validator, run_validators};
 
@@ -334,6 +336,36 @@ impl Drawable for Calendar {
 
         DrawOutput { lines }
     }
+
+    fn hints(&self, ctx: HintContext) -> Vec<HintItem> {
+        if !ctx.focused {
+            return Vec::new();
+        }
+        let mut hints = vec![
+            HintItem::new("Tab / Shift+Tab", "switch section", HintGroup::Navigation)
+                .with_priority(10),
+            HintItem::new("Enter", "select / submit", HintGroup::Action).with_priority(20),
+        ];
+        if self.is_time_section() {
+            hints.push(HintItem::new("Type", "edit time", HintGroup::Edit).with_priority(11));
+            return hints;
+        }
+        match self.section {
+            Section::Month | Section::Year => {
+                hints.push(
+                    HintItem::new("← →", "change value", HintGroup::Navigation).with_priority(11),
+                );
+            }
+            Section::Grid => {
+                hints.push(
+                    HintItem::new("← → ↑ ↓", "move day cursor", HintGroup::Navigation)
+                        .with_priority(11),
+                );
+            }
+            Section::Time => {}
+        }
+        hints
+    }
 }
 
 impl Interactive for Calendar {
@@ -342,32 +374,54 @@ impl Interactive for Calendar {
     }
 
     fn cursor_pos(&self) -> Option<crate::terminal::CursorPos> {
-        if !self.is_time_section() {
-            return None;
+        if self.is_time_section() {
+            let row_offset = if self.mode == CalendarMode::Time {
+                1u16
+            } else {
+                let grid = MonthGrid::new(self.view_year, self.view_month);
+                let grid_rows = grid
+                    .cells
+                    .iter()
+                    .filter(|r| r.iter().any(|c| c.is_some()))
+                    .count() as u16;
+                1 + 1 + 1 + 1 + grid_rows + 1
+            };
+
+            let col_offset = if self.mode == CalendarMode::DateTime {
+                let date_prefix = self
+                    .selected_date
+                    .map(|d| format!("  {}   ", d.to_iso()))
+                    .unwrap_or_else(|| "  pick a date   ".to_string());
+                text_display_width(date_prefix.as_str()) as u16
+            } else {
+                2u16
+            };
+
+            return Some(crate::terminal::CursorPos {
+                row: row_offset,
+                col: col_offset + self.time_input.cursor_col() as u16,
+            });
         }
 
-        let row_offset = if self.mode == CalendarMode::Time {
-            1u16
-        } else {
-            let grid = MonthGrid::new(self.view_year, self.view_month);
-            let grid_rows = grid
-                .cells
-                .iter()
-                .filter(|r| r.iter().any(|c| c.is_some()))
-                .count() as u16;
-            1 + 1 + 1 + 1 + grid_rows + 1
-        };
-
-        let col_offset = if self.mode == CalendarMode::DateTime {
-            16u16
-        } else {
-            2u16
-        };
-
-        Some(crate::terminal::CursorPos {
-            row: row_offset,
-            col: col_offset + self.time_input.cursor_col() as u16,
-        })
+        match self.section {
+            Section::Month => Some(crate::terminal::CursorPos { row: 1, col: 4 }),
+            Section::Year => Some(crate::terminal::CursorPos { row: 1, col: 19 }),
+            Section::Grid => {
+                let grid = MonthGrid::new(self.view_year, self.view_month);
+                let (grid_row, grid_col) = self.day_grid_pos(&grid, self.cursor_day);
+                let displayed_before = grid
+                    .cells
+                    .iter()
+                    .take(grid_row)
+                    .filter(|row| row.iter().any(|cell| cell.is_some()))
+                    .count() as u16;
+                Some(crate::terminal::CursorPos {
+                    row: 4u16.saturating_add(displayed_before),
+                    col: 2u16.saturating_add((grid_col as u16).saturating_mul(4).saturating_add(1)),
+                })
+            }
+            Section::Time => None,
+        }
     }
 
     fn on_key(&mut self, key: KeyEvent) -> InteractionResult {

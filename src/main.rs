@@ -8,6 +8,7 @@ use steply_v2::runtime::Runtime;
 use steply_v2::state::app::AppState;
 use steply_v2::state::demo::{build_demo_flow, build_demo_tasks};
 use steply_v2::terminal::Terminal;
+use steply_v2::ui::renderer::RendererConfig;
 
 fn main() {
     install_panic_logging();
@@ -26,8 +27,11 @@ fn run() -> std::io::Result<()> {
     let (task_specs, task_subscriptions) = build_demo_tasks();
     let state = AppState::with_tasks(flow, task_specs, task_subscriptions);
     let terminal = Terminal::new()?;
-    let mut runtime =
-        Runtime::new(state, terminal).with_render_mode(steply_v2::terminal::RenderMode::AltScreen);
+    let mut runtime = Runtime::new(state, terminal)
+        .with_render_mode(steply_v2::terminal::RenderMode::AltScreen)
+        .with_renderer_config(RendererConfig {
+            decorations_enabled: true,
+        });
     if render_json_enabled() {
         return runtime.print_render_json();
     }

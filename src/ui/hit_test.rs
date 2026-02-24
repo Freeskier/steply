@@ -167,4 +167,30 @@ impl FrameHitMap {
             local_semantic: region.local_semantic,
         })
     }
+
+    pub fn row_ranges(&self, row: u16) -> Vec<(u16, u16)> {
+        let mut ranges = self
+            .regions
+            .iter()
+            .filter(|region| region.row == row && region.col_end_exclusive > region.col_start)
+            .map(|region| (region.col_start, region.col_end_exclusive))
+            .collect::<Vec<_>>();
+        if ranges.is_empty() {
+            return ranges;
+        }
+
+        ranges.sort_unstable_by_key(|(start, _)| *start);
+        let mut merged = Vec::<(u16, u16)>::with_capacity(ranges.len());
+        let mut current = ranges[0];
+        for range in ranges.into_iter().skip(1) {
+            if range.0 <= current.1 {
+                current.1 = current.1.max(range.1);
+            } else {
+                merged.push(current);
+                current = range;
+            }
+        }
+        merged.push(current);
+        merged
+    }
 }

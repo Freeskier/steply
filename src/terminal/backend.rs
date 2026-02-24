@@ -70,6 +70,10 @@ impl KeyModifiers {
     pub fn contains(self, other: Self) -> bool {
         (self.0 & other.0) == other.0
     }
+
+    pub fn union(self, other: Self) -> Self {
+        Self(self.0 | other.0)
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -270,6 +274,37 @@ impl Terminal {
 
     pub fn is_altscreen(&self) -> bool {
         self.mode == RenderMode::AltScreen
+    }
+
+    pub fn map_screen_row_to_frame_row(&self, screen_row: u16) -> u16 {
+        match self.mode {
+            RenderMode::AltScreen => {
+                let offset = self
+                    .alt_screen
+                    .as_ref()
+                    .map(|alt| alt.scroll_offset)
+                    .unwrap_or(0);
+                let row = offset.saturating_add(screen_row as usize);
+                row.min(u16::MAX as usize) as u16
+            }
+            RenderMode::Inline => {
+                let Some(inline) = self.inline_state.as_ref() else {
+                    return screen_row;
+                };
+                let screen = screen_row as usize;
+                let block_start = inline.last_rendered_block_start_row as usize;
+                if screen < block_start {
+                    return screen_row;
+                }
+                let visible_row = screen.saturating_sub(block_start);
+                let skip = inline
+                    .last_frame
+                    .len()
+                    .saturating_sub(inline.last_drawn_count);
+                let row = skip.saturating_add(visible_row);
+                row.min(u16::MAX as usize) as u16
+            }
+        }
     }
 
     pub fn scroll(&mut self, delta: i32) {

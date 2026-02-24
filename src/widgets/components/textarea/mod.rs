@@ -6,8 +6,8 @@ use crate::widgets::components::scroll::ScrollState;
 use crate::widgets::node::LeafComponent;
 use crate::widgets::shared::text_edit;
 use crate::widgets::traits::{
-    DrawOutput, Drawable, FocusMode, InteractionResult, Interactive, RenderContext, TextAction,
-    TextEditState, ValidationMode,
+    DrawOutput, Drawable, FocusMode, HintContext, HintGroup, HintItem, InteractionResult,
+    Interactive, RenderContext, TextAction, TextEditState, ValidationMode,
 };
 use crate::widgets::validators::{Validator, run_validators};
 use unicode_width::UnicodeWidthChar;
@@ -175,6 +175,18 @@ impl Drawable for TextAreaComponent {
         DrawOutput {
             lines: output_lines,
         }
+    }
+
+    fn hints(&self, ctx: HintContext) -> Vec<HintItem> {
+        if !ctx.focused {
+            return Vec::new();
+        }
+        vec![
+            HintItem::new("Enter", "new line", HintGroup::Edit).with_priority(10),
+            HintItem::new("Ctrl+Enter / Esc", "finish", HintGroup::Action).with_priority(20),
+            HintItem::new("← → ↑ ↓", "move cursor", HintGroup::Navigation).with_priority(11),
+            HintItem::new("Home / End", "line start/end", HintGroup::Navigation).with_priority(12),
+        ]
     }
 }
 

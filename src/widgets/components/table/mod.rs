@@ -18,8 +18,8 @@ use crate::widgets::shared::list_core;
 use crate::widgets::shared::validation::decorate_component_validation;
 use crate::widgets::shared::value_seed::{normalize_ascii_key, seed_value_from_record};
 use crate::widgets::traits::{
-    CompletionState, DrawOutput, Drawable, FocusMode, InteractionResult, Interactive,
-    InteractiveNode, RenderContext, TextAction, ValidationMode,
+    CompletionState, DrawOutput, Drawable, FocusMode, HintContext, HintGroup, HintItem,
+    InteractionResult, Interactive, InteractiveNode, RenderContext, TextAction, ValidationMode,
 };
 
 mod interaction;

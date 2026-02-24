@@ -344,6 +344,75 @@ impl Drawable for Table {
 
         DrawOutput { lines }
     }
+
+    fn hints(&self, ctx: HintContext) -> Vec<HintItem> {
+        if !ctx.focused {
+            return Vec::new();
+        }
+
+        let mut hints = vec![
+            HintItem::new("Ctrl+F", "toggle filter", HintGroup::View).with_priority(30),
+            HintItem::new("Enter", "submit step", HintGroup::Action).with_priority(40),
+        ];
+
+        if self.filter.is_focused() {
+            hints.push(HintItem::new("Type", "filter rows", HintGroup::Edit).with_priority(10));
+            hints.push(HintItem::new("Esc", "close filter", HintGroup::View).with_priority(11));
+            return hints;
+        }
+
+        if self.move_mode {
+            hints.push(HintItem::new("↑ ↓", "move row", HintGroup::Navigation).with_priority(10));
+            hints
+                .push(HintItem::new("m / Esc", "finish move", HintGroup::Action).with_priority(20));
+            return hints;
+        }
+
+        if self.edit_mode {
+            hints.push(
+                HintItem::new("Tab / Shift+Tab", "next/prev column", HintGroup::Navigation)
+                    .with_priority(10),
+            );
+            hints.push(
+                HintItem::new("Enter / Esc", "finish edit", HintGroup::Action).with_priority(20),
+            );
+            return hints;
+        }
+
+        match self.focus {
+            TableFocus::Header => {
+                hints.push(
+                    HintItem::new("← → / Tab", "switch column", HintGroup::Navigation)
+                        .with_priority(10),
+                );
+                hints.push(
+                    HintItem::new("Space / Enter", "sort column", HintGroup::Action)
+                        .with_priority(20),
+                );
+                hints.push(
+                    HintItem::new("↓", "go to body", HintGroup::Navigation).with_priority(11),
+                );
+                hints.push(HintItem::new("i", "insert row", HintGroup::Action).with_priority(21));
+            }
+            TableFocus::Body => {
+                hints.push(
+                    HintItem::new("↑ ↓", "move rows", HintGroup::Navigation).with_priority(10),
+                );
+                hints.push(
+                    HintItem::new("Tab / Shift+Tab", "switch column", HintGroup::Navigation)
+                        .with_priority(11),
+                );
+                hints.push(HintItem::new("e", "edit cell", HintGroup::Action).with_priority(20));
+                hints.push(
+                    HintItem::new("i / d", "insert/delete row", HintGroup::Action)
+                        .with_priority(21),
+                );
+                hints.push(HintItem::new("m", "move row", HintGroup::Action).with_priority(22));
+            }
+        }
+
+        hints
+    }
 }
 
 fn accent_active_cell(spans: &mut [Span]) {

@@ -314,4 +314,84 @@ impl Drawable for ObjectEditor {
 
         DrawOutput { lines }
     }
+
+    fn hints(&self, ctx: HintContext) -> Vec<HintItem> {
+        if !ctx.focused {
+            return Vec::new();
+        }
+
+        if self.filter.is_focused() {
+            return vec![
+                HintItem::new("Type", "filter tree", HintGroup::Edit).with_priority(10),
+                HintItem::new("Esc / Enter", "leave filter", HintGroup::View).with_priority(11),
+                HintItem::new("Ctrl+F", "toggle filter", HintGroup::View).with_priority(30),
+            ];
+        }
+
+        let mut hints = vec![
+            HintItem::new("Ctrl+F", "toggle filter", HintGroup::View).with_priority(30),
+            HintItem::new("Enter", "submit step", HintGroup::Action).with_priority(40),
+        ];
+
+        match self.mode {
+            Mode::Normal => {
+                hints.push(HintItem::new("↑ ↓", "move", HintGroup::Navigation).with_priority(10));
+                hints.push(
+                    HintItem::new("Space / ← →", "expand/collapse", HintGroup::Navigation)
+                        .with_priority(11),
+                );
+                hints.push(
+                    HintItem::new("e / r", "edit value/key", HintGroup::Action).with_priority(20),
+                );
+                hints.push(
+                    HintItem::new("i / d / m", "insert/delete/move", HintGroup::Action)
+                        .with_priority(21),
+                );
+            }
+            Mode::EditValue { .. } | Mode::EditKey { .. } => {
+                hints.push(
+                    HintItem::new("Tab", "switch key/value", HintGroup::Navigation)
+                        .with_priority(10),
+                );
+                hints.push(HintItem::new("Enter", "confirm", HintGroup::Action).with_priority(20));
+                hints.push(HintItem::new("Esc", "cancel", HintGroup::Action).with_priority(21));
+            }
+            Mode::InsertType { .. } => {
+                hints.push(
+                    HintItem::new("← →", "change type", HintGroup::Navigation).with_priority(10),
+                );
+                hints.push(
+                    HintItem::new("Tab", "switch key/type", HintGroup::Navigation)
+                        .with_priority(11),
+                );
+                hints.push(HintItem::new("Enter", "confirm", HintGroup::Action).with_priority(20));
+                hints.push(HintItem::new("Esc", "cancel", HintGroup::Action).with_priority(21));
+            }
+            Mode::InsertValue { .. } => {
+                hints.push(
+                    HintItem::new("Tab", "switch key/value", HintGroup::Navigation)
+                        .with_priority(10),
+                );
+                hints.push(HintItem::new("Enter", "confirm", HintGroup::Action).with_priority(20));
+                hints.push(HintItem::new("Esc", "cancel", HintGroup::Action).with_priority(21));
+            }
+            Mode::ConfirmDelete { .. } => {
+                hints.push(
+                    HintItem::new("← →", "choose No/Yes", HintGroup::Navigation).with_priority(10),
+                );
+                hints.push(HintItem::new("Enter", "confirm", HintGroup::Action).with_priority(20));
+                hints.push(HintItem::new("Esc", "cancel", HintGroup::Action).with_priority(21));
+            }
+            Mode::Move { .. } => {
+                hints.push(
+                    HintItem::new("↑ ↓", "move node", HintGroup::Navigation).with_priority(10),
+                );
+                hints.push(
+                    HintItem::new("m / Esc", "finish move", HintGroup::Action).with_priority(20),
+                );
+            }
+        }
+
+        hints
+    }
 }

@@ -8,7 +8,8 @@ use crate::ui::text::{char_display_width, text_display_width};
 use crate::widgets::base::WidgetBase;
 use crate::widgets::node::{Component, Node};
 use crate::widgets::traits::{
-    DrawOutput, Drawable, FocusMode, InteractionResult, Interactive, RenderContext, ValidationMode,
+    DrawOutput, Drawable, FocusMode, HintContext, HintGroup, HintItem, InteractionResult,
+    Interactive, RenderContext, ValidationMode,
 };
 
 #[derive(Debug, Clone)]
@@ -249,6 +250,17 @@ impl Drawable for Snippet {
         let focused = self.base.is_focused(ctx);
         let (lines, _cursor) = self.render_lines(focused, ctx);
         DrawOutput { lines }
+    }
+
+    fn hints(&self, ctx: HintContext) -> Vec<HintItem> {
+        if !ctx.focused {
+            return Vec::new();
+        }
+        vec![
+            HintItem::new("Tab / Shift+Tab", "switch slot", HintGroup::Navigation)
+                .with_priority(10),
+            HintItem::new("Enter", "next slot / submit", HintGroup::Action).with_priority(20),
+        ]
     }
 }
 

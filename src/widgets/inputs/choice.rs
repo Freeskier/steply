@@ -6,7 +6,8 @@ use crate::ui::span::Span;
 use crate::ui::style::{Color, Style};
 use crate::widgets::base::WidgetBase;
 use crate::widgets::traits::{
-    DrawOutput, Drawable, FocusMode, InteractionResult, Interactive, RenderContext, ValidationMode,
+    DrawOutput, Drawable, FocusMode, HintContext, HintGroup, HintItem, InteractionResult,
+    Interactive, RenderContext, ValidationMode,
 };
 use crate::widgets::validators::{Validator, run_validators};
 
@@ -143,6 +144,17 @@ impl Drawable for ChoiceInput {
         };
 
         DrawOutput { lines: vec![spans] }
+    }
+
+    fn hints(&self, ctx: HintContext) -> Vec<HintItem> {
+        if !ctx.focused {
+            return Vec::new();
+        }
+        vec![
+            HintItem::new("↑ ↓ / ← →", "change option", HintGroup::Navigation).with_priority(10),
+            HintItem::new("A-Z", "jump by first letter", HintGroup::Navigation).with_priority(11),
+            HintItem::new("Enter", "confirm", HintGroup::Action).with_priority(20),
+        ]
     }
 }
 

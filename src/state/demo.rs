@@ -58,7 +58,6 @@ fn step_thinking_output() -> Step {
             )),
         ],
     )
-    .with_description("Animated RGB trail modes: Beam and Wave")
 }
 
 fn step_repeater() -> Step {
@@ -102,9 +101,6 @@ fn step_repeater() -> Step {
             )),
         ],
     )
-    .with_description(
-        "Repeater: Enter/Tab next  •  Shift+Tab previous  •  final Enter fills table and moves focus down",
-    )
 }
 
 fn step_pokemon_search() -> Step {
@@ -126,7 +122,6 @@ fn step_pokemon_search() -> Step {
             )),
         ],
     )
-    .with_description("Type in Query  •  Ctrl+F inside Results for local fuzzy filter")
 }
 
 fn step_table() -> Step {
@@ -148,7 +143,6 @@ fn step_table() -> Step {
                 .with_initial_rows(2),
         ))],
     )
-    .with_description("↑/↓ rows  •  Tab/Shift+Tab columns  •  Header: Space sort  •  Ctrl+F filter  •  Enter next step (nav)  •  e edit  •  Esc nav  •  i insert  •  d delete  •  m move")
 }
 
 fn step_snippet() -> Step {
@@ -179,7 +173,6 @@ fn step_snippet() -> Step {
             )))),
         ))],
     )
-    .with_description("Tab → next field  •  Shift+Tab → prev  •  Enter → next/submit")
 }
 
 fn step_calendar() -> Step {
@@ -190,7 +183,6 @@ fn step_calendar() -> Step {
             Calendar::new("cal_dt", "Date").with_mode(CalendarMode::DateTime),
         ))],
     )
-    .with_description("Tab → month/year/grid  •  ←→ change  •  ↑↓ navigate  •  Enter select")
 }
 
 fn step_text_inputs() -> Step {
@@ -331,7 +323,6 @@ fn step_selection() -> Step {
             )),
         ],
     )
-    .with_description("Choice: Up/Down  •  Select: Up/Down  •  SelectList: Ctrl+F filter fuzzy")
 }
 
 fn step_toggles() -> Step {
@@ -367,7 +358,6 @@ fn step_toggles() -> Step {
             )),
         ],
     )
-    .with_description("Space → toggle checkbox  •  SelectList: Space → check, Enter → confirm")
 }
 
 fn step_outputs() -> Step {
@@ -424,7 +414,6 @@ fn step_outputs() -> Step {
             )),
         ],
     )
-    .with_description("Left/Right → adjust  •  Shift+Left/Right → large step  •  Enter → submit")
 }
 
 fn step_color() -> Step {
@@ -446,7 +435,6 @@ fn step_color() -> Step {
             )),
         ],
     )
-    .with_description("Tab between R/G/B channels  •  type hex or adjust with Up/Down")
 }
 
 fn step_file_browser() -> Step {
@@ -487,9 +475,6 @@ fn step_tree_view() -> Step {
             )),
         ],
     )
-    .with_description(
-        "↑/↓ → navigate  •  → expand  •  ← collapse/jump to parent  •  Enter → select",
-    )
 }
 
 fn step_object_editor() -> Step {
@@ -527,7 +512,6 @@ fn step_object_editor() -> Step {
             )),
         ],
     )
-    .with_description("↑/↓ → navigate  •  e/Tab → edit  •  i → insert  •  d → delete  •  m → move")
 }
 
 fn step_diff() -> Step {
@@ -567,7 +551,6 @@ fn farewell(name: &str) {
             DiffOutput::new("diff_main", "main.rs", old, new).with_max_visible(18),
         ))],
     )
-    .with_description("↑↓ navigate  Tab next chunk  Shift+Tab prev  Enter expand gap")
 }
 
 fn step_task_log() -> Step {
@@ -592,7 +575,6 @@ fn step_task_log() -> Step {
             )),
         ],
     )
-    .with_description("Watch the steps complete automatically")
 }
 
 fn step_command_runner() -> Step {
@@ -653,7 +635,6 @@ echo '[finalize] Done'
             )),
         ],
     )
-    .with_description("Auto run on enter  •  Enter → rerun  •  watch live output")
 }
 
 fn step_back_allowed() -> Step {
@@ -669,7 +650,6 @@ fn step_back_allowed() -> Step {
         ],
     )
     .with_navigation(StepNavigation::Allowed)
-    .with_description("Alt+← → go back  •  Enter → next step")
 }
 
 fn step_back_reset() -> Step {
@@ -686,7 +666,6 @@ fn step_back_reset() -> Step {
         ],
     )
     .with_navigation(StepNavigation::Reset)
-    .with_description("Alt+← → go back (resets values)  •  Enter → next step")
 }
 
 fn step_back_destructive() -> Step {
@@ -707,7 +686,6 @@ fn step_back_destructive() -> Step {
     .with_navigation(StepNavigation::Destructive {
         warning: "Going back will cancel the pending deployment. Are you sure?".into(),
     })
-    .with_description("Alt+← → go back (shows warning)  •  Enter → next step")
 }
 
 fn step_textarea() -> Step {
@@ -738,7 +716,6 @@ fn step_confirm() -> Step {
             )),
         ],
     )
-    .with_description("Relaxed: Enter/y/n  •  Strict: type the word then Enter")
 }
 
 fn step_validation_demo() -> Step {

@@ -2,7 +2,7 @@ use super::overlay::ActiveOverlayItem;
 use super::*;
 use crate::widgets::components::tree_view::TreeNode;
 
-impl FileBrowserInput {
+impl FileBrowserComponent {
     pub(super) fn handle_browser_key(&mut self, key: KeyEvent) -> InteractionResult {
         if key.code == KeyCode::Char('t') && key.modifiers.contains(KeyModifiers::CONTROL) {
             self.browser_mode = match self.browser_mode {

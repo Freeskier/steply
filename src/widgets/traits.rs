@@ -2,7 +2,7 @@ use crate::core::value::Value;
 use crate::core::value_path::ValueTarget;
 use crate::runtime::event::{SystemEvent, ValueChange, WidgetAction};
 use crate::task::{TaskSpec, TaskSubscription};
-use crate::terminal::{CursorPos, KeyEvent, PointerEvent, TerminalSize};
+use crate::terminal::{CursorPos, KeyEvent, PointerEvent, PointerSemantic, TerminalSize};
 use crate::ui::span::{Span, SpanLine};
 use crate::widgets::shared::text_edit;
 use std::borrow::Cow;
@@ -140,6 +140,7 @@ pub struct PointerRowMap {
     pub rendered_row: u16,
     pub local_row: u16,
     pub local_col_offset: u16,
+    pub local_semantic: PointerSemantic,
 }
 
 impl PointerRowMap {
@@ -148,11 +149,17 @@ impl PointerRowMap {
             rendered_row,
             local_row,
             local_col_offset: 0,
+            local_semantic: PointerSemantic::None,
         }
     }
 
     pub fn with_local_col_offset(mut self, offset: u16) -> Self {
         self.local_col_offset = offset;
+        self
+    }
+
+    pub fn with_semantic(mut self, semantic: PointerSemantic) -> Self {
+        self.local_semantic = semantic;
         self
     }
 }

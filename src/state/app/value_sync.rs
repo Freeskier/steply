@@ -9,7 +9,7 @@ impl AppState {
             let mut out = Vec::<(String, Value)>::new();
             walk_nodes(
                 self.flow.current_step().nodes.as_slice(),
-                NodeWalkScope::Persistent,
+                NodeWalkScope::Recursive,
                 &mut |node| {
                     if let Some(value) = node.value() {
                         out.push((node.id().to_string(), value));
@@ -59,7 +59,7 @@ impl AppState {
 
         walk_nodes_mut(
             self.flow.current_step_mut().nodes.as_mut_slice(),
-            NodeWalkScope::Persistent,
+            NodeWalkScope::Recursive,
             &mut |node| {
                 if let Some(value) = values.get(node.id()) {
                     node.set_value(value.clone());

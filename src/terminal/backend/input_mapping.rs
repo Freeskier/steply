@@ -1,4 +1,6 @@
-use super::{KeyCode, KeyEvent, KeyModifiers, PointerButton, PointerEvent, PointerKind};
+use super::{
+    KeyCode, KeyEvent, KeyModifiers, PointerButton, PointerEvent, PointerKind, PointerSemantic,
+};
 use crossterm::event::{
     KeyCode as CrosstermKeyCode, KeyEvent as CrosstermKeyEvent,
     KeyModifiers as CrosstermKeyModifiers, MouseButton as CrosstermMouseButton, MouseEvent,
@@ -29,6 +31,7 @@ pub(super) fn map_pointer_event(mouse: MouseEvent) -> Option<PointerEvent> {
         col: mouse.column,
         row: mouse.row,
         modifiers: map_key_modifiers(mouse.modifiers),
+        semantic: PointerSemantic::None,
     })
 }
 

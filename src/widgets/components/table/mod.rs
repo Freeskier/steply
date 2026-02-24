@@ -11,7 +11,7 @@ use crate::ui::layout::Layout;
 use crate::ui::span::{Span, SpanLine};
 use crate::ui::style::{Color, Style};
 use crate::widgets::base::WidgetBase;
-use crate::widgets::node::StaticChildrenComponent;
+use crate::widgets::node::LeafComponent;
 use crate::widgets::shared::cursor_anchor;
 use crate::widgets::shared::filter as filter_utils;
 use crate::widgets::shared::list_core;
@@ -427,7 +427,7 @@ impl Table {
     }
 }
 
-impl StaticChildrenComponent for Table {}
+impl LeafComponent for Table {}
 
 fn compare_cell_values(left: Option<Value>, right: Option<Value>) -> Ordering {
     match (left, right) {

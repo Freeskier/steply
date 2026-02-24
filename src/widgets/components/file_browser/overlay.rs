@@ -10,7 +10,7 @@ pub(super) enum ActiveOverlayItem {
     Entry { path: PathBuf, is_dir: bool },
 }
 
-impl FileBrowserInput {
+impl FileBrowserComponent {
     pub(super) fn should_show_parent_option(&self) -> bool {
         self.overlay_open && self.browse_dir.parent().is_some()
     }

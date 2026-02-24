@@ -1,3 +1,5 @@
+use crate::terminal::PointerSemantic;
+
 #[derive(Debug, Clone, Default)]
 pub struct FrameHitMap {
     regions: Vec<HitRegion>,
@@ -11,6 +13,34 @@ pub struct HitRegion {
     pub col_start: u16,
     pub col_end_exclusive: u16,
     pub local_col_offset: u16,
+    pub local_semantic: PointerSemantic,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct HitLocal {
+    pub row: u16,
+    pub col_offset: u16,
+    pub semantic: PointerSemantic,
+}
+
+impl HitLocal {
+    pub fn row(row: u16) -> Self {
+        Self {
+            row,
+            col_offset: 0,
+            semantic: PointerSemantic::None,
+        }
+    }
+
+    pub fn with_col_offset(mut self, col_offset: u16) -> Self {
+        self.col_offset = col_offset;
+        self
+    }
+
+    pub fn with_semantic(mut self, semantic: PointerSemantic) -> Self {
+        self.semantic = semantic;
+        self
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -18,6 +48,7 @@ pub struct HitTarget<'a> {
     pub node_id: &'a str,
     pub local_row: u16,
     pub local_col: u16,
+    pub local_semantic: PointerSemantic,
 }
 
 impl FrameHitMap {
@@ -30,16 +61,34 @@ impl FrameHitMap {
         col_end_exclusive: u16,
         local_col_offset: u16,
     ) {
+        self.push_node_row_with_semantic(
+            node_id,
+            row,
+            col_start,
+            col_end_exclusive,
+            HitLocal::row(local_row).with_col_offset(local_col_offset),
+        );
+    }
+
+    pub fn push_node_row_with_semantic(
+        &mut self,
+        node_id: impl Into<String>,
+        row: u16,
+        col_start: u16,
+        col_end_exclusive: u16,
+        local: HitLocal,
+    ) {
         if col_end_exclusive <= col_start {
             return;
         }
         self.regions.push(HitRegion {
             node_id: node_id.into(),
             row,
-            local_row,
+            local_row: local.row,
             col_start,
             col_end_exclusive,
-            local_col_offset,
+            local_col_offset: local.col_offset,
+            local_semantic: local.semantic,
         });
     }
 
@@ -115,6 +164,7 @@ impl FrameHitMap {
             node_id: region.node_id.as_str(),
             local_row,
             local_col,
+            local_semantic: region.local_semantic,
         })
     }
 }

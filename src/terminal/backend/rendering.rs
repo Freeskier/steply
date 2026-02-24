@@ -43,7 +43,72 @@ fn plan_inline_layout(
     }
 }
 
+fn next_row(row: u16) -> Option<u16> {
+    row.checked_add(1)
+}
+
 impl Terminal {
+    fn draw_dirty_rows(
+        &mut self,
+        frame: &RenderFrame,
+        width: u16,
+        source_offset: usize,
+        target_row_offset: u16,
+        draw_count: usize,
+        dirty_rows: &DirtyRows,
+    ) -> io::Result<()> {
+        for range in dirty_rows.ranges() {
+            let mut row = range.start;
+            loop {
+                let target_row = target_row_offset.saturating_add(row);
+                queue!(
+                    self.stdout,
+                    MoveTo(0, target_row),
+                    Clear(ClearType::CurrentLine)
+                )?;
+                if (row as usize) < draw_count
+                    && let Some(line) = frame.lines.get(source_offset + row as usize)
+                {
+                    self.write_span_line(line, width)?;
+                }
+                if row == range.end_inclusive {
+                    break;
+                }
+                if let Some(next) = next_row(row) {
+                    row = next;
+                } else {
+                    break;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn queue_cursor_state(
+        &mut self,
+        position: Option<(u16, u16)>,
+        cursor_visible: bool,
+        hidden_anchor: Option<(u16, u16)>,
+    ) -> io::Result<()> {
+        match position {
+            Some((col, row)) => {
+                queue!(self.stdout, MoveTo(col, row))?;
+                if cursor_visible {
+                    queue!(self.stdout, Show)?;
+                } else {
+                    queue!(self.stdout, Hide)?;
+                }
+            }
+            None => {
+                if let Some((col, row)) = hidden_anchor {
+                    queue!(self.stdout, MoveTo(col, row))?;
+                }
+                queue!(self.stdout, Hide)?;
+            }
+        }
+        Ok(())
+    }
+
     pub fn render_frame(&mut self, frame: &RenderFrame) -> io::Result<()> {
         self.refresh_size()?;
         self.state.cursor = frame.cursor;
@@ -63,6 +128,7 @@ impl Terminal {
         }
 
         let frame_len = frame.lines.len();
+        let frame_signature = quick_frame_signature(frame.lines.as_slice());
         let max_offset = frame_len.saturating_sub(height);
         let scroll_offset = {
             let alt = self
@@ -87,63 +153,64 @@ impl Terminal {
                 .as_ref()
                 .expect("alt_screen must be Some in AltScreen mode");
             let size_changed = alt.last_rendered_size != self.state.size;
-            let dirty = compute_dirty_rows(
-                if alt.has_rendered_once {
-                    Some(alt.last_frame.as_slice())
-                } else {
-                    None
-                },
-                alt.last_rendered_scroll_offset,
-                frame.lines.as_slice(),
-                scroll_offset,
-                height,
-                size_changed,
-            );
+            let offset_same = alt.last_rendered_scroll_offset == scroll_offset;
             let cursor_same = alt.last_rendered_cursor == frame.cursor
                 && alt.last_rendered_cursor_visible == frame.cursor_visible
-                && alt.last_rendered_size == self.state.size
-                && alt.last_rendered_scroll_offset == scroll_offset;
-            let dirty_is_empty = dirty.is_empty();
-            (dirty, cursor_same && dirty_is_empty)
+                && alt.last_rendered_size == self.state.size;
+            let frame_same =
+                alt.last_frame_signature == frame_signature && alt.last_frame == frame.lines;
+            if frame_same && cursor_same && offset_same && !size_changed {
+                (DirtyRows::default(), true)
+            } else {
+                let dirty = compute_dirty_rows(
+                    if alt.has_rendered_once {
+                        Some(alt.last_frame.as_slice())
+                    } else {
+                        None
+                    },
+                    alt.last_rendered_scroll_offset,
+                    frame.lines.as_slice(),
+                    scroll_offset,
+                    height,
+                    size_changed,
+                );
+                let dirty_is_empty = dirty.is_empty();
+                (dirty, cursor_same && dirty_is_empty)
+            }
         };
         if skip_noop {
+            if let Some(alt) = self.alt_screen.as_mut() {
+                alt.last_frame.clone_from(&frame.lines);
+                alt.last_frame_signature = frame_signature;
+                alt.last_rendered_cursor = frame.cursor;
+                alt.last_rendered_cursor_visible = frame.cursor_visible;
+                alt.last_rendered_size = self.state.size;
+                alt.last_rendered_scroll_offset = scroll_offset;
+                alt.has_rendered_once = true;
+            }
             return Ok(());
         }
 
         queue!(self.stdout, BeginSynchronizedUpdate, Hide)?;
-        for row in dirty_rows {
-            let frame_line_idx = scroll_offset + row as usize;
-            queue!(self.stdout, MoveTo(0, row), Clear(ClearType::CurrentLine))?;
-            if let Some(line) = frame.lines.get(frame_line_idx) {
-                self.write_span_line(line, width)?;
-            }
-        }
+        self.draw_dirty_rows(frame, width, scroll_offset, 0, height, &dirty_rows)?;
 
-        if let Some(cur) = frame.cursor {
+        let cursor_position = frame.cursor.and_then(|cur| {
             let frame_row = cur.row as usize;
-            if frame_row >= scroll_offset {
-                let screen_row = frame_row - scroll_offset;
-                if screen_row < height {
-                    let col = cur.col.min(width.saturating_sub(1));
-                    queue!(self.stdout, MoveTo(col, screen_row as u16))?;
-                    if frame.cursor_visible {
-                        queue!(self.stdout, Show)?;
-                    } else {
-                        queue!(self.stdout, Hide)?;
-                    }
-                } else {
-                    queue!(self.stdout, Hide)?;
-                }
-            } else {
-                queue!(self.stdout, Hide)?;
+            if frame_row < scroll_offset {
+                return None;
             }
-        } else {
-            queue!(self.stdout, Hide)?;
-        }
+            let screen_row = frame_row - scroll_offset;
+            if screen_row >= height {
+                return None;
+            }
+            Some((cur.col.min(width.saturating_sub(1)), screen_row as u16))
+        });
+        self.queue_cursor_state(cursor_position, frame.cursor_visible, None)?;
         queue!(self.stdout, EndSynchronizedUpdate)?;
 
         if let Some(alt) = self.alt_screen.as_mut() {
             alt.last_frame.clone_from(&frame.lines);
+            alt.last_frame_signature = frame_signature;
             alt.last_rendered_cursor = frame.cursor;
             alt.last_rendered_cursor_visible = frame.cursor_visible;
             alt.last_rendered_size = self.state.size;
@@ -157,6 +224,7 @@ impl Terminal {
     fn render_inline(&mut self, frame: &RenderFrame) -> io::Result<()> {
         let height = self.state.size.height as usize;
         let width = self.state.size.width;
+        let frame_signature = quick_frame_signature(frame.lines.as_slice());
 
         if height == 0 || width == 0 {
             return Ok(());
@@ -174,7 +242,8 @@ impl Terminal {
             .inline_state
             .as_ref()
             .map(|inline| {
-                let same_frame = inline.last_frame == frame.lines;
+                let same_frame = inline.last_frame_signature == frame_signature
+                    && inline.last_frame == frame.lines;
                 let same_cursor = inline.last_rendered_cursor == frame.cursor;
                 let same_cursor_visibility =
                     inline.last_rendered_cursor_visible == frame.cursor_visible;
@@ -239,7 +308,7 @@ impl Terminal {
                 size_changed,
             )
         } else {
-            (Vec::new(), false)
+            (DirtyRows::default(), false)
         };
 
         queue!(self.stdout, BeginSynchronizedUpdate, Hide)?;
@@ -264,25 +333,12 @@ impl Terminal {
                 }
             }
         } else {
-            for row in dirty_rows {
-                let target_row = block_start.saturating_add(row as usize) as u16;
-                queue!(
-                    self.stdout,
-                    MoveTo(0, target_row),
-                    Clear(ClearType::CurrentLine)
-                )?;
-                if (row as usize) < draw_count
-                    && let Some(line) = frame.lines.get(skip + row as usize)
-                {
-                    self.write_span_line(line, width)?;
-                }
-            }
+            self.draw_dirty_rows(frame, width, skip, block_start_row, draw_count, &dirty_rows)?;
         }
 
         let mut next_last_cursor_row = 0u16;
         let mut next_last_cursor_col = 0u16;
-
-        if let Some(cursor) = frame.cursor {
+        let cursor_position = if let Some(cursor) = frame.cursor {
             let cursor_row = cursor.row as usize;
             if cursor_row >= skip {
                 let visible_row = cursor_row - skip;
@@ -290,21 +346,23 @@ impl Terminal {
                 let col = cursor.col.min(width.saturating_sub(1));
                 next_last_cursor_row = visible_row.min(u16::MAX as usize) as u16;
                 next_last_cursor_col = col;
-                queue!(self.stdout, MoveTo(col, target_row as u16))?;
-                if frame.cursor_visible {
-                    queue!(self.stdout, Show)?;
-                } else {
-                    queue!(self.stdout, Hide)?;
-                }
+                Some((col, target_row as u16))
             } else {
-                queue!(self.stdout, MoveTo(0, block_start_row), Hide)?;
+                None
             }
         } else {
-            queue!(self.stdout, MoveTo(0, block_start_row), Hide)?;
-        }
+            None
+        };
+
+        self.queue_cursor_state(
+            cursor_position,
+            frame.cursor_visible,
+            Some((0, block_start_row)),
+        )?;
 
         if let Some(inline) = self.inline_state.as_mut() {
             inline.last_frame.clone_from(&frame.lines);
+            inline.last_frame_signature = frame_signature;
             inline.last_drawn_count = draw_count;
             inline.last_cursor_row = next_last_cursor_row;
             inline.last_cursor_col = next_last_cursor_col;

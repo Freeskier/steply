@@ -23,7 +23,7 @@ impl TaskLogStep {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum StepStatus {
+enum TaskStepStatus {
     Pending,
     Running,
     Done,
@@ -33,7 +33,7 @@ enum StepStatus {
 struct StepState {
     label: String,
     task_id: TaskId,
-    status: StepStatus,
+    status: TaskStepStatus,
     started_at: Option<Instant>,
     elapsed_secs: Option<f64>,
 }
@@ -52,7 +52,7 @@ impl TaskLog {
             .map(|s| StepState {
                 label: s.label,
                 task_id: s.task_id,
-                status: StepStatus::Pending,
+                status: TaskStepStatus::Pending,
                 started_at: None,
                 elapsed_secs: None,
             })
@@ -87,7 +87,7 @@ impl TaskLog {
         self.steps.push(StepState {
             label: step.label,
             task_id: step.task_id,
-            status: StepStatus::Pending,
+            status: TaskStepStatus::Pending,
             started_at: None,
             elapsed_secs: None,
         });
@@ -105,9 +105,9 @@ impl TaskLog {
         if let Some(step) = self.active_step_mut() {
             step.elapsed_secs = step.started_at.map(|t| t.elapsed().as_secs_f64());
             step.status = if succeeded {
-                StepStatus::Done
+                TaskStepStatus::Done
             } else {
-                StepStatus::Error
+                TaskStepStatus::Error
             };
         }
 
@@ -122,7 +122,7 @@ impl TaskLog {
 
         self.active = next;
         if let Some(step) = self.active_step_mut() {
-            step.status = StepStatus::Pending;
+            step.status = TaskStepStatus::Pending;
             step.started_at = None;
             step.elapsed_secs = None;
             let task_id = step.task_id.clone();
@@ -135,7 +135,7 @@ impl TaskLog {
 
     fn mark_started(&mut self, run_id: u64) {
         if let Some(step) = self.active_step_mut() {
-            step.status = StepStatus::Running;
+            step.status = TaskStepStatus::Running;
             if step.started_at.is_none() {
                 step.started_at = Some(Instant::now());
             }
@@ -145,7 +145,7 @@ impl TaskLog {
 
     fn mark_start_rejected(&mut self, reason: &str) {
         if let Some(step) = self.active_step_mut() {
-            step.status = StepStatus::Error;
+            step.status = TaskStepStatus::Error;
             step.elapsed_secs = step.started_at.map(|t| t.elapsed().as_secs_f64());
         }
         self.watcher.mark_rejected(reason.to_string());
@@ -158,7 +158,7 @@ impl TaskLog {
         let normal = Style::new().color(Color::White);
 
         match step.status {
-            StepStatus::Pending => {
+            TaskStepStatus::Pending => {
                 let mut line = Vec::new();
                 if show_counter {
                     line.push(Span::styled(counter, dim).no_wrap());
@@ -167,7 +167,7 @@ impl TaskLog {
                 line.push(Span::styled(step.label.clone(), normal).no_wrap());
                 line
             }
-            StepStatus::Running => {
+            TaskStepStatus::Running => {
                 let elapsed = step
                     .started_at
                     .map(|t| format!("  {:.1}s", t.elapsed().as_secs_f64()))
@@ -189,7 +189,7 @@ impl TaskLog {
                 line.push(Span::styled(elapsed, dim).no_wrap());
                 line
             }
-            StepStatus::Done => {
+            TaskStepStatus::Done => {
                 let elapsed = step
                     .elapsed_secs
                     .map(|s| format!("  {:.1}s", s))
@@ -205,7 +205,7 @@ impl TaskLog {
                 line.push(Span::styled(elapsed, dim).no_wrap());
                 line
             }
-            StepStatus::Error => {
+            TaskStepStatus::Error => {
                 let elapsed = step
                     .elapsed_secs
                     .map(|s| format!("  {:.1}s", s))
@@ -237,14 +237,14 @@ impl Drawable for TaskLog {
 
         if !single_mode {
             for (i, step) in self.steps.iter().enumerate() {
-                if step.status == StepStatus::Pending && i != self.active {
+                if step.status == TaskStepStatus::Pending && i != self.active {
                     continue;
                 }
                 lines.push(self.render_step_line(step, i, total));
             }
         } else if let Some(step) = self.steps.first() {
             match step.status {
-                StepStatus::Pending => {
+                TaskStepStatus::Pending => {
                     if self.watcher.status() == TaskWatcherStatus::Pending {
                         lines.push(vec![
                             Span::styled("…", Style::new().color(Color::Blue).bold()).no_wrap(),
@@ -252,21 +252,21 @@ impl Drawable for TaskLog {
                         ]);
                     }
                 }
-                StepStatus::Running => {}
-                StepStatus::Done => lines.push(vec![
+                TaskStepStatus::Running => {}
+                TaskStepStatus::Done => lines.push(vec![
                     Span::styled("✓", Style::new().color(Color::Green).bold()).no_wrap(),
                     Span::new(" Done").no_wrap(),
                 ]),
-                StepStatus::Error => lines.push(vec![
+                TaskStepStatus::Error => lines.push(vec![
                     Span::styled("✗", Style::new().color(Color::Red).bold()).no_wrap(),
                     Span::new(" Failed").no_wrap(),
                 ]),
             }
         }
 
-        let show_logs = self
-            .active_step()
-            .is_some_and(|s| s.status == StepStatus::Running || s.status == StepStatus::Error);
+        let show_logs = self.active_step().is_some_and(|s| {
+            s.status == TaskStepStatus::Running || s.status == TaskStepStatus::Error
+        });
         if show_logs {
             for line in self.watcher.logs() {
                 lines.push(vec![
@@ -358,7 +358,7 @@ impl TaskLog {
         }
         self.active = 0;
         for step in &mut self.steps {
-            step.status = StepStatus::Pending;
+            step.status = TaskStepStatus::Pending;
             step.started_at = None;
             step.elapsed_secs = None;
         }

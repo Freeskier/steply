@@ -24,21 +24,28 @@ impl ObjectEditor {
             return;
         }
         let text = obj.value.to_text_scalar().unwrap_or_else(|| "null".into());
-        let vis = self.active_vis();
+        let visible_index = self.active_visible_index();
         let mut key_value = InlineKeyValueEditor::new_text(format!("{}_ekv", self.base.id()), "")
             .with_default_key(obj.key.clone())
             .with_default_value(text);
         key_value.set_focus(InlineKeyValueFocus::Value);
-        self.mode = Mode::EditValue { vis, key_value };
+        self.mode = Mode::EditValue {
+            visible_index,
+            key_value,
+        };
     }
 
     pub(super) fn commit_edit_value(&mut self) {
-        let Mode::EditValue { vis, ref key_value } = self.mode else {
+        let Mode::EditValue {
+            visible_index,
+            ref key_value,
+        } = self.mode
+        else {
             return;
         };
         let text = key_value.value_text();
         let new_val = Self::parse_scalar(&text);
-        let path = self.path_at(vis);
+        let path = self.path_at_visible_index(visible_index);
         let ppath = Self::parent_path(&path);
         let key = Self::leaf_key(&path);
         if let Some(parent) = Self::value_at_path_mut(&mut self.value, &ppath) {
@@ -73,16 +80,23 @@ impl ObjectEditor {
                 .to_text_scalar()
                 .unwrap_or_else(|| "null".to_string()),
         };
-        let vis = self.active_vis();
+        let visible_index = self.active_visible_index();
         let mut key_value = InlineKeyValueEditor::new_text(format!("{}_ekv", self.base.id()), "")
             .with_default_key(obj.key.clone())
             .with_default_value(value);
         key_value.set_focus(InlineKeyValueFocus::Key);
-        self.mode = Mode::EditKey { vis, key_value };
+        self.mode = Mode::EditKey {
+            visible_index,
+            key_value,
+        };
     }
 
     pub(super) fn commit_edit_key(&mut self) {
-        let Mode::EditKey { vis, ref key_value } = self.mode else {
+        let Mode::EditKey {
+            visible_index,
+            ref key_value,
+        } = self.mode
+        else {
             return;
         };
         let new_key = key_value.key();
@@ -90,7 +104,7 @@ impl ObjectEditor {
             self.mode = Mode::Normal;
             return;
         }
-        let path = self.path_at(vis);
+        let path = self.path_at_visible_index(visible_index);
         let ppath = Self::parent_path(&path);
         let old_key = Self::leaf_key(&path);
         let mut remap_paths: Option<(String, String)> = None;
@@ -123,8 +137,8 @@ impl ObjectEditor {
     }
 
     pub(super) fn start_insert(&mut self) {
-        let after_vis = self.active_vis();
-        let path = self.path_at(after_vis);
+        let after_visible_index = self.active_visible_index();
+        let path = self.path_at_visible_index(after_visible_index);
         let parent_path = self
             .active_obj()
             .and_then(|obj| obj.placeholder_parent.clone())
@@ -153,14 +167,14 @@ impl ObjectEditor {
                     .with_default_value("");
             key_value.set_focus(InlineKeyValueFocus::Value);
             self.mode = Mode::InsertValue {
-                after_vis,
+                after_visible_index,
                 value_type: InsertValueType::Text,
                 key_value,
             };
             return;
         }
         self.mode = Mode::InsertType {
-            after_vis,
+            after_visible_index,
             key_value: InlineKeyValueEditor::new(
                 format!("{}_ikv", self.base.id()),
                 "",
@@ -171,7 +185,7 @@ impl ObjectEditor {
 
     pub(super) fn commit_insert_type(&mut self) {
         let Mode::InsertType {
-            after_vis,
+            after_visible_index,
             ref key_value,
             ..
         } = self.mode
@@ -184,7 +198,7 @@ impl ObjectEditor {
             return;
         }
         let type_val = key_value.value_type();
-        let av = after_vis;
+        let av = after_visible_index;
         let k = key.clone();
         let tv = type_val.clone();
 
@@ -202,11 +216,11 @@ impl ObjectEditor {
                 }
                 self.rebuild();
                 if let Some(path) = inserted_path
-                    && let Some(vis) = self
-                        .vis_of_empty_placeholder(path.as_str())
-                        .or_else(|| self.vis_of_path(path.as_str()))
+                    && let Some(visible_index) = self
+                        .visible_index_of_empty_placeholder(path.as_str())
+                        .or_else(|| self.visible_index_of_path(path.as_str()))
                 {
-                    self.tree.set_active_visible_index(vis);
+                    self.tree.set_active_visible_index(visible_index);
                 }
             }
             _ => {
@@ -214,7 +228,7 @@ impl ObjectEditor {
                 let key_value =
                     self.insert_value_editor(format!("{}_iv", self.base.id()), k, value_type);
                 self.mode = Mode::InsertValue {
-                    after_vis: av,
+                    after_visible_index: av,
                     value_type,
                     key_value,
                 };
@@ -224,7 +238,7 @@ impl ObjectEditor {
 
     pub(super) fn commit_insert_value(&mut self) {
         let Mode::InsertValue {
-            after_vis,
+            after_visible_index,
             ref key_value,
             value_type,
         } = self.mode
@@ -241,25 +255,25 @@ impl ObjectEditor {
                 .map(|insert_type| insert_type.parse(text.as_str()))
                 .unwrap_or_else(|| Self::parse_scalar(&text)),
         };
-        let av = after_vis;
+        let av = after_visible_index;
         let k = key_value.key();
         let inserted_path = self.do_insert(av, k, new_val);
         self.mode = Mode::Normal;
         self.rebuild();
         if let Some(path) = inserted_path
-            && let Some(vis) = self.vis_of_path(path.as_str())
+            && let Some(visible_index) = self.visible_index_of_path(path.as_str())
         {
-            self.tree.set_active_visible_index(vis);
+            self.tree.set_active_visible_index(visible_index);
         }
     }
 
     pub(super) fn do_insert(
         &mut self,
-        after_vis: usize,
+        after_visible_index: usize,
         new_key: String,
         new_val: Value,
     ) -> Option<String> {
-        let anchor = self.obj_at_vis(after_vis)?;
+        let anchor = self.object_at_visible_index(after_visible_index)?;
         let placeholder_anchor = anchor.is_placeholder;
         let anchor_path = anchor.path.clone();
         let placeholder_parent = anchor.placeholder_parent.clone();
@@ -321,22 +335,25 @@ impl ObjectEditor {
         if obj.is_placeholder {
             return;
         }
-        let vis = self.active_vis();
+        let visible_index = self.active_visible_index();
         let label = obj.key.clone();
         let select = SelectInput::new(
             format!("{}_cd", self.base.id()),
             format!("Delete {label}?"),
             vec!["No".into(), "Yes".into()],
         );
-        self.mode = Mode::ConfirmDelete { vis, select };
+        self.mode = Mode::ConfirmDelete {
+            visible_index,
+            select,
+        };
     }
 
     pub(super) fn commit_delete(&mut self, confirmed: bool) {
-        let Mode::ConfirmDelete { vis, .. } = self.mode else {
+        let Mode::ConfirmDelete { visible_index, .. } = self.mode else {
             return;
         };
         if confirmed {
-            let path = self.path_at(vis);
+            let path = self.path_at_visible_index(visible_index);
             self.remove_array_name_subtree(&path);
             let ppath = Self::parent_path(&path);
             let key = Self::leaf_key(&path);
@@ -364,8 +381,8 @@ impl ObjectEditor {
         if self.active_obj().map(|o| o.is_placeholder).unwrap_or(false) {
             return;
         }
-        let vis = self.active_vis();
-        self.mode = Mode::Move { vis };
+        let visible_index = self.active_visible_index();
+        self.mode = Mode::Move { visible_index };
     }
 
     pub(super) fn move_target_for_step(
@@ -382,7 +399,7 @@ impl ObjectEditor {
         let current_node_idx = *visible.get(current_vis)?;
         let current_depth = nodes.get(current_node_idx).map(|n| n.depth).unwrap_or(0);
 
-        let mut target_vis = if current_depth == 0 {
+        let mut target_visible_index = if current_depth == 0 {
             let root_positions: Vec<usize> = visible
                 .iter()
                 .enumerate()
@@ -411,46 +428,46 @@ impl ObjectEditor {
         };
 
         if step > 0 {
-            let source_path = self.path_at(current_vis);
-            let candidate_path = self.path_at(target_vis);
+            let source_path = self.path_at_visible_index(current_vis);
+            let candidate_path = self.path_at_visible_index(target_visible_index);
             if Self::is_descendant_path(candidate_path.as_str(), source_path.as_str()) {
-                let subtree_end = self.subtree_vis_range(current_vis).end;
-                target_vis = if subtree_end < total { subtree_end } else { 0 };
+                let subtree_end = self.subtree_visible_range(current_vis).end;
+                target_visible_index = if subtree_end < total { subtree_end } else { 0 };
             }
         }
 
-        if self.is_placeholder_vis(current_vis) {
+        if self.is_placeholder_visible_index(current_vis) {
             return None;
         }
 
         if step > 0 {
             let mut guard = 0usize;
             while guard < total {
-                let path = self.path_at(target_vis);
-                let is_placeholder = self.is_placeholder_vis(target_vis);
-                let source_path = self.path_at(current_vis);
+                let path = self.path_at_visible_index(target_visible_index);
+                let is_placeholder = self.is_placeholder_visible_index(target_visible_index);
+                let source_path = self.path_at_visible_index(current_vis);
                 if !is_placeholder && !Self::is_descendant_path(path.as_str(), source_path.as_str())
                 {
                     break;
                 }
-                target_vis = (target_vis + 1) % total;
+                target_visible_index = (target_visible_index + 1) % total;
                 guard += 1;
             }
         } else {
             let mut guard = 0usize;
             while guard < total {
-                let is_placeholder = self.is_placeholder_vis(target_vis);
+                let is_placeholder = self.is_placeholder_visible_index(target_visible_index);
                 if !is_placeholder {
                     break;
                 }
-                target_vis = (target_vis + total - 1) % total;
+                target_visible_index = (target_visible_index + total - 1) % total;
                 guard += 1;
             }
         }
 
-        let wrapped_cycle =
-            (step > 0 && target_vis < current_vis) || (step < 0 && target_vis > current_vis);
-        Some((target_vis, wrapped_cycle))
+        let wrapped_cycle = (step > 0 && target_visible_index < current_vis)
+            || (step < 0 && target_visible_index > current_vis);
+        Some((target_visible_index, wrapped_cycle))
     }
 
     pub(super) fn is_open_container_path(&self, path: &str) -> bool {
@@ -464,12 +481,12 @@ impl ObjectEditor {
         &self,
         current_vis: usize,
         step: isize,
-        target_vis: usize,
+        target_visible_index: usize,
         wrapped_between_roots: bool,
     ) -> MovePlan {
-        let source_path = self.path_at(current_vis);
+        let source_path = self.path_at_visible_index(current_vis);
         let source_parent = Self::parent_path(&source_path);
-        let target_path = self.path_at(target_vis);
+        let target_path = self.path_at_visible_index(target_visible_index);
         let target_parent = Self::parent_path(&target_path);
         let target_is_open_container =
             self.is_open_container_path(target_path.as_str()) && !wrapped_between_roots;
@@ -513,7 +530,7 @@ impl ObjectEditor {
         };
 
         MovePlan {
-            target_vis,
+            target_visible_index,
             source_path,
             dest_parent,
             placement,
@@ -585,25 +602,32 @@ impl ObjectEditor {
 
     pub(super) fn move_node(&mut self, delta: isize) {
         let current_vis = match self.mode {
-            Mode::Move { vis } => vis,
+            Mode::Move { visible_index } => visible_index,
             _ => return,
         };
         let step = if delta >= 0 { 1 } else { -1 };
-        let Some((target_vis, wrapped_between_roots)) =
+        let Some((target_visible_index, wrapped_between_roots)) =
             self.move_target_for_step(current_vis, step)
         else {
             return;
         };
 
-        let plan = self.build_move_plan(current_vis, step, target_vis, wrapped_between_roots);
+        let plan = self.build_move_plan(
+            current_vis,
+            step,
+            target_visible_index,
+            wrapped_between_roots,
+        );
         let moved_path = self.apply_move_plan(&plan);
 
         self.rebuild();
         let new_vis = moved_path
             .as_deref()
-            .and_then(|path| self.vis_of_path(path))
-            .unwrap_or(plan.target_vis);
+            .and_then(|path| self.visible_index_of_path(path))
+            .unwrap_or(plan.target_visible_index);
         self.tree.set_active_visible_index(new_vis);
-        self.mode = Mode::Move { vis: new_vis };
+        self.mode = Mode::Move {
+            visible_index: new_vis,
+        };
     }
 }

@@ -159,7 +159,7 @@ impl AppState {
         for step in self.flow.steps_mut() {
             walk_nodes_mut(
                 step.nodes.as_mut_slice(),
-                NodeWalkScope::Persistent,
+                NodeWalkScope::Recursive,
                 &mut |node| merged.merge(node.on_tick()),
             );
         }

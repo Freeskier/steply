@@ -155,6 +155,7 @@ impl Runtime {
                     let mut local_event = event;
                     local_event.row = hit.local_row;
                     local_event.col = hit.local_col;
+                    local_event.semantic = hit.local_semantic;
                     self.process_intent(Intent::PointerOn {
                         target: hit.node_id.to_string().into(),
                         event: local_event,

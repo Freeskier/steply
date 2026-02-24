@@ -25,7 +25,9 @@ mod rendering;
 mod resize;
 mod writer;
 
-use frame_diff::{compute_dirty_rows, estimate_self_reflow_cursor_delta};
+use frame_diff::{
+    DirtyRows, compute_dirty_rows, estimate_self_reflow_cursor_delta, quick_frame_signature,
+};
 use input_mapping::{map_key_event, map_pointer_event};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -101,12 +103,22 @@ pub enum PointerKind {
     Drag(PointerButton),
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum PointerSemantic {
+    #[default]
+    None,
+    Filter,
+    WrappedContinuation,
+    Custom(u16),
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PointerEvent {
     pub kind: PointerKind,
     pub col: u16,
     pub row: u16,
     pub modifiers: KeyModifiers,
+    pub semantic: PointerSemantic,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -134,6 +146,7 @@ struct AltScreenState {
     manually_scrolled: bool,
 
     last_frame: Vec<SpanLine>,
+    last_frame_signature: u64,
     last_rendered_cursor: Option<CursorPos>,
     last_rendered_cursor_visible: bool,
     last_rendered_size: TerminalSize,
@@ -147,6 +160,7 @@ impl AltScreenState {
             scroll_offset: 0,
             manually_scrolled: false,
             last_frame: Vec::new(),
+            last_frame_signature: 0,
             last_rendered_cursor: None,
             last_rendered_cursor_visible: false,
             last_rendered_size: TerminalSize {
@@ -171,6 +185,7 @@ struct InlineState {
     last_rendered_block_start_row: u16,
 
     last_frame: Vec<SpanLine>,
+    last_frame_signature: u64,
 
     last_rendered_cursor: Option<CursorPos>,
     last_rendered_cursor_visible: bool,
@@ -195,6 +210,7 @@ impl InlineState {
             block_start_row: 0,
             last_rendered_block_start_row: 0,
             last_frame: Vec::new(),
+            last_frame_signature: 0,
             last_rendered_cursor: None,
             last_rendered_cursor_visible: false,
             last_rendered_size: TerminalSize {

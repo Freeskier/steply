@@ -10,6 +10,7 @@ use crate::runtime::event::WidgetAction;
 
 use crate::terminal::{
     CursorPos, KeyCode, KeyEvent, KeyModifiers, PointerButton, PointerEvent, PointerKind,
+    PointerSemantic,
 };
 use crate::ui::highlight::render_text_spans;
 use crate::ui::layout::Layout;
@@ -17,7 +18,7 @@ use crate::ui::span::Span;
 use crate::ui::style::{Color, Style};
 use crate::widgets::base::WidgetBase;
 use crate::widgets::components::scroll::ScrollState;
-use crate::widgets::node::StaticChildrenComponent;
+use crate::widgets::node::LeafComponent;
 use crate::widgets::shared::cursor_anchor;
 use crate::widgets::shared::filter;
 use crate::widgets::traits::{
@@ -25,10 +26,6 @@ use crate::widgets::traits::{
     InteractionResult, Interactive, PointerRowMap, RenderContext, TextAction,
 };
 use state::{rebuild_visible, rebuild_visible_filtered};
-
-const FILTER_POINTER_ROW: u16 = u16::MAX;
-const POINTER_CONTINUATION_BIT: u16 = 1 << 15;
-const POINTER_ROW_MASK: u16 = POINTER_CONTINUATION_BIT - 1;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TreeItemRenderState {
@@ -556,7 +553,7 @@ impl<T: TreeItemLabel> TreeView<T> {
             rendered_row = rendered_row.saturating_add(1);
         }
         if self.filter.is_visible() {
-            rows.push(PointerRowMap::new(rendered_row, FILTER_POINTER_ROW));
+            rows.push(PointerRowMap::new(rendered_row, 0).with_semantic(PointerSemantic::Filter));
             rendered_row = rendered_row.saturating_add(1);
         }
 
@@ -567,14 +564,14 @@ impl<T: TreeItemLabel> TreeView<T> {
             let wrapped = Layout::compose(std::slice::from_ref(&line), wrap_width)
                 .len()
                 .max(1);
-            let base_row = vis_pos.min(POINTER_ROW_MASK as usize) as u16;
+            let base_row = vis_pos.min((u16::MAX - 1) as usize) as u16;
             for wrapped_idx in 0..wrapped {
-                let row_code = if wrapped_idx == 0 {
-                    base_row
+                let semantic = if wrapped_idx == 0 {
+                    PointerSemantic::None
                 } else {
-                    base_row | POINTER_CONTINUATION_BIT
+                    PointerSemantic::WrappedContinuation
                 };
-                rows.push(PointerRowMap::new(rendered_row, row_code));
+                rows.push(PointerRowMap::new(rendered_row, base_row).with_semantic(semantic));
                 rendered_row = rendered_row.saturating_add(1);
             }
         }
@@ -588,14 +585,14 @@ impl<T: TreeItemLabel> TreeView<T> {
     }
 
     fn handle_pointer_left_down(&mut self, event: PointerEvent) -> InteractionResult {
-        if event.row == FILTER_POINTER_ROW {
+        if event.semantic == PointerSemantic::Filter {
             self.filter.set_focused(true);
             return self.handled_with_focus();
         }
 
         self.filter.set_focused(false);
-        let continuation = (event.row & POINTER_CONTINUATION_BIT) != 0;
-        let vis_pos = (event.row & POINTER_ROW_MASK) as usize;
+        let continuation = event.semantic == PointerSemantic::WrappedContinuation;
+        let vis_pos = event.row as usize;
         let Some(node_idx) = self.visible.get(vis_pos).copied() else {
             return InteractionResult::ignored();
         };
@@ -627,7 +624,7 @@ impl<T: TreeItemLabel> TreeView<T> {
     }
 }
 
-impl<T: TreeItemLabel> StaticChildrenComponent for TreeView<T> {}
+impl<T: TreeItemLabel> LeafComponent for TreeView<T> {}
 
 impl<T: TreeItemLabel> Drawable for TreeView<T> {
     fn id(&self) -> &str {

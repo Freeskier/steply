@@ -12,13 +12,14 @@ use crate::runtime::event::WidgetAction;
 
 use crate::terminal::{
     CursorPos, KeyCode, KeyEvent, KeyModifiers, PointerButton, PointerEvent, PointerKind,
+    PointerSemantic,
 };
 use crate::ui::layout::{Layout, LineContinuation, RenderBlock};
 use crate::ui::span::Span;
 use crate::ui::style::{Color, Style};
 use crate::widgets::base::WidgetBase;
 use crate::widgets::components::scroll::ScrollState;
-use crate::widgets::node::StaticChildrenComponent;
+use crate::widgets::node::LeafComponent;
 use crate::widgets::shared::cursor_anchor;
 use crate::widgets::shared::filter;
 use crate::widgets::traits::{
@@ -31,8 +32,6 @@ use state::marker_symbol;
 
 pub use model::{SelectItem, SelectItemView, SelectMode};
 pub use render::SelectItemRenderState;
-
-const FILTER_POINTER_ROW: u16 = u16::MAX;
 
 pub struct SelectList {
     base: WidgetBase,
@@ -456,7 +455,7 @@ impl SelectList {
     }
 
     fn handle_pointer_left_down(&mut self, event: PointerEvent) -> InteractionResult {
-        if event.row == FILTER_POINTER_ROW {
+        if event.semantic == PointerSemantic::Filter {
             self.filter.set_focused(true);
             return self.handled_with_focus();
         }
@@ -480,7 +479,7 @@ impl SelectList {
         }
 
         if self.filter.is_visible() {
-            rows.push(PointerRowMap::new(rendered_row, FILTER_POINTER_ROW));
+            rows.push(PointerRowMap::new(rendered_row, 0).with_semantic(PointerSemantic::Filter));
             rendered_row = rendered_row.saturating_add(1);
         }
 
@@ -747,7 +746,7 @@ impl SelectList {
     }
 }
 
-impl StaticChildrenComponent for SelectList {}
+impl LeafComponent for SelectList {}
 
 impl Drawable for SelectList {
     fn id(&self) -> &str {

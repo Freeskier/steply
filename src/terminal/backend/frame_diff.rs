@@ -1,6 +1,55 @@
 use super::InlineState;
-use crate::ui::span::SpanLine;
+use crate::ui::span::{Span, SpanLine, WrapMode};
+use crate::ui::style::{Color, Strike};
 use crate::ui::text::char_display_width;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) struct DirtyRange {
+    pub start: u16,
+    pub end_inclusive: u16,
+}
+
+#[derive(Debug, Clone, Default)]
+pub(super) struct DirtyRows {
+    rows: Vec<u16>,
+    ranges: Vec<DirtyRange>,
+}
+
+impl DirtyRows {
+    pub fn is_empty(&self) -> bool {
+        self.rows.is_empty()
+    }
+
+    pub fn ranges(&self) -> &[DirtyRange] {
+        self.ranges.as_slice()
+    }
+
+    fn from_rows(rows: Vec<u16>) -> Self {
+        let mut ranges = Vec::<DirtyRange>::new();
+        let mut iter = rows.iter().copied();
+        let Some(mut start) = iter.next() else {
+            return Self { rows, ranges };
+        };
+        let mut end = start;
+        for row in iter {
+            if row == end.saturating_add(1) {
+                end = row;
+                continue;
+            }
+            ranges.push(DirtyRange {
+                start,
+                end_inclusive: end,
+            });
+            start = row;
+            end = row;
+        }
+        ranges.push(DirtyRange {
+            start,
+            end_inclusive: end,
+        });
+        Self { rows, ranges }
+    }
+}
 
 pub(super) fn compute_dirty_rows(
     prev_lines: Option<&[SpanLine]>,
@@ -9,11 +58,13 @@ pub(super) fn compute_dirty_rows(
     next_offset: usize,
     row_count: usize,
     force_all: bool,
-) -> Vec<u16> {
+) -> DirtyRows {
     if force_all || prev_lines.is_none() {
-        return (0..row_count.min(u16::MAX as usize))
-            .map(|row| row as u16)
-            .collect();
+        return DirtyRows::from_rows(
+            (0..row_count.min(u16::MAX as usize))
+                .map(|row| row as u16)
+                .collect(),
+        );
     }
 
     let prev_lines = prev_lines.expect("checked above");
@@ -28,7 +79,7 @@ pub(super) fn compute_dirty_rows(
             dirty.push(row as u16);
         }
     }
-    dirty
+    DirtyRows::from_rows(dirty)
 }
 
 pub(super) fn estimate_self_reflow_cursor_delta(inline: &InlineState, new_width: u16) -> i32 {
@@ -115,4 +166,77 @@ fn wrapped_rows(line_width: usize, width: usize) -> usize {
         return 1;
     }
     (line_width.saturating_sub(1) / width).saturating_add(1)
+}
+
+pub(super) fn quick_frame_signature(lines: &[SpanLine]) -> u64 {
+    let mut acc = 0xcbf29ce484222325u64 ^ (lines.len() as u64);
+    for (row_idx, line) in lines.iter().enumerate() {
+        acc = mix_sig(acc, row_idx as u64);
+        acc = mix_sig(acc, line.len() as u64);
+        for span in line {
+            acc = mix_sig(acc, quick_span_signature(span));
+        }
+    }
+    acc
+}
+
+fn quick_span_signature(span: &Span) -> u64 {
+    let mut sig = 0x9e3779b97f4a7c15u64;
+    let bytes = span.text.as_bytes();
+    sig = mix_sig(sig, bytes.len() as u64);
+    if !bytes.is_empty() {
+        let head = bytes
+            .iter()
+            .take(4)
+            .fold(0u64, |acc, b| (acc << 8) ^ (*b as u64));
+        let tail = bytes
+            .iter()
+            .rev()
+            .take(4)
+            .fold(0u64, |acc, b| (acc << 8) ^ (*b as u64));
+        sig = mix_sig(sig, head);
+        sig = mix_sig(sig, tail);
+    }
+    sig = mix_sig(sig, color_sig(span.style.color));
+    sig = mix_sig(sig, color_sig(span.style.background));
+    sig = mix_sig(sig, if span.style.bold { 1 } else { 0 });
+    sig = mix_sig(sig, strike_sig(span.style.strike));
+    sig = mix_sig(
+        sig,
+        match span.wrap_mode {
+            WrapMode::Wrap => 0,
+            WrapMode::NoWrap => 1,
+        },
+    );
+    sig
+}
+
+fn color_sig(color: Option<Color>) -> u64 {
+    match color {
+        None => 0,
+        Some(Color::Reset) => 1,
+        Some(Color::Black) => 2,
+        Some(Color::DarkGrey) => 3,
+        Some(Color::Red) => 4,
+        Some(Color::Green) => 5,
+        Some(Color::Yellow) => 6,
+        Some(Color::Blue) => 7,
+        Some(Color::Magenta) => 8,
+        Some(Color::Cyan) => 9,
+        Some(Color::White) => 10,
+        Some(Color::Rgb(r, g, b)) => 11u64 << 32 | (r as u64) << 16 | (g as u64) << 8 | (b as u64),
+    }
+}
+
+fn strike_sig(strike: Strike) -> u64 {
+    match strike {
+        Strike::Inherit => 0,
+        Strike::On => 1,
+        Strike::Off => 2,
+    }
+}
+
+fn mix_sig(acc: u64, value: u64) -> u64 {
+    let mixed = acc ^ value.wrapping_mul(0x517cc1b727220a95);
+    mixed.rotate_left(13).wrapping_mul(0x100000001b3)
 }

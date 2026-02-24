@@ -118,7 +118,7 @@ impl<'a> EffectDispatcher<'a> {
         for step in self.state.flow.steps_mut() {
             walk_nodes_mut(
                 step.nodes.as_mut_slice(),
-                NodeWalkScope::Persistent,
+                NodeWalkScope::Recursive,
                 &mut |node| merged.merge(node.on_system_event(event)),
             );
         }

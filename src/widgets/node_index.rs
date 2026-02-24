@@ -25,11 +25,16 @@ impl NodeIndex {
     pub fn build(nodes: &[Node]) -> Self {
         let mut index = Self::default();
         let mut path = NodePath::default();
-        collect_paths(nodes, NodeWalkScope::Visible, &mut path, &mut index.visible);
+        collect_paths(
+            nodes,
+            NodeWalkScope::TopLevel,
+            &mut path,
+            &mut index.visible,
+        );
         path = NodePath::default();
         collect_paths(
             nodes,
-            NodeWalkScope::Persistent,
+            NodeWalkScope::Recursive,
             &mut path,
             &mut index.persistent,
         );
@@ -52,8 +57,8 @@ fn collect_paths(
         out.insert(node.id().into(), path.clone());
 
         let children = match scope {
-            NodeWalkScope::Visible => None,
-            NodeWalkScope::Persistent => node.persistent_children(),
+            NodeWalkScope::TopLevel => None,
+            NodeWalkScope::Recursive => node.persistent_children(),
         };
         if let Some(children) = children {
             collect_paths(children, scope, path, out);

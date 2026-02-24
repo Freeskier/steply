@@ -10,7 +10,7 @@ use crate::terminal::{CursorPos, KeyCode, KeyEvent};
 use crate::ui::span::{Span, SpanLine};
 use crate::ui::style::{Color, Style};
 use crate::widgets::base::WidgetBase;
-use crate::widgets::node::StaticChildrenComponent;
+use crate::widgets::node::LeafComponent;
 use crate::widgets::shared::cursor_anchor;
 use crate::widgets::shared::list_core;
 use crate::widgets::shared::validation::decorate_component_validation;
@@ -329,7 +329,7 @@ impl Repeater {
     }
 }
 
-impl StaticChildrenComponent for Repeater {}
+impl LeafComponent for Repeater {}
 
 fn unique_field_key(fields: &[RepeaterFieldDef], requested: &str) -> String {
     let base = normalize_ascii_key(requested, "field");

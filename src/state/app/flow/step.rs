@@ -73,7 +73,7 @@ impl AppState {
             let mut out = Vec::new();
             walk_nodes(
                 self.flow.current_step().nodes.as_slice(),
-                NodeWalkScope::Persistent,
+                NodeWalkScope::Recursive,
                 &mut |node| {
                     if node.value().is_some() {
                         out.push(node.id().to_string());
@@ -91,7 +91,7 @@ impl AppState {
         let mut first_invalid: Option<String> = None;
         walk_nodes(
             self.current_step_nodes(),
-            NodeWalkScope::Visible,
+            NodeWalkScope::TopLevel,
             &mut |node| {
                 if first_invalid.is_none()
                     && self.runtime.validation.visible_error(node.id()).is_some()

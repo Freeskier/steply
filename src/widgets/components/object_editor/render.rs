@@ -27,8 +27,8 @@ impl ObjectEditor {
 
     fn row_spans(
         &self,
-        vis: usize,
-        obj: &ObjNode,
+        visible_index: usize,
+        obj: &ObjectTreeNode,
         red: bool,
         yellow: bool,
         focused: bool,
@@ -41,9 +41,15 @@ impl ObjectEditor {
         let highlight_st = Style::new().color(Color::Yellow).bold();
         let query = self.tree.filter_query().trim();
 
-        if let Mode::EditKey { vis: ev, key_value } | Mode::EditValue { vis: ev, key_value } =
-            &self.mode
-            && *ev == vis
+        if let Mode::EditKey {
+            visible_index: ev,
+            key_value,
+        }
+        | Mode::EditValue {
+            visible_index: ev,
+            key_value,
+        } = &self.mode
+            && *ev == visible_index
         {
             return key_value.inline_spans();
         }
@@ -79,8 +85,11 @@ impl ObjectEditor {
         };
         key_part.push(Span::styled(":", key_style).no_wrap());
 
-        if let Mode::ConfirmDelete { vis: dv, select } = &self.mode
-            && *dv == vis
+        if let Mode::ConfirmDelete {
+            visible_index: dv,
+            select,
+        } = &self.mode
+            && *dv == visible_index
         {
             let selected = select
                 .value()
@@ -148,7 +157,7 @@ impl ObjectEditor {
     }
 }
 
-impl StaticChildrenComponent for ObjectEditor {}
+impl LeafComponent for ObjectEditor {}
 
 impl Drawable for ObjectEditor {
     fn id(&self) -> &str {
@@ -163,11 +172,15 @@ impl Drawable for ObjectEditor {
             .flatten();
 
         let red_range: Option<std::ops::Range<usize>> = match &self.mode {
-            Mode::ConfirmDelete { vis, .. } => Some(self.subtree_vis_range(*vis)),
+            Mode::ConfirmDelete { visible_index, .. } => {
+                Some(self.subtree_visible_range(*visible_index))
+            }
             _ => None,
         };
         let yellow_range: Option<std::ops::Range<usize>> = match &self.mode {
-            Mode::Move { vis } => Some(*vis..self.subtree_vis_range(*vis).end),
+            Mode::Move { visible_index } => {
+                Some(*visible_index..self.subtree_visible_range(*visible_index).end)
+            }
             _ => None,
         };
 
@@ -191,23 +204,23 @@ impl Drawable for ObjectEditor {
                 lines.push(tree_line);
                 continue;
             }
-            let vis = start + line_idx;
+            let visible_index = start + line_idx;
 
-            if vis >= visible.len() {
+            if visible_index >= visible.len() {
                 lines.push(tree_line);
                 continue;
             }
 
-            let node_idx = visible[vis];
+            let node_idx = visible[visible_index];
             let obj = &nodes[node_idx].item;
 
             let in_red = red_range
                 .as_ref()
-                .map(|r| r.contains(&vis))
+                .map(|r| r.contains(&visible_index))
                 .unwrap_or(false);
             let in_yellow = yellow_range
                 .as_ref()
-                .map(|r| r.contains(&vis))
+                .map(|r| r.contains(&visible_index))
                 .unwrap_or(false);
 
             let icon_idx = Self::tree_content_start(&tree_line);
@@ -215,8 +228,8 @@ impl Drawable for ObjectEditor {
 
             let insert_after_this_row = matches!(
                 self.mode,
-                Mode::InsertType { after_vis, .. } | Mode::InsertValue { after_vis, .. }
-                    if after_vis == vis
+                Mode::InsertType { after_visible_index, .. } | Mode::InsertValue { after_visible_index, .. }
+                    if after_visible_index == visible_index
             );
             let insert_inline_on_placeholder = insert_after_this_row && obj.is_placeholder;
             if insert_inline_on_placeholder {
@@ -252,14 +265,14 @@ impl Drawable for ObjectEditor {
                 }
             }
 
-            tree_line.extend(self.row_spans(vis, obj, in_red, in_yellow, focused));
+            tree_line.extend(self.row_spans(visible_index, obj, in_red, in_yellow, focused));
             lines.push(tree_line);
 
             if let Mode::InsertType {
-                after_vis,
+                after_visible_index,
                 key_value,
             } = &self.mode
-                && *after_vis == vis
+                && *after_visible_index == visible_index
             {
                 let mut row = insert_prefix.clone();
                 row.extend(key_value.inline_spans());
@@ -267,11 +280,11 @@ impl Drawable for ObjectEditor {
             }
 
             if let Mode::InsertValue {
-                after_vis,
+                after_visible_index,
                 key_value,
                 ..
             } = &self.mode
-                && *after_vis == vis
+                && *after_visible_index == visible_index
             {
                 let mut row = insert_prefix.clone();
                 row.extend(self.insert_value_spans(key_value, insert_value_error));

@@ -1,7 +1,7 @@
 use crate::state::step::StepStatus;
 use crate::state::validation::ValidationState;
 use crate::terminal::{CursorPos, TerminalSize};
-use crate::ui::hit_test::FrameHitMap;
+use crate::ui::hit_test::{FrameHitMap, HitLocal};
 use crate::ui::layout::Layout;
 use crate::ui::render_view::{CompletionSnapshot, RenderView};
 use crate::ui::span::{Span, SpanLine};
@@ -482,7 +482,7 @@ fn append_hints_panel(nodes: &[Node], focused_id: Option<&str>, block_lines: &mu
 fn collect_hints(nodes: &[Node], focused_id: Option<&str>) -> Vec<HintItem> {
     let mut out = Vec::<HintItem>::new();
     let mut seen = HashSet::<(String, String, HintGroup)>::new();
-    walk_nodes(nodes, NodeWalkScope::Visible, &mut |node| {
+    walk_nodes(nodes, NodeWalkScope::TopLevel, &mut |node| {
         let focused = focused_id.is_some_and(|id| id == node.id());
         for hint in node.hints(HintContext {
             focused,
@@ -519,7 +519,7 @@ fn render_context_for_nodes(
     let mut visible_errors = HashMap::<String, String>::new();
     let mut invalid_hidden = HashSet::<String>::new();
     let mut completion_menus = HashMap::<String, CompletionMenu>::new();
-    walk_nodes(nodes, NodeWalkScope::Visible, &mut |node| {
+    walk_nodes(nodes, NodeWalkScope::TopLevel, &mut |node| {
         if let Some(error) = validation.visible_error(node.id()) {
             visible_errors.insert(node.id().to_string(), error.to_string());
         } else if validation.is_hidden_invalid(node.id()) {
@@ -610,16 +610,18 @@ fn draw_nodes(
                 } else if let Some(PointerRowMap {
                     local_row,
                     local_col_offset,
+                    local_semantic,
                     ..
                 }) = pointer_rows.get(&local_row_u16)
                 {
-                    hit_map.push_node_row(
+                    hit_map.push_node_row_with_semantic(
                         node.id(),
                         row,
-                        *local_row,
                         state.hit_col_start,
                         state.hit_col_start.saturating_add(width),
-                        *local_col_offset,
+                        HitLocal::row(*local_row)
+                            .with_col_offset(*local_col_offset)
+                            .with_semantic(*local_semantic),
                     );
                 }
             }

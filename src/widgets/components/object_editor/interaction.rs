@@ -62,11 +62,18 @@ impl Interactive for ObjectEditor {
         let (start, end) = self.tree.visible_range();
         let tree_lines = self.tree.render_lines(true);
         match &self.mode {
-            Mode::EditKey { vis, key_value } | Mode::EditValue { vis, key_value } => {
-                if *vis < start || *vis >= end {
+            Mode::EditKey {
+                visible_index,
+                key_value,
+            }
+            | Mode::EditValue {
+                visible_index,
+                key_value,
+            } => {
+                if *visible_index < start || *visible_index >= end {
                     return None;
                 }
-                let line_idx = *vis - start;
+                let line_idx = *visible_index - start;
                 let tree_line = tree_lines.get(line_idx)?;
                 let prefix_col = Self::tree_prefix_width(tree_line);
                 let local = key_value.cursor_pos()?;
@@ -76,21 +83,21 @@ impl Interactive for ObjectEditor {
                 })
             }
             Mode::InsertType {
-                after_vis,
+                after_visible_index,
                 key_value,
             }
             | Mode::InsertValue {
-                after_vis,
+                after_visible_index,
                 key_value,
                 ..
             } => {
-                if *after_vis < start || *after_vis >= end {
+                if *after_visible_index < start || *after_visible_index >= end {
                     return None;
                 }
-                let line_idx = *after_vis - start;
+                let line_idx = *after_visible_index - start;
                 let tree_line = tree_lines.get(line_idx)?;
                 let prefix_col = Self::tree_prefix_width(tree_line);
-                let inline_on_placeholder = self.is_placeholder_vis(*after_vis);
+                let inline_on_placeholder = self.is_placeholder_visible_index(*after_visible_index);
                 let local = key_value.cursor_pos()?;
                 Some(CursorPos {
                     col: prefix_col.saturating_add(local.col),
@@ -100,12 +107,12 @@ impl Interactive for ObjectEditor {
                 })
             }
             _ => {
-                let active_vis = self.tree.active_visible_index();
-                if active_vis < start || active_vis >= end {
+                let active_visible_index = self.tree.active_visible_index();
+                if active_visible_index < start || active_visible_index >= end {
                     return None;
                 }
                 Some(crate::widgets::shared::cursor_anchor::anchored_cursor(
-                    header_rows.saturating_add((active_vis - start) as u16) as usize,
+                    header_rows.saturating_add((active_visible_index - start) as u16) as usize,
                     0,
                 ))
             }

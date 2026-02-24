@@ -16,7 +16,7 @@ use crate::ui::style::{Color, Style};
 use crate::widgets::base::WidgetBase;
 use crate::widgets::components::tree_view::{TreeItemLabel, TreeNode, TreeView};
 use crate::widgets::inputs::select::SelectInput;
-use crate::widgets::node::StaticChildrenComponent;
+use crate::widgets::node::LeafComponent;
 use crate::widgets::shared::filter;
 use crate::widgets::traits::{
     DrawOutput, Drawable, FocusMode, InteractionResult, Interactive, RenderContext, ValidationMode,
@@ -66,7 +66,7 @@ impl InsertType {
 }
 
 #[derive(Clone)]
-struct ObjNode {
+struct ObjectTreeNode {
     key: String,
     value: Value,
 
@@ -77,7 +77,7 @@ struct ObjNode {
     placeholder_parent: Option<String>,
 }
 
-impl TreeItemLabel for ObjNode {
+impl TreeItemLabel for ObjectTreeNode {
     fn label(&self) -> &str {
         &self.key
     }
@@ -104,28 +104,28 @@ impl TreeItemLabel for ObjNode {
 enum Mode {
     Normal,
     EditValue {
-        vis: usize,
+        visible_index: usize,
         key_value: InlineKeyValueEditor,
     },
     EditKey {
-        vis: usize,
+        visible_index: usize,
         key_value: InlineKeyValueEditor,
     },
     InsertType {
-        after_vis: usize,
+        after_visible_index: usize,
         key_value: InlineKeyValueEditor,
     },
     InsertValue {
-        after_vis: usize,
+        after_visible_index: usize,
         value_type: InsertValueType,
         key_value: InlineKeyValueEditor,
     },
     ConfirmDelete {
-        vis: usize,
+        visible_index: usize,
         select: SelectInput,
     },
     Move {
-        vis: usize,
+        visible_index: usize,
     },
 }
 
@@ -146,7 +146,7 @@ enum InsertPlacement {
 
 #[derive(Debug, Clone)]
 struct MovePlan {
-    target_vis: usize,
+    target_visible_index: usize,
     source_path: String,
     dest_parent: String,
     placement: InsertPlacement,
@@ -168,7 +168,7 @@ pub struct ObjectEditor {
     value: Value,
     expanded: HashSet<String>,
     array_item_names: HashMap<String, String>,
-    tree: TreeView<ObjNode>,
+    tree: TreeView<ObjectTreeNode>,
     filter: filter::FilterController,
     insert_types: Vec<InsertType>,
     mode: Mode,

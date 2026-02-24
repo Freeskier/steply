@@ -35,7 +35,7 @@ impl AppState {
             let mut out = Vec::<(String, bool, Result<(), String>)>::new();
             walk_nodes(
                 self.flow.current_step().nodes.as_slice(),
-                NodeWalkScope::Persistent,
+                NodeWalkScope::Recursive,
                 &mut |node| {
                     out.push((
                         node.id().to_string(),
@@ -78,7 +78,7 @@ impl AppState {
 
     fn validate_in_active_nodes(&mut self, id: &str, mode: ValidationMode) -> bool {
         let mut result: Option<Result<(), String>> = None;
-        walk_nodes(self.active_nodes(), NodeWalkScope::Visible, &mut |node| {
+        walk_nodes(self.active_nodes(), NodeWalkScope::TopLevel, &mut |node| {
             if result.is_none() && node.id() == id {
                 result = Some(node.validate(mode));
             }
@@ -127,7 +127,7 @@ impl AppState {
 
     pub(super) fn prune_validation_for_active_nodes(&mut self) {
         let mut ids = Vec::<NodeId>::new();
-        walk_nodes(self.active_nodes(), NodeWalkScope::Visible, &mut |node| {
+        walk_nodes(self.active_nodes(), NodeWalkScope::TopLevel, &mut |node| {
             ids.push(node.id().into())
         });
         self.runtime.validation.clear_for_ids(&ids);
@@ -178,7 +178,7 @@ fn inline_error_key(id: &str) -> String {
 
 fn collect_node_values(nodes: &[Node]) -> HashMap<NodeId, Value> {
     let mut values = HashMap::<NodeId, Value>::new();
-    walk_nodes(nodes, NodeWalkScope::Persistent, &mut |node| {
+    walk_nodes(nodes, NodeWalkScope::Recursive, &mut |node| {
         if let Some(value) = node.value() {
             values.insert(node.id().into(), value);
         }

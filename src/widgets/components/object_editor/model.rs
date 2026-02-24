@@ -6,7 +6,7 @@ impl ObjectEditor {
         expanded: &HashSet<String>,
         depth: usize,
         prefix: &ValuePath,
-    ) -> Vec<TreeNode<ObjNode>> {
+    ) -> Vec<TreeNode<ObjectTreeNode>> {
         let mut out = Vec::new();
         match value {
             Value::Object(map) => {
@@ -18,7 +18,7 @@ impl ObjectEditor {
                     let is_container = matches!(child, Value::Object(_) | Value::List(_));
                     let is_exp = is_container && expanded.contains(&path);
                     let mut node = TreeNode::new(
-                        ObjNode {
+                        ObjectTreeNode {
                             key: key.clone(),
                             value: child.clone(),
                             path: path.clone(),
@@ -40,7 +40,7 @@ impl ObjectEditor {
                                 let mut placeholder = path_value.segments().to_vec();
                                 placeholder.push(PathSegment::Key("__placeholder__".to_string()));
                                 out.push(TreeNode::new(
-                                    ObjNode {
+                                    ObjectTreeNode {
                                         key: "(empty)".to_string(),
                                         value: Value::None,
                                         path: ValuePath::new(placeholder).to_string(),
@@ -56,7 +56,7 @@ impl ObjectEditor {
                                 let mut placeholder = path_value.segments().to_vec();
                                 placeholder.push(PathSegment::Key("__placeholder__".to_string()));
                                 out.push(TreeNode::new(
-                                    ObjNode {
+                                    ObjectTreeNode {
                                         key: "(empty)".to_string(),
                                         value: Value::None,
                                         path: ValuePath::new(placeholder).to_string(),
@@ -88,7 +88,7 @@ impl ObjectEditor {
                     let is_container = matches!(child, Value::Object(_) | Value::List(_));
                     let is_exp = is_container && expanded.contains(&path);
                     let mut node = TreeNode::new(
-                        ObjNode {
+                        ObjectTreeNode {
                             key: key.clone(),
                             value: child.clone(),
                             path: path.clone(),
@@ -110,7 +110,7 @@ impl ObjectEditor {
                                 let mut placeholder = path_value.segments().to_vec();
                                 placeholder.push(PathSegment::Key("__placeholder__".to_string()));
                                 out.push(TreeNode::new(
-                                    ObjNode {
+                                    ObjectTreeNode {
                                         key: "(empty)".to_string(),
                                         value: Value::None,
                                         path: ValuePath::new(placeholder).to_string(),
@@ -126,7 +126,7 @@ impl ObjectEditor {
                                 let mut placeholder = path_value.segments().to_vec();
                                 placeholder.push(PathSegment::Key("__placeholder__".to_string()));
                                 out.push(TreeNode::new(
-                                    ObjNode {
+                                    ObjectTreeNode {
                                         key: "(empty)".to_string(),
                                         value: Value::None,
                                         path: ValuePath::new(placeholder).to_string(),
@@ -153,35 +153,35 @@ impl ObjectEditor {
         out
     }
 
-    pub(super) fn active_vis(&self) -> usize {
+    pub(super) fn active_visible_index(&self) -> usize {
         self.tree.active_visible_index()
     }
 
-    pub(super) fn active_obj(&self) -> Option<&ObjNode> {
+    pub(super) fn active_obj(&self) -> Option<&ObjectTreeNode> {
         self.tree.active_node().map(|n| &n.item)
     }
 
-    pub(super) fn obj_at_vis(&self, vis: usize) -> Option<&ObjNode> {
+    pub(super) fn object_at_visible_index(&self, visible_index: usize) -> Option<&ObjectTreeNode> {
         let visible = self.tree.visible();
         visible
-            .get(vis)
+            .get(visible_index)
             .and_then(|&idx| self.tree.nodes().get(idx))
             .map(|n| &n.item)
     }
 
-    pub(super) fn is_placeholder_vis(&self, vis: usize) -> bool {
-        self.obj_at_vis(vis)
+    pub(super) fn is_placeholder_visible_index(&self, visible_index: usize) -> bool {
+        self.object_at_visible_index(visible_index)
             .map(|obj| obj.is_placeholder)
             .unwrap_or(false)
     }
 
-    pub(super) fn path_at(&self, vis: usize) -> String {
-        self.obj_at_vis(vis)
+    pub(super) fn path_at_visible_index(&self, visible_index: usize) -> String {
+        self.object_at_visible_index(visible_index)
             .map(|obj| obj.path.clone())
             .unwrap_or_default()
     }
 
-    pub(super) fn vis_of_path(&self, path: &str) -> Option<usize> {
+    pub(super) fn visible_index_of_path(&self, path: &str) -> Option<usize> {
         let visible = self.tree.visible();
         let nodes = self.tree.nodes();
         visible
@@ -189,7 +189,7 @@ impl ObjectEditor {
             .position(|&idx| nodes.get(idx).map(|n| n.item.path == path).unwrap_or(false))
     }
 
-    pub(super) fn vis_of_empty_placeholder(&self, parent_path: &str) -> Option<usize> {
+    pub(super) fn visible_index_of_empty_placeholder(&self, parent_path: &str) -> Option<usize> {
         let visible = self.tree.visible();
         let nodes = self.tree.nodes();
         visible.iter().position(|&idx| {
@@ -203,19 +203,19 @@ impl ObjectEditor {
         })
     }
 
-    pub(super) fn subtree_vis_range(&self, vis: usize) -> std::ops::Range<usize> {
+    pub(super) fn subtree_visible_range(&self, visible_index: usize) -> std::ops::Range<usize> {
         let visible = self.tree.visible();
         let nodes = self.tree.nodes();
-        if vis >= visible.len() {
-            return vis..vis;
+        if visible_index >= visible.len() {
+            return visible_index..visible_index;
         }
-        let depth = nodes[visible[vis]].depth;
-        let end = visible[vis + 1..]
+        let depth = nodes[visible[visible_index]].depth;
+        let end = visible[visible_index + 1..]
             .iter()
             .position(|&idx| nodes.get(idx).map(|n| n.depth <= depth).unwrap_or(true))
-            .map(|p| vis + 1 + p)
+            .map(|p| visible_index + 1 + p)
             .unwrap_or(visible.len());
-        vis + 1..end
+        visible_index + 1..end
     }
 
     pub(super) fn parse_path(path: &str) -> Option<ValuePath> {

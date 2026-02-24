@@ -97,7 +97,7 @@ use crate::widgets::base::WidgetBase;
 use crate::widgets::components::select_list::{SelectList, SelectMode};
 use crate::widgets::components::tree_view::{TreeItemLabel, TreeNode, TreeView};
 use crate::widgets::inputs::text::TextInput;
-use crate::widgets::node::StaticChildrenComponent;
+use crate::widgets::node::LeafComponent;
 use crate::widgets::traits::{
     CompletionState, DrawOutput, Drawable, FocusMode, HintContext, HintGroup, HintItem,
     InteractionResult, Interactive, RenderContext, TextEditState, ValidationMode,
@@ -115,7 +115,7 @@ const DEBOUNCE_MS: u64 = 120;
 const SPINNER_INTERVAL_MS: u64 = 80;
 const SPINNER_FRAMES: &[char] = &['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
 
-pub struct FileBrowserInput {
+pub struct FileBrowserComponent {
     base: WidgetBase,
 
     text: TextInput,
@@ -153,6 +153,8 @@ pub struct FileBrowserInput {
     focus_history: HashMap<PathBuf, FocusMemory>,
 }
 
+pub type FileBrowserInput = FileBrowserComponent;
+
 #[derive(Clone)]
 pub(super) struct FocusMemory {
     pub index: usize,
@@ -165,7 +167,7 @@ pub(super) enum FocusRestore {
     FirstRealEntry,
 }
 
-impl FileBrowserInput {
+impl FileBrowserComponent {
     pub fn new(id: impl Into<String>, label: impl Into<String>) -> Self {
         let id = id.into();
         let label = label.into();
@@ -488,9 +490,9 @@ impl FileBrowserInput {
     }
 }
 
-impl StaticChildrenComponent for FileBrowserInput {}
+impl LeafComponent for FileBrowserComponent {}
 
-impl Drawable for FileBrowserInput {
+impl Drawable for FileBrowserComponent {
     fn id(&self) -> &str {
         self.base.id()
     }
@@ -616,7 +618,7 @@ impl Drawable for FileBrowserInput {
     }
 }
 
-impl Interactive for FileBrowserInput {
+impl Interactive for FileBrowserComponent {
     fn focus_mode(&self) -> FocusMode {
         FocusMode::Leaf
     }

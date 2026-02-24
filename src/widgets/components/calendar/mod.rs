@@ -6,7 +6,7 @@ use crate::ui::span::Span;
 use crate::ui::style::{Color, Style};
 use crate::widgets::base::WidgetBase;
 use crate::widgets::inputs::masked::MaskedInput;
-use crate::widgets::node::StaticChildrenComponent;
+use crate::widgets::node::LeafComponent;
 use crate::widgets::shared::calendar::{self, Date, MonthGrid};
 use crate::widgets::traits::{
     DrawOutput, Drawable, FocusMode, InteractionResult, Interactive, RenderContext, ValidationMode,
@@ -499,4 +499,4 @@ impl Interactive for Calendar {
     }
 }
 
-impl StaticChildrenComponent for Calendar {}
+impl LeafComponent for Calendar {}

@@ -311,7 +311,7 @@ impl AppState {
         let mut ids = Vec::<NodeId>::new();
         walk_nodes(
             self.flow.current_step().nodes.as_slice(),
-            NodeWalkScope::Persistent,
+            NodeWalkScope::Recursive,
             &mut |node| {
                 if node.overlay_placement().is_some() {
                     ids.push(node.id().into());
@@ -374,7 +374,7 @@ fn collect_inline_tasks(flow: &Flow) -> (Vec<TaskSpec>, Vec<TaskSubscription>) {
     for step in flow.steps() {
         walk_nodes(
             step.nodes.as_slice(),
-            NodeWalkScope::Persistent,
+            NodeWalkScope::Recursive,
             &mut |node| {
                 specs.extend(node.task_specs());
                 subscriptions.extend(node.task_subscriptions());

@@ -16,11 +16,15 @@ pub trait Component: InteractiveNode {
     fn children_mut(&mut self) -> &mut [Node];
 }
 
-pub trait StaticChildrenComponent: InteractiveNode {}
+pub trait LeafComponent: InteractiveNode {}
+
+pub trait StaticChildrenComponent: LeafComponent {}
+
+impl<T: LeafComponent + ?Sized> StaticChildrenComponent for T {}
 
 impl<T> Component for T
 where
-    T: StaticChildrenComponent,
+    T: LeafComponent,
 {
     fn children(&self) -> &[Node] {
         &[]
@@ -33,8 +37,16 @@ where
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum NodeWalkScope {
-    Visible,
-    Persistent,
+    TopLevel,
+    Recursive,
+}
+
+impl NodeWalkScope {
+    #[allow(non_upper_case_globals)]
+    pub const Visible: Self = Self::TopLevel;
+
+    #[allow(non_upper_case_globals)]
+    pub const Persistent: Self = Self::Recursive;
 }
 
 pub enum Node {
@@ -68,9 +80,9 @@ fn children_for_scope(node: &Node, scope: NodeWalkScope) -> Option<&[Node]> {
         return None;
     };
     match scope {
-        NodeWalkScope::Visible => None,
+        NodeWalkScope::TopLevel => None,
 
-        NodeWalkScope::Persistent => Some(c.children()),
+        NodeWalkScope::Recursive => Some(c.children()),
     }
 }
 
@@ -79,8 +91,8 @@ fn children_for_scope_mut(node: &mut Node, scope: NodeWalkScope) -> Option<&mut 
         return None;
     };
     match scope {
-        NodeWalkScope::Visible => None,
-        NodeWalkScope::Persistent => Some(c.children_mut()),
+        NodeWalkScope::TopLevel => None,
+        NodeWalkScope::Recursive => Some(c.children_mut()),
     }
 }
 

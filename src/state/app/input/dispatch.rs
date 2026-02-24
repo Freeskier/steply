@@ -1,5 +1,6 @@
-use super::{AppState, completion::CompletionStartResult};
+use super::completion::CompletionStartResult;
 use crate::runtime::event::SystemEvent;
+use crate::state::app::AppState;
 use crate::terminal::{KeyCode, KeyEvent, KeyModifiers};
 use crate::widgets::node::{Node, NodeWalkScope, find_node_mut, walk_nodes_mut};
 use crate::widgets::traits::{InteractionResult, TextAction};

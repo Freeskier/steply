@@ -1,5 +1,5 @@
-use super::AppState;
 use crate::runtime::event::{SystemEvent, WidgetAction};
+use crate::state::app::AppState;
 use crate::widgets::node::{NodeWalkScope, find_node, walk_nodes_mut};
 use crate::widgets::traits::{InteractionResult, ValidationMode};
 
@@ -144,11 +144,14 @@ impl AppState {
         self.effect_dispatcher().handle_system_event(event)
     }
 
-    pub(super) fn broadcast_system_event(&mut self, event: &SystemEvent) -> InteractionResult {
+    pub(in crate::state::app) fn broadcast_system_event(
+        &mut self,
+        event: &SystemEvent,
+    ) -> InteractionResult {
         self.effect_dispatcher().broadcast_system_event(event)
     }
 
-    pub(super) fn process_broadcast_result(&mut self, result: InteractionResult) {
+    pub(in crate::state::app) fn process_broadcast_result(&mut self, result: InteractionResult) {
         self.effect_dispatcher().process_broadcast_result(result)
     }
 }

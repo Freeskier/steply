@@ -1,6 +1,6 @@
-use super::AppState;
 use crate::core::NodeId;
 use crate::runtime::event::{OverlayLifecycle, SystemEvent};
+use crate::state::app::AppState;
 use crate::state::overlay::OverlayEntry;
 use crate::widgets::node::find_overlay_mut;
 use crate::widgets::traits::{FocusMode, OverlayMode};
@@ -54,7 +54,7 @@ impl AppState {
         self.open_overlay_by_id(id.as_str())
     }
 
-    pub(super) fn open_overlay_by_id(&mut self, overlay_id: &str) -> bool {
+    pub(in crate::state::app) fn open_overlay_by_id(&mut self, overlay_id: &str) -> bool {
         self.clear_completion_session();
         let saved_focus_id = self.ui.focus.current_id().map(NodeId::from);
         let (opened, focus_mode, overlay_mode) = {

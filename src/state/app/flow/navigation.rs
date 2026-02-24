@@ -1,5 +1,5 @@
-use super::AppState;
 use crate::runtime::event::SystemEvent;
+use crate::state::app::AppState;
 use crate::widgets::traits::FocusMode;
 
 impl AppState {
@@ -25,7 +25,7 @@ impl AppState {
         self.ui.focus.prev();
     }
 
-    pub(super) fn rebuild_focus_with_target(
+    pub(in crate::state::app) fn rebuild_focus_with_target(
         &mut self,
         target: Option<&str>,
         prune_validation: bool,
@@ -48,7 +48,7 @@ impl AppState {
         }
     }
 
-    pub(super) fn rebuild_focus(&mut self) {
+    pub(in crate::state::app) fn rebuild_focus(&mut self) {
         self.rebuild_focus_with_target(None, true);
     }
 }

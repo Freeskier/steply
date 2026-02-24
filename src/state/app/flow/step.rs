@@ -1,11 +1,11 @@
-use super::AppState;
 use crate::core::value::Value;
+use crate::state::app::AppState;
 use crate::state::step::StepNavigation;
 use crate::widgets::node::{NodeWalkScope, walk_nodes};
 use crate::widgets::traits::ValidationMode;
 
 impl AppState {
-    pub(super) fn handle_step_submit(&mut self) {
+    pub(in crate::state::app) fn handle_step_submit(&mut self) {
         self.clear_completion_session();
         let submit_step_id = self.current_step_id().to_string();
         self.trigger_submit_before_tasks(submit_step_id.as_str());

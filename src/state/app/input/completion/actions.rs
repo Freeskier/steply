@@ -1,9 +1,9 @@
-use super::AppState;
-use super::completion_engine::{
+use super::engine::{
     CompletionQuery, completion_candidates, completion_query, longest_common_prefix,
 };
-pub(super) use super::completion_session::{CompletionSession, CompletionStartResult};
+pub(in crate::state::app) use super::session::{CompletionSession, CompletionStartResult};
 use crate::core::NodeId;
+use crate::state::app::AppState;
 use crate::widgets::node::find_node_mut;
 use crate::widgets::shared::text_edit;
 
@@ -13,11 +13,11 @@ struct FocusedCompletionData {
 }
 
 impl AppState {
-    pub(super) fn clear_completion_session(&mut self) {
+    pub(in crate::state::app) fn clear_completion_session(&mut self) {
         self.ui.completion_session = None;
     }
 
-    pub(super) fn reset_completion_for_focus_change(&mut self) {
+    pub(in crate::state::app) fn reset_completion_for_focus_change(&mut self) {
         self.clear_completion_session();
         self.ui.completion_tab_suppressed_for = None;
     }
@@ -29,7 +29,7 @@ impl AppState {
         self.ui.completion_tab_suppressed_for = Some(NodeId::from(focused_id));
     }
 
-    pub(super) fn clear_completion_tab_suppression_for_focused(&mut self) {
+    pub(in crate::state::app) fn clear_completion_tab_suppression_for_focused(&mut self) {
         let Some(focused_id) = self.ui.focus.current_id() else {
             self.ui.completion_tab_suppressed_for = None;
             return;
@@ -44,7 +44,7 @@ impl AppState {
         }
     }
 
-    pub(super) fn is_completion_tab_suppressed_for_focused(&self) -> bool {
+    pub(in crate::state::app) fn is_completion_tab_suppressed_for_focused(&self) -> bool {
         let Some(focused_id) = self.ui.focus.current_id() else {
             return false;
         };
@@ -128,7 +128,7 @@ impl AppState {
         self.ui.completion_session = session;
     }
 
-    pub(super) fn accept_completion_for_focused(&mut self) -> bool {
+    pub(in crate::state::app) fn accept_completion_for_focused(&mut self) -> bool {
         let Some(focused_id) = self.ui.focus.current_id().map(ToOwned::to_owned) else {
             self.clear_completion_session();
             return false;
@@ -158,7 +158,7 @@ impl AppState {
         updated
     }
 
-    pub(super) fn expand_common_prefix_for_focused(&mut self) -> bool {
+    pub(in crate::state::app) fn expand_common_prefix_for_focused(&mut self) -> bool {
         let Some(session) = self.ui.completion_session.as_ref() else {
             return false;
         };
@@ -200,7 +200,7 @@ impl AppState {
         changed
     }
 
-    pub(super) fn cycle_completion_for_focused(&mut self, reverse: bool) -> bool {
+    pub(in crate::state::app) fn cycle_completion_for_focused(&mut self, reverse: bool) -> bool {
         let Some(session) = self.ui.completion_session.as_mut() else {
             return false;
         };
@@ -221,7 +221,7 @@ impl AppState {
         true
     }
 
-    pub(super) fn try_update_ghost_for_focused(&mut self) {
+    pub(in crate::state::app) fn try_update_ghost_for_focused(&mut self) {
         let Some(focused_id) = self.ui.focus.current_id().map(ToOwned::to_owned) else {
             self.clear_completion_session();
             return;
@@ -282,7 +282,7 @@ impl AppState {
         self.ui.completion_session = result;
     }
 
-    pub(super) fn try_start_completion_for_focused(
+    pub(in crate::state::app) fn try_start_completion_for_focused(
         &mut self,
         reverse: bool,
     ) -> CompletionStartResult {

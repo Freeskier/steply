@@ -12,7 +12,7 @@ use crate::task::{
 use crate::widgets::node::{Node, NodeWalkScope, find_overlay, find_overlay_mut, walk_nodes};
 use crate::widgets::node_index::NodeIndex;
 use crate::widgets::traits::{FocusMode, OverlayMode, OverlayPlacement};
-use completion::CompletionSession;
+use input::completion::CompletionSession;
 use std::collections::{HashMap, VecDeque};
 
 #[derive(Default)]
@@ -360,16 +360,10 @@ impl AppState {
     }
 }
 
-mod completion;
-mod completion_engine;
-mod completion_session;
-mod effect_dispatcher;
-mod input_dispatch;
-mod navigation;
-mod overlay_runtime;
-mod step_flow;
-mod task_engine;
-mod task_runtime;
+mod adapters;
+mod effects;
+mod flow;
+mod input;
 mod validation_runtime;
 mod value_sync;
 

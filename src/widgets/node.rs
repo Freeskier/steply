@@ -1,16 +1,33 @@
 use crate::core::value::Value;
 use crate::runtime::event::SystemEvent;
 use crate::task::{TaskSpec, TaskSubscription};
-use crate::terminal::{CursorPos, KeyEvent};
+use crate::terminal::{CursorPos, KeyEvent, PointerEvent};
 use crate::widgets::traits::{
     CompletionState, DrawOutput, FocusMode, HintContext, HintItem, InteractionResult,
-    InteractiveNode, OutputNode, OverlayMode, OverlayPlacement, RenderContext, TextAction,
-    ValidationMode,
+    InteractiveCursorCapability, InteractiveFocusCapability, InteractiveInputCapability,
+    InteractiveNode, InteractiveOverlayCapability, InteractiveRuntimeCapability,
+    InteractiveTaskCapability, InteractiveValidationCapability, InteractiveValueCapability,
+    OutputNode, OverlayMode, OverlayPlacement, RenderContext, TextAction, ValidationMode,
 };
 
 pub trait Component: InteractiveNode {
     fn children(&self) -> &[Node];
     fn children_mut(&mut self) -> &mut [Node];
+}
+
+pub trait StaticChildrenComponent: InteractiveNode {}
+
+impl<T> Component for T
+where
+    T: StaticChildrenComponent,
+{
+    fn children(&self) -> &[Node] {
+        &[]
+    }
+
+    fn children_mut(&mut self) -> &mut [Node] {
+        &mut []
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -67,6 +84,50 @@ fn children_for_scope_mut(node: &mut Node, scope: NodeWalkScope) -> Option<&mut 
 }
 
 impl Node {
+    fn interactive_ref(&self) -> Option<&dyn InteractiveNode> {
+        match self {
+            Self::Input(widget) => Some(widget.as_ref()),
+            Self::Component(widget) => Some(widget.as_ref()),
+            Self::Output(_) => None,
+        }
+    }
+
+    fn interactive_mut(&mut self) -> Option<&mut dyn InteractiveNode> {
+        match self {
+            Self::Input(widget) => Some(widget.as_mut()),
+            Self::Component(widget) => Some(widget.as_mut()),
+            Self::Output(_) => None,
+        }
+    }
+
+    fn output_ref(&self) -> Option<&dyn OutputNode> {
+        match self {
+            Self::Output(widget) => Some(widget.as_ref()),
+            _ => None,
+        }
+    }
+
+    fn output_mut(&mut self) -> Option<&mut dyn OutputNode> {
+        match self {
+            Self::Output(widget) => Some(widget.as_mut()),
+            _ => None,
+        }
+    }
+
+    fn component_ref(&self) -> Option<&dyn Component> {
+        match self {
+            Self::Component(component) => Some(component.as_ref()),
+            _ => None,
+        }
+    }
+
+    fn component_mut(&mut self) -> Option<&mut dyn Component> {
+        match self {
+            Self::Component(component) => Some(component.as_mut()),
+            _ => None,
+        }
+    }
+
     pub fn id(&self) -> &str {
         match self {
             Self::Input(w) => w.id(),
@@ -92,11 +153,9 @@ impl Node {
     }
 
     pub fn focus_mode(&self) -> FocusMode {
-        match self {
-            Self::Input(w) => w.focus_mode(),
-            Self::Component(w) => w.focus_mode(),
-            Self::Output(_) => FocusMode::None,
-        }
+        self.interactive_ref()
+            .map(InteractiveFocusCapability::focus_mode_cap)
+            .unwrap_or(FocusMode::None)
     }
 
     pub fn is_focusable(&self) -> bool {
@@ -104,153 +163,140 @@ impl Node {
     }
 
     pub fn on_key(&mut self, key: KeyEvent) -> InteractionResult {
-        match self {
-            Self::Input(w) => w.on_key(key),
-            Self::Component(w) => w.on_key(key),
-            Self::Output(_) => InteractionResult::ignored(),
-        }
+        self.interactive_mut()
+            .map(|widget| widget.on_key_cap(key))
+            .unwrap_or_else(InteractionResult::ignored)
+    }
+
+    pub fn on_pointer(&mut self, event: PointerEvent) -> InteractionResult {
+        self.interactive_mut()
+            .map(|widget| widget.on_pointer_cap(event))
+            .unwrap_or_else(InteractionResult::ignored)
     }
 
     pub fn on_text_action(&mut self, action: TextAction) -> InteractionResult {
-        match self {
-            Self::Input(w) => w.on_text_action(action),
-            Self::Component(w) => w.on_text_action(action),
-            Self::Output(_) => InteractionResult::ignored(),
-        }
+        self.interactive_mut()
+            .map(|widget| widget.on_text_action_cap(action))
+            .unwrap_or_else(InteractionResult::ignored)
     }
 
     pub fn on_text_edited(&mut self) {
-        match self {
-            Self::Input(w) => w.on_text_edited(),
-            Self::Component(w) => w.on_text_edited(),
-            Self::Output(_) => {}
+        if let Some(widget) = self.interactive_mut() {
+            widget.on_text_edited_cap();
         }
     }
 
     pub fn on_system_event(&mut self, event: &SystemEvent) -> InteractionResult {
-        match self {
-            Self::Input(w) => w.on_system_event(event),
-            Self::Component(w) => w.on_system_event(event),
-            Self::Output(w) => w.on_system_event(event),
+        if let Some(widget) = self.interactive_mut() {
+            widget.on_system_event_cap(event)
+        } else if let Some(widget) = self.output_mut() {
+            widget.on_system_event(event)
+        } else {
+            InteractionResult::ignored()
         }
     }
 
     pub fn completion(&mut self) -> Option<CompletionState<'_>> {
-        match self {
-            Self::Input(w) => w.completion(),
-            Self::Component(w) => w.completion(),
-            Self::Output(_) => None,
-        }
+        self.interactive_mut()
+            .and_then(InteractiveInputCapability::completion_cap)
     }
 
     pub fn on_tick(&mut self) -> InteractionResult {
-        match self {
-            Self::Input(w) => w.on_tick(),
-            Self::Component(w) => w.on_tick(),
-            Self::Output(w) => w.on_tick(),
+        if let Some(widget) = self.interactive_mut() {
+            widget.on_tick_cap()
+        } else if let Some(widget) = self.output_mut() {
+            widget.on_tick()
+        } else {
+            InteractionResult::ignored()
         }
     }
 
     pub fn cursor_pos(&self) -> Option<CursorPos> {
-        match self {
-            Self::Input(w) => w.cursor_pos(),
-            Self::Component(w) => w.cursor_pos(),
-            Self::Output(_) => None,
-        }
+        self.interactive_ref()
+            .and_then(InteractiveCursorCapability::cursor_pos_cap)
     }
 
     pub fn cursor_visible(&self) -> bool {
-        match self {
-            Self::Input(w) => w.cursor_visible(),
-            Self::Component(w) => w.cursor_visible(),
-            Self::Output(_) => false,
-        }
+        self.interactive_ref()
+            .map(InteractiveCursorCapability::cursor_visible_cap)
+            .unwrap_or(false)
     }
 
     pub fn value(&self) -> Option<Value> {
-        match self {
-            Self::Input(w) => w.value(),
-            Self::Component(w) => w.value(),
-            Self::Output(w) => w.value(),
+        if let Some(widget) = self.interactive_ref() {
+            widget.value_cap()
+        } else if let Some(widget) = self.output_ref() {
+            widget.value()
+        } else {
+            None
         }
     }
 
     pub fn set_value(&mut self, value: Value) {
-        match self {
-            Self::Input(w) => w.set_value(value),
-            Self::Component(w) => w.set_value(value),
-            Self::Output(w) => w.set_value(value),
+        if let Some(widget) = self.interactive_mut() {
+            widget.set_value_cap(value);
+        } else if let Some(widget) = self.output_mut() {
+            widget.set_value(value);
         }
     }
 
     pub fn validate(&self, mode: ValidationMode) -> Result<(), String> {
-        match self {
-            Self::Input(w) => w.validate(mode),
-            Self::Component(w) => w.validate(mode),
-            Self::Output(w) => w.validate(),
+        if let Some(widget) = self.interactive_ref() {
+            widget.validate_cap(mode)
+        } else if let Some(widget) = self.output_ref() {
+            widget.validate()
+        } else {
+            Ok(())
         }
     }
 
     pub fn overlay_placement(&self) -> Option<OverlayPlacement> {
-        match self {
-            Self::Input(w) => w.overlay_placement(),
-            Self::Component(w) => w.overlay_placement(),
-            Self::Output(_) => None,
-        }
+        self.interactive_ref()
+            .and_then(InteractiveOverlayCapability::overlay_placement_cap)
     }
 
     pub fn overlay_open(&mut self, saved_focus_id: Option<String>) -> bool {
-        match self {
-            Self::Input(w) => w.overlay_open(saved_focus_id),
-            Self::Component(w) => w.overlay_open(saved_focus_id),
-            Self::Output(_) => false,
-        }
+        self.interactive_mut()
+            .is_some_and(|widget| widget.overlay_open_cap(saved_focus_id))
     }
 
     pub fn overlay_close(&mut self) -> Option<String> {
-        match self {
-            Self::Input(w) => w.overlay_close(),
-            Self::Component(w) => w.overlay_close(),
-            Self::Output(_) => None,
-        }
+        self.interactive_mut()
+            .and_then(InteractiveOverlayCapability::overlay_close_cap)
     }
 
     pub fn overlay_mode(&self) -> OverlayMode {
-        match self {
-            Self::Input(w) => w.overlay_mode(),
-            Self::Component(w) => w.overlay_mode(),
-            Self::Output(_) => OverlayMode::Exclusive,
-        }
+        self.interactive_ref()
+            .map(InteractiveOverlayCapability::overlay_mode_cap)
+            .unwrap_or(OverlayMode::Exclusive)
     }
 
     pub fn task_specs(&self) -> Vec<TaskSpec> {
-        match self {
-            Self::Input(w) => w.task_specs(),
-            Self::Component(w) => w.task_specs(),
-            Self::Output(w) => w.task_specs(),
+        if let Some(widget) = self.interactive_ref() {
+            widget.task_specs_cap()
+        } else if let Some(widget) = self.output_ref() {
+            widget.task_specs()
+        } else {
+            Vec::new()
         }
     }
 
     pub fn task_subscriptions(&self) -> Vec<TaskSubscription> {
-        match self {
-            Self::Input(w) => w.task_subscriptions(),
-            Self::Component(w) => w.task_subscriptions(),
-            Self::Output(w) => w.task_subscriptions(),
+        if let Some(widget) = self.interactive_ref() {
+            widget.task_subscriptions_cap()
+        } else if let Some(widget) = self.output_ref() {
+            widget.task_subscriptions()
+        } else {
+            Vec::new()
         }
     }
 
     pub fn persistent_children(&self) -> Option<&[Node]> {
-        match self {
-            Self::Component(c) => Some(c.children()),
-            _ => None,
-        }
+        self.component_ref().map(Component::children)
     }
 
     pub fn persistent_children_mut(&mut self) -> Option<&mut [Node]> {
-        match self {
-            Self::Component(c) => Some(c.children_mut()),
-            _ => None,
-        }
+        self.component_mut().map(Component::children_mut)
     }
 }
 

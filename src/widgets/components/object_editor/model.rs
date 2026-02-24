@@ -364,17 +364,17 @@ impl ObjectEditor {
         }
     }
 
-    pub(super) fn insert_node_under_parent(
-        &mut self,
-        parent_path: &str,
-        key: String,
-        was_index: bool,
-        source_name: Option<String>,
-        value: Value,
-        placement: InsertPlacement,
-        source_parent: &str,
-    ) -> Option<String> {
-        let parent = Self::value_at_path_mut(&mut self.value, parent_path)?;
+    pub(super) fn insert_node_under_parent(&mut self, spec: InsertSpec) -> Option<String> {
+        let InsertSpec {
+            parent_path,
+            key,
+            was_index,
+            source_name,
+            value,
+            placement,
+            source_parent,
+        } = spec;
+        let parent = Self::value_at_path_mut(&mut self.value, parent_path.as_str())?;
         match parent {
             Value::Object(map) => {
                 let insert_idx = match placement {
@@ -395,7 +395,7 @@ impl ObjectEditor {
                     Self::unique_key(map, &key)
                 };
                 map.shift_insert(insert_idx, final_key.clone(), value);
-                Some(Self::append_key(parent_path, &final_key))
+                Some(Self::append_key(parent_path.as_str(), &final_key))
             }
             Value::List(arr) => {
                 let mut idx = match placement {
@@ -418,7 +418,7 @@ impl ObjectEditor {
                 }
                 idx = idx.min(arr.len());
                 arr.insert(idx, value);
-                Some(Self::append_index(parent_path, idx))
+                Some(Self::append_index(parent_path.as_str(), idx))
             }
             _ => None,
         }

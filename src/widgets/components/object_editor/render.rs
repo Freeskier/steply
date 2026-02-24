@@ -148,14 +148,7 @@ impl ObjectEditor {
     }
 }
 
-impl Component for ObjectEditor {
-    fn children(&self) -> &[Node] {
-        &[]
-    }
-    fn children_mut(&mut self) -> &mut [Node] {
-        &mut []
-    }
-}
+impl StaticChildrenComponent for ObjectEditor {}
 
 impl Drawable for ObjectEditor {
     fn id(&self) -> &str {
@@ -184,29 +177,11 @@ impl Drawable for ObjectEditor {
             lines.push(vec![Span::new(self.base.label()).no_wrap()]);
         }
 
-        if self.filter_visible {
-            let filter_ctx = self.child_context(
-                ctx,
-                if focused && self.filter_focus {
-                    Some(self.filter.id().to_string())
-                } else {
-                    None
-                },
-            );
-            let mut filter_line =
-                vec![Span::styled("Filter: ", Style::new().color(Color::DarkGrey)).no_wrap()];
-            filter_line.extend(
-                self.filter
-                    .draw(&filter_ctx)
-                    .lines
-                    .into_iter()
-                    .next()
-                    .unwrap_or_else(|| vec![Span::new("").no_wrap()]),
-            );
-            lines.push(filter_line);
+        if self.filter.is_visible() {
+            lines.push(filter::render_filter_line(&self.filter, ctx, focused));
         }
 
-        let tree_lines = self.tree.render_lines(focused && !self.filter_focus);
+        let tree_lines = self.tree.render_lines(focused && !self.filter.is_focused());
         let (start, end) = self.tree.visible_range();
         let visible = self.tree.visible();
         let nodes = self.tree.nodes();
@@ -307,7 +282,9 @@ impl Drawable for ObjectEditor {
 
         if focused {
             let hint = match &self.mode {
-                Mode::Normal if self.filter_focus => "  Type to filter  Enter/Esc back to tree",
+                Mode::Normal if self.filter.is_focused() => {
+                    "  Type to filter  Enter/Esc back to tree"
+                }
                 Mode::Normal => {
                     "  ↑↓ nav  Space expand  e edit  r rename  i insert  d delete  m move"
                 }

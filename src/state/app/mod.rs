@@ -102,10 +102,10 @@ impl AppState {
             state.should_exit = true;
         } else {
             state.rebuild_focus();
-            state.trigger_flow_start_tasks();
+            crate::task::engine::trigger_flow_start_tasks(&mut state);
             let current_step_id = state.current_step_id().to_string();
-            state.trigger_step_enter_tasks(current_step_id.as_str());
-            state.bootstrap_interval_tasks();
+            crate::task::engine::trigger_step_enter_tasks(&mut state, current_step_id.as_str());
+            crate::task::engine::bootstrap_interval_tasks(&mut state);
         }
         state
     }
@@ -171,7 +171,7 @@ impl AppState {
         ) {
             self.flow.cancel_current();
         }
-        self.cancel_interval_tasks();
+        crate::task::engine::cancel_interval_tasks(self);
         self.cancel_all_running_tasks();
         self.runtime.queued_task_requests.clear();
     }

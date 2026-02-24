@@ -91,7 +91,11 @@ impl Reducer {
             Intent::ScrollUp
             | Intent::ScrollDown
             | Intent::ScrollPageUp
-            | Intent::ScrollPageDown => vec![],
+            | Intent::ScrollPageDown
+            | Intent::Pointer(_) => vec![],
+            Intent::PointerOn { target, event } => {
+                collect_effects(state.dispatch_pointer_to_node(target.as_str(), event))
+            }
         };
 
         effects.extend(

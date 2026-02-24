@@ -1,5 +1,6 @@
 use crate::runtime::event::{SystemEvent, WidgetAction};
 use crate::state::app::AppState;
+use crate::task::engine::{complete_task_run, request_task_run};
 use crate::widgets::node::{NodeWalkScope, find_node, walk_nodes_mut};
 use crate::widgets::traits::{InteractionResult, ValidationMode};
 
@@ -56,7 +57,7 @@ impl<'a> EffectDispatcher<'a> {
                 InteractionResult::handled()
             }
             WidgetAction::TaskRequested { request } => {
-                self.state.request_task_run(request);
+                request_task_run(self.state, request);
                 InteractionResult::handled()
             }
         }
@@ -83,7 +84,7 @@ impl<'a> EffectDispatcher<'a> {
                 InteractionResult::ignored()
             }
             SystemEvent::TaskRequested { request } => {
-                self.state.request_task_run(request);
+                request_task_run(self.state, request);
                 InteractionResult::handled()
             }
             SystemEvent::TaskStarted { .. }
@@ -94,7 +95,7 @@ impl<'a> EffectDispatcher<'a> {
                 InteractionResult::handled()
             }
             SystemEvent::TaskCompleted { ref completion } => {
-                let accepted = self.state.complete_task_run(completion.clone());
+                let accepted = complete_task_run(self.state, completion.clone());
                 if accepted {
                     let result = self.broadcast_system_event(&event);
                     self.process_broadcast_result(result);

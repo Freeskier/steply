@@ -4,6 +4,7 @@ use crate::core::value_path::{ValuePath, ValueTarget};
 use crate::terminal::{CursorPos, KeyCode, KeyEvent, KeyModifiers};
 use crate::ui::span::Span;
 use crate::ui::style::{Color, Style};
+use crate::ui::text::{char_display_width, text_display_width};
 use crate::widgets::base::WidgetBase;
 use crate::widgets::node::{Component, Node};
 use crate::widgets::traits::{
@@ -167,15 +168,9 @@ impl Snippet {
                     if is_first {
                         if let Some(input) = self.input_for(key) {
                             let input_ctx = if is_active {
-                                RenderContext {
-                                    focused_id: Some(input.id().to_string()),
-                                    ..ctx.clone()
-                                }
+                                ctx.with_focus(Some(input.id().to_string()))
                             } else {
-                                RenderContext {
-                                    focused_id: None,
-                                    ..ctx.clone()
-                                }
+                                ctx.with_focus(None)
                             };
 
                             let out = input.draw(&input_ctx);
@@ -225,7 +220,10 @@ impl Snippet {
 }
 
 fn col_width(spans: &[Span]) -> usize {
-    spans.iter().map(|s| s.text.chars().count()).sum()
+    spans
+        .iter()
+        .map(|span| text_display_width(span.text.as_str()))
+        .sum()
 }
 
 trait SpanExt {
@@ -275,7 +273,8 @@ impl Interactive for Snippet {
                             row += 1;
                             col = 0;
                         } else {
-                            col += unicode_width::UnicodeWidthChar::width(ch).unwrap_or(1) as u16;
+                            let width = char_display_width(ch).min(u16::MAX as usize) as u16;
+                            col = col.saturating_add(width);
                         }
                     }
                 }
@@ -288,7 +287,8 @@ impl Interactive for Snippet {
                     }
                     seen.insert(k);
                     let val = self.value_of(k);
-                    col += val.chars().count() as u16;
+                    let width = text_display_width(val.as_str()).min(u16::MAX as usize) as u16;
+                    col = col.saturating_add(width);
                 }
             }
         }

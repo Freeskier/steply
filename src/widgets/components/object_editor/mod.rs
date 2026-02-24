@@ -16,8 +16,8 @@ use crate::ui::style::{Color, Style};
 use crate::widgets::base::WidgetBase;
 use crate::widgets::components::tree_view::{TreeItemLabel, TreeNode, TreeView};
 use crate::widgets::inputs::select::SelectInput;
-use crate::widgets::inputs::text::TextInput;
-use crate::widgets::node::{Component, Node};
+use crate::widgets::node::StaticChildrenComponent;
+use crate::widgets::shared::filter;
 use crate::widgets::traits::{
     DrawOutput, Drawable, FocusMode, InteractionResult, Interactive, RenderContext, ValidationMode,
 };
@@ -152,15 +152,24 @@ struct MovePlan {
     placement: InsertPlacement,
 }
 
+#[derive(Debug)]
+struct InsertSpec {
+    parent_path: String,
+    key: String,
+    was_index: bool,
+    source_name: Option<String>,
+    value: Value,
+    placement: InsertPlacement,
+    source_parent: String,
+}
+
 pub struct ObjectEditor {
     base: WidgetBase,
     value: Value,
     expanded: HashSet<String>,
     array_item_names: HashMap<String, String>,
     tree: TreeView<ObjNode>,
-    filter: TextInput,
-    filter_visible: bool,
-    filter_focus: bool,
+    filter: filter::FilterController,
     insert_types: Vec<InsertType>,
     mode: Mode,
     submit_target: Option<ValueTarget>,
@@ -213,7 +222,7 @@ impl ObjectEditor {
         if !self.base.label().is_empty() {
             row = row.saturating_add(1);
         }
-        if self.filter_visible {
+        if self.filter.is_visible() {
             row = row.saturating_add(1);
         }
         row
@@ -229,9 +238,7 @@ impl ObjectEditor {
             expanded: HashSet::new(),
             array_item_names: HashMap::new(),
             tree: TreeView::new(tree_id, "", Vec::new()).with_show_label(false),
-            filter: TextInput::new(filter_id, ""),
-            filter_visible: false,
-            filter_focus: false,
+            filter: filter::FilterController::new(filter_id),
             insert_types: Vec::new(),
             mode: Mode::Normal,
             submit_target: None,
@@ -355,19 +362,11 @@ impl ObjectEditor {
     }
 
     fn filter_query(&self) -> String {
-        self.filter
-            .value()
-            .and_then(|value| value.to_text_scalar())
-            .unwrap_or_default()
+        self.filter.query()
     }
 
     fn toggle_filter_visibility(&mut self) {
-        let visible = crate::widgets::shared::filter::toggle_visibility(
-            &mut self.filter,
-            &mut self.filter_visible,
-            &mut self.filter_focus,
-            false,
-        );
+        let visible = self.filter.toggle_visibility(false);
         if visible {
             return;
         }
@@ -388,16 +387,6 @@ impl ObjectEditor {
             return Some("value cannot be empty".to_string());
         }
         None
-    }
-
-    fn child_context(&self, ctx: &RenderContext, focused_id: Option<String>) -> RenderContext {
-        RenderContext {
-            focused_id,
-            terminal_size: ctx.terminal_size,
-            visible_errors: ctx.visible_errors.clone(),
-            invalid_hidden: ctx.invalid_hidden.clone(),
-            completion_menus: ctx.completion_menus.clone(),
-        }
     }
 }
 

@@ -5,7 +5,7 @@ use crate::ui::span::Span;
 use crate::ui::style::{Color, Style};
 use crate::widgets::base::WidgetBase;
 use crate::widgets::components::scroll::CursorNav;
-use crate::widgets::node::{Component, Node};
+use crate::widgets::node::StaticChildrenComponent;
 use crate::widgets::traits::{
     DrawOutput, Drawable, FocusMode, InteractionResult, Interactive, RenderContext, ValidationMode,
 };
@@ -303,14 +303,7 @@ impl DiffOutput {
     }
 }
 
-impl Component for DiffOutput {
-    fn children(&self) -> &[Node] {
-        &[]
-    }
-    fn children_mut(&mut self) -> &mut [Node] {
-        &mut []
-    }
-}
+impl StaticChildrenComponent for DiffOutput {}
 
 impl Drawable for DiffOutput {
     fn id(&self) -> &str {

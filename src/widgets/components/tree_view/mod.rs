@@ -13,8 +13,7 @@ use crate::ui::span::Span;
 use crate::ui::style::{Color, Style};
 use crate::widgets::base::WidgetBase;
 use crate::widgets::components::scroll::ScrollState;
-use crate::widgets::inputs::text::TextInput;
-use crate::widgets::node::{Component, Node};
+use crate::widgets::node::StaticChildrenComponent;
 use crate::widgets::shared::cursor_anchor;
 use crate::widgets::shared::filter;
 use crate::widgets::traits::{
@@ -104,9 +103,7 @@ pub struct TreeView<T: TreeItemLabel> {
     submit_target: Option<ValueTarget>,
     show_label: bool,
     show_indent_guides: bool,
-    filter: TextInput,
-    filter_visible: bool,
-    filter_focus: bool,
+    filter: filter::FilterController,
     filter_query: String,
 
     pub pending_expand: Option<usize>,
@@ -124,9 +121,7 @@ impl<T: TreeItemLabel> TreeView<T> {
             submit_target: None,
             show_label: true,
             show_indent_guides: false,
-            filter: TextInput::new(format!("{id}__filter"), ""),
-            filter_visible: false,
-            filter_focus: false,
+            filter: filter::FilterController::new(format!("{id}__filter")),
             filter_query: String::new(),
             pending_expand: None,
         };
@@ -206,7 +201,7 @@ impl<T: TreeItemLabel> TreeView<T> {
     }
 
     pub fn clear_filter(&mut self) {
-        self.filter.set_value(Value::Text(String::new()));
+        self.filter.clear();
         self.filter_query.clear();
         self.rebuild();
     }
@@ -215,55 +210,30 @@ impl<T: TreeItemLabel> TreeView<T> {
         self.filter_query.as_str()
     }
 
-    fn filter_text(&self) -> String {
-        self.filter
-            .value()
-            .and_then(|value| value.to_text_scalar())
-            .unwrap_or_default()
-    }
-
     fn sync_filter_from_input(&mut self) {
-        self.filter_query = self.filter_text();
+        self.filter_query = self.filter.query();
         self.rebuild();
     }
 
     fn toggle_filter_visibility(&mut self) {
-        let visible = filter::toggle_visibility(
-            &mut self.filter,
-            &mut self.filter_visible,
-            &mut self.filter_focus,
-            false,
-        );
+        let visible = self.filter.toggle_visibility(false);
         if !visible {
             self.clear_filter();
         }
     }
 
-    fn child_context(&self, ctx: &RenderContext, focused_id: Option<String>) -> RenderContext {
-        RenderContext {
-            focused_id,
-            terminal_size: ctx.terminal_size,
-            visible_errors: ctx.visible_errors.clone(),
-            invalid_hidden: ctx.invalid_hidden.clone(),
-            completion_menus: ctx.completion_menus.clone(),
-        }
-    }
-
     fn handle_filter_key(&mut self, key: KeyEvent) -> InteractionResult {
-        let before = self.filter_text();
-        match filter::handle_key(&mut self.filter, key, filter::FilterEscBehavior::Blur) {
+        match self
+            .filter
+            .handle_key_with_change(key, filter::FilterEscBehavior::Blur)
+        {
             filter::FilterKeyOutcome::Ignored => InteractionResult::ignored(),
             filter::FilterKeyOutcome::Hide | filter::FilterKeyOutcome::Blur => {
-                self.filter_focus = false;
+                self.filter.set_focused(false);
                 InteractionResult::handled()
             }
-            filter::FilterKeyOutcome::Edited(result) => {
-                if self.filter_text() != before {
-                    self.sync_filter_from_input();
-                    InteractionResult::handled()
-                } else {
-                    result
-                }
+            filter::FilterKeyOutcome::Edited(outcome) => {
+                outcome.refresh_if_changed(|| self.sync_filter_from_input())
             }
         }
     }
@@ -551,22 +521,14 @@ impl<T: TreeItemLabel> TreeView<T> {
         if self.show_label && !self.base.label().is_empty() {
             row += 1;
         }
-        if self.filter_visible {
+        if self.filter.is_visible() {
             row += 1;
         }
         cursor_anchor::visible_row_cursor(self.active_index, start, end, row, 0)
     }
 }
 
-impl<T: TreeItemLabel> Component for TreeView<T> {
-    fn children(&self) -> &[Node] {
-        &[]
-    }
-
-    fn children_mut(&mut self) -> &mut [Node] {
-        &mut []
-    }
-}
+impl<T: TreeItemLabel> StaticChildrenComponent for TreeView<T> {}
 
 impl<T: TreeItemLabel> Drawable for TreeView<T> {
     fn id(&self) -> &str {
@@ -581,26 +543,8 @@ impl<T: TreeItemLabel> Drawable for TreeView<T> {
             lines.push(vec![Span::new(self.base.label()).no_wrap()]);
         }
 
-        if self.filter_visible {
-            let filter_ctx = self.child_context(
-                ctx,
-                if focused && self.filter_focus {
-                    Some(self.filter.id().to_string())
-                } else {
-                    None
-                },
-            );
-            let mut filter_line =
-                vec![Span::styled("Filter: ", Style::new().color(Color::DarkGrey)).no_wrap()];
-            filter_line.extend(
-                self.filter
-                    .draw(&filter_ctx)
-                    .lines
-                    .into_iter()
-                    .next()
-                    .unwrap_or_else(|| vec![Span::new("").no_wrap()]),
-            );
-            lines.push(filter_line);
+        if self.filter.is_visible() {
+            lines.push(filter::render_filter_line(&self.filter, ctx, focused));
         }
 
         lines.extend(self.render_lines(focused));
@@ -618,7 +562,7 @@ impl<T: TreeItemLabel> Drawable for TreeView<T> {
             HintItem::new("Enter", "select", HintGroup::Action).with_priority(20),
             HintItem::new("Ctrl+F", "toggle filter", HintGroup::View).with_priority(30),
         ];
-        if self.filter_focus {
+        if self.filter.is_focused() {
             hints.push(HintItem::new("Esc", "leave filter", HintGroup::View).with_priority(31));
         }
         hints
@@ -636,7 +580,7 @@ impl<T: TreeItemLabel> Interactive for TreeView<T> {
             return InteractionResult::handled();
         }
 
-        if self.filter_focus {
+        if self.filter.is_focused() {
             return self.handle_filter_key(key);
         }
 
@@ -704,27 +648,23 @@ impl<T: TreeItemLabel> Interactive for TreeView<T> {
     }
 
     fn on_text_action(&mut self, action: TextAction) -> InteractionResult {
-        if !self.filter_focus {
+        if !self.filter.is_focused() {
             return InteractionResult::ignored();
         }
-        let before = self.filter_text();
-        let result = filter::handle_text_action(&mut self.filter, action);
-        if self.filter_text() != before {
-            self.sync_filter_from_input();
-            return InteractionResult::handled();
-        }
-        result
+        self.filter
+            .handle_text_action_with_change(action)
+            .refresh_if_changed(|| self.sync_filter_from_input())
     }
 
     fn completion(&mut self) -> Option<CompletionState<'_>> {
-        if !self.filter_focus {
+        if !self.filter.is_focused() {
             return None;
         }
         self.filter.completion()
     }
 
     fn cursor_pos(&self) -> Option<CursorPos> {
-        if self.filter_focus {
+        if self.filter.is_focused() {
             let local = self.filter.cursor_pos()?;
             let mut row: u16 = 0;
             if self.show_label && !self.base.label().is_empty() {
@@ -739,6 +679,6 @@ impl<T: TreeItemLabel> Interactive for TreeView<T> {
     }
 
     fn cursor_visible(&self) -> bool {
-        self.filter_focus
+        self.filter.is_focused()
     }
 }

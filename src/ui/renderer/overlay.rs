@@ -4,16 +4,20 @@ use super::decorations::{
 use super::overlay_geometry::{
     FloatingOverlayGeometry, InlineOverlayGeometry, OverlayGeometry, resolve_overlay_geometry,
 };
-use super::{RenderFrame, StepVisualStatus, draw_nodes, render_context_for_nodes};
+use super::{
+    DrawNodesOptions, DrawNodesState, RenderFrame, StepVisualStatus, draw_nodes,
+    render_context_for_nodes,
+};
 use crate::state::validation::ValidationState;
 use crate::terminal::{CursorPos, TerminalSize};
+use crate::ui::hit_test::FrameHitMap;
 use crate::ui::layout::Layout;
 use crate::ui::render_view::CompletionSnapshot;
 use crate::ui::span::{Span, SpanLine};
 use crate::ui::style::{Color, Style};
+use crate::ui::text::char_display_width;
 use crate::widgets::node::Node;
 use crate::widgets::traits::OverlayPlacement;
-use unicode_width::UnicodeWidthChar;
 
 pub(super) fn apply_overlay(
     validation: &ValidationState,
@@ -66,7 +70,7 @@ fn apply_floating_overlay(
     frame: &mut RenderFrame,
     geometry: FloatingOverlayGeometry,
 ) {
-    let body = render_overlay_body(
+    let mut body = render_overlay_body(
         validation,
         completion,
         terminal_size,
@@ -87,6 +91,10 @@ fn apply_floating_overlay(
         geometry.width as usize,
         &box_lines,
     );
+
+    body.hit_map.shift_rows(geometry.row.saturating_add(1));
+    body.hit_map.shift_cols(geometry.col.saturating_add(1));
+    frame.hit_map.extend(body.hit_map);
 
     if let Some(local_cursor) = body.cursor {
         frame.cursor = Some(CursorPos {
@@ -113,7 +121,7 @@ fn apply_inline_overlay(
     frame: &mut RenderFrame,
     geometry: InlineOverlayGeometry,
 ) {
-    let body = render_overlay_body(
+    let mut body = render_overlay_body(
         validation,
         completion,
         terminal_size,
@@ -137,9 +145,20 @@ fn apply_inline_overlay(
     inserted.push(inline_modal_separator_line(terminal_size.width as usize, 0));
     let inserted_len = inserted.len() as u16;
 
+    frame.hit_map.insert_rows(
+        geometry.insert_row.min(u16::MAX as usize) as u16,
+        inserted_len,
+    );
+
     frame
         .lines
         .splice(geometry.insert_row..geometry.insert_row, inserted);
+
+    body.hit_map
+        .shift_rows(geometry.insert_row.min(u16::MAX as usize) as u16 + 1);
+    body.hit_map
+        .shift_cols(geometry.content_col_offset().min(u16::MAX as usize) as u16);
+    frame.hit_map.extend(body.hit_map);
 
     if let Some(local_cursor) = body.cursor {
         frame.cursor = Some(CursorPos {
@@ -163,6 +182,7 @@ struct OverlayBody {
     lines: Vec<SpanLine>,
     cursor: Option<CursorPos>,
     cursor_visible: bool,
+    hit_map: FrameHitMap,
 }
 
 fn render_overlay_body(
@@ -177,6 +197,8 @@ fn render_overlay_body(
     let mut cursor = None;
     let mut cursor_visible = true;
     let mut row_offset: u16 = 0;
+    let mut hit_map = FrameHitMap::default();
+    let mut hit_row_offset: u16 = 0;
 
     let ctx = render_context_for_nodes(
         validation,
@@ -186,15 +208,24 @@ fn render_overlay_body(
         overlay_nodes,
         focused_id,
     );
+    let mut draw_state = DrawNodesState {
+        lines: &mut lines,
+        cursor: &mut cursor,
+        cursor_visible: &mut cursor_visible,
+        row_offset: &mut row_offset,
+        hit_map: Some(&mut hit_map),
+        hit_row_offset: Some(&mut hit_row_offset),
+        hit_col_start: 0,
+        compose_width: content_width,
+    };
     draw_nodes(
         overlay_nodes,
         &ctx,
-        &mut lines,
-        &mut cursor,
-        &mut cursor_visible,
-        &mut row_offset,
-        true,
-        false,
+        &mut draw_state,
+        DrawNodesOptions {
+            track_cursor: true,
+            strikethrough_inputs: false,
+        },
     );
 
     let layout_cursor = cursor.map(|local| (local.row as usize, local.col as usize));
@@ -208,6 +239,7 @@ fn render_overlay_body(
         lines,
         cursor,
         cursor_visible,
+        hit_map,
     }
 }
 
@@ -329,7 +361,7 @@ fn span_line_to_cells(line: &[Span]) -> Vec<StyledCell> {
     let mut out = Vec::<StyledCell>::new();
     for span in line {
         for ch in span.text.chars() {
-            let width = UnicodeWidthChar::width(ch).unwrap_or(0);
+            let width = char_display_width(ch);
             if width == 0 {
                 continue;
             }
@@ -392,8 +424,9 @@ fn cells_to_span_line(cells: &[StyledCell]) -> SpanLine {
         }
 
         if current_style.is_some_and(|style| style != cell.style) {
-            out.push(Span::styled(current_text.clone(), current_style.unwrap()).no_wrap());
-            current_text.clear();
+            out.push(
+                Span::styled(std::mem::take(&mut current_text), current_style.unwrap()).no_wrap(),
+            );
         }
         current_style = Some(cell.style);
         current_text.push(cell.ch);

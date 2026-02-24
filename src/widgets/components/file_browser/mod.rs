@@ -97,7 +97,7 @@ use crate::widgets::base::WidgetBase;
 use crate::widgets::components::select_list::{SelectList, SelectMode};
 use crate::widgets::components::tree_view::{TreeItemLabel, TreeNode, TreeView};
 use crate::widgets::inputs::text::TextInput;
-use crate::widgets::node::{Component, Node};
+use crate::widgets::node::StaticChildrenComponent;
 use crate::widgets::traits::{
     CompletionState, DrawOutput, Drawable, FocusMode, HintContext, HintGroup, HintItem,
     InteractionResult, Interactive, RenderContext, TextEditState, ValidationMode,
@@ -474,7 +474,7 @@ impl FileBrowserInput {
     }
 
     fn child_ctx(&self, ctx: &RenderContext, focused_id: Option<String>) -> RenderContext {
-        let mut completion_menus = ctx.completion_menus.clone();
+        let mut completion_menus = (*ctx.completion_menus).clone();
         if let Some(menu) = completion_menus.remove(self.base.id()) {
             completion_menus.insert(self.text.id().to_string(), menu);
         }
@@ -483,19 +483,12 @@ impl FileBrowserInput {
             terminal_size: ctx.terminal_size,
             visible_errors: ctx.visible_errors.clone(),
             invalid_hidden: ctx.invalid_hidden.clone(),
-            completion_menus,
+            completion_menus: Arc::new(completion_menus),
         }
     }
 }
 
-impl Component for FileBrowserInput {
-    fn children(&self) -> &[Node] {
-        &[]
-    }
-    fn children_mut(&mut self) -> &mut [Node] {
-        &mut []
-    }
-}
+impl StaticChildrenComponent for FileBrowserInput {}
 
 impl Drawable for FileBrowserInput {
     fn id(&self) -> &str {

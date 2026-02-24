@@ -1,11 +1,15 @@
 use crate::ui::renderer::RenderFrame;
 use crate::ui::span::SpanLine;
 use crate::ui::style::{Color, Strike};
+use crate::ui::text::{
+    char_display_width, clip_to_display_width_without_linebreaks, text_display_width,
+};
 use crossterm::cursor::{Hide, MoveTo, Show, position};
 use crossterm::event::{
     self, DisableMouseCapture, EnableMouseCapture, Event as CrosstermEvent,
     KeyCode as CrosstermKeyCode, KeyEvent as CrosstermKeyEvent,
-    KeyModifiers as CrosstermKeyModifiers, MouseEventKind,
+    KeyModifiers as CrosstermKeyModifiers, MouseButton as CrosstermMouseButton, MouseEvent,
+    MouseEventKind,
 };
 use crossterm::style::{
     Attribute, Color as CrosstermColor, Print, ResetColor, SetAttribute, SetBackgroundColor,
@@ -18,7 +22,6 @@ use crossterm::terminal::{
 use crossterm::{execute, queue};
 use std::io::{self, Stdout, Write};
 use std::time::Duration;
-use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum RenderMode {
@@ -74,7 +77,31 @@ pub enum TerminalEvent {
     Resize(TerminalSize),
 
     Scroll(i32),
+    Pointer(PointerEvent),
     Tick,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PointerButton {
+    Left,
+    Right,
+    Middle,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PointerKind {
+    Move,
+    Down(PointerButton),
+    Up(PointerButton),
+    Drag(PointerButton),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PointerEvent {
+    pub kind: PointerKind,
+    pub col: u16,
+    pub row: u16,
+    pub modifiers: KeyModifiers,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -324,7 +351,11 @@ impl Terminal {
                 CrosstermEvent::Mouse(mouse) => match mouse.kind {
                     MouseEventKind::ScrollUp => Ok(TerminalEvent::Scroll(-3)),
                     MouseEventKind::ScrollDown => Ok(TerminalEvent::Scroll(3)),
-                    _ => Ok(TerminalEvent::Tick),
+                    MouseEventKind::ScrollLeft => Ok(TerminalEvent::Scroll(-3)),
+                    MouseEventKind::ScrollRight => Ok(TerminalEvent::Scroll(3)),
+                    _ => Ok(map_pointer_event(mouse)
+                        .map(TerminalEvent::Pointer)
+                        .unwrap_or(TerminalEvent::Tick)),
                 },
                 _ => Ok(TerminalEvent::Tick),
             }
@@ -820,7 +851,7 @@ impl Terminal {
                 break;
             }
             let available_cols = (render_width as usize).saturating_sub(used);
-            let clipped = clip_to_width(&span.text, available_cols);
+            let clipped = clip_to_display_width_without_linebreaks(&span.text, available_cols);
             if clipped.is_empty() {
                 continue;
             }
@@ -843,7 +874,7 @@ impl Terminal {
             if matches!(span.style.strike, Strike::On) {
                 queue!(self.stdout, SetAttribute(Attribute::NotCrossedOut))?;
             }
-            used = used.saturating_add(UnicodeWidthStr::width(clipped.as_str()));
+            used = used.saturating_add(text_display_width(clipped.as_str()));
         }
         Ok(())
     }
@@ -880,6 +911,34 @@ fn map_key_event(key: CrosstermKeyEvent) -> KeyEvent {
     }
 }
 
+fn map_pointer_event(mouse: MouseEvent) -> Option<PointerEvent> {
+    let kind = match mouse.kind {
+        MouseEventKind::Moved => PointerKind::Move,
+        MouseEventKind::Down(button) => PointerKind::Down(map_pointer_button(button)?),
+        MouseEventKind::Up(button) => PointerKind::Up(map_pointer_button(button)?),
+        MouseEventKind::Drag(button) => PointerKind::Drag(map_pointer_button(button)?),
+        MouseEventKind::ScrollUp
+        | MouseEventKind::ScrollDown
+        | MouseEventKind::ScrollLeft
+        | MouseEventKind::ScrollRight => return None,
+    };
+
+    Some(PointerEvent {
+        kind,
+        col: mouse.column,
+        row: mouse.row,
+        modifiers: map_key_modifiers(mouse.modifiers),
+    })
+}
+
+fn map_pointer_button(button: CrosstermMouseButton) -> Option<PointerButton> {
+    match button {
+        CrosstermMouseButton::Left => Some(PointerButton::Left),
+        CrosstermMouseButton::Right => Some(PointerButton::Right),
+        CrosstermMouseButton::Middle => Some(PointerButton::Middle),
+    }
+}
+
 fn map_key_code(code: CrosstermKeyCode) -> KeyCode {
     match code {
         CrosstermKeyCode::Char(ch) => KeyCode::Char(ch),
@@ -911,23 +970,6 @@ fn map_key_modifiers(modifiers: CrosstermKeyModifiers) -> KeyModifiers {
     }
     if modifiers.contains(CrosstermKeyModifiers::ALT) {
         out.0 |= KeyModifiers::ALT.0;
-    }
-    out
-}
-
-fn clip_to_width(text: &str, max_width: usize) -> String {
-    if max_width == 0 {
-        return String::new();
-    }
-    let mut used = 0usize;
-    let mut out = String::new();
-    for ch in text.chars().filter(|ch| !matches!(ch, '\n' | '\r')) {
-        let ch_width = UnicodeWidthChar::width(ch).unwrap_or(0);
-        if used.saturating_add(ch_width) > max_width {
-            break;
-        }
-        out.push(ch);
-        used = used.saturating_add(ch_width);
     }
     out
 }
@@ -1026,7 +1068,7 @@ fn rendered_line_width(line: &SpanLine, old_width: u16) -> usize {
         let available = render_width.saturating_sub(used);
         let mut span_used = 0usize;
         for ch in span.text.chars().filter(|ch| !matches!(ch, '\n' | '\r')) {
-            let ch_width = UnicodeWidthChar::width(ch).unwrap_or(0);
+            let ch_width = char_display_width(ch);
             if span_used.saturating_add(ch_width) > available {
                 break;
             }

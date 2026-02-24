@@ -1,7 +1,7 @@
 use super::completion::CompletionStartResult;
 use crate::runtime::event::SystemEvent;
 use crate::state::app::AppState;
-use crate::terminal::{KeyCode, KeyEvent, KeyModifiers};
+use crate::terminal::{KeyCode, KeyEvent, KeyModifiers, PointerEvent};
 use crate::widgets::node::{Node, NodeWalkScope, find_node_mut, walk_nodes_mut};
 use crate::widgets::traits::{InteractionResult, TextAction};
 
@@ -64,6 +64,31 @@ impl AppState {
             self.clear_completion_tab_suppression_for_focused();
             self.refresh_after_input();
         }
+        result
+    }
+
+    pub fn dispatch_pointer_to_node(
+        &mut self,
+        target_node_id: &str,
+        event: PointerEvent,
+    ) -> InteractionResult {
+        if self.flow.is_empty() {
+            return InteractionResult::ignored();
+        }
+
+        self.clean_broken_overlays();
+        let result = {
+            let nodes = self.flow.current_step_mut().nodes.as_mut_slice();
+            let Some(node) = find_node_mut(nodes, target_node_id) else {
+                return InteractionResult::ignored();
+            };
+            node.on_pointer(event)
+        };
+
+        if result.handled {
+            self.refresh_after_input();
+        }
+
         result
     }
 

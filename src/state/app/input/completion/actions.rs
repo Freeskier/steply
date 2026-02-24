@@ -23,14 +23,14 @@ impl AppState {
     }
 
     pub(crate) fn suppress_completion_tab_for_focused(&mut self) {
-        let Some(focused_id) = self.ui.focus.current_id() else {
+        let Some(focused_id) = self.focused_id() else {
             return;
         };
         self.ui.completion_tab_suppressed_for = Some(NodeId::from(focused_id));
     }
 
     pub(in crate::state::app) fn clear_completion_tab_suppression_for_focused(&mut self) {
-        let Some(focused_id) = self.ui.focus.current_id() else {
+        let Some(focused_id) = self.focused_id() else {
             self.ui.completion_tab_suppressed_for = None;
             return;
         };
@@ -45,7 +45,7 @@ impl AppState {
     }
 
     pub(in crate::state::app) fn is_completion_tab_suppressed_for_focused(&self) -> bool {
-        let Some(focused_id) = self.ui.focus.current_id() else {
+        let Some(focused_id) = self.focused_id() else {
             return false;
         };
         self.ui
@@ -56,7 +56,7 @@ impl AppState {
 
     pub fn completion_snapshot(&self) -> Option<(String, Vec<String>, usize, usize)> {
         let session = self.ui.completion_session.as_ref()?;
-        let focused = self.ui.focus.current_id()?;
+        let focused = self.focused_id()?;
         if !session.belongs_to(focused) {
             return None;
         }
@@ -69,7 +69,7 @@ impl AppState {
     }
 
     pub(crate) fn cursor_at_end_for_focused(&mut self) -> bool {
-        let Some(focused_id) = self.ui.focus.current_id().map(ToOwned::to_owned) else {
+        let Some(focused_id) = self.focused_id_owned() else {
             return false;
         };
         let nodes = self.active_nodes_mut();
@@ -86,9 +86,7 @@ impl AppState {
         let Some(session) = self.ui.completion_session.as_ref() else {
             return false;
         };
-        self.ui
-            .focus
-            .current_id()
+        self.focused_id()
             .is_some_and(|focused| session.belongs_to(focused))
     }
 
@@ -107,7 +105,7 @@ impl AppState {
         }
 
         self.clear_completion_tab_suppression_for_focused();
-        let Some(focused_id) = self.ui.focus.current_id().map(ToOwned::to_owned) else {
+        let Some(focused_id) = self.focused_id_owned() else {
             return;
         };
 
@@ -129,32 +127,23 @@ impl AppState {
     }
 
     pub(in crate::state::app) fn accept_completion_for_focused(&mut self) -> bool {
-        let Some(focused_id) = self.ui.focus.current_id().map(ToOwned::to_owned) else {
-            self.clear_completion_session();
+        let Some(focused_id) = self.focused_id_owned() else {
+            self.finalize_completion_update(false, true);
             return false;
         };
-        let Some(session) = self.ui.completion_session.clone() else {
+        let Some(session) = self.session_for_focused(&focused_id) else {
             return false;
         };
-
-        if !session.belongs_to(&focused_id) {
-            self.clear_completion_session();
-            return false;
-        }
 
         let Some(selected) = session.matches.get(session.index).cloned() else {
-            self.clear_completion_session();
+            self.finalize_completion_update(false, true);
             return false;
         };
 
         let updated =
             { self.replace_focused_completion_prefix(&focused_id, session.start, &selected) };
 
-        self.clear_completion_session();
-        if updated {
-            self.clear_completion_tab_suppression_for_focused();
-            self.refresh_validation_after_change();
-        }
+        self.finalize_completion_update(updated, true);
         updated
     }
 
@@ -162,7 +151,7 @@ impl AppState {
         let Some(session) = self.ui.completion_session.as_ref() else {
             return false;
         };
-        let Some(focused_id) = self.ui.focus.current_id().map(ToOwned::to_owned) else {
+        let Some(focused_id) = self.focused_id_owned() else {
             return false;
         };
         if !session.belongs_to(&focused_id) || session.matches.len() <= 1 {
@@ -201,15 +190,15 @@ impl AppState {
     }
 
     pub(in crate::state::app) fn cycle_completion_for_focused(&mut self, reverse: bool) -> bool {
-        let Some(session) = self.ui.completion_session.as_mut() else {
-            return false;
-        };
-        let Some(focused_id) = self.ui.focus.current_id() else {
+        let Some(focused_id) = self.focused_id().map(ToOwned::to_owned) else {
             self.clear_completion_session();
             return false;
         };
+        let Some(session) = self.ui.completion_session.as_mut() else {
+            return false;
+        };
 
-        if !session.belongs_to(focused_id) || session.matches.len() <= 1 {
+        if !session.belongs_to(focused_id.as_str()) || session.matches.len() <= 1 {
             return false;
         }
 
@@ -222,7 +211,7 @@ impl AppState {
     }
 
     pub(in crate::state::app) fn try_update_ghost_for_focused(&mut self) {
-        let Some(focused_id) = self.ui.focus.current_id().map(ToOwned::to_owned) else {
+        let Some(focused_id) = self.focused_id_owned() else {
             self.clear_completion_session();
             return;
         };
@@ -286,7 +275,7 @@ impl AppState {
         &mut self,
         reverse: bool,
     ) -> CompletionStartResult {
-        let Some(focused_id) = self.ui.focus.current_id().map(ToOwned::to_owned) else {
+        let Some(focused_id) = self.focused_id_owned() else {
             self.clear_completion_session();
             return CompletionStartResult::None;
         };
@@ -325,22 +314,35 @@ impl AppState {
             CompletionStartResult::OpenedMenu
         });
 
-        match result.unwrap_or(CompletionStartResult::None) {
-            CompletionStartResult::None => {
-                self.clear_completion_session();
-                CompletionStartResult::None
-            }
-            CompletionStartResult::ExpandedToSingle => {
-                self.clear_completion_tab_suppression_for_focused();
-                self.clear_completion_session();
-                self.refresh_validation_after_change();
-                CompletionStartResult::ExpandedToSingle
-            }
-            CompletionStartResult::OpenedMenu => {
-                self.clear_completion_tab_suppression_for_focused();
-                self.refresh_validation_after_change();
-                CompletionStartResult::OpenedMenu
-            }
+        let outcome = result.unwrap_or(CompletionStartResult::None);
+        match outcome {
+            CompletionStartResult::None => self.finalize_completion_update(false, true),
+            CompletionStartResult::ExpandedToSingle => self.finalize_completion_update(true, true),
+            CompletionStartResult::OpenedMenu => self.finalize_completion_update(true, false),
+        }
+        outcome
+    }
+
+    fn focused_id_owned(&self) -> Option<String> {
+        self.focused_id().map(ToOwned::to_owned)
+    }
+
+    fn session_for_focused(&mut self, focused_id: &str) -> Option<CompletionSession> {
+        let session = self.ui.completion_session.clone()?;
+        if session.belongs_to(focused_id) {
+            return Some(session);
+        }
+        self.clear_completion_session();
+        None
+    }
+
+    fn finalize_completion_update(&mut self, updated: bool, clear_session: bool) {
+        if clear_session {
+            self.clear_completion_session();
+        }
+        if updated {
+            self.clear_completion_tab_suppression_for_focused();
+            self.refresh_validation_after_change();
         }
     }
 

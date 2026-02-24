@@ -1,17 +1,19 @@
 use crate::state::step::StepStatus;
 use crate::state::validation::ValidationState;
 use crate::terminal::{CursorPos, TerminalSize};
+use crate::ui::hit_test::FrameHitMap;
 use crate::ui::layout::Layout;
 use crate::ui::render_view::{CompletionSnapshot, RenderView};
 use crate::ui::span::{Span, SpanLine};
 use crate::ui::spinner::{Spinner, SpinnerStyle};
 use crate::ui::style::{Color, Strike, Style};
+use crate::ui::text::text_display_width;
 use crate::widgets::node::{Node, NodeWalkScope, walk_nodes};
 use crate::widgets::traits::{
     CompletionMenu, DrawOutput, HintContext, HintGroup, HintItem, RenderContext,
 };
 use std::collections::{HashMap, HashSet};
-use unicode_width::UnicodeWidthStr;
+use std::sync::Arc;
 
 mod decorations;
 mod overlay;
@@ -25,6 +27,7 @@ pub struct RenderFrame {
     pub lines: Vec<SpanLine>,
     pub cursor: Option<CursorPos>,
     pub cursor_visible: bool,
+    pub hit_map: FrameHitMap,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -52,6 +55,23 @@ enum StepVisualStatus {
     Active,
     Running,
     Cancelled,
+}
+
+pub(super) struct DrawNodesState<'a> {
+    pub lines: &'a mut Vec<SpanLine>,
+    pub cursor: &'a mut Option<CursorPos>,
+    pub cursor_visible: &'a mut bool,
+    pub row_offset: &'a mut u16,
+    pub hit_map: Option<&'a mut FrameHitMap>,
+    pub hit_row_offset: Option<&'a mut u16>,
+    pub hit_col_start: u16,
+    pub compose_width: u16,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) struct DrawNodesOptions {
+    pub track_cursor: bool,
+    pub strikethrough_inputs: bool,
 }
 
 impl From<StepStatus> for StepVisualStatus {
@@ -193,15 +213,9 @@ fn build_base_frame(
         let mut block_cursor: Option<CursorPos> = None;
         let mut block_cursor_visible = true;
         let mut row_offset: u16 = 0;
+        let mut block_hit_map = FrameHitMap::default();
 
-        let title_style = match status {
-            StepVisualStatus::Active => Style::new().color(Color::Cyan),
-            StepVisualStatus::Running => Style::new().color(Color::Cyan),
-            StepVisualStatus::Done | StepVisualStatus::Pending => {
-                Style::new().color(Color::DarkGrey)
-            }
-            StepVisualStatus::Cancelled => Style::new().color(Color::Red),
-        };
+        let title_style = step_title_style(status);
         block_lines.push(vec![Span::styled(
             format!("{} [{}]", step.prompt, step.id),
             title_style,
@@ -209,14 +223,7 @@ fn build_base_frame(
         row_offset = row_offset.saturating_add(1);
 
         if let Some(description) = step.description.as_deref() {
-            let description_style = match status {
-                StepVisualStatus::Active => Style::new().color(Color::Yellow),
-                StepVisualStatus::Running => Style::new().color(Color::Yellow),
-                StepVisualStatus::Done | StepVisualStatus::Pending => {
-                    Style::new().color(Color::DarkGrey)
-                }
-                StepVisualStatus::Cancelled => Style::new().color(Color::Red),
-            };
+            let description_style = step_description_style(status);
             block_lines.push(vec![Span::styled(
                 format!("Description: {}", description),
                 description_style,
@@ -237,17 +244,25 @@ fn build_base_frame(
             step.nodes.as_slice(),
             focused_id,
         );
-        let track_cursor = status == StepVisualStatus::Active && !blocking_overlay;
-        let strikethrough_inputs = status == StepVisualStatus::Cancelled;
+        let mut hit_row_offset = Layout::compose(&block_lines, compose_width).len() as u16;
+        let mut draw_state = DrawNodesState {
+            lines: &mut block_lines,
+            cursor: &mut block_cursor,
+            cursor_visible: &mut block_cursor_visible,
+            row_offset: &mut row_offset,
+            hit_map: Some(&mut block_hit_map),
+            hit_row_offset: Some(&mut hit_row_offset),
+            hit_col_start: 0,
+            compose_width,
+        };
         draw_nodes(
             step.nodes.as_slice(),
             &ctx,
-            &mut block_lines,
-            &mut block_cursor,
-            &mut block_cursor_visible,
-            &mut row_offset,
-            track_cursor,
-            strikethrough_inputs,
+            &mut draw_state,
+            DrawNodesOptions {
+                track_cursor: status == StepVisualStatus::Active && !blocking_overlay,
+                strikethrough_inputs: status == StepVisualStatus::Cancelled,
+            },
         );
 
         if status == StepVisualStatus::Active && view.hints_visible {
@@ -263,55 +278,31 @@ fn build_base_frame(
             col: col.min(u16::MAX as usize) as u16,
         });
 
-        if !matches!(status, StepVisualStatus::Active | StepVisualStatus::Running) {
-            let tint = match status {
-                StepVisualStatus::Cancelled
-                | StepVisualStatus::Done
-                | StepVisualStatus::Pending => Color::DarkGrey,
-                StepVisualStatus::Active => Color::Reset,
-                StepVisualStatus::Running => Color::Reset,
-            };
+        if let Some(tint) = step_content_tint(status) {
             tint_block(&mut block_lines, tint);
         }
 
         if config.decorations_enabled {
-            let footer = if status == StepVisualStatus::Cancelled {
-                Some(StepFooter::Error {
-                    message: "Exiting.",
-                    description: None,
-                })
-            } else if status == StepVisualStatus::Active {
-                if let Some(msg) = view.back_confirm {
-                    Some(StepFooter::Warning {
-                        message: msg,
-                        description: Some("[Enter] confirm  •  [Esc] cancel"),
-                    })
-                } else if let Some(msg) = view.step_errors.first() {
-                    Some(StepFooter::Error {
-                        message: msg.as_str(),
-                        description: None,
-                    })
-                } else {
-                    view.step_warnings.first().map(|msg| StepFooter::Warning {
-                        message: msg.as_str(),
-                        description: Some("[Enter] confirm  •  [Esc] cancel"),
-                    })
-                }
-            } else {
-                None
-            };
+            let footer = step_footer(status, view);
+            let include_top = idx == 0;
             decorate_step_block(
                 &mut block_lines,
                 &mut block_cursor,
                 idx < render_up_to,
                 status,
-                idx == 0,
+                include_top,
                 footer,
                 running_marker,
             );
+            if include_top {
+                block_hit_map.shift_rows(1);
+            }
+            block_hit_map.shift_cols(decoration_gutter_width().min(u16::MAX as usize) as u16);
         }
 
         let start_row = frame.lines.len() as u16;
+        block_hit_map.shift_rows(start_row);
+        frame.hit_map.extend(block_hit_map);
         frame.lines.extend(block_lines);
         if frame.cursor.is_none()
             && let Some(mut cursor) = block_cursor
@@ -326,6 +317,63 @@ fn build_base_frame(
         }
     }
     frame
+}
+
+fn step_title_style(status: StepVisualStatus) -> Style {
+    match status {
+        StepVisualStatus::Active | StepVisualStatus::Running => Style::new().color(Color::Cyan),
+        StepVisualStatus::Done | StepVisualStatus::Pending => Style::new().color(Color::DarkGrey),
+        StepVisualStatus::Cancelled => Style::new().color(Color::Red),
+    }
+}
+
+fn step_description_style(status: StepVisualStatus) -> Style {
+    match status {
+        StepVisualStatus::Active | StepVisualStatus::Running => Style::new().color(Color::Yellow),
+        StepVisualStatus::Done | StepVisualStatus::Pending => Style::new().color(Color::DarkGrey),
+        StepVisualStatus::Cancelled => Style::new().color(Color::Red),
+    }
+}
+
+fn step_content_tint(status: StepVisualStatus) -> Option<Color> {
+    match status {
+        StepVisualStatus::Cancelled | StepVisualStatus::Done | StepVisualStatus::Pending => {
+            Some(Color::DarkGrey)
+        }
+        StepVisualStatus::Active | StepVisualStatus::Running => None,
+    }
+}
+
+fn step_footer<'a>(status: StepVisualStatus, view: &'a RenderView<'a>) -> Option<StepFooter<'a>> {
+    if status == StepVisualStatus::Cancelled {
+        return Some(StepFooter::Error {
+            message: "Exiting.",
+            description: None,
+        });
+    }
+
+    if status != StepVisualStatus::Active {
+        return None;
+    }
+
+    if let Some(msg) = view.back_confirm {
+        return Some(StepFooter::Warning {
+            message: msg,
+            description: Some("[Enter] confirm  •  [Esc] cancel"),
+        });
+    }
+
+    if let Some(msg) = view.step_errors.first() {
+        return Some(StepFooter::Error {
+            message: msg.as_str(),
+            description: None,
+        });
+    }
+
+    view.step_warnings.first().map(|msg| StepFooter::Warning {
+        message: msg.as_str(),
+        description: Some("[Enter] confirm  •  [Esc] cancel"),
+    })
 }
 
 fn append_hints_panel(nodes: &[Node], focused_id: Option<&str>, block_lines: &mut Vec<SpanLine>) {
@@ -372,8 +420,8 @@ fn append_hints_panel(nodes: &[Node], focused_id: Option<&str>, block_lines: &mu
             items
                 .iter()
                 .map(|item| {
-                    let key_width = item.key.as_ref().width();
-                    let label_width = item.label.as_ref().width();
+                    let key_width = text_display_width(item.key.as_ref());
+                    let label_width = text_display_width(item.label.as_ref());
                     if label_width == 0 {
                         key_width
                     } else {
@@ -409,9 +457,9 @@ fn append_hints_panel(nodes: &[Node], focused_id: Option<&str>, block_lines: &mu
 
                 if !is_last_col {
                     let rendered_width = if label.is_empty() {
-                        key.as_str().width()
+                        text_display_width(key.as_str())
                     } else {
-                        key.as_str().width() + 1 + label.as_str().width()
+                        text_display_width(key.as_str()) + 1 + text_display_width(label.as_str())
                     };
                     let pad = column_widths[col_idx]
                         .saturating_sub(rendered_width)
@@ -465,13 +513,7 @@ fn render_context_for_nodes(
     focused_id: Option<&str>,
 ) -> RenderContext {
     if status != StepVisualStatus::Active {
-        return RenderContext {
-            focused_id: None,
-            terminal_size,
-            visible_errors: HashMap::new(),
-            invalid_hidden: HashSet::new(),
-            completion_menus: HashMap::new(),
-        };
+        return RenderContext::empty(terminal_size);
     }
 
     let mut visible_errors = HashMap::<String, String>::new();
@@ -499,47 +541,25 @@ fn render_context_for_nodes(
     RenderContext {
         focused_id: focused_id.map(ToOwned::to_owned),
         terminal_size,
-        visible_errors,
-        invalid_hidden,
-        completion_menus,
+        visible_errors: Arc::new(visible_errors),
+        invalid_hidden: Arc::new(invalid_hidden),
+        completion_menus: Arc::new(completion_menus),
     }
 }
 
 fn draw_nodes(
     nodes: &[Node],
     ctx: &RenderContext,
-    lines: &mut Vec<SpanLine>,
-    cursor: &mut Option<CursorPos>,
-    cursor_visible: &mut bool,
-    row_offset: &mut u16,
-    track_cursor: bool,
-    strikethrough_inputs: bool,
+    state: &mut DrawNodesState<'_>,
+    options: DrawNodesOptions,
 ) {
     for node in nodes {
         let mut out = node.draw(ctx);
-
-        let label_prefix: Option<Vec<Span>> = if let Node::Input(w) = node {
-            let focused = ctx.focused_id.as_deref().is_some_and(|id| id == w.id());
-            let label = w.label();
-            if !label.is_empty() {
-                let label_st = if focused {
-                    Style::new().color(Color::White)
-                } else {
-                    Style::default()
-                };
-                Some(vec![
-                    Span::styled(format!("{}: ", label), label_st).no_wrap(),
-                ])
-            } else {
-                None
-            }
-        } else {
-            None
-        };
+        let (label_prefix, label_offset) = input_label_prefix(node, ctx.focused_id.as_deref());
 
         apply_input_validation_overlay(node, ctx, &mut out);
 
-        if strikethrough_inputs && matches!(node, Node::Input(_)) {
+        if options.strikethrough_inputs && matches!(node, Node::Input(_)) {
             for line in &mut out.lines {
                 let has_content = line
                     .iter()
@@ -563,33 +583,62 @@ fn draw_nodes(
                 out.lines.insert(0, prefix);
             }
         }
-        if track_cursor
-            && cursor.is_none()
+
+        if let Some(hit_map) = state.hit_map.as_deref_mut()
+            && let Some(hit_row_offset) = state.hit_row_offset.as_deref_mut()
+        {
+            let composed_lines = Layout::compose(&out.lines, state.compose_width.max(1));
+            hit_map.push_node_rows(
+                node.id(),
+                *hit_row_offset,
+                composed_lines.len().min(u16::MAX as usize) as u16,
+                state.hit_col_start,
+                label_offset,
+            );
+            *hit_row_offset =
+                hit_row_offset.saturating_add(composed_lines.len().min(u16::MAX as usize) as u16);
+        }
+
+        if options.track_cursor
+            && state.cursor.is_none()
             && ctx
                 .focused_id
                 .as_deref()
                 .is_some_and(|focused| focused == node.id())
             && let Some(local_cursor) = node.cursor_pos()
         {
-            let label_offset = if let Node::Input(w) = node {
-                let label = w.label();
-                if !label.is_empty() {
-                    label.chars().count() + 2
-                } else {
-                    0
-                }
-            } else {
-                0
-            };
-            *cursor = Some(CursorPos {
-                col: local_cursor.col.saturating_add(label_offset as u16),
-                row: row_offset.saturating_add(local_cursor.row),
+            *state.cursor = Some(CursorPos {
+                col: local_cursor.col.saturating_add(label_offset),
+                row: (*state.row_offset).saturating_add(local_cursor.row),
             });
-            *cursor_visible = node.cursor_visible();
+            *state.cursor_visible = node.cursor_visible();
         }
-        *row_offset = row_offset.saturating_add(out.lines.len() as u16);
-        lines.extend(out.lines);
+        *state.row_offset = (*state.row_offset).saturating_add(out.lines.len() as u16);
+        state.lines.extend(out.lines);
     }
+}
+
+fn input_label_prefix(node: &Node, focused_id: Option<&str>) -> (Option<Vec<Span>>, u16) {
+    let Node::Input(widget) = node else {
+        return (None, 0);
+    };
+
+    let label = widget.label();
+    if label.is_empty() {
+        return (None, 0);
+    }
+
+    let label_style = if focused_id.is_some_and(|id| id == widget.id()) {
+        Style::new().color(Color::White)
+    } else {
+        Style::default()
+    };
+    let prefix = vec![Span::styled(format!("{label}: "), label_style).no_wrap()];
+    let offset = text_display_width(label)
+        .saturating_add(2)
+        .min(u16::MAX as usize) as u16;
+
+    (Some(prefix), offset)
 }
 
 fn apply_input_validation_overlay(node: &Node, ctx: &RenderContext, out: &mut DrawOutput) {

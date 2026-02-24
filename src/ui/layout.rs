@@ -1,5 +1,5 @@
-use crate::ui::span::{Span, SpanLine, WrapMode};
-use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
+use crate::ui::span::{Span, SpanLine};
+use crate::ui::text::{split_prefix_at_display_width, text_display_width};
 
 pub struct Layout;
 
@@ -41,82 +41,40 @@ impl Layout {
             let mut source_col = 0usize;
 
             for span in line {
-                match span.wrap_mode {
-                    WrapMode::NoWrap => {
-                        let mut rest = span.text.as_str();
-                        while !rest.is_empty() {
-                            if current_width >= max_width {
-                                push_line(&mut out, &mut current, &mut current_width);
-                            }
-
-                            let remaining = max_width.saturating_sub(current_width);
-                            if remaining == 0 {
-                                push_line(&mut out, &mut current, &mut current_width);
-                                continue;
-                            }
-
-                            let (left, tail) = split_at_width(rest, remaining);
-                            let piece_width = text_width(left);
-
-                            map_cursor_in_segment(
-                                cursor_target,
-                                source_row,
-                                source_col,
-                                piece_width,
-                                out.len(),
-                                current_width,
-                                &mut mapped_cursor,
-                            );
-
-                            let mut piece = span.clone();
-                            piece.text = left.to_string();
-                            current_width = current_width.saturating_add(piece_width);
-                            current.push(piece);
-                            source_col = source_col.saturating_add(piece_width);
-
-                            rest = tail;
-                            if !rest.is_empty() {
-                                push_line(&mut out, &mut current, &mut current_width);
-                            }
-                        }
+                let mut rest = span.text.as_str();
+                while !rest.is_empty() {
+                    if current_width >= max_width {
+                        push_line(&mut out, &mut current, &mut current_width);
                     }
-                    WrapMode::Wrap => {
-                        let mut rest = span.text.as_str();
-                        while !rest.is_empty() {
-                            if current_width >= max_width {
-                                push_line(&mut out, &mut current, &mut current_width);
-                            }
 
-                            let remaining = max_width.saturating_sub(current_width);
-                            if remaining == 0 {
-                                push_line(&mut out, &mut current, &mut current_width);
-                                continue;
-                            }
+                    let remaining = max_width.saturating_sub(current_width);
+                    if remaining == 0 {
+                        push_line(&mut out, &mut current, &mut current_width);
+                        continue;
+                    }
 
-                            let (left, tail) = split_at_width(rest, remaining);
-                            let piece_width = text_width(left);
+                    let (left, tail) = split_prefix_at_display_width(rest, remaining);
+                    let piece_width = text_display_width(left);
 
-                            map_cursor_in_segment(
-                                cursor_target,
-                                source_row,
-                                source_col,
-                                piece_width,
-                                out.len(),
-                                current_width,
-                                &mut mapped_cursor,
-                            );
+                    map_cursor_in_segment(
+                        cursor_target,
+                        source_row,
+                        source_col,
+                        piece_width,
+                        out.len(),
+                        current_width,
+                        &mut mapped_cursor,
+                    );
 
-                            let mut piece = span.clone();
-                            piece.text = left.to_string();
-                            current_width = current_width.saturating_add(piece_width);
-                            current.push(piece);
-                            source_col = source_col.saturating_add(piece_width);
+                    let mut piece = span.clone();
+                    piece.text = left.to_string();
+                    current_width = current_width.saturating_add(piece_width);
+                    current.push(piece);
+                    source_col = source_col.saturating_add(piece_width);
 
-                            rest = tail;
-                            if !rest.is_empty() {
-                                push_line(&mut out, &mut current, &mut current_width);
-                            }
-                        }
+                    rest = tail;
+                    if !rest.is_empty() {
+                        push_line(&mut out, &mut current, &mut current_width);
                     }
                 }
             }
@@ -246,7 +204,7 @@ fn pad_prefix(prefix: &[Span], target_width: usize) -> SpanLine {
 fn spans_width(spans: &[Span]) -> usize {
     spans
         .iter()
-        .map(|span| unicode_width::UnicodeWidthStr::width(span.text.as_str()))
+        .map(|span| text_display_width(span.text.as_str()))
         .sum()
 }
 
@@ -281,29 +239,4 @@ fn map_cursor_in_segment(
         let delta = target_col.saturating_sub(source_col).min(segment_width);
         *mapped_cursor = Some((out_row, out_col.saturating_add(delta)));
     }
-}
-
-fn text_width(s: &str) -> usize {
-    UnicodeWidthStr::width(s)
-}
-
-fn split_at_width(s: &str, max: usize) -> (&str, &str) {
-    if max == 0 {
-        return ("", s);
-    }
-
-    let mut width = 0usize;
-    for (byte_idx, ch) in s.char_indices() {
-        let ch_width = UnicodeWidthChar::width(ch).unwrap_or(0);
-        if width.saturating_add(ch_width) > max {
-            if byte_idx == 0 {
-                let next = ch.len_utf8();
-                return s.split_at(next);
-            }
-            return s.split_at(byte_idx);
-        }
-        width = width.saturating_add(ch_width);
-    }
-
-    (s, "")
 }

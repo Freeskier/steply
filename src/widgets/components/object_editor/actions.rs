@@ -548,15 +548,15 @@ impl ObjectEditor {
             return None;
         };
 
-        let inserted = self.insert_node_under_parent(
-            plan.dest_parent.as_str(),
-            key.clone(),
+        let inserted = self.insert_node_under_parent(InsertSpec {
+            parent_path: plan.dest_parent.clone(),
+            key: key.clone(),
             was_index,
-            source_name.clone(),
+            source_name: source_name.clone(),
             value,
-            plan.placement.clone(),
-            source_parent.as_str(),
-        );
+            placement: plan.placement.clone(),
+            source_parent,
+        });
 
         let Some(new_path) = inserted else {
             if let Some(name) = source_name {

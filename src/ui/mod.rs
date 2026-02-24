@@ -1,8 +1,10 @@
 pub mod frame_json;
 pub mod highlight;
+pub mod hit_test;
 pub mod layout;
 pub mod render_view;
 pub mod renderer;
 pub mod span;
 pub mod spinner;
 pub mod style;
+pub mod text;

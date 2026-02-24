@@ -8,6 +8,7 @@ use crate::state::app::AppState;
 use crate::task::{LogLine, TaskExecutor};
 use crate::terminal::{RenderMode, Terminal, TerminalEvent};
 use crate::ui::frame_json::frame_to_json;
+use crate::ui::hit_test::FrameHitMap;
 use crate::ui::render_view::RenderView;
 use crate::ui::renderer::{Renderer, RendererConfig};
 use std::io;
@@ -20,6 +21,7 @@ pub struct Runtime {
     task_executor: TaskExecutor,
     key_bindings: KeyBindings,
     renderer: Renderer,
+    last_hit_map: FrameHitMap,
 }
 
 impl Runtime {
@@ -58,6 +60,7 @@ impl Runtime {
             task_executor: TaskExecutor::new(),
             key_bindings,
             renderer,
+            last_hit_map: FrameHitMap::default(),
         }
     }
 
@@ -147,6 +150,19 @@ impl Runtime {
                 self.terminal.scroll(delta);
                 self.render()
             }
+            AppEvent::Terminal(TerminalEvent::Pointer(event)) => {
+                if let Some(hit) = self.last_hit_map.resolve(event.row, event.col) {
+                    let mut local_event = event;
+                    local_event.row = hit.local_row;
+                    local_event.col = hit.local_col;
+                    self.process_intent(Intent::PointerOn {
+                        target: hit.node_id.to_string().into(),
+                        event: local_event,
+                    })
+                } else {
+                    self.process_intent(Intent::Pointer(event))
+                }
+            }
             AppEvent::Terminal(TerminalEvent::Tick) => self.process_intent(Intent::Tick),
             AppEvent::Intent(intent) => self.process_intent(intent),
             AppEvent::Action(action) => {
@@ -202,7 +218,9 @@ impl Runtime {
             | Intent::OpenOverlay(_)
             | Intent::OpenOverlayAtIndex(_)
             | Intent::OpenOverlayShortcut
-            | Intent::CloseOverlay => {
+            | Intent::CloseOverlay
+            | Intent::Pointer(_)
+            | Intent::PointerOn { .. } => {
                 self.terminal.reset_scroll();
             }
             _ => {}
@@ -267,6 +285,7 @@ impl Runtime {
     fn render(&mut self) -> io::Result<()> {
         let view = RenderView::from_state(&self.state);
         let frame = self.renderer.render(&view, self.terminal.size());
+        self.last_hit_map = frame.hit_map.clone();
         self.terminal.render_frame(&frame)
     }
 }

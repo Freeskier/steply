@@ -11,8 +11,9 @@ use crate::terminal::{CursorPos, KeyCode, KeyEvent};
 use crate::ui::span::{Span, SpanLine};
 use crate::ui::style::{Color, Style};
 use crate::widgets::base::WidgetBase;
-use crate::widgets::node::{Component, Node};
+use crate::widgets::node::StaticChildrenComponent;
 use crate::widgets::shared::cursor_anchor;
+use crate::widgets::shared::validation::decorate_component_validation;
 use crate::widgets::traits::{
     CompletionMenu, CompletionState, DrawOutput, Drawable, FocusMode, InteractionResult,
     Interactive, InteractiveNode, RenderContext, TextAction, ValidationMode,
@@ -347,9 +348,9 @@ impl Repeater {
         RenderContext {
             focused_id: focused_child_id,
             terminal_size: ctx.terminal_size,
-            visible_errors: HashMap::new(),
-            invalid_hidden: HashSet::new(),
-            completion_menus,
+            visible_errors: Arc::new(HashMap::new()),
+            invalid_hidden: Arc::new(HashSet::new()),
+            completion_menus: Arc::new(completion_menus),
         }
     }
 
@@ -572,15 +573,7 @@ impl Repeater {
     }
 }
 
-impl Component for Repeater {
-    fn children(&self) -> &[Node] {
-        &[]
-    }
-
-    fn children_mut(&mut self) -> &mut [Node] {
-        &mut []
-    }
-}
+impl StaticChildrenComponent for Repeater {}
 
 impl Drawable for Repeater {
     fn id(&self) -> &str {
@@ -618,23 +611,7 @@ impl Drawable for Repeater {
         }
         lines.extend(body);
 
-        if let Some(error) = ctx.visible_errors.get(self.base.id()) {
-            lines.push(vec![
-                Span::styled(
-                    format!("✗ {}", error),
-                    Style::new().color(Color::Red).bold(),
-                )
-                .no_wrap(),
-            ]);
-        } else if ctx.invalid_hidden.contains(self.base.id()) {
-            for line in &mut lines {
-                for span in line {
-                    if span.style.color.is_none() {
-                        span.style.color = Some(Color::Red);
-                    }
-                }
-            }
-        }
+        decorate_component_validation(&mut lines, ctx, self.base.id());
 
         DrawOutput { lines }
     }

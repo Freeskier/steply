@@ -3,7 +3,7 @@ use crate::terminal::{CursorPos, KeyCode, KeyEvent, KeyModifiers};
 use crate::ui::span::Span;
 use crate::ui::style::{Color, Style};
 use crate::widgets::components::scroll::ScrollState;
-use crate::widgets::node::{Component, Node};
+use crate::widgets::node::StaticChildrenComponent;
 use crate::widgets::shared::text_edit;
 use crate::widgets::traits::{
     DrawOutput, Drawable, FocusMode, InteractionResult, Interactive, RenderContext, TextAction,
@@ -178,15 +178,7 @@ impl Drawable for TextAreaComponent {
     }
 }
 
-impl Component for TextAreaComponent {
-    fn children(&self) -> &[Node] {
-        &[]
-    }
-
-    fn children_mut(&mut self) -> &mut [Node] {
-        &mut []
-    }
-}
+impl StaticChildrenComponent for TextAreaComponent {}
 
 impl Interactive for TextAreaComponent {
     fn focus_mode(&self) -> FocusMode {

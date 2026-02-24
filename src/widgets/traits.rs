@@ -2,11 +2,12 @@ use crate::core::value::Value;
 use crate::core::value_path::ValueTarget;
 use crate::runtime::event::{SystemEvent, ValueChange, WidgetAction};
 use crate::task::{TaskSpec, TaskSubscription};
-use crate::terminal::{CursorPos, KeyEvent, TerminalSize};
+use crate::terminal::{CursorPos, KeyEvent, PointerEvent, TerminalSize};
 use crate::ui::span::{Span, SpanLine};
 use crate::widgets::shared::text_edit;
 use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FocusMode {
@@ -76,10 +77,32 @@ pub struct RenderContext {
     pub focused_id: Option<String>,
     pub terminal_size: TerminalSize,
 
-    pub visible_errors: HashMap<String, String>,
+    pub visible_errors: Arc<HashMap<String, String>>,
 
-    pub invalid_hidden: HashSet<String>,
-    pub completion_menus: HashMap<String, CompletionMenu>,
+    pub invalid_hidden: Arc<HashSet<String>>,
+    pub completion_menus: Arc<HashMap<String, CompletionMenu>>,
+}
+
+impl RenderContext {
+    pub fn empty(terminal_size: TerminalSize) -> Self {
+        Self {
+            focused_id: None,
+            terminal_size,
+            visible_errors: Arc::new(HashMap::new()),
+            invalid_hidden: Arc::new(HashSet::new()),
+            completion_menus: Arc::new(HashMap::new()),
+        }
+    }
+
+    pub fn with_focus(&self, focused_id: Option<String>) -> Self {
+        Self {
+            focused_id,
+            terminal_size: self.terminal_size,
+            visible_errors: self.visible_errors.clone(),
+            invalid_hidden: self.invalid_hidden.clone(),
+            completion_menus: self.completion_menus.clone(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Default)]
@@ -257,6 +280,9 @@ pub trait Interactive: Send {
     }
 
     fn on_key(&mut self, key: KeyEvent) -> InteractionResult;
+    fn on_pointer(&mut self, _event: PointerEvent) -> InteractionResult {
+        InteractionResult::ignored()
+    }
 
     fn text_editing(&mut self) -> Option<TextEditState<'_>> {
         None
@@ -306,6 +332,165 @@ pub trait Interactive: Send {
 
     fn task_subscriptions(&self) -> Vec<TaskSubscription> {
         Vec::new()
+    }
+}
+
+pub trait InteractiveFocusCapability {
+    fn focus_mode_cap(&self) -> FocusMode;
+}
+
+impl<T> InteractiveFocusCapability for T
+where
+    T: Interactive + ?Sized,
+{
+    fn focus_mode_cap(&self) -> FocusMode {
+        Interactive::focus_mode(self)
+    }
+}
+
+pub trait InteractiveOverlayCapability {
+    fn overlay_placement_cap(&self) -> Option<OverlayPlacement>;
+    fn overlay_open_cap(&mut self, saved_focus_id: Option<String>) -> bool;
+    fn overlay_close_cap(&mut self) -> Option<String>;
+    fn overlay_mode_cap(&self) -> OverlayMode;
+}
+
+impl<T> InteractiveOverlayCapability for T
+where
+    T: Interactive + ?Sized,
+{
+    fn overlay_placement_cap(&self) -> Option<OverlayPlacement> {
+        Interactive::overlay_placement(self)
+    }
+
+    fn overlay_open_cap(&mut self, saved_focus_id: Option<String>) -> bool {
+        Interactive::overlay_open(self, saved_focus_id)
+    }
+
+    fn overlay_close_cap(&mut self) -> Option<String> {
+        Interactive::overlay_close(self)
+    }
+
+    fn overlay_mode_cap(&self) -> OverlayMode {
+        Interactive::overlay_mode(self)
+    }
+}
+
+pub trait InteractiveInputCapability {
+    fn on_key_cap(&mut self, key: KeyEvent) -> InteractionResult;
+    fn on_pointer_cap(&mut self, event: PointerEvent) -> InteractionResult;
+    fn on_text_action_cap(&mut self, action: TextAction) -> InteractionResult;
+    fn on_text_edited_cap(&mut self);
+    fn completion_cap(&mut self) -> Option<CompletionState<'_>>;
+}
+
+impl<T> InteractiveInputCapability for T
+where
+    T: Interactive + ?Sized,
+{
+    fn on_key_cap(&mut self, key: KeyEvent) -> InteractionResult {
+        Interactive::on_key(self, key)
+    }
+
+    fn on_pointer_cap(&mut self, event: PointerEvent) -> InteractionResult {
+        Interactive::on_pointer(self, event)
+    }
+
+    fn on_text_action_cap(&mut self, action: TextAction) -> InteractionResult {
+        Interactive::on_text_action(self, action)
+    }
+
+    fn on_text_edited_cap(&mut self) {
+        Interactive::on_text_edited(self);
+    }
+
+    fn completion_cap(&mut self) -> Option<CompletionState<'_>> {
+        Interactive::completion(self)
+    }
+}
+
+pub trait InteractiveRuntimeCapability {
+    fn on_system_event_cap(&mut self, event: &SystemEvent) -> InteractionResult;
+    fn on_tick_cap(&mut self) -> InteractionResult;
+}
+
+impl<T> InteractiveRuntimeCapability for T
+where
+    T: Interactive + ?Sized,
+{
+    fn on_system_event_cap(&mut self, event: &SystemEvent) -> InteractionResult {
+        Interactive::on_system_event(self, event)
+    }
+
+    fn on_tick_cap(&mut self) -> InteractionResult {
+        Interactive::on_tick(self)
+    }
+}
+
+pub trait InteractiveCursorCapability {
+    fn cursor_pos_cap(&self) -> Option<CursorPos>;
+    fn cursor_visible_cap(&self) -> bool;
+}
+
+impl<T> InteractiveCursorCapability for T
+where
+    T: Interactive + ?Sized,
+{
+    fn cursor_pos_cap(&self) -> Option<CursorPos> {
+        Interactive::cursor_pos(self)
+    }
+
+    fn cursor_visible_cap(&self) -> bool {
+        Interactive::cursor_visible(self)
+    }
+}
+
+pub trait InteractiveValueCapability {
+    fn value_cap(&self) -> Option<Value>;
+    fn set_value_cap(&mut self, value: Value);
+}
+
+impl<T> InteractiveValueCapability for T
+where
+    T: Interactive + ?Sized,
+{
+    fn value_cap(&self) -> Option<Value> {
+        Interactive::value(self)
+    }
+
+    fn set_value_cap(&mut self, value: Value) {
+        Interactive::set_value(self, value);
+    }
+}
+
+pub trait InteractiveValidationCapability {
+    fn validate_cap(&self, mode: ValidationMode) -> Result<(), String>;
+}
+
+impl<T> InteractiveValidationCapability for T
+where
+    T: Interactive + ?Sized,
+{
+    fn validate_cap(&self, mode: ValidationMode) -> Result<(), String> {
+        Interactive::validate(self, mode)
+    }
+}
+
+pub trait InteractiveTaskCapability {
+    fn task_specs_cap(&self) -> Vec<TaskSpec>;
+    fn task_subscriptions_cap(&self) -> Vec<TaskSubscription>;
+}
+
+impl<T> InteractiveTaskCapability for T
+where
+    T: Interactive + ?Sized,
+{
+    fn task_specs_cap(&self) -> Vec<TaskSpec> {
+        Interactive::task_specs(self)
+    }
+
+    fn task_subscriptions_cap(&self) -> Vec<TaskSubscription> {
+        Interactive::task_subscriptions(self)
     }
 }
 

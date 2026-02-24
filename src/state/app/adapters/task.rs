@@ -3,71 +3,13 @@ use crate::runtime::event::{AppEvent, SystemEvent};
 use crate::runtime::scheduler::SchedulerCommand;
 use crate::state::app::AppState;
 use crate::state::step::StepStatus;
-use crate::task::engine::{
-    TaskEngineHost, TaskStartResult, bootstrap_interval_tasks, cancel_interval_tasks,
-    complete_task_run, request_task_run, trigger_flow_end_tasks, trigger_flow_start_tasks,
-    trigger_node_value_changed_tasks, trigger_step_enter_tasks, trigger_step_exit_tasks,
-    trigger_submit_after_tasks, trigger_submit_before_tasks, value_to_task_arg,
-};
-use crate::task::{
-    TaskCancelToken, TaskCompletion, TaskId, TaskInvocation, TaskKind, TaskRequest, TaskSpec,
-};
+use crate::task::engine::{TaskEngineHost, TaskStartResult, value_to_task_arg};
+use crate::task::{TaskCancelToken, TaskId, TaskInvocation, TaskKind, TaskRequest, TaskSpec};
 use std::time::{Duration, Instant};
 
 impl AppState {
-    pub(in crate::state::app) fn bootstrap_interval_tasks(&mut self) {
-        bootstrap_interval_tasks(self);
-    }
-
-    pub(in crate::state::app) fn cancel_interval_tasks(&mut self) {
-        cancel_interval_tasks(self);
-    }
-
     pub fn take_pending_task_invocations(&mut self) -> Vec<TaskInvocation> {
         self.runtime.pending_task_invocations.drain(..).collect()
-    }
-
-    pub(in crate::state::app) fn request_task_run(
-        &mut self,
-        request: TaskRequest,
-    ) -> TaskStartResult {
-        request_task_run(self, request)
-    }
-
-    pub(in crate::state::app) fn complete_task_run(&mut self, completion: TaskCompletion) -> bool {
-        complete_task_run(self, completion)
-    }
-
-    pub(in crate::state::app) fn trigger_flow_start_tasks(&mut self) {
-        trigger_flow_start_tasks(self);
-    }
-
-    pub(in crate::state::app) fn trigger_flow_end_tasks(&mut self) {
-        trigger_flow_end_tasks(self);
-    }
-
-    pub(in crate::state::app) fn trigger_step_enter_tasks(&mut self, step_id: &str) {
-        trigger_step_enter_tasks(self, step_id);
-    }
-
-    pub(in crate::state::app) fn trigger_step_exit_tasks(&mut self, step_id: &str) {
-        trigger_step_exit_tasks(self, step_id);
-    }
-
-    pub(in crate::state::app) fn trigger_submit_before_tasks(&mut self, step_id: &str) {
-        trigger_submit_before_tasks(self, step_id);
-    }
-
-    pub(in crate::state::app) fn trigger_submit_after_tasks(&mut self, step_id: &str) {
-        trigger_submit_after_tasks(self, step_id);
-    }
-
-    pub(in crate::state::app) fn trigger_node_value_changed_tasks(
-        &mut self,
-        node_id: &str,
-        value: &Value,
-    ) {
-        trigger_node_value_changed_tasks(self, node_id, value);
     }
 
     pub(in crate::state::app) fn cancel_all_running_tasks(&mut self) {

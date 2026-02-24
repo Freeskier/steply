@@ -12,10 +12,10 @@ use crate::ui::layout::Layout;
 use crate::ui::span::{Span, SpanLine};
 use crate::ui::style::{Color, Style};
 use crate::widgets::base::WidgetBase;
-use crate::widgets::inputs::text::TextInput;
-use crate::widgets::node::{Component, Node};
+use crate::widgets::node::StaticChildrenComponent;
 use crate::widgets::shared::cursor_anchor;
 use crate::widgets::shared::filter as filter_utils;
+use crate::widgets::shared::validation::decorate_component_validation;
 use crate::widgets::traits::{
     CompletionMenu, CompletionState, DrawOutput, Drawable, FocusMode, InteractionResult,
     Interactive, InteractiveNode, RenderContext, TextAction, ValidationMode,
@@ -64,9 +64,7 @@ pub struct Table {
     active_col: usize,
     move_mode: bool,
     edit_mode: bool,
-    filter: TextInput,
-    filter_visible: bool,
-    filter_focus: bool,
+    filter: filter_utils::FilterController,
     visible_rows: Vec<usize>,
     sort: Option<(usize, SortDirection)>,
     next_row_id: u64,
@@ -87,9 +85,7 @@ impl Table {
             active_col: 0,
             move_mode: false,
             edit_mode: false,
-            filter: TextInput::new(format!("{id}__filter"), ""),
-            filter_visible: false,
-            filter_focus: false,
+            filter: filter_utils::FilterController::new(format!("{id}__filter")),
             visible_rows: Vec::new(),
             sort: None,
             next_row_id: 1,
@@ -327,22 +323,14 @@ impl Table {
     }
 
     fn toggle_filter_visibility(&mut self) {
-        let visible = filter_utils::toggle_visibility(
-            &mut self.filter,
-            &mut self.filter_visible,
-            &mut self.filter_focus,
-            true,
-        );
+        let visible = self.filter.toggle_visibility(true);
         if !visible {
             self.apply_filter(self.active_row_id());
         }
     }
 
     fn filter_query(&self) -> String {
-        self.filter
-            .value()
-            .and_then(|value| value.to_text_scalar())
-            .unwrap_or_default()
+        self.filter.query()
     }
 
     fn cell_filter_text(&self, row_idx: usize, col_idx: usize) -> String {
@@ -511,23 +499,17 @@ impl Table {
         RenderContext {
             focused_id: focused_cell_id,
             terminal_size: ctx.terminal_size,
-            visible_errors: HashMap::new(),
-            invalid_hidden: HashSet::new(),
-            completion_menus,
+            visible_errors: Arc::new(HashMap::new()),
+            invalid_hidden: Arc::new(HashSet::new()),
+            completion_menus: Arc::new(completion_menus),
         }
     }
 
     fn fallback_context(&self) -> RenderContext {
-        RenderContext {
-            focused_id: None,
-            terminal_size: TerminalSize {
-                width: 80,
-                height: 24,
-            },
-            visible_errors: HashMap::new(),
-            invalid_hidden: HashSet::new(),
-            completion_menus: HashMap::new(),
-        }
+        RenderContext::empty(TerminalSize {
+            width: 80,
+            height: 24,
+        })
     }
 
     fn render_cell_line(
@@ -613,26 +595,13 @@ impl Table {
         if !self.base.label().is_empty() {
             lines.push(vec![Span::new(self.base.label()).no_wrap()]);
         }
-        if self.filter_visible {
-            let filter_ctx = self.child_context(
+        if self.filter.is_visible() {
+            lines.push(filter_utils::render_filter_line_with(
+                &self.filter,
                 ctx,
-                if focused && self.filter_focus {
-                    Some(self.filter.id().to_string())
-                } else {
-                    None
-                },
-            );
-            let mut filter_line =
-                vec![Span::styled("Filter: ", Style::new().color(Color::DarkGrey)).no_wrap()];
-            filter_line.extend(
-                self.filter
-                    .draw(&filter_ctx)
-                    .lines
-                    .into_iter()
-                    .next()
-                    .unwrap_or_else(|| vec![Span::new("").no_wrap()]),
-            );
-            lines.push(filter_line);
+                focused,
+                |ctx, focused_id| self.child_context(ctx, focused_id),
+            ));
         }
 
         let mut widths = Vec::<usize>::new();
@@ -696,26 +665,13 @@ impl Table {
         if !self.base.label().is_empty() {
             lines.push(vec![Span::new(self.base.label()).no_wrap()]);
         }
-        if self.filter_visible {
-            let filter_ctx = self.child_context(
+        if self.filter.is_visible() {
+            lines.push(filter_utils::render_filter_line_with(
+                &self.filter,
                 ctx,
-                if focused && self.filter_focus {
-                    Some(self.filter.id().to_string())
-                } else {
-                    None
-                },
-            );
-            let mut filter_line =
-                vec![Span::styled("Filter: ", Style::new().color(Color::DarkGrey)).no_wrap()];
-            filter_line.extend(
-                self.filter
-                    .draw(&filter_ctx)
-                    .lines
-                    .into_iter()
-                    .next()
-                    .unwrap_or_else(|| vec![Span::new("").no_wrap()]),
-            );
-            lines.push(filter_line);
+                focused,
+                |ctx, focused_id| self.child_context(ctx, focused_id),
+            ));
         }
 
         let mut header_cells = Vec::<SpanLine>::new();
@@ -764,7 +720,7 @@ impl Table {
 
     fn body_row_start(&self) -> u16 {
         let label_rows = if self.base.label().is_empty() { 0 } else { 1 };
-        let filter_rows = if self.filter_visible { 1 } else { 0 };
+        let filter_rows = if self.filter.is_visible() { 1 } else { 0 };
         match self.style {
             TableStyle::Grid => label_rows + filter_rows + 3,
             TableStyle::Clean => label_rows + filter_rows + 1,
@@ -980,8 +936,9 @@ impl Table {
     }
 
     fn handle_filter_key(&mut self, key: KeyEvent) -> InteractionResult {
-        let before = self.filter_query();
-        match filter_utils::handle_key(&mut self.filter, key, filter_utils::FilterEscBehavior::Hide)
+        match self
+            .filter
+            .handle_key_with_change(key, filter_utils::FilterEscBehavior::Hide)
         {
             filter_utils::FilterKeyOutcome::Ignored => InteractionResult::ignored(),
             filter_utils::FilterKeyOutcome::Hide => {
@@ -989,30 +946,17 @@ impl Table {
                 InteractionResult::handled()
             }
             filter_utils::FilterKeyOutcome::Blur => {
-                self.filter_focus = false;
+                self.filter.set_focused(false);
                 InteractionResult::handled()
             }
-            filter_utils::FilterKeyOutcome::Edited(result) => {
-                if self.filter_query() != before {
-                    self.apply_filter(self.active_row_id());
-                    InteractionResult::handled()
-                } else {
-                    result
-                }
+            filter_utils::FilterKeyOutcome::Edited(outcome) => {
+                outcome.refresh_if_changed(|| self.apply_filter(self.active_row_id()))
             }
         }
     }
 }
 
-impl Component for Table {
-    fn children(&self) -> &[Node] {
-        &[]
-    }
-
-    fn children_mut(&mut self) -> &mut [Node] {
-        &mut []
-    }
-}
+impl StaticChildrenComponent for Table {}
 
 impl Drawable for Table {
     fn id(&self) -> &str {
@@ -1027,23 +971,7 @@ impl Drawable for Table {
             TableStyle::Clean => self.render_clean(ctx, col_widths.as_slice(), focused),
         };
 
-        if let Some(error) = ctx.visible_errors.get(self.base.id()) {
-            lines.push(vec![
-                Span::styled(
-                    format!("✗ {}", error),
-                    Style::new().color(Color::Red).bold(),
-                )
-                .no_wrap(),
-            ]);
-        } else if ctx.invalid_hidden.contains(self.base.id()) {
-            for line in &mut lines {
-                for span in line {
-                    if span.style.color.is_none() {
-                        span.style.color = Some(Color::Red);
-                    }
-                }
-            }
-        }
+        decorate_component_validation(&mut lines, ctx, self.base.id());
 
         DrawOutput { lines }
     }
@@ -1059,7 +987,7 @@ impl Interactive for Table {
             self.toggle_filter_visibility();
             return InteractionResult::handled();
         }
-        if self.filter_focus {
+        if self.filter.is_focused() {
             return self.handle_filter_key(key);
         }
         if key.modifiers == KeyModifiers::NONE
@@ -1077,14 +1005,11 @@ impl Interactive for Table {
     }
 
     fn on_text_action(&mut self, action: TextAction) -> InteractionResult {
-        if self.filter_focus {
-            let before = self.filter_query();
-            let result = filter_utils::handle_text_action(&mut self.filter, action);
-            if self.filter_query() != before {
-                self.apply_filter(self.active_row_id());
-                return InteractionResult::handled();
-            }
-            return result;
+        if self.filter.is_focused() {
+            return self
+                .filter
+                .handle_text_action_with_change(action)
+                .refresh_if_changed(|| self.apply_filter(self.active_row_id()));
         }
         if self.focus != TableFocus::Body || !self.edit_mode {
             return InteractionResult::ignored();
@@ -1100,7 +1025,7 @@ impl Interactive for Table {
     }
 
     fn completion(&mut self) -> Option<CompletionState<'_>> {
-        if self.filter_focus {
+        if self.filter.is_focused() {
             return self.filter.completion();
         }
         if self.focus != TableFocus::Body || !self.edit_mode {
@@ -1110,7 +1035,7 @@ impl Interactive for Table {
     }
 
     fn cursor_pos(&self) -> Option<CursorPos> {
-        if self.filter_focus {
+        if self.filter.is_focused() {
             let local = self.filter.cursor_pos()?;
             let row = if self.base.label().is_empty() { 0 } else { 1 };
             return Some(CursorPos {
@@ -1151,7 +1076,7 @@ impl Interactive for Table {
 
     fn cursor_visible(&self) -> bool {
         cursor_anchor::visible_when_text_cursor(
-            self.filter_focus || (self.focus == TableFocus::Body && self.edit_mode),
+            self.filter.is_focused() || (self.focus == TableFocus::Body && self.edit_mode),
         )
     }
 

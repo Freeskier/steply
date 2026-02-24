@@ -40,7 +40,11 @@ impl AppState {
             let changed = before.as_ref().is_none_or(|previous| previous != &updated);
             self.apply_value_to_step(root.as_str(), updated.clone());
             if changed {
-                self.trigger_node_value_changed_tasks(root.as_str(), &updated);
+                crate::task::engine::trigger_node_value_changed_tasks(
+                    self,
+                    root.as_str(),
+                    &updated,
+                );
             }
         }
     }

@@ -11,7 +11,7 @@ impl Interactive for ObjectEditor {
             return InteractionResult::handled();
         }
 
-        if self.filter_focus {
+        if self.filter.is_focused() {
             return self.handle_filter_key(key);
         }
 
@@ -47,7 +47,7 @@ impl Interactive for ObjectEditor {
         Ok(())
     }
     fn cursor_pos(&self) -> Option<CursorPos> {
-        if self.filter_focus {
+        if self.filter.is_focused() {
             let local = self.filter.cursor_pos()?;
             let mut row: u16 = 0;
             if !self.base.label().is_empty() {
@@ -113,15 +113,11 @@ impl Interactive for ObjectEditor {
     }
 
     fn on_text_action(&mut self, action: crate::widgets::traits::TextAction) -> InteractionResult {
-        if self.filter_focus {
-            let before = self.filter_query();
-            let result =
-                crate::widgets::shared::filter::handle_text_action(&mut self.filter, action);
-            if self.filter_query() != before {
-                self.apply_filter_from_input();
-                return InteractionResult::handled();
-            }
-            return result;
+        if self.filter.is_focused() {
+            return self
+                .filter
+                .handle_text_action_with_change(action)
+                .refresh_if_changed(|| self.apply_filter_from_input());
         }
 
         match &mut self.mode {
@@ -134,53 +130,45 @@ impl Interactive for ObjectEditor {
     }
 
     fn completion(&mut self) -> Option<crate::widgets::traits::CompletionState<'_>> {
-        if !self.filter_focus {
+        if !self.filter.is_focused() {
             return None;
         }
         self.filter.completion()
     }
 
     fn cursor_visible(&self) -> bool {
-        crate::widgets::shared::cursor_anchor::visible_when_text_cursor(if self.filter_focus {
-            true
-        } else {
-            matches!(
-                self.mode,
-                Mode::EditValue { .. }
-                    | Mode::EditKey { .. }
-                    | Mode::InsertType { .. }
-                    | Mode::InsertValue { .. }
-            )
-        })
+        crate::widgets::shared::cursor_anchor::visible_when_text_cursor(
+            self.filter.is_focused()
+                || matches!(
+                    self.mode,
+                    Mode::EditValue { .. }
+                        | Mode::EditKey { .. }
+                        | Mode::InsertType { .. }
+                        | Mode::InsertValue { .. }
+                ),
+        )
     }
 }
 
 impl ObjectEditor {
     fn handle_filter_key(&mut self, key: KeyEvent) -> InteractionResult {
-        let before = self.filter_query();
-        match crate::widgets::shared::filter::handle_key(
-            &mut self.filter,
-            key,
-            crate::widgets::shared::filter::FilterEscBehavior::Blur,
-        ) {
+        match self
+            .filter
+            .handle_key_with_change(key, crate::widgets::shared::filter::FilterEscBehavior::Blur)
+        {
             crate::widgets::shared::filter::FilterKeyOutcome::Ignored => {
                 InteractionResult::ignored()
             }
             crate::widgets::shared::filter::FilterKeyOutcome::Hide
             | crate::widgets::shared::filter::FilterKeyOutcome::Blur => {
-                self.filter_focus = false;
+                self.filter.set_focused(false);
                 if key.code == KeyCode::Down {
                     self.tree.move_active(1);
                 }
                 InteractionResult::handled()
             }
-            crate::widgets::shared::filter::FilterKeyOutcome::Edited(result) => {
-                if self.filter_query() != before {
-                    self.apply_filter_from_input();
-                    InteractionResult::handled()
-                } else {
-                    result
-                }
+            crate::widgets::shared::filter::FilterKeyOutcome::Edited(outcome) => {
+                outcome.refresh_if_changed(|| self.apply_filter_from_input())
             }
         }
     }

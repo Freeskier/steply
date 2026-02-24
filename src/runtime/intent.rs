@@ -1,5 +1,5 @@
 use crate::core::NodeId;
-use crate::terminal::KeyEvent;
+use crate::terminal::{KeyEvent, PointerEvent};
 use crate::widgets::traits::TextAction;
 
 #[derive(Debug, Clone)]
@@ -26,4 +26,6 @@ pub enum Intent {
     ScrollDown,
     ScrollPageUp,
     ScrollPageDown,
+    Pointer(PointerEvent),
+    PointerOn { target: NodeId, event: PointerEvent },
 }

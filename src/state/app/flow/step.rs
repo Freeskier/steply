@@ -1,6 +1,10 @@
 use crate::core::value::Value;
 use crate::state::app::AppState;
 use crate::state::step::StepNavigation;
+use crate::task::engine::{
+    trigger_flow_end_tasks, trigger_step_enter_tasks, trigger_step_exit_tasks,
+    trigger_submit_after_tasks, trigger_submit_before_tasks,
+};
 use crate::widgets::node::{NodeWalkScope, walk_nodes};
 use crate::widgets::traits::ValidationMode;
 
@@ -8,7 +12,7 @@ impl AppState {
     pub(in crate::state::app) fn handle_step_submit(&mut self) {
         self.clear_completion_session();
         let submit_step_id = self.current_step_id().to_string();
-        self.trigger_submit_before_tasks(submit_step_id.as_str());
+        trigger_submit_before_tasks(self, submit_step_id.as_str());
         if !self.validate_current_step(ValidationMode::Submit) {
             self.focus_first_invalid_on_current_step();
             return;
@@ -21,19 +25,10 @@ impl AppState {
             return;
         }
 
-        let previous_step_id = self.current_step_id().to_string();
-        self.trigger_step_exit_tasks(previous_step_id.as_str());
+        let previous_step_id = self.leave_current_step();
         self.sync_current_step_values_to_store();
-        self.trigger_submit_after_tasks(previous_step_id.as_str());
-
-        if self.flow.advance() {
-            self.enter_current_step_after_transition();
-        } else {
-            self.ui.overlays.clear();
-            self.trigger_flow_end_tasks();
-            self.flow.complete_current();
-            self.request_exit();
-        }
+        trigger_submit_after_tasks(self, previous_step_id.as_str());
+        self.transition_forward_after_submit();
     }
 
     pub fn handle_step_back(&mut self) {
@@ -63,10 +58,14 @@ impl AppState {
     }
 
     fn execute_step_back(&mut self) {
-        let previous_step_id = self.current_step_id().to_string();
-        self.trigger_step_exit_tasks(previous_step_id.as_str());
-        self.flow.go_back();
-        self.enter_current_step_after_transition();
+        self.leave_current_step();
+        self.transition_back_to_previous();
+    }
+
+    fn leave_current_step(&mut self) -> String {
+        let step_id = self.current_step_id().to_string();
+        trigger_step_exit_tasks(self, step_id.as_str());
+        step_id
     }
 
     fn reset_current_step_values(&mut self) {
@@ -111,6 +110,26 @@ impl AppState {
         self.hydrate_current_step_from_store();
         self.rebuild_focus();
         let current_step_id = self.current_step_id().to_string();
-        self.trigger_step_enter_tasks(current_step_id.as_str());
+        trigger_step_enter_tasks(self, current_step_id.as_str());
+    }
+
+    fn finish_flow_after_last_submit(&mut self) {
+        self.ui.overlays.clear();
+        trigger_flow_end_tasks(self);
+        self.flow.complete_current();
+        self.request_exit();
+    }
+
+    fn transition_forward_after_submit(&mut self) {
+        if self.flow.advance() {
+            self.enter_current_step_after_transition();
+        } else {
+            self.finish_flow_after_last_submit();
+        }
+    }
+
+    fn transition_back_to_previous(&mut self) {
+        self.flow.go_back();
+        self.enter_current_step_after_transition();
     }
 }

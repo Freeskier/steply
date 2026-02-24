@@ -15,8 +15,7 @@ use crate::ui::span::Span;
 use crate::ui::style::{Color, Style};
 use crate::widgets::base::WidgetBase;
 use crate::widgets::components::scroll::ScrollState;
-use crate::widgets::inputs::text::TextInput;
-use crate::widgets::node::{Component, Node};
+use crate::widgets::node::StaticChildrenComponent;
 use crate::widgets::shared::cursor_anchor;
 use crate::widgets::shared::filter;
 use crate::widgets::traits::{
@@ -41,9 +40,7 @@ pub struct SelectList {
     scroll: ScrollState,
     submit_target: Option<ValueTarget>,
     show_label: bool,
-    filter: TextInput,
-    filter_visible: bool,
-    filter_focus: bool,
+    filter: filter::FilterController,
     option_renderer: OptionRenderer,
 }
 
@@ -62,9 +59,7 @@ impl SelectList {
             scroll: ScrollState::new(None),
             submit_target: None,
             show_label: true,
-            filter: TextInput::new(format!("{id}__filter"), ""),
-            filter_visible: false,
-            filter_focus: false,
+            filter: filter::FilterController::new(format!("{id}__filter")),
             option_renderer: default_option_renderer(),
         };
         this.apply_filter(None);
@@ -221,22 +216,14 @@ impl SelectList {
     }
 
     fn toggle_filter_visibility(&mut self) {
-        let visible = filter::toggle_visibility(
-            &mut self.filter,
-            &mut self.filter_visible,
-            &mut self.filter_focus,
-            true,
-        );
+        let visible = self.filter.toggle_visibility(true);
         if !visible {
             self.apply_filter(None);
         }
     }
 
     fn filter_query(&self) -> String {
-        self.filter
-            .value()
-            .and_then(|value| value.to_text_scalar())
-            .unwrap_or_default()
+        self.filter.query()
     }
 
     fn active_source_index(&self) -> Option<usize> {
@@ -252,16 +239,8 @@ impl SelectList {
         }
     }
 
-    fn apply_filter_on_edit(
-        &mut self,
-        before_query: String,
-        result: InteractionResult,
-    ) -> InteractionResult {
-        if self.filter_query() != before_query {
-            self.apply_filter(None);
-            return InteractionResult::handled();
-        }
-        result
+    fn apply_filter_on_change(&mut self, outcome: filter::FilterEditOutcome) -> InteractionResult {
+        outcome.refresh_if_changed(|| self.apply_filter(None))
     }
 
     fn apply_filter(&mut self, preferred_source: Option<usize>) {
@@ -318,7 +297,7 @@ impl SelectList {
         if self.show_label && !self.base.label().is_empty() {
             row += 1;
         }
-        if self.filter_visible {
+        if self.filter.is_visible() {
             row += 1;
         }
 
@@ -587,29 +566,21 @@ impl SelectList {
         lines
     }
 
-    fn child_context(&self, ctx: &RenderContext, focused_id: Option<String>) -> RenderContext {
-        RenderContext {
-            focused_id,
-            terminal_size: ctx.terminal_size,
-            visible_errors: ctx.visible_errors.clone(),
-            invalid_hidden: ctx.invalid_hidden.clone(),
-            completion_menus: ctx.completion_menus.clone(),
-        }
-    }
-
     fn handle_filter_key(&mut self, key: KeyEvent) -> InteractionResult {
-        let before = self.filter_query();
-        match filter::handle_key(&mut self.filter, key, filter::FilterEscBehavior::Hide) {
+        match self
+            .filter
+            .handle_key_with_change(key, filter::FilterEscBehavior::Hide)
+        {
             filter::FilterKeyOutcome::Ignored => InteractionResult::ignored(),
             filter::FilterKeyOutcome::Hide => {
                 self.toggle_filter_visibility();
                 InteractionResult::handled()
             }
             filter::FilterKeyOutcome::Blur => {
-                self.filter_focus = false;
+                self.filter.set_focused(false);
                 InteractionResult::handled()
             }
-            filter::FilterKeyOutcome::Edited(result) => self.apply_filter_on_edit(before, result),
+            filter::FilterKeyOutcome::Edited(outcome) => self.apply_filter_on_change(outcome),
         }
     }
 
@@ -620,8 +591,8 @@ impl SelectList {
 
         match key.code {
             KeyCode::Up => {
-                if self.filter_visible && self.active_index == 0 {
-                    self.filter_focus = true;
+                if self.filter.is_visible() && self.active_index == 0 {
+                    self.filter.set_focused(true);
                     return InteractionResult::handled();
                 }
                 if self.move_active(-1) {
@@ -657,15 +628,7 @@ impl SelectList {
     }
 }
 
-impl Component for SelectList {
-    fn children(&self) -> &[Node] {
-        &[]
-    }
-
-    fn children_mut(&mut self) -> &mut [Node] {
-        &mut []
-    }
-}
+impl StaticChildrenComponent for SelectList {}
 
 impl Drawable for SelectList {
     fn id(&self) -> &str {
@@ -683,30 +646,12 @@ impl Drawable for SelectList {
             lines.push(vec![Span::new(self.base.label()).no_wrap()]);
         }
 
-        if self.filter_visible {
-            let filter_ctx = self.child_context(
-                ctx,
-                if focused && self.filter_focus {
-                    Some(self.filter.id().to_string())
-                } else {
-                    None
-                },
-            );
-            let mut filter_line =
-                vec![Span::styled("Filter: ", Style::new().color(Color::DarkGrey)).no_wrap()];
-            filter_line.extend(
-                self.filter
-                    .draw(&filter_ctx)
-                    .lines
-                    .into_iter()
-                    .next()
-                    .unwrap_or_else(|| vec![Span::new("").no_wrap()]),
-            );
-            lines.push(filter_line);
+        if self.filter.is_visible() {
+            lines.push(filter::render_filter_line(&self.filter, ctx, focused));
         }
 
         let wrap_width = ctx.terminal_size.width.max(1);
-        lines.extend(self.line_items(focused && !self.filter_focus, wrap_width));
+        lines.extend(self.line_items(focused && !self.filter.is_focused(), wrap_width));
         DrawOutput { lines }
     }
 
@@ -725,7 +670,7 @@ impl Drawable for SelectList {
                 HintItem::new("Space", "toggle selection", HintGroup::Action).with_priority(21),
             );
         }
-        if self.filter_focus {
+        if self.filter.is_focused() {
             hints.push(HintItem::new("Esc", "close filter", HintGroup::View).with_priority(31));
         }
         hints
@@ -743,7 +688,7 @@ impl Interactive for SelectList {
             return InteractionResult::handled();
         }
 
-        if self.filter_focus {
+        if self.filter.is_focused() {
             return self.handle_filter_key(key);
         }
 
@@ -751,24 +696,23 @@ impl Interactive for SelectList {
     }
 
     fn on_text_action(&mut self, action: TextAction) -> InteractionResult {
-        if !self.filter_focus {
+        if !self.filter.is_focused() {
             return InteractionResult::ignored();
         }
 
-        let before = self.filter_query();
-        let result = filter::handle_text_action(&mut self.filter, action);
-        self.apply_filter_on_edit(before, result)
+        let outcome = self.filter.handle_text_action_with_change(action);
+        self.apply_filter_on_change(outcome)
     }
 
     fn completion(&mut self) -> Option<CompletionState<'_>> {
-        if !self.filter_focus {
+        if !self.filter.is_focused() {
             return None;
         }
         self.filter.completion()
     }
 
     fn cursor_pos(&self) -> Option<CursorPos> {
-        if self.filter_focus {
+        if self.filter.is_focused() {
             let local = self.filter.cursor_pos()?;
             let row = if self.show_label && !self.base.label().is_empty() {
                 1
@@ -784,7 +728,7 @@ impl Interactive for SelectList {
     }
 
     fn cursor_visible(&self) -> bool {
-        self.filter_focus
+        self.filter.is_focused()
     }
 
     fn value(&self) -> Option<Value> {

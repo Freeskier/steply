@@ -140,24 +140,11 @@ pub(super) fn decorate_step_block(
         }
         Some(StepFooter::ExitConfirm { choice }) => {
             let bottom = if connect_to_next { "├  " } else { "└  " };
-            let cont = if connect_to_next { "│  " } else { "   " };
             decorated.push(with_gutter_prefix(
                 bottom,
                 decor_style,
                 exit_confirm_line(choice),
             ));
-            decorated.push(with_gutter_prefix(
-                cont,
-                decor_style,
-                vec![
-                    Span::styled(
-                        "[←/→ Tab] switch  •  [Enter] confirm  •  [Esc] cancel  •  [Ctrl+C] force",
-                        Style::new().color(Color::DarkGrey),
-                    )
-                    .no_wrap(),
-                ],
-            ));
-            decorated.push(with_gutter_prefix(cont, decor_style, help_toggle_line()));
         }
         Some(StepFooter::HelpToggle) => {
             let bottom = if connect_to_next { "├  " } else { "└  " };
@@ -220,14 +207,6 @@ pub(super) fn append_step_footer_plain(lines: &mut Vec<SpanLine>, footer: Option
         }
         Some(StepFooter::ExitConfirm { choice }) => {
             lines.push(exit_confirm_line(choice));
-            lines.push(vec![
-                Span::styled(
-                    "[←/→ Tab] switch  •  [Enter] confirm  •  [Esc] cancel  •  [Ctrl+C] force",
-                    Style::new().color(Color::DarkGrey),
-                )
-                .no_wrap(),
-            ]);
-            lines.push(help_toggle_line());
         }
         Some(StepFooter::HelpToggle) => {
             lines.push(help_toggle_line());
@@ -252,7 +231,7 @@ fn help_toggle_line() -> SpanLine {
 
 fn exit_confirm_line(choice: ExitConfirmChoice) -> SpanLine {
     let inactive = Style::new().color(Color::DarkGrey);
-    let active = inactive.bold();
+    let active = Style::new().color(Color::White).bold();
     let (no_style, yes_style) = match choice {
         ExitConfirmChoice::Stay => (active, inactive),
         ExitConfirmChoice::Exit => (inactive, active),

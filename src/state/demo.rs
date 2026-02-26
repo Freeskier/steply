@@ -746,9 +746,9 @@ fn step_validation_demo() -> Step {
 
 pub fn build_demo_flow() -> Flow {
     Flow::new(vec![
+        step_table(),
         step_selection(),
         step_thinking_output(),
-        step_table(),
         step_object_editor(),
         step_repeater(),
         step_command_runner(),

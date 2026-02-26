@@ -267,9 +267,21 @@ fn build_base_frame(
             },
         );
 
-        if status == StepVisualStatus::Active && view.hints_visible {
-            append_hints_panel(step.nodes.as_slice(), view.focused_id, &mut block_lines);
-        }
+        let has_hints = status == StepVisualStatus::Active
+            && !collect_hints(step.nodes.as_slice(), view.focused_id).is_empty();
+        let has_active_warning_or_error = status == StepVisualStatus::Active
+            && (view.exit_confirm.is_some()
+                || view.back_confirm.is_some()
+                || !view.step_errors.is_empty()
+                || !view.step_warnings.is_empty());
+        let hints_panel_lines = if status == StepVisualStatus::Active
+            && view.hints_visible
+            && !has_active_warning_or_error
+        {
+            render_hints_panel_lines(step.nodes.as_slice(), view.focused_id)
+        } else {
+            Vec::new()
+        };
 
         let layout_cursor = block_cursor.map(|cursor| (cursor.row as usize, cursor.col as usize));
         let (composed_lines, mapped_cursor) =
@@ -284,7 +296,7 @@ fn build_base_frame(
             tint_block(&mut block_lines, tint);
         }
 
-        let footer = step_footer(status, view);
+        let footer = step_footer(status, view, has_hints);
 
         if config.decorations_enabled {
             let include_top = idx == 0;
@@ -320,6 +332,20 @@ fn build_base_frame(
         if status == StepVisualStatus::Done && !config.decorations_enabled {
             frame.lines.push(vec![Span::new("")]);
         }
+
+        if !hints_panel_lines.is_empty() {
+            if config.decorations_enabled {
+                let gutter = decoration_gutter_width().min(u16::MAX as usize);
+                let prefix = " ".repeat(gutter);
+                for line in hints_panel_lines {
+                    let mut prefixed = vec![Span::new(prefix.clone()).no_wrap()];
+                    prefixed.extend(line);
+                    frame.lines.push(prefixed);
+                }
+            } else {
+                frame.lines.extend(hints_panel_lines);
+            }
+        }
     }
     frame
 }
@@ -349,7 +375,11 @@ fn step_content_tint(status: StepVisualStatus) -> Option<Color> {
     }
 }
 
-fn step_footer<'a>(status: StepVisualStatus, view: &'a RenderView<'a>) -> Option<StepFooter<'a>> {
+fn step_footer<'a>(
+    status: StepVisualStatus,
+    view: &'a RenderView<'a>,
+    has_hints: bool,
+) -> Option<StepFooter<'a>> {
     if status == StepVisualStatus::Cancelled {
         return Some(StepFooter::Error {
             message: "Exiting.",
@@ -370,7 +400,7 @@ fn step_footer<'a>(status: StepVisualStatus, view: &'a RenderView<'a>) -> Option
         return Some(StepFooter::Warning {
             message: msg,
             description: Some("[Enter] confirm  •  [Esc] cancel"),
-            show_help_toggle: true,
+            show_help_toggle: false,
         });
     }
 
@@ -378,7 +408,7 @@ fn step_footer<'a>(status: StepVisualStatus, view: &'a RenderView<'a>) -> Option
         return Some(StepFooter::Error {
             message: msg.as_str(),
             description: None,
-            show_help_toggle: true,
+            show_help_toggle: has_hints,
         });
     }
 
@@ -386,21 +416,17 @@ fn step_footer<'a>(status: StepVisualStatus, view: &'a RenderView<'a>) -> Option
         return Some(StepFooter::Warning {
             message: msg.as_str(),
             description: Some("[Enter] confirm  •  [Esc] cancel"),
-            show_help_toggle: true,
+            show_help_toggle: false,
         });
     }
 
-    Some(StepFooter::HelpToggle)
+    has_hints.then_some(StepFooter::HelpToggle)
 }
 
-fn append_hints_panel(nodes: &[Node], focused_id: Option<&str>, block_lines: &mut Vec<SpanLine>) {
+fn render_hints_panel_lines(nodes: &[Node], focused_id: Option<&str>) -> Vec<SpanLine> {
     let mut hints = collect_hints(nodes, focused_id);
     if hints.is_empty() {
-        block_lines.push(vec![Span::styled(
-            "no hints available",
-            Style::new().color(Color::DarkGrey),
-        )]);
-        return;
+        return Vec::new();
     }
 
     hints.sort_by(|a, b| {
@@ -457,6 +483,7 @@ fn append_hints_panel(nodes: &[Node], focused_id: Option<&str>, block_lines: &mu
         .unwrap_or(0);
     const HINT_COLUMN_GAP: usize = 4;
 
+    let mut lines = Vec::<SpanLine>::with_capacity(max_rows);
     for row in 0..max_rows {
         let mut line = Vec::<Span>::new();
         for (col_idx, (_, items)) in grouped.iter().enumerate() {
@@ -492,8 +519,9 @@ fn append_hints_panel(nodes: &[Node], focused_id: Option<&str>, block_lines: &mu
                 }
             }
         }
-        block_lines.push(line);
+        lines.push(line);
     }
+    lines
 }
 
 fn collect_hints(nodes: &[Node], focused_id: Option<&str>) -> Vec<HintItem> {

@@ -368,10 +368,7 @@ impl SelectList {
         let mut wrapped_lines = 0usize;
         for option_line in option_lines {
             let (first_prefix, next_prefix) = if self.mode == SelectMode::List {
-                (
-                    Self::list_next_prefix(inactive_style),
-                    Self::list_next_prefix(inactive_style),
-                )
+                (Self::plain_gap_prefix(), Self::plain_gap_prefix())
             } else {
                 (
                     Self::option_inactive_prefix(
@@ -498,7 +495,7 @@ impl SelectList {
     }
 
     fn plain_gap_prefix() -> Vec<Span> {
-        vec![Span::new("   ").no_wrap()]
+        vec![Span::new("  ").no_wrap()]
     }
 
     fn muted_gap_prefix(style: Style) -> Vec<Span> {
@@ -510,19 +507,10 @@ impl SelectList {
         ]
     }
 
-    fn list_active_prefix(cursor: &str, cursor_style: Style, inactive_style: Style) -> Vec<Span> {
+    fn list_active_prefix(cursor: &str, cursor_style: Style) -> Vec<Span> {
         vec![
             Span::styled(cursor, cursor_style).no_wrap(),
             Span::new(" ").no_wrap(),
-            Span::styled("│", inactive_style).no_wrap(),
-        ]
-    }
-
-    fn list_next_prefix(inactive_style: Style) -> Vec<Span> {
-        vec![
-            Span::new(" ").no_wrap(),
-            Span::new(" ").no_wrap(),
-            Span::styled("│", inactive_style).no_wrap(),
         ]
     }
 
@@ -596,17 +584,11 @@ impl SelectList {
                 );
                 for (line_idx, option_line) in option_lines.into_iter().enumerate() {
                     let first_prefix = if focused && active && line_idx == 0 {
-                        Self::list_active_prefix(cursor, cursor_style, inactive_style)
-                    } else if focused && active {
-                        Self::list_next_prefix(inactive_style)
+                        Self::list_active_prefix(cursor, cursor_style)
                     } else {
                         Self::plain_gap_prefix()
                     };
-                    let next_prefix = if focused && active {
-                        Self::list_next_prefix(inactive_style)
-                    } else {
-                        Self::plain_gap_prefix()
-                    };
+                    let next_prefix = Self::plain_gap_prefix();
 
                     lines.extend(Layout::compose_block(
                         &RenderBlock {

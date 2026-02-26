@@ -124,7 +124,7 @@ impl Table {
                 }
                 InteractionResult::ignored()
             }
-            KeyCode::Enter | KeyCode::Char(' ') => {
+            KeyCode::Char(' ') => {
                 self.toggle_sort(self.active_col);
                 InteractionResult::handled()
             }
@@ -179,6 +179,17 @@ impl Table {
                     self.edit_mode = true;
                     InteractionResult::handled()
                 }
+                KeyCode::Char(ch) if key.modifiers == KeyModifiers::NONE && !ch.is_control() => {
+                    self.edit_mode = true;
+                    let Some(cell) = self.active_cell_mut() else {
+                        return InteractionResult::ignored();
+                    };
+                    let result = filter_utils::sanitize_interaction_result(cell.on_key(key));
+                    if result.handled {
+                        self.apply_filter(self.active_row_id());
+                    }
+                    result
+                }
                 KeyCode::Up => {
                     if !self.move_active_visible(-1) {
                         self.focus = TableFocus::Header;
@@ -189,24 +200,16 @@ impl Table {
                     let _ = self.move_active_visible(1);
                     InteractionResult::handled()
                 }
+                KeyCode::Left => self.focus_prev_column(),
+                KeyCode::Right => self.focus_next_column(),
                 KeyCode::Tab => self.focus_next_column(),
                 KeyCode::BackTab => self.focus_prev_column(),
-                KeyCode::Left if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                    self.focus_prev_column()
-                }
-                KeyCode::Right if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                    self.focus_next_column()
-                }
                 _ => InteractionResult::ignored(),
             };
         }
 
         match key.code {
             KeyCode::Esc => {
-                self.edit_mode = false;
-                return InteractionResult::handled();
-            }
-            KeyCode::Enter => {
                 self.edit_mode = false;
                 return InteractionResult::handled();
             }
@@ -225,8 +228,23 @@ impl Table {
         let result = filter_utils::sanitize_interaction_result(cell.on_key(key));
         if result.handled {
             self.apply_filter(self.active_row_id());
+            return result;
         }
-        result
+        match key.code {
+            KeyCode::Up => {
+                if !self.move_active_visible(-1) {
+                    self.focus = TableFocus::Header;
+                }
+                InteractionResult::handled()
+            }
+            KeyCode::Down => {
+                let _ = self.move_active_visible(1);
+                InteractionResult::handled()
+            }
+            KeyCode::Left => self.focus_prev_column(),
+            KeyCode::Right => self.focus_next_column(),
+            _ => result,
+        }
     }
 
     fn handle_filter_key(&mut self, key: KeyEvent) -> InteractionResult {
@@ -262,13 +280,6 @@ impl Interactive for Table {
         }
         if self.filter.is_focused() {
             return self.handle_filter_key(key);
-        }
-        if key.modifiers == KeyModifiers::NONE
-            && key.code == KeyCode::Enter
-            && !self.edit_mode
-            && !self.move_mode
-        {
-            return InteractionResult::input_done();
         }
         self.clamp_focus();
         match self.focus {
@@ -326,13 +337,6 @@ impl Interactive for Table {
         if self.focus != TableFocus::Body {
             return None;
         }
-        if !self.edit_mode {
-            let row_offset = self.active_visible_pos()? as u16;
-            let row = self.body_row_start().saturating_add(row_offset);
-            return Some(cursor_anchor::anchored_cursor(row as usize, 0));
-        }
-        let local = self.active_cell().and_then(|cell| cell.cursor_pos())?;
-
         let col_widths = self.compute_column_widths(&self.fallback_context());
         let col_starts = self.body_col_starts(col_widths.as_slice());
         let marker_offset = if !self.show_row_numbers && self.active_col == 0 {
@@ -340,23 +344,39 @@ impl Interactive for Table {
         } else {
             0
         };
-        let col = col_starts
+        let base_col = col_starts
             .get(self.active_col)
             .copied()
             .unwrap_or_default()
-            .saturating_add(marker_offset)
-            .saturating_add(local.col);
+            .saturating_add(marker_offset);
         let row_offset = self.active_visible_pos().unwrap_or(0) as u16;
-        let row = self
-            .body_row_start()
-            .saturating_add(row_offset)
-            .saturating_add(local.row);
-        Some(CursorPos { col, row })
+        let base_row = self.body_row_start().saturating_add(row_offset);
+
+        if !self.edit_mode {
+            return None;
+        }
+
+        if let Some(local) = self.active_cell().and_then(|cell| cell.cursor_pos()) {
+            return Some(CursorPos {
+                col: base_col.saturating_add(local.col),
+                row: base_row.saturating_add(local.row),
+            });
+        }
+
+        Some(CursorPos {
+            col: base_col,
+            row: base_row,
+        })
     }
 
     fn cursor_visible(&self) -> bool {
+        let body_cursor_visible = self
+            .active_cell()
+            .map(|cell| cell.cursor_visible())
+            .unwrap_or(false);
         cursor_anchor::visible_when_text_cursor(
-            self.filter.is_focused() || (self.focus == TableFocus::Body && self.edit_mode),
+            self.filter.is_focused()
+                || (self.focus == TableFocus::Body && self.edit_mode && body_cursor_visible),
         )
     }
 
@@ -407,7 +427,7 @@ impl Interactive for Table {
             self.active_row = 0;
         }
         self.move_mode = false;
-        self.edit_mode = false;
+        self.edit_mode = !self.rows.is_empty();
         self.apply_filter(self.active_row_id());
     }
 

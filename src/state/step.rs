@@ -15,9 +15,9 @@ pub enum StepStatus {
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub enum StepNavigation {
     #[default]
-    Locked,
-
     Allowed,
+
+    Locked,
 
     Reset,
 

@@ -3,7 +3,7 @@ use crate::core::value::Value;
 use crate::core::value_path::{ValuePath, ValueTarget};
 use crate::terminal::{KeyCode, KeyEvent};
 use crate::ui::span::Span;
-use crate::ui::style::Style;
+use crate::ui::style::{Color, Style};
 use crate::widgets::base::WidgetBase;
 use crate::widgets::traits::{
     DrawOutput, Drawable, FocusMode, InteractionResult, Interactive, RenderContext, ValidationMode,
@@ -104,14 +104,20 @@ impl Drawable for SelectInput {
     }
 
     fn draw(&self, ctx: &RenderContext) -> DrawOutput {
-        let text = if self.base.is_focused(ctx) {
-            format!("‹ {} ›", self.selected_text())
+        let lines = if self.base.is_focused(ctx) {
+            vec![vec![
+                Span::styled("‹", Style::new().color(Color::Yellow).bold()).no_wrap(),
+                Span::new(" ").no_wrap(),
+                Span::styled(self.selected_text().to_string(), Style::default()).no_wrap(),
+                Span::new(" ").no_wrap(),
+                Span::styled("›", Style::new().color(Color::Yellow).bold()).no_wrap(),
+            ]]
         } else {
-            self.selected_text().to_string()
+            vec![vec![
+                Span::styled(self.selected_text().to_string(), Style::default()).no_wrap(),
+            ]]
         };
-        DrawOutput {
-            lines: vec![vec![Span::styled(text, Style::default()).no_wrap()]],
-        }
+        DrawOutput { lines }
     }
 }
 

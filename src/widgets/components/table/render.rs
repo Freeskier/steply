@@ -181,13 +181,7 @@ impl Table {
         for (col_idx, _) in self.columns.iter().enumerate() {
             let focused = self.focus == TableFocus::Header && self.active_col == col_idx;
             let sorted = self.sort.map(|(idx, _)| idx == col_idx).unwrap_or(false);
-            let style = if focused {
-                Style::new().color(Color::Cyan).bold()
-            } else if sorted {
-                Style::new().color(Color::Green).bold()
-            } else {
-                Style::default()
-            };
+            let style = self.header_style(focused, sorted);
             let header_text = if !self.show_row_numbers && col_idx == 0 {
                 format!("  {}", self.header_text(col_idx))
             } else {
@@ -211,6 +205,9 @@ impl Table {
                 row_cells.push(self.render_cell_line(row_idx, col_idx, ctx, focused));
             }
             lines.push(grid_row(row_cells, widths.as_slice()));
+        }
+        if self.rows.is_empty() {
+            lines.push(grid_empty_row(widths.as_slice(), "(empty)"));
         }
 
         lines.push(grid_border_line('└', '┴', '┘', widths.as_slice()));
@@ -247,13 +244,7 @@ impl Table {
         for (col_idx, _) in self.columns.iter().enumerate() {
             let focused = self.focus == TableFocus::Header && self.active_col == col_idx;
             let sorted = self.sort.map(|(idx, _)| idx == col_idx).unwrap_or(false);
-            let style = if focused {
-                Style::new().color(Color::Cyan).bold()
-            } else if sorted {
-                Style::new().color(Color::Green).bold()
-            } else {
-                Style::default()
-            };
+            let style = self.header_style(focused, sorted);
             let header_text = if !self.show_row_numbers && col_idx == 0 {
                 format!("  {}", self.header_text(col_idx))
             } else {
@@ -276,6 +267,9 @@ impl Table {
                 row_cells.push(self.render_cell_line(row_idx, col_idx, ctx, focused));
             }
             lines.push(clean_row(row_cells, clean_widths.as_slice()));
+        }
+        if self.rows.is_empty() {
+            lines.push(clean_empty_row(clean_widths.as_slice(), "(empty)"));
         }
         lines
     }
@@ -323,6 +317,16 @@ impl Table {
                 }
                 starts
             }
+        }
+    }
+
+    fn header_style(&self, focused: bool, sorted: bool) -> Style {
+        if focused {
+            Style::new().color(Color::Cyan).bold()
+        } else if sorted {
+            Style::new().color(Color::Green).bold()
+        } else {
+            Style::new().color(Color::White).bold()
         }
     }
 }
@@ -373,9 +377,7 @@ impl Drawable for Table {
                 HintItem::new("Tab / Shift+Tab", "next/prev column", HintGroup::Navigation)
                     .with_priority(10),
             );
-            hints.push(
-                HintItem::new("Enter / Esc", "finish edit", HintGroup::Action).with_priority(20),
-            );
+            hints.push(HintItem::new("Esc", "finish edit", HintGroup::Action).with_priority(20));
             return hints;
         }
 
@@ -386,8 +388,7 @@ impl Drawable for Table {
                         .with_priority(10),
                 );
                 hints.push(
-                    HintItem::new("Space / Enter", "sort column", HintGroup::Action)
-                        .with_priority(20),
+                    HintItem::new("Space", "sort column", HintGroup::Action).with_priority(20),
                 );
                 hints.push(
                     HintItem::new("↓", "go to body", HintGroup::Navigation).with_priority(11),
@@ -541,4 +542,43 @@ fn clean_row(cells: Vec<SpanLine>, widths: &[usize]) -> SpanLine {
         ));
     }
     line
+}
+
+fn centered_label_line(text: &str, width: usize, style: Style) -> SpanLine {
+    if width == 0 {
+        return Vec::new();
+    }
+    let text_width = UnicodeWidthStr::width(text);
+    if text_width >= width {
+        return Layout::fit_line(
+            &[Span::styled(text.to_string(), style).no_wrap()],
+            width as u16,
+        );
+    }
+    let left = (width - text_width) / 2;
+    let right = width - text_width - left;
+    vec![
+        Span::new(" ".repeat(left)).no_wrap(),
+        Span::styled(text.to_string(), style).no_wrap(),
+        Span::new(" ".repeat(right)).no_wrap(),
+    ]
+}
+
+fn grid_empty_row(widths: &[usize], text: &str) -> SpanLine {
+    let border_style = Style::new().color(Color::DarkGrey);
+    let text_style = Style::new().color(Color::DarkGrey);
+    let border_width = Layout::line_width(grid_border_line('┌', '┬', '┐', widths).as_slice());
+    let inner_width = border_width.saturating_sub(2);
+
+    let mut line = vec![Span::styled("│".to_string(), border_style).no_wrap()];
+    line.extend(centered_label_line(text, inner_width, text_style));
+    line.push(Span::styled("│".to_string(), border_style).no_wrap());
+    line
+}
+
+fn clean_empty_row(widths: &[usize], text: &str) -> SpanLine {
+    let text_style = Style::new().color(Color::DarkGrey);
+    let gaps = widths.len().saturating_sub(1).saturating_mul(2);
+    let content_width: usize = widths.iter().copied().sum::<usize>().saturating_add(gaps);
+    centered_label_line(text, content_width.max(1), text_style)
 }

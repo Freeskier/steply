@@ -162,29 +162,33 @@ impl ArrayInput {
         true
     }
 
-    fn move_left(&mut self) {
+    fn move_left(&mut self) -> bool {
         self.ensure_invariants();
         if self.cursor > 0 {
             self.cursor -= 1;
-            return;
+            return true;
         }
         if self.active > 0 {
             self.active -= 1;
             self.cursor = text_edit::char_count(self.items[self.active].as_str());
+            return true;
         }
+        false
     }
 
-    fn move_right(&mut self) {
+    fn move_right(&mut self) -> bool {
         self.ensure_invariants();
         let active_len = text_edit::char_count(self.active_item());
         if self.cursor < active_len {
             self.cursor += 1;
-            return;
+            return true;
         }
         if self.active + 1 < self.items.len() {
             self.active += 1;
             self.cursor = 0;
+            return true;
         }
+        false
     }
 
     fn remove_active(&mut self) -> bool {
@@ -295,12 +299,18 @@ impl Interactive for ArrayInput {
                 InteractionResult::ignored()
             }
             KeyCode::Left => {
-                self.move_left();
-                InteractionResult::handled()
+                if self.move_left() {
+                    InteractionResult::handled()
+                } else {
+                    InteractionResult::ignored()
+                }
             }
             KeyCode::Right => {
-                self.move_right();
-                InteractionResult::handled()
+                if self.move_right() {
+                    InteractionResult::handled()
+                } else {
+                    InteractionResult::ignored()
+                }
             }
             KeyCode::Char(ch) => {
                 if ch.is_control() {

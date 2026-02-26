@@ -88,7 +88,7 @@ impl Table {
             active_row: 0,
             active_col: 0,
             move_mode: false,
-            edit_mode: false,
+            edit_mode: true,
             filter: filter_utils::FilterController::new(format!("{id}__filter")),
             visible_rows: Vec::new(),
             sort: None,
@@ -111,6 +111,14 @@ impl Table {
     pub fn with_initial_rows(mut self, rows: usize) -> Self {
         for _ in 0..rows {
             self.add_row();
+        }
+        if !self.rows.is_empty() {
+            self.focus = TableFocus::Body;
+            self.active_row = 0;
+            self.active_col = list_core::clamp_index(0, self.columns.len());
+            self.edit_mode = true;
+            self.move_mode = false;
+            self.apply_filter(self.active_row_id());
         }
         self
     }
@@ -206,7 +214,7 @@ impl Table {
 
     fn push_column(&mut self, header: String, make_cell: CellFactory) {
         let key = self.unique_column_key(header.as_str());
-        let min_width = UnicodeWidthStr::width(header.as_str()).max(6);
+        let min_width = UnicodeWidthStr::width(header.as_str()).max(10);
         self.columns.push(ColumnDef {
             header,
             key,

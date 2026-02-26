@@ -2,7 +2,7 @@ use crate::core::NodeId;
 use crate::core::value::Value;
 use crate::core::value_path::{ValuePath, ValueTarget};
 use crate::runtime::event::{ValueChange, WidgetAction};
-use crate::terminal::{KeyCode, KeyEvent};
+use crate::terminal::{CursorPos, KeyCode, KeyEvent};
 use crate::ui::span::Span;
 use crate::ui::style::{Color, Style};
 use crate::widgets::base::WidgetBase;
@@ -212,5 +212,16 @@ impl Interactive for SliderInput {
 
     fn validate(&self, _mode: ValidationMode) -> Result<(), String> {
         run_validators(&self.validators, &Value::Number(self.value as f64))
+    }
+
+    fn cursor_pos(&self) -> Option<CursorPos> {
+        Some(CursorPos {
+            row: 0,
+            col: (1 + self.track_position()).min(u16::MAX as usize) as u16,
+        })
+    }
+
+    fn cursor_visible(&self) -> bool {
+        false
     }
 }

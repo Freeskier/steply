@@ -42,3 +42,9 @@ DateInput` / `TimeInput` — oparte na masked, ale z walidacją zakresu i nawiga
 - wsparcie na linki/url
 - output collapsing
 - na / otwiera sie command palette i mozna użyć ai
+
+
+TODO:
+- jak nie jestem na ostatnim stepie i robie warning/help to źle sie renderuje dekoracja
+- lepsze przechodzenie między stepami
+- textarea usunąć enter z obsługi

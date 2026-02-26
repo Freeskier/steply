@@ -94,6 +94,7 @@ use crate::ui::highlight::render_text_spans;
 use crate::ui::span::Span;
 use crate::ui::style::{Color, Style};
 use crate::widgets::base::WidgetBase;
+use crate::widgets::components::scroll::ViewportSizing;
 use crate::widgets::components::select_list::{SelectList, SelectMode};
 use crate::widgets::components::tree_view::{TreeItemLabel, TreeNode, TreeView};
 use crate::widgets::inputs::text::TextInput;
@@ -178,7 +179,8 @@ impl FileBrowserComponent {
         let list = SelectList::from_strings(format!("{id}__list"), "", vec![])
             .with_mode(SelectMode::List)
             .with_show_label(false)
-            .with_max_visible(12);
+            .with_max_visible(12)
+            .with_viewport_sizing(ViewportSizing::StickyGrow);
 
         Self {
             base: WidgetBase::new(id, label),
@@ -290,7 +292,8 @@ impl FileBrowserComponent {
                 TreeView::new(format!("{}_tree", self.base.id()), "", vec![])
                     .with_show_label(false)
                     .with_indent_guides(true)
-                    .with_max_visible(12),
+                    .with_max_visible(12)
+                    .with_viewport_sizing(ViewportSizing::StickyGrow),
             );
         }
     }
@@ -330,6 +333,7 @@ impl FileBrowserComponent {
         }
         self.scanning = true;
         self.spinner_last_tick = Instant::now();
+        self.show_searching_in_list();
         self.cache.mark_in_flight(key.clone());
         self.scanner.submit(ScanRequest {
             key,
@@ -517,16 +521,14 @@ impl Drawable for FileBrowserComponent {
             if self.overlay_open {
                 if self.browser_mode == BrowserMode::Tree {
                     if let Some(tree) = &self.tree {
-                        lines.extend(tree.render_lines(true));
-                    }
-                    if self.scanning || self.tree_building {
-                        lines.push(vec![
-                            Span::styled(
-                                format!("  {} scanning…", self.spinner_char()),
-                                Style::new().color(Color::DarkGrey),
-                            )
-                            .no_wrap(),
-                        ]);
+                        let mut tree_lines = tree.render_lines(true);
+                        if self.scanning || self.tree_building {
+                            inject_scanning_into_scrolled_block(
+                                &mut tree_lines,
+                                self.spinner_char(),
+                            );
+                        }
+                        lines.extend(tree_lines);
                     }
                 } else {
                     let list_id = self.list.id().to_string();
@@ -548,16 +550,6 @@ impl Drawable for FileBrowserComponent {
                                 .no_wrap(),
                             ]);
                         }
-                    }
-
-                    if self.scanning || self.tree_building {
-                        lines.push(vec![
-                            Span::styled(
-                                format!("  {} scanning…", self.spinner_char()),
-                                Style::new().color(Color::DarkGrey),
-                            )
-                            .no_wrap(),
-                        ]);
                     }
                 }
             } else if self.scanning || self.tree_building {
@@ -722,4 +714,45 @@ fn should_skip_expensive_typing_scan(overlay_open: bool, recursive: bool, query:
     }
     let literal_chars = query.chars().filter(|ch| ch.is_alphanumeric()).count();
     literal_chars < 3
+}
+
+fn inject_scanning_into_scrolled_block(lines: &mut Vec<Vec<Span>>, spinner: char) {
+    let scanning_line = vec![
+        Span::styled(
+            format!("  {spinner} scanning…"),
+            Style::new().color(Color::DarkGrey),
+        )
+        .no_wrap(),
+    ];
+
+    let mut insert_at = lines
+        .iter()
+        .rposition(|line| is_scroll_footer_line(line.as_slice()))
+        .unwrap_or(lines.len());
+
+    if let Some(blank_pos) = lines
+        .iter()
+        .take(insert_at)
+        .rposition(|line| is_blank_scroll_line(line.as_slice()))
+    {
+        lines.remove(blank_pos);
+        if blank_pos < insert_at {
+            insert_at = insert_at.saturating_sub(1);
+        }
+    }
+
+    lines.insert(insert_at, scanning_line);
+}
+
+fn is_blank_scroll_line(line: &[Span]) -> bool {
+    line.iter().all(|span| span.text.trim().is_empty())
+}
+
+fn is_scroll_footer_line(line: &[Span]) -> bool {
+    let text = line
+        .iter()
+        .map(|span| span.text.as_str())
+        .collect::<String>();
+    let text = text.trim();
+    text.starts_with('[') && text.contains(" of ")
 }

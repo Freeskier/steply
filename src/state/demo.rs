@@ -746,6 +746,7 @@ fn step_validation_demo() -> Step {
 
 pub fn build_demo_flow() -> Flow {
     Flow::new(vec![
+        step_file_browser(),
         step_table(),
         step_selection(),
         step_thinking_output(),
@@ -755,7 +756,6 @@ pub fn build_demo_flow() -> Flow {
         step_tree_view(),
         step_calendar(),
         step_text_inputs(),
-        step_file_browser(),
         step_structured_inputs(),
         step_toggles(),
         step_outputs(),

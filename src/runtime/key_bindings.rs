@@ -107,8 +107,8 @@ impl KeyBindings {
             KeyBinding::new(KeyCode::BackTab, KeyModifiers::SHIFT),
             Intent::CompletePrev,
         );
-        self.bind(KeyBinding::alt(KeyCode::Down), Intent::NextFocus);
-        self.bind(KeyBinding::alt(KeyCode::Up), Intent::PrevFocus);
+        self.bind(KeyBinding::alt(KeyCode::Down), Intent::Submit);
+        self.bind(KeyBinding::alt(KeyCode::Up), Intent::Back);
         self.bind(
             KeyBinding::ctrl(KeyCode::Left),
             Intent::TextAction(TextAction::MoveWordLeft),

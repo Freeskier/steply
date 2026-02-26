@@ -18,7 +18,7 @@ use crate::ui::layout::{Layout, LineContinuation, RenderBlock};
 use crate::ui::span::Span;
 use crate::ui::style::{Color, Style};
 use crate::widgets::base::WidgetBase;
-use crate::widgets::components::scroll::ScrollState;
+use crate::widgets::components::scroll::{ScrollState, ViewportSizing};
 use crate::widgets::node::LeafComponent;
 use crate::widgets::shared::cursor_anchor;
 use crate::widgets::shared::filter;
@@ -108,8 +108,20 @@ impl SelectList {
         } else {
             Some(max_visible)
         };
+        self.scroll.reset_preserved_viewport();
         self.scroll.offset = 0;
         ScrollState::clamp_active(&mut self.active_index, self.options.len());
+        self.scroll
+            .ensure_visible(self.active_index, self.options.len());
+    }
+
+    pub fn with_viewport_sizing(mut self, sizing: ViewportSizing) -> Self {
+        self.set_viewport_sizing(sizing);
+        self
+    }
+
+    pub fn set_viewport_sizing(&mut self, sizing: ViewportSizing) {
+        self.scroll.set_viewport_sizing(sizing);
         self.scroll
             .ensure_visible(self.active_index, self.options.len());
     }
@@ -655,6 +667,11 @@ impl SelectList {
                     }),
                 ));
             }
+        }
+
+        let placeholders = self.scroll.placeholder_count(total);
+        for _ in 0..placeholders {
+            lines.push(vec![Span::new(" ").no_wrap()]);
         }
 
         if let Some(text) = self.scroll.footer(total) {

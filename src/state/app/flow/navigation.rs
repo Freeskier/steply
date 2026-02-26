@@ -33,8 +33,7 @@ impl AppState {
         prune_validation: bool,
     ) {
         self.reset_completion_for_focus_change();
-        self.ui.active_node_index =
-            NodeIndex::build(self.active_nodes());
+        self.ui.active_node_index = NodeIndex::build(self.active_nodes());
         self.ui.focus = FocusState::from_nodes(self.active_nodes());
         if let Some(id) = target {
             self.ui.focus.set_focus_by_id(id);

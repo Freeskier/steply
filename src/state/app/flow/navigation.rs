@@ -1,5 +1,7 @@
 use crate::runtime::event::SystemEvent;
 use crate::state::app::AppState;
+use crate::state::focus::FocusState;
+use crate::widgets::node_index::NodeIndex;
 use crate::widgets::traits::FocusMode;
 
 impl AppState {
@@ -32,8 +34,8 @@ impl AppState {
     ) {
         self.reset_completion_for_focus_change();
         self.ui.active_node_index =
-            crate::widgets::node_index::NodeIndex::build(self.active_nodes());
-        self.ui.focus = crate::state::focus::FocusState::from_nodes(self.active_nodes());
+            NodeIndex::build(self.active_nodes());
+        self.ui.focus = FocusState::from_nodes(self.active_nodes());
         if let Some(id) = target {
             self.ui.focus.set_focus_by_id(id);
         }

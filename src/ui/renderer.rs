@@ -22,6 +22,7 @@ mod overlay_geometry;
 
 use decorations::{
     StepFooter, append_step_footer_plain, decorate_step_block, decoration_gutter_width,
+    hint_line_prefix,
 };
 use overlay::apply_overlay;
 
@@ -284,36 +285,14 @@ fn build_base_frame(
             },
         );
 
-        let has_hints = status == StepVisualStatus::Active
-            && !collect_hints(step.nodes.as_slice(), view.focused_id).is_empty();
-        let has_active_warning_or_error = status == StepVisualStatus::Active
-            && (view.exit_confirm.is_some()
-                || view.back_confirm.is_some()
-                || !view.step_errors.is_empty()
-                || !view.step_warnings.is_empty());
-        let hints_panel_lines = if status == StepVisualStatus::Active
-            && view.hints_visible
-            && !has_active_warning_or_error
-        {
-            render_hints_panel_lines(step.nodes.as_slice(), view.focused_id)
-        } else {
-            Vec::new()
-        };
-
-        let layout_marker = block_cursor
-            .map(|cursor| (cursor.row as usize, cursor.col as usize))
-            .or_else(|| block_focus_anchor.map(|anchor_row| (anchor_row as usize, 0usize)));
-        let (composed_lines, mapped_marker) =
-            Layout::compose_with_cursor(&block_lines, compose_width, layout_marker);
-        block_lines = composed_lines;
-        if block_cursor.is_some() {
-            block_cursor = mapped_marker.map(|(row, col)| CursorPos {
-                row: row.min(u16::MAX as usize) as u16,
-                col: col.min(u16::MAX as usize) as u16,
-            });
-        } else {
-            block_focus_anchor = mapped_marker.map(|(row, _)| row.min(u16::MAX as usize) as u16);
-        }
+        let (has_hints, hints_panel_lines) =
+            step_hints_panel_lines(status, view, step.nodes.as_slice());
+        remap_block_layout_marker(
+            &mut block_lines,
+            compose_width,
+            &mut block_cursor,
+            &mut block_focus_anchor,
+        );
 
         if let Some(tint) = step_content_tint(status) {
             tint_block(&mut block_lines, tint);
@@ -367,55 +346,26 @@ fn build_base_frame(
         block_hit_map.shift_rows(start_row);
         frame.hit_map.extend(block_hit_map);
         frame.lines.extend(block_lines);
-        if frame.cursor.is_none()
-            && let Some(mut cursor) = block_cursor
-        {
-            cursor.row = cursor.row.saturating_add(start_row);
-            frame.cursor = Some(cursor);
-            frame.focus_anchor_row = Some(cursor.row);
-            frame.focus_anchor_col = Some(cursor.col);
-            frame.cursor_visible = block_cursor_visible;
-        }
-        if frame.focus_anchor_row.is_none()
-            && let Some((anchor_row, anchor_col)) = focused_anchor_in_block
-        {
-            frame.focus_anchor_row = Some(anchor_row.saturating_add(start_row));
-            frame.focus_anchor_col = Some(anchor_col);
-        }
-        if frame.focus_anchor_row.is_none()
-            && let Some((anchor_row, anchor_col)) = active_step_anchor_in_block
-        {
-            frame.focus_anchor_row = Some(anchor_row.saturating_add(start_row));
-            frame.focus_anchor_col = Some(anchor_col);
-        }
-        if frame.focus_anchor_row.is_none()
-            && frame.cursor.is_none()
-            && let Some(anchor) = block_focus_anchor
-        {
-            frame.focus_anchor_row = Some(anchor.saturating_add(start_row));
-            frame.focus_anchor_col = Some(0);
-        }
+        apply_block_focus_and_cursor(
+            &mut frame,
+            start_row,
+            block_cursor,
+            block_cursor_visible,
+            focused_anchor_in_block,
+            active_step_anchor_in_block,
+            block_focus_anchor,
+        );
 
         if status == StepVisualStatus::Done && !config.decorations_enabled {
             frame.lines.push(vec![Span::new("")]);
         }
 
-        if !hints_panel_lines.is_empty() {
-            if config.decorations_enabled {
-                let hint_prefix = if idx < render_up_to {
-                    Span::styled("│  ", Style::new().color(Color::Green)).no_wrap()
-                } else {
-                    Span::new(" ".repeat(decoration_gutter_width())).no_wrap()
-                };
-                for line in hints_panel_lines {
-                    let mut prefixed = vec![hint_prefix.clone()];
-                    prefixed.extend(line);
-                    frame.lines.push(prefixed);
-                }
-            } else {
-                frame.lines.extend(hints_panel_lines);
-            }
-        }
+        append_step_hints_lines(
+            &mut frame.lines,
+            hints_panel_lines,
+            config.decorations_enabled,
+            idx < render_up_to,
+        );
     }
     frame
 }
@@ -493,8 +443,112 @@ fn step_footer<'a>(
     has_hints.then_some(StepFooter::HelpToggle)
 }
 
-fn render_hints_panel_lines(nodes: &[Node], focused_id: Option<&str>) -> Vec<SpanLine> {
-    let mut hints = collect_hints(nodes, focused_id);
+fn step_hints_panel_lines(
+    status: StepVisualStatus,
+    view: &RenderView<'_>,
+    nodes: &[Node],
+) -> (bool, Vec<SpanLine>) {
+    if status != StepVisualStatus::Active {
+        return (false, Vec::new());
+    }
+
+    let hints = collect_hints(nodes, view.focused_id);
+    let has_hints = !hints.is_empty();
+    let has_active_warning_or_error = view.exit_confirm.is_some()
+        || view.back_confirm.is_some()
+        || !view.step_errors.is_empty()
+        || !view.step_warnings.is_empty();
+    let hints_panel_lines = if view.hints_visible && !has_active_warning_or_error {
+        render_hints_panel_lines(hints)
+    } else {
+        Vec::new()
+    };
+    (has_hints, hints_panel_lines)
+}
+
+fn remap_block_layout_marker(
+    block_lines: &mut Vec<SpanLine>,
+    compose_width: u16,
+    block_cursor: &mut Option<CursorPos>,
+    block_focus_anchor: &mut Option<u16>,
+) {
+    let layout_marker = block_cursor
+        .map(|cursor| (cursor.row as usize, cursor.col as usize))
+        .or_else(|| block_focus_anchor.map(|anchor_row| (anchor_row as usize, 0usize)));
+    let (composed_lines, mapped_marker) =
+        Layout::compose_with_cursor(block_lines.as_slice(), compose_width, layout_marker);
+    *block_lines = composed_lines;
+    if block_cursor.is_some() {
+        *block_cursor = mapped_marker.map(|(row, col)| CursorPos {
+            row: row.min(u16::MAX as usize) as u16,
+            col: col.min(u16::MAX as usize) as u16,
+        });
+    } else {
+        *block_focus_anchor = mapped_marker.map(|(row, _)| row.min(u16::MAX as usize) as u16);
+    }
+}
+
+fn apply_block_focus_and_cursor(
+    frame: &mut RenderFrame,
+    start_row: u16,
+    block_cursor: Option<CursorPos>,
+    block_cursor_visible: bool,
+    focused_anchor_in_block: Option<(u16, u16)>,
+    active_step_anchor_in_block: Option<(u16, u16)>,
+    block_focus_anchor: Option<u16>,
+) {
+    if frame.cursor.is_none()
+        && let Some(mut cursor) = block_cursor
+    {
+        cursor.row = cursor.row.saturating_add(start_row);
+        frame.cursor = Some(cursor);
+        frame.focus_anchor_row = Some(cursor.row);
+        frame.focus_anchor_col = Some(cursor.col);
+        frame.cursor_visible = block_cursor_visible;
+    }
+    if frame.focus_anchor_row.is_none()
+        && let Some((anchor_row, anchor_col)) = focused_anchor_in_block
+    {
+        frame.focus_anchor_row = Some(anchor_row.saturating_add(start_row));
+        frame.focus_anchor_col = Some(anchor_col);
+    }
+    if frame.focus_anchor_row.is_none()
+        && let Some((anchor_row, anchor_col)) = active_step_anchor_in_block
+    {
+        frame.focus_anchor_row = Some(anchor_row.saturating_add(start_row));
+        frame.focus_anchor_col = Some(anchor_col);
+    }
+    if frame.focus_anchor_row.is_none()
+        && frame.cursor.is_none()
+        && let Some(anchor) = block_focus_anchor
+    {
+        frame.focus_anchor_row = Some(anchor.saturating_add(start_row));
+        frame.focus_anchor_col = Some(0);
+    }
+}
+
+fn append_step_hints_lines(
+    frame_lines: &mut Vec<SpanLine>,
+    hints_panel_lines: Vec<SpanLine>,
+    decorations_enabled: bool,
+    connect_to_next: bool,
+) {
+    if hints_panel_lines.is_empty() {
+        return;
+    }
+    if decorations_enabled {
+        let hint_prefix = hint_line_prefix(connect_to_next);
+        for line in hints_panel_lines {
+            let mut prefixed = vec![hint_prefix.clone()];
+            prefixed.extend(line);
+            frame_lines.push(prefixed);
+        }
+    } else {
+        frame_lines.extend(hints_panel_lines);
+    }
+}
+
+fn render_hints_panel_lines(mut hints: Vec<HintItem>) -> Vec<SpanLine> {
     if hints.is_empty() {
         return Vec::new();
     }

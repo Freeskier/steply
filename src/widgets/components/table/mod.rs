@@ -40,6 +40,13 @@ enum TableFocus {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum TableBodyMode {
+    Navigate,
+    Edit,
+    Move,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum SortDirection {
     Asc,
     Desc,
@@ -66,8 +73,7 @@ pub struct Table {
     focus: TableFocus,
     active_row: usize,
     active_col: usize,
-    move_mode: bool,
-    edit_mode: bool,
+    body_mode: TableBodyMode,
     filter: filter_utils::FilterController,
     visible_rows: Vec<usize>,
     sort: Option<(usize, SortDirection)>,
@@ -87,8 +93,7 @@ impl Table {
             focus: TableFocus::Header,
             active_row: 0,
             active_col: 0,
-            move_mode: false,
-            edit_mode: true,
+            body_mode: TableBodyMode::Navigate,
             filter: filter_utils::FilterController::new(format!("{id}__filter")),
             visible_rows: Vec::new(),
             sort: None,
@@ -116,8 +121,7 @@ impl Table {
             self.focus = TableFocus::Body;
             self.active_row = 0;
             self.active_col = list_core::clamp_index(0, self.columns.len());
-            self.edit_mode = true;
-            self.move_mode = false;
+            self.body_mode = TableBodyMode::Edit;
             self.apply_filter(self.active_row_id());
         }
         self
@@ -169,8 +173,7 @@ impl Table {
         self.focus = TableFocus::Body;
         self.active_row = insert_at;
         self.active_col = list_core::clamp_index(self.active_col, self.columns.len());
-        self.edit_mode = true;
-        self.move_mode = false;
+        self.body_mode = TableBodyMode::Edit;
         self.apply_filter(Some(row_id));
     }
 
@@ -186,11 +189,10 @@ impl Table {
             None
         };
         self.rows.remove(self.active_row);
-        self.move_mode = false;
+        self.body_mode = TableBodyMode::Navigate;
         if self.rows.is_empty() {
             self.focus = TableFocus::Header;
             self.active_row = 0;
-            self.edit_mode = false;
         } else {
             self.active_row = list_core::clamp_index(self.active_row, self.rows.len());
         }
@@ -318,8 +320,7 @@ impl Table {
 
         if self.rows.is_empty() {
             self.active_row = 0;
-            self.move_mode = false;
-            self.edit_mode = false;
+            self.body_mode = TableBodyMode::Navigate;
             if self.focus == TableFocus::Body {
                 self.focus = TableFocus::Header;
             }
@@ -370,8 +371,7 @@ impl Table {
 
         if self.rows.is_empty() {
             self.active_row = 0;
-            self.move_mode = false;
-            self.edit_mode = false;
+            self.body_mode = TableBodyMode::Navigate;
             if self.focus == TableFocus::Body {
                 self.focus = TableFocus::Header;
             }
@@ -379,8 +379,7 @@ impl Table {
         }
 
         if self.visible_rows.is_empty() {
-            self.move_mode = false;
-            self.edit_mode = false;
+            self.body_mode = TableBodyMode::Navigate;
             if self.focus == TableFocus::Body {
                 self.focus = TableFocus::Header;
             }
@@ -432,6 +431,18 @@ impl Table {
     fn active_cell_mut(&mut self) -> Option<&mut Box<dyn InteractiveNode>> {
         let row = self.rows.get_mut(self.active_row)?;
         row.cells.get_mut(self.active_col)
+    }
+
+    fn is_body_edit_mode(&self) -> bool {
+        self.focus == TableFocus::Body && self.body_mode == TableBodyMode::Edit
+    }
+
+    fn is_body_move_mode(&self) -> bool {
+        self.focus == TableFocus::Body && self.body_mode == TableBodyMode::Move
+    }
+
+    fn set_body_mode(&mut self, mode: TableBodyMode) {
+        self.body_mode = mode;
     }
 }
 

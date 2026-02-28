@@ -135,8 +135,7 @@ impl Table {
                     .min_width
                     .max(UnicodeWidthStr::width(self.header_text(col_idx).as_str()));
                 for row_idx in self.visible_rows.iter().copied() {
-                    let focused = self.edit_mode
-                        && self.focus == TableFocus::Body
+                    let focused = self.is_body_edit_mode()
                         && self.active_row == row_idx
                         && self.active_col == col_idx;
                     let line = self.render_cell_line(row_idx, col_idx, ctx, focused);
@@ -198,8 +197,7 @@ impl Table {
                 row_cells.push(self.row_index_line(row_idx));
             }
             for (col_idx, _) in self.columns.iter().enumerate() {
-                let focused = self.edit_mode
-                    && self.focus == TableFocus::Body
+                let focused = self.is_body_edit_mode()
                     && self.active_row == row_idx
                     && self.active_col == col_idx;
                 row_cells.push(self.render_cell_line(row_idx, col_idx, ctx, focused));
@@ -260,8 +258,7 @@ impl Table {
                 row_cells.push(self.row_index_line(row_idx));
             }
             for (col_idx, _) in self.columns.iter().enumerate() {
-                let focused = self.edit_mode
-                    && self.focus == TableFocus::Body
+                let focused = self.is_body_edit_mode()
                     && self.active_row == row_idx
                     && self.active_col == col_idx;
                 row_cells.push(self.render_cell_line(row_idx, col_idx, ctx, focused));
@@ -365,14 +362,14 @@ impl Drawable for Table {
             return hints;
         }
 
-        if self.move_mode {
+        if self.is_body_move_mode() {
             hints.push(HintItem::new("↑ ↓", "move row", HintGroup::Navigation).with_priority(10));
             hints
                 .push(HintItem::new("m / Esc", "finish move", HintGroup::Action).with_priority(20));
             return hints;
         }
 
-        if self.edit_mode {
+        if self.is_body_edit_mode() {
             hints.push(
                 HintItem::new("Tab / Shift+Tab", "next/prev column", HintGroup::Navigation)
                     .with_priority(10),

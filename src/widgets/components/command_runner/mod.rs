@@ -318,7 +318,10 @@ impl Interactive for CommandRunner {
         let mut auto_start = false;
         match event {
             SystemEvent::RequestFocus { target } => {
-                if target.as_str() == self.base.id() {
+                if target
+                    .as_ref()
+                    .is_some_and(|id| id.as_str() == self.base.id())
+                {
                     if self.run_mode == RunMode::Auto && self.auto_run_armed && self.can_start() {
                         self.auto_run_armed = false;
                         auto_start = true;

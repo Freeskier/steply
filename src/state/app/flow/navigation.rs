@@ -43,10 +43,8 @@ impl AppState {
         if prune_validation {
             self.prune_validation_for_active_nodes();
         }
-        let focused_id = self.ui.focus.current_id().unwrap_or("").to_string();
-        let result = self.broadcast_system_event(&SystemEvent::RequestFocus {
-            target: focused_id.into(),
-        });
+        let focused_id = self.ui.focus.current_id().map(|id| id.into());
+        let result = self.broadcast_system_event(&SystemEvent::RequestFocus { target: focused_id });
         self.process_broadcast_result(result);
     }
 

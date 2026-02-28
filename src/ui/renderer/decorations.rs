@@ -38,41 +38,8 @@ pub(super) fn decorate_step_block(
         Some(StepFooter::Warning { .. } | StepFooter::ExitConfirm { .. }) => {
             (Style::new().color(Color::Yellow), "▲  ".to_string())
         }
-        Some(StepFooter::HelpToggle) => {
-            let style = match status {
-                StepVisualStatus::Active => Style::new().color(Color::Green),
-                StepVisualStatus::Running => Style::new().color(Color::Blue),
-                StepVisualStatus::Done | StepVisualStatus::Pending => {
-                    Style::new().color(Color::DarkGrey)
-                }
-                StepVisualStatus::Cancelled => Style::new().color(Color::Red),
-            };
-            let marker = match status {
-                StepVisualStatus::Active => "◇  ".to_string(),
-                StepVisualStatus::Running => format!("{running_marker}  "),
-                StepVisualStatus::Pending => "◇  ".to_string(),
-                StepVisualStatus::Done => "◈  ".to_string(),
-                StepVisualStatus::Cancelled => "◆  ".to_string(),
-            };
-            (style, marker)
-        }
-        None => {
-            let style = match status {
-                StepVisualStatus::Active => Style::new().color(Color::Green),
-                StepVisualStatus::Running => Style::new().color(Color::Blue),
-                StepVisualStatus::Done | StepVisualStatus::Pending => {
-                    Style::new().color(Color::DarkGrey)
-                }
-                StepVisualStatus::Cancelled => Style::new().color(Color::Red),
-            };
-            let m = match status {
-                StepVisualStatus::Active => "◇  ".to_string(),
-                StepVisualStatus::Running => format!("{running_marker}  "),
-                StepVisualStatus::Pending => "◇  ".to_string(),
-                StepVisualStatus::Done => "◈  ".to_string(),
-                StepVisualStatus::Cancelled => "◆  ".to_string(),
-            };
-            (style, m)
+        Some(StepFooter::HelpToggle) | None => {
+            step_decoration_style_and_marker(status, running_marker)
         }
     };
 
@@ -88,80 +55,19 @@ pub(super) fn decorate_step_block(
         out_line.extend(line);
         decorated.push(out_line);
     }
-    match footer {
-        Some(StepFooter::Error {
-            message,
-            description,
-            show_help_toggle,
-        }) => {
-            let bottom = if connect_to_next { "├  " } else { "└  " };
-            decorated.push(with_gutter_prefix(
-                bottom,
-                decor_style,
-                vec![Span::styled(message, decor_style).no_wrap()],
-            ));
-            if let Some(desc) = description {
-                let cont = if connect_to_next { "│  " } else { "   " };
-                decorated.push(with_gutter_prefix(
-                    cont,
-                    decor_style,
-                    vec![Span::styled(desc, Style::new().color(Color::DarkGrey)).no_wrap()],
-                ));
-            }
-            if show_help_toggle {
-                let cont = if connect_to_next { "│  " } else { "   " };
-                decorated.push(with_gutter_prefix(cont, decor_style, help_toggle_line()));
+    if let Some(footer) = footer {
+        let (first_prefix, cont_prefix) = footer_prefixes(&footer, connect_to_next);
+        let mut footer_lines = footer_plain_lines(&footer).into_iter();
+        if let Some(first_line) = footer_lines.next() {
+            decorated.push(with_gutter_prefix(first_prefix, decor_style, first_line));
+            for line in footer_lines {
+                decorated.push(with_gutter_prefix(cont_prefix, decor_style, line));
             }
         }
-        Some(StepFooter::Warning {
-            message,
-            description,
-            show_help_toggle,
-        }) => {
-            let bottom = if connect_to_next { "├  " } else { "└  " };
-            decorated.push(with_gutter_prefix(
-                bottom,
-                decor_style,
-                vec![Span::styled(message, decor_style).no_wrap()],
-            ));
-            if let Some(desc) = description {
-                let cont = if connect_to_next { "│  " } else { "   " };
-                decorated.push(with_gutter_prefix(
-                    cont,
-                    decor_style,
-                    vec![Span::styled(desc, Style::new().color(Color::DarkGrey)).no_wrap()],
-                ));
-            }
-            if show_help_toggle {
-                let cont = if connect_to_next { "│  " } else { "   " };
-                decorated.push(with_gutter_prefix(cont, decor_style, help_toggle_line()));
-            }
-            let spacer = if connect_to_next { "│  " } else { "   " };
-            decorated.push(with_gutter_prefix(
-                spacer,
-                decor_style,
-                vec![Span::new("").no_wrap()],
-            ));
-        }
-        Some(StepFooter::ExitConfirm { choice }) => {
-            let bottom = if connect_to_next { "├  " } else { "└  " };
-            decorated.push(with_gutter_prefix(
-                bottom,
-                decor_style,
-                exit_confirm_line(choice),
-            ));
-        }
-        Some(StepFooter::HelpToggle) => {
-            let bottom = if connect_to_next { "│  " } else { "└  " };
-            decorated.push(with_gutter_prefix(bottom, decor_style, help_toggle_line()));
-        }
-        None => {
-            if connect_to_next {
-                decorated.push(vec![Span::styled("│  ", decor_style).no_wrap()]);
-            } else {
-                decorated.push(vec![Span::styled("└  ", decor_style).no_wrap()]);
-            }
-        }
+    } else if connect_to_next {
+        decorated.push(vec![Span::styled("│  ", decor_style).no_wrap()]);
+    } else {
+        decorated.push(vec![Span::styled("└  ", decor_style).no_wrap()]);
     }
 
     *lines = decorated;
@@ -174,50 +80,29 @@ pub(super) fn decorate_step_block(
     }
 }
 
+fn step_decoration_style_and_marker(
+    status: StepVisualStatus,
+    running_marker: char,
+) -> (Style, String) {
+    let style = match status {
+        StepVisualStatus::Active => Style::new().color(Color::Green),
+        StepVisualStatus::Running => Style::new().color(Color::Blue),
+        StepVisualStatus::Done | StepVisualStatus::Pending => Style::new().color(Color::DarkGrey),
+        StepVisualStatus::Cancelled => Style::new().color(Color::Red),
+    };
+    let marker = match status {
+        StepVisualStatus::Active => "◇  ".to_string(),
+        StepVisualStatus::Running => format!("{running_marker}  "),
+        StepVisualStatus::Pending => "◇  ".to_string(),
+        StepVisualStatus::Done => "◈  ".to_string(),
+        StepVisualStatus::Cancelled => "◆  ".to_string(),
+    };
+    (style, marker)
+}
+
 pub(super) fn append_step_footer_plain(lines: &mut Vec<SpanLine>, footer: Option<StepFooter<'_>>) {
-    match footer {
-        Some(StepFooter::Error {
-            message,
-            description,
-            show_help_toggle,
-        }) => {
-            lines.push(vec![
-                Span::styled(message, Style::new().color(Color::Red)).no_wrap(),
-            ]);
-            if let Some(desc) = description {
-                lines.push(vec![
-                    Span::styled(desc, Style::new().color(Color::DarkGrey)).no_wrap(),
-                ]);
-            }
-            if show_help_toggle {
-                lines.push(help_toggle_line());
-            }
-        }
-        Some(StepFooter::Warning {
-            message,
-            description,
-            show_help_toggle,
-        }) => {
-            lines.push(vec![
-                Span::styled(message, Style::new().color(Color::Yellow)).no_wrap(),
-            ]);
-            if let Some(desc) = description {
-                lines.push(vec![
-                    Span::styled(desc, Style::new().color(Color::DarkGrey)).no_wrap(),
-                ]);
-            }
-            if show_help_toggle {
-                lines.push(help_toggle_line());
-            }
-            lines.push(vec![Span::new("").no_wrap()]);
-        }
-        Some(StepFooter::ExitConfirm { choice }) => {
-            lines.push(exit_confirm_line(choice));
-        }
-        Some(StepFooter::HelpToggle) => {
-            lines.push(help_toggle_line());
-        }
-        None => {}
+    if let Some(footer) = footer {
+        lines.extend(footer_plain_lines(&footer));
     }
 }
 
@@ -233,6 +118,75 @@ pub(super) fn help_toggle_line() -> SpanLine {
         Span::styled("Ctrl+h", Style::new().color(Color::DarkGrey).bold()).no_wrap(),
         Span::styled(" Toggle help", Style::new().color(Color::DarkGrey)).no_wrap(),
     ]
+}
+
+fn footer_prefixes(footer: &StepFooter<'_>, connect_to_next: bool) -> (&'static str, &'static str) {
+    let first = match footer {
+        StepFooter::HelpToggle => {
+            if connect_to_next {
+                "│  "
+            } else {
+                "└  "
+            }
+        }
+        _ => {
+            if connect_to_next {
+                "├  "
+            } else {
+                "└  "
+            }
+        }
+    };
+    let cont = if connect_to_next { "│  " } else { "   " };
+    (first, cont)
+}
+
+fn footer_plain_lines(footer: &StepFooter<'_>) -> Vec<SpanLine> {
+    let mut lines = Vec::<SpanLine>::new();
+    match footer {
+        StepFooter::Error {
+            message,
+            description,
+            show_help_toggle,
+        } => {
+            lines.push(vec![
+                Span::styled(*message, Style::new().color(Color::Red)).no_wrap(),
+            ]);
+            if let Some(desc) = description {
+                lines.push(vec![
+                    Span::styled(*desc, Style::new().color(Color::DarkGrey)).no_wrap(),
+                ]);
+            }
+            if *show_help_toggle {
+                lines.push(help_toggle_line());
+            }
+        }
+        StepFooter::Warning {
+            message,
+            description,
+            show_help_toggle,
+        } => {
+            lines.push(vec![
+                Span::styled(*message, Style::new().color(Color::Yellow)).no_wrap(),
+            ]);
+            if let Some(desc) = description {
+                lines.push(vec![
+                    Span::styled(*desc, Style::new().color(Color::DarkGrey)).no_wrap(),
+                ]);
+            }
+            if *show_help_toggle {
+                lines.push(help_toggle_line());
+            }
+            lines.push(vec![Span::new("").no_wrap()]);
+        }
+        StepFooter::ExitConfirm { choice } => {
+            lines.push(exit_confirm_line(*choice));
+        }
+        StepFooter::HelpToggle => {
+            lines.push(help_toggle_line());
+        }
+    }
+    lines
 }
 
 fn exit_confirm_line(choice: ExitConfirmChoice) -> SpanLine {
@@ -253,6 +207,14 @@ fn exit_confirm_line(choice: ExitConfirmChoice) -> SpanLine {
 
 pub(super) fn decoration_gutter_width() -> usize {
     DECOR_GUTTER_WIDTH
+}
+
+pub(super) fn hint_line_prefix(connect_to_next: bool) -> Span {
+    if connect_to_next {
+        Span::styled("│  ", Style::new().color(Color::Green)).no_wrap()
+    } else {
+        Span::new(" ".repeat(DECOR_GUTTER_WIDTH)).no_wrap()
+    }
 }
 
 pub(super) fn inline_modal_gutter_span() -> Span {

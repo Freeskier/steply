@@ -168,9 +168,18 @@ impl Interactive for Overlay {
 
         if let SystemEvent::RequestFocus { target } = event {
             let focusable = focusable_ids(&self.nodes);
-            if focusable.iter().any(|c| c == target.as_str()) {
-                self.group_focus_id = Some(target.to_string());
-                return InteractionResult::handled();
+            match target {
+                Some(target) => {
+                    if focusable.iter().any(|c| c == target.as_str()) {
+                        self.group_focus_id = Some(target.to_string());
+                        return InteractionResult::handled();
+                    }
+                }
+                None => {
+                    if self.group_focus_id.take().is_some() {
+                        return InteractionResult::handled();
+                    }
+                }
             }
         }
 

@@ -53,7 +53,7 @@ pub enum WidgetAction {
 pub enum SystemEvent {
     RequestSubmit,
     RequestFocus {
-        target: NodeId,
+        target: Option<NodeId>,
     },
     ClearInlineError {
         id: NodeId,

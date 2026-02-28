@@ -66,8 +66,7 @@ impl Table {
             .is_some_and(|filter_row| filter_row == event.row)
         {
             self.filter.set_focused(true);
-            self.edit_mode = false;
-            self.move_mode = false;
+            self.set_body_mode(TableBodyMode::Navigate);
             return self.handled_with_focus();
         }
 
@@ -79,8 +78,7 @@ impl Table {
         if event.row == self.pointer_header_row() {
             self.focus = TableFocus::Header;
             self.active_col = col_idx;
-            self.edit_mode = false;
-            self.move_mode = false;
+            self.set_body_mode(TableBodyMode::Navigate);
             return self.handled_with_focus();
         }
 
@@ -95,8 +93,7 @@ impl Table {
         self.focus = TableFocus::Body;
         self.active_row = row_idx;
         self.active_col = col_idx;
-        self.move_mode = false;
-        self.edit_mode = true;
+        self.set_body_mode(TableBodyMode::Edit);
         self.handled_with_focus()
     }
 
@@ -110,7 +107,7 @@ impl Table {
                     self.active_row = self.rows.len().saturating_sub(1);
                     self.insert_row_after_active();
                 }
-                self.edit_mode = true;
+                self.set_body_mode(TableBodyMode::Edit);
                 InteractionResult::handled()
             }
             KeyCode::Tab | KeyCode::Right => self.focus_next_column(),
@@ -119,7 +116,7 @@ impl Table {
                 if !self.visible_rows.is_empty() {
                     self.focus = TableFocus::Body;
                     self.active_row = self.visible_rows.first().copied().unwrap_or(0);
-                    self.edit_mode = false;
+                    self.set_body_mode(TableBodyMode::Navigate);
                     return InteractionResult::handled();
                 }
                 InteractionResult::ignored()
@@ -133,10 +130,10 @@ impl Table {
     }
 
     fn on_key_body(&mut self, key: KeyEvent) -> InteractionResult {
-        if self.move_mode {
+        if self.is_body_move_mode() {
             return match key.code {
                 KeyCode::Esc | KeyCode::Char('m') => {
-                    self.move_mode = false;
+                    self.set_body_mode(TableBodyMode::Navigate);
                     InteractionResult::handled()
                 }
                 KeyCode::Up => {
@@ -159,7 +156,7 @@ impl Table {
             };
         }
 
-        if !self.edit_mode {
+        if !self.is_body_edit_mode() {
             return match key.code {
                 KeyCode::Char('i') => {
                     self.insert_row_after_active();
@@ -170,17 +167,20 @@ impl Table {
                     InteractionResult::handled()
                 }
                 KeyCode::Char('m') => {
-                    self.move_mode = self.rows.len() > 1;
+                    self.set_body_mode(if self.rows.len() > 1 {
+                        TableBodyMode::Move
+                    } else {
+                        TableBodyMode::Navigate
+                    });
                     self.sort = None;
-                    self.edit_mode = false;
                     InteractionResult::handled()
                 }
                 KeyCode::Char('e') => {
-                    self.edit_mode = true;
+                    self.set_body_mode(TableBodyMode::Edit);
                     InteractionResult::handled()
                 }
                 KeyCode::Char(ch) if key.modifiers == KeyModifiers::NONE && !ch.is_control() => {
-                    self.edit_mode = true;
+                    self.set_body_mode(TableBodyMode::Edit);
                     let Some(cell) = self.active_cell_mut() else {
                         return InteractionResult::ignored();
                     };
@@ -193,6 +193,7 @@ impl Table {
                 KeyCode::Up => {
                     if !self.move_active_visible(-1) {
                         self.focus = TableFocus::Header;
+                        self.set_body_mode(TableBodyMode::Navigate);
                     }
                     InteractionResult::handled()
                 }
@@ -210,7 +211,7 @@ impl Table {
 
         match key.code {
             KeyCode::Esc => {
-                self.edit_mode = false;
+                self.set_body_mode(TableBodyMode::Navigate);
                 return InteractionResult::handled();
             }
             KeyCode::Tab => {
@@ -234,6 +235,7 @@ impl Table {
             KeyCode::Up => {
                 if !self.move_active_visible(-1) {
                     self.focus = TableFocus::Header;
+                    self.set_body_mode(TableBodyMode::Navigate);
                 }
                 InteractionResult::handled()
             }
@@ -302,7 +304,7 @@ impl Interactive for Table {
                 .handle_text_action_with_change(action)
                 .refresh_if_changed(|| self.apply_filter(self.active_row_id()));
         }
-        if self.focus != TableFocus::Body || !self.edit_mode {
+        if !self.is_body_edit_mode() {
             return InteractionResult::ignored();
         }
         let Some(cell) = self.active_cell_mut() else {
@@ -319,7 +321,7 @@ impl Interactive for Table {
         if self.filter.is_focused() {
             return self.filter.completion();
         }
-        if self.focus != TableFocus::Body || !self.edit_mode {
+        if !self.is_body_edit_mode() {
             return None;
         }
         self.active_cell_mut()?.completion()
@@ -352,7 +354,7 @@ impl Interactive for Table {
         let row_offset = self.active_visible_pos().unwrap_or(0) as u16;
         let base_row = self.body_row_start().saturating_add(row_offset);
 
-        if !self.edit_mode {
+        if !self.is_body_edit_mode() {
             return None;
         }
 
@@ -375,8 +377,7 @@ impl Interactive for Table {
             .map(|cell| cell.cursor_visible())
             .unwrap_or(false);
         cursor_anchor::visible_when_text_cursor(
-            self.filter.is_focused()
-                || (self.focus == TableFocus::Body && self.edit_mode && body_cursor_visible),
+            self.filter.is_focused() || (self.is_body_edit_mode() && body_cursor_visible),
         )
     }
 
@@ -422,12 +423,14 @@ impl Interactive for Table {
         self.apply_sort_preserving_focus(self.active_row_id());
         if self.rows.is_empty() {
             self.focus = TableFocus::Header;
-        } else if self.focus == TableFocus::Header {
-            self.focus = TableFocus::Body;
-            self.active_row = 0;
+            self.set_body_mode(TableBodyMode::Navigate);
+        } else {
+            if self.focus == TableFocus::Header {
+                self.focus = TableFocus::Body;
+                self.active_row = 0;
+            }
+            self.set_body_mode(TableBodyMode::Edit);
         }
-        self.move_mode = false;
-        self.edit_mode = !self.rows.is_empty();
         self.apply_filter(self.active_row_id());
     }
 

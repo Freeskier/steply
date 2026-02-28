@@ -52,7 +52,9 @@ impl<'a> EffectDispatcher<'a> {
                 self.state.clear_completion_session();
                 self.state.ui.focus.set_focus_by_id(target.as_str());
 
-                let focus_event = SystemEvent::RequestFocus { target };
+                let focus_event = SystemEvent::RequestFocus {
+                    target: Some(target),
+                };
                 let result = self.broadcast_system_event(&focus_event);
                 self.process_broadcast_result(result);
                 InteractionResult::handled()

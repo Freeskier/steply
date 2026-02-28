@@ -194,14 +194,6 @@ impl FrameHitMap {
         merged
     }
 
-    pub fn first_row_for_node(&self, node_id: &str) -> Option<u16> {
-        self.regions
-            .iter()
-            .filter(|region| region.node_id == node_id)
-            .map(|region| region.row)
-            .min()
-    }
-
     pub fn first_region_for_node(&self, node_id: &str) -> Option<(u16, u16)> {
         self.regions
             .iter()

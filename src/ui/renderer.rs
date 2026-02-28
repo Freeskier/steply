@@ -31,8 +31,17 @@ pub struct RenderFrame {
     pub lines: Vec<SpanLine>,
     pub sticky: Vec<StickyBlock>,
     pub cursor: Option<CursorPos>,
+    pub focus_anchor_row: Option<u16>,
+    pub focus_anchor_col: Option<u16>,
+    pub active_step_range: Option<StepRenderRange>,
     pub cursor_visible: bool,
     pub hit_map: FrameHitMap,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct StepRenderRange {
+    pub start: u16,
+    pub end_exclusive: u16,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -66,6 +75,7 @@ pub(super) struct DrawNodesState<'a> {
     pub lines: &'a mut Vec<SpanLine>,
     pub sticky: Option<&'a mut Vec<StickyBlock>>,
     pub cursor: &'a mut Option<CursorPos>,
+    pub focus_anchor: &'a mut Option<u16>,
     pub cursor_visible: &'a mut bool,
     pub row_offset: &'a mut u16,
     pub hit_map: Option<&'a mut FrameHitMap>,
@@ -218,6 +228,7 @@ fn build_base_frame(
 
         let mut block_lines = Vec::<SpanLine>::new();
         let mut block_cursor: Option<CursorPos> = None;
+        let mut block_focus_anchor: Option<u16> = None;
         let mut block_cursor_visible = true;
         let mut row_offset: u16 = 0;
         let mut block_hit_map = FrameHitMap::default();
@@ -256,6 +267,7 @@ fn build_base_frame(
             lines: &mut block_lines,
             sticky: Some(&mut frame.sticky),
             cursor: &mut block_cursor,
+            focus_anchor: &mut block_focus_anchor,
             cursor_visible: &mut block_cursor_visible,
             row_offset: &mut row_offset,
             hit_map: Some(&mut block_hit_map),
@@ -290,14 +302,20 @@ fn build_base_frame(
             Vec::new()
         };
 
-        let layout_cursor = block_cursor.map(|cursor| (cursor.row as usize, cursor.col as usize));
-        let (composed_lines, mapped_cursor) =
-            Layout::compose_with_cursor(&block_lines, compose_width, layout_cursor);
+        let layout_marker = block_cursor
+            .map(|cursor| (cursor.row as usize, cursor.col as usize))
+            .or_else(|| block_focus_anchor.map(|anchor_row| (anchor_row as usize, 0usize)));
+        let (composed_lines, mapped_marker) =
+            Layout::compose_with_cursor(&block_lines, compose_width, layout_marker);
         block_lines = composed_lines;
-        block_cursor = mapped_cursor.map(|(row, col)| CursorPos {
-            row: row.min(u16::MAX as usize) as u16,
-            col: col.min(u16::MAX as usize) as u16,
-        });
+        if block_cursor.is_some() {
+            block_cursor = mapped_marker.map(|(row, col)| CursorPos {
+                row: row.min(u16::MAX as usize) as u16,
+                col: col.min(u16::MAX as usize) as u16,
+            });
+        } else {
+            block_focus_anchor = mapped_marker.map(|(row, _)| row.min(u16::MAX as usize) as u16);
+        }
 
         if let Some(tint) = step_content_tint(status) {
             tint_block(&mut block_lines, tint);
@@ -328,13 +346,36 @@ fn build_base_frame(
             );
             if include_top {
                 block_hit_map.shift_rows(1);
+                if let Some(anchor) = block_focus_anchor.as_mut() {
+                    *anchor = anchor.saturating_add(1);
+                }
             }
             block_hit_map.shift_cols(decoration_gutter_width().min(u16::MAX as usize) as u16);
         } else {
             append_step_footer_plain(&mut block_lines, footer);
         }
 
+        let focused_anchor_in_block =
+            focused_id.and_then(|id| block_hit_map.first_region_for_node(id));
+        let active_step_anchor_in_block = if status == StepVisualStatus::Active {
+            block_hit_map.first_region()
+        } else {
+            None
+        };
+        if let (Some(id), Some(cursor)) = (focused_id, block_cursor)
+            && !block_hit_map.has_node_row(id, cursor.row)
+        {
+            block_cursor = None;
+        }
+
         let start_row = frame.lines.len() as u16;
+        let block_len = block_lines.len().min(u16::MAX as usize) as u16;
+        if status == StepVisualStatus::Active {
+            frame.active_step_range = Some(StepRenderRange {
+                start: start_row,
+                end_exclusive: start_row.saturating_add(block_len),
+            });
+        }
         block_hit_map.shift_rows(start_row);
         frame.hit_map.extend(block_hit_map);
         frame.lines.extend(block_lines);
@@ -343,7 +384,28 @@ fn build_base_frame(
         {
             cursor.row = cursor.row.saturating_add(start_row);
             frame.cursor = Some(cursor);
+            frame.focus_anchor_row = Some(cursor.row);
+            frame.focus_anchor_col = Some(cursor.col);
             frame.cursor_visible = block_cursor_visible;
+        }
+        if frame.focus_anchor_row.is_none()
+            && let Some((anchor_row, anchor_col)) = focused_anchor_in_block
+        {
+            frame.focus_anchor_row = Some(anchor_row.saturating_add(start_row));
+            frame.focus_anchor_col = Some(anchor_col);
+        }
+        if frame.focus_anchor_row.is_none()
+            && let Some((anchor_row, anchor_col)) = active_step_anchor_in_block
+        {
+            frame.focus_anchor_row = Some(anchor_row.saturating_add(start_row));
+            frame.focus_anchor_col = Some(anchor_col);
+        }
+        if frame.focus_anchor_row.is_none()
+            && frame.cursor.is_none()
+            && let Some(anchor) = block_focus_anchor
+        {
+            frame.focus_anchor_row = Some(anchor.saturating_add(start_row));
+            frame.focus_anchor_col = Some(0);
         }
 
         if status == StepVisualStatus::Done && !config.decorations_enabled {
@@ -706,18 +768,23 @@ fn draw_nodes(
         }
 
         if options.track_cursor
-            && state.cursor.is_none()
             && ctx
                 .focused_id
                 .as_deref()
                 .is_some_and(|focused| focused == node.id())
-            && let Some(local_cursor) = node.cursor_pos()
         {
-            *state.cursor = Some(CursorPos {
-                col: local_cursor.col.saturating_add(label_offset),
-                row: (*state.row_offset).saturating_add(local_cursor.row),
-            });
-            *state.cursor_visible = node.cursor_visible();
+            if state.focus_anchor.is_none() {
+                *state.focus_anchor = Some(*state.row_offset);
+            }
+            if state.cursor.is_none()
+                && let Some(local_cursor) = node.cursor_pos()
+            {
+                *state.cursor = Some(CursorPos {
+                    col: local_cursor.col.saturating_add(label_offset),
+                    row: (*state.row_offset).saturating_add(local_cursor.row),
+                });
+                *state.cursor_visible = node.cursor_visible();
+            }
         }
         *state.row_offset = (*state.row_offset).saturating_add(out.lines.len() as u16);
         if options.collect_sticky

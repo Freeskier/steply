@@ -32,6 +32,7 @@ impl Terminal {
         inline.block_start_row = row.min(self.state.size.height.saturating_sub(1));
         inline.last_rendered_block_start_row = inline.block_start_row;
         inline.last_cursor_row = 0;
+        inline.last_skip = 0;
         terminal::enable_raw_mode()?;
 
         execute!(self.stdout, DisableLineWrap, Hide)?;

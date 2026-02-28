@@ -5,7 +5,6 @@ use crate::widgets::traits::StickyPosition;
 struct InlineLayoutPlan {
     block_start_row: u16,
     draw_count: usize,
-    skip: usize,
 }
 
 #[derive(Debug, Default, Clone)]
@@ -23,7 +22,6 @@ fn plan_inline_layout(
         return InlineLayoutPlan {
             block_start_row: 0,
             draw_count: 0,
-            skip: 0,
         };
     }
 
@@ -40,14 +38,71 @@ fn plan_inline_layout(
 
     let available_after_shift = height.saturating_sub(block_start);
     let draw_count = frame_len.min(available_after_shift);
-    let skip = frame_len.saturating_sub(draw_count);
     let block_start_row = block_start.min(u16::MAX as usize) as u16;
 
     InlineLayoutPlan {
         block_start_row,
         draw_count,
-        skip,
     }
+}
+
+fn follow_offset(
+    current_offset: usize,
+    anchor_row: Option<usize>,
+    visible_rows: usize,
+    max_offset: usize,
+    desired_margin: usize,
+) -> usize {
+    if visible_rows == 0 {
+        return 0;
+    }
+
+    let Some(anchor) = anchor_row else {
+        return max_offset;
+    };
+
+    let mut offset = current_offset.min(max_offset);
+    let margin = desired_margin.min(visible_rows.saturating_sub(1) / 2);
+    let end = offset.saturating_add(visible_rows.saturating_sub(1));
+    let top_limit = offset.saturating_add(margin);
+    if anchor < top_limit {
+        offset = anchor.saturating_sub(margin);
+    } else {
+        let bottom_limit = end.saturating_sub(margin);
+        if anchor > bottom_limit {
+            let target_end = anchor.saturating_add(margin);
+            offset = target_end.saturating_add(1).saturating_sub(visible_rows);
+        }
+    }
+
+    offset.min(max_offset)
+}
+
+fn fit_range_offset(
+    current_offset: usize,
+    range: Option<(usize, usize)>,
+    visible_rows: usize,
+    max_offset: usize,
+) -> Option<usize> {
+    if visible_rows == 0 {
+        return Some(0);
+    }
+    let (start, end_exclusive) = range?;
+    if end_exclusive <= start {
+        return None;
+    }
+
+    let len = end_exclusive.saturating_sub(start);
+    if len > visible_rows {
+        return None;
+    }
+
+    let low = end_exclusive.saturating_sub(visible_rows).min(max_offset);
+    let high = start.min(max_offset);
+    if low > high {
+        return Some(low.min(max_offset));
+    }
+    Some(current_offset.clamp(low, high))
 }
 
 fn next_row(row: u16) -> Option<u16> {
@@ -214,6 +269,13 @@ impl Terminal {
         let frame_len = frame.lines.len();
         let frame_signature = quick_frame_signature(frame.lines.as_slice());
         let max_offset = frame_len.saturating_sub(body_height);
+        let active_range = frame
+            .active_step_range
+            .map(|range| (range.start as usize, range.end_exclusive as usize));
+        let follow_row = frame
+            .cursor
+            .map(|cur| cur.row as usize)
+            .or_else(|| frame.focus_anchor_row.map(|row| row as usize));
         let scroll_offset = {
             let alt = self
                 .alt_screen
@@ -221,13 +283,11 @@ impl Terminal {
                 .expect("alt_screen must be Some in AltScreen mode");
 
             if !alt.manually_scrolled {
-                alt.scroll_offset = match frame.cursor {
-                    Some(cur) if body_height > 0 => {
-                        (cur.row as usize).saturating_sub(body_height.saturating_sub(1))
-                    }
-                    None => max_offset,
-                    _ => 0,
-                };
+                alt.scroll_offset =
+                    fit_range_offset(alt.scroll_offset, active_range, body_height, max_offset)
+                        .unwrap_or_else(|| {
+                            follow_offset(alt.scroll_offset, follow_row, body_height, max_offset, 2)
+                        });
             }
 
             alt.scroll_offset = alt.scroll_offset.min(max_offset);
@@ -343,7 +403,30 @@ impl Terminal {
             let screen_row = sticky_top_count.saturating_add(body_row);
             Some((cur.col.min(width.saturating_sub(1)), screen_row as u16))
         });
-        self.queue_cursor_state(cursor_position, frame.cursor_visible, None)?;
+        let hidden_anchor = if cursor_position.is_none() {
+            frame.focus_anchor_row.and_then(|anchor_row| {
+                if body_height == 0 {
+                    return None;
+                }
+                let frame_row = anchor_row as usize;
+                if frame_row < scroll_offset {
+                    return None;
+                }
+                let body_row = frame_row - scroll_offset;
+                if body_row >= body_height {
+                    return None;
+                }
+                let screen_row = sticky_top_count.saturating_add(body_row) as u16;
+                let col = frame
+                    .focus_anchor_col
+                    .unwrap_or(0)
+                    .min(width.saturating_sub(1));
+                Some((col, screen_row))
+            })
+        } else {
+            None
+        };
+        self.queue_cursor_state(cursor_position, frame.cursor_visible, hidden_anchor)?;
         queue!(self.stdout, EndSynchronizedUpdate)?;
 
         if let Some(alt) = self.alt_screen.as_mut() {
@@ -384,6 +467,7 @@ impl Terminal {
             prev_anchor_row,
             prev_rendered_block_start_row,
             prev_drawn,
+            prev_skip,
             prev_sticky_top_count,
             prev_sticky_bottom_count,
             skip_noop,
@@ -396,6 +480,7 @@ impl Terminal {
                 let same_cursor = inline.last_rendered_cursor == frame.cursor;
                 let same_cursor_visibility =
                     inline.last_rendered_cursor_visible == frame.cursor_visible;
+                let same_focus_anchor = inline.last_rendered_focus_anchor == frame.focus_anchor_row;
                 let same_size = inline.last_rendered_size == self.state.size;
                 let same_sticky = inline.last_sticky_signature == sticky_signature
                     && inline.last_sticky_top_count == sticky_top_count
@@ -405,18 +490,20 @@ impl Terminal {
                     && same_frame
                     && same_cursor
                     && same_cursor_visibility
+                    && same_focus_anchor
                     && same_size
                     && same_sticky;
                 (
                     inline.block_start_row,
                     inline.last_rendered_block_start_row,
                     inline.last_drawn_count,
+                    inline.last_skip,
                     inline.last_sticky_top_count,
                     inline.last_sticky_bottom_count,
                     should_skip,
                 )
             })
-            .unwrap_or((0, 0, 0, 0, 0, false));
+            .unwrap_or((0, 0, 0, 0, 0, 0, false));
         if skip_noop {
             return Ok(());
         }
@@ -432,7 +519,16 @@ impl Terminal {
         let block_start_row = content_origin.saturating_add(plan.block_start_row);
         let block_start = block_start_row as usize;
         let draw_count = plan.draw_count;
-        let skip = plan.skip;
+        let max_skip = frame_len.saturating_sub(draw_count);
+        let active_range = frame
+            .active_step_range
+            .map(|range| (range.start as usize, range.end_exclusive as usize));
+        let follow_row = frame
+            .cursor
+            .map(|cur| cur.row as usize)
+            .or_else(|| frame.focus_anchor_row.map(|row| row as usize));
+        let skip = fit_range_offset(prev_skip, active_range, draw_count, max_skip)
+            .unwrap_or_else(|| follow_offset(prev_skip, follow_row, draw_count, max_skip, 2));
         let scroll_up_lines = prev_rendered_row.saturating_sub(plan.block_start_row);
         if scroll_up_lines > 0 {
             next_anchor_row = next_anchor_row.saturating_sub(scroll_up_lines);
@@ -454,7 +550,7 @@ impl Terminal {
                 .inline_state
                 .as_ref()
                 .expect("inline_state must be Some");
-            let old_skip = inline.last_frame.len().saturating_sub(prev_drawn);
+            let old_skip = inline.last_skip;
             let row_count = draw_count.max(prev_drawn);
             let size_changed = inline.last_rendered_size != self.state.size;
             (
@@ -544,22 +640,44 @@ impl Terminal {
             None
         };
 
-        self.queue_cursor_state(
-            cursor_position,
-            frame.cursor_visible,
-            Some((0, block_start_row)),
-        )?;
+        let hidden_anchor = if cursor_position.is_none() {
+            frame
+                .focus_anchor_row
+                .and_then(|anchor_row| {
+                    let row = anchor_row as usize;
+                    if row < skip {
+                        return None;
+                    }
+                    let visible_row = row - skip;
+                    if visible_row >= draw_count {
+                        return None;
+                    }
+                    let target_row = block_start.saturating_add(visible_row) as u16;
+                    let col = frame
+                        .focus_anchor_col
+                        .unwrap_or(0)
+                        .min(width.saturating_sub(1));
+                    Some((col, target_row))
+                })
+                .or(Some((0, block_start_row)))
+        } else {
+            Some((0, block_start_row))
+        };
+
+        self.queue_cursor_state(cursor_position, frame.cursor_visible, hidden_anchor)?;
 
         if let Some(inline) = self.inline_state.as_mut() {
             inline.last_frame.clone_from(&frame.lines);
             inline.last_frame_signature = frame_signature;
             inline.last_drawn_count = draw_count;
+            inline.last_skip = skip;
             inline.last_cursor_row = next_last_cursor_row;
             inline.last_cursor_col = next_last_cursor_col;
             inline.block_start_row = content_origin.saturating_add(next_anchor_row);
             inline.last_rendered_block_start_row = block_start_row;
             inline.last_rendered_cursor = frame.cursor;
             inline.last_rendered_cursor_visible = frame.cursor_visible;
+            inline.last_rendered_focus_anchor = frame.focus_anchor_row;
             inline.last_rendered_size = self.state.size;
             inline.last_sticky_signature = sticky_signature;
             inline.last_sticky_top_count = sticky_top_count;

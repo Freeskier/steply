@@ -185,6 +185,7 @@ impl AltScreenState {
 
 struct InlineState {
     last_drawn_count: usize,
+    last_skip: usize,
 
     last_cursor_row: u16,
 
@@ -199,6 +200,7 @@ struct InlineState {
 
     last_rendered_cursor: Option<CursorPos>,
     last_rendered_cursor_visible: bool,
+    last_rendered_focus_anchor: Option<u16>,
 
     last_rendered_size: TerminalSize,
     last_sticky_signature: u64,
@@ -218,6 +220,7 @@ impl InlineState {
     fn new() -> Self {
         Self {
             last_drawn_count: 0,
+            last_skip: 0,
             last_cursor_row: 0,
             last_cursor_col: 0,
             block_start_row: 0,
@@ -226,6 +229,7 @@ impl InlineState {
             last_frame_signature: 0,
             last_rendered_cursor: None,
             last_rendered_cursor_visible: false,
+            last_rendered_focus_anchor: None,
             last_rendered_size: TerminalSize {
                 width: 0,
                 height: 0,
@@ -325,11 +329,7 @@ impl Terminal {
                     return screen_row;
                 }
                 let visible_row = screen.saturating_sub(block_start);
-                let skip = inline
-                    .last_frame
-                    .len()
-                    .saturating_sub(inline.last_drawn_count);
-                let row = skip.saturating_add(visible_row);
+                let row = inline.last_skip.saturating_add(visible_row);
                 row.min(u16::MAX as usize) as u16
             }
         }

@@ -15,6 +15,7 @@ impl Terminal {
         if new.height == 0 {
             inline.block_start_row = 0;
             inline.last_cursor_row = 0;
+            inline.last_skip = 0;
             inline.reanchor_after_resize = false;
             inline.last_resize_width_delta = 0;
             inline.last_resize_height_delta = 0;

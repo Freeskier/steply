@@ -19,6 +19,7 @@ use std::collections::{HashMap, VecDeque};
 struct ViewState {
     overlays: OverlayState,
     focus: FocusState,
+    focus_memory_by_step: HashMap<String, NodeId>,
     active_node_index: NodeIndex,
     completion_session: Option<CompletionSession>,
     completion_tab_suppressed_for: Option<NodeId>,

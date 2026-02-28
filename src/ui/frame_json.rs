@@ -85,12 +85,22 @@ pub fn frame_to_json(frame: &RenderFrame, size: TerminalSize) -> serde_json::Val
         })
         .collect::<Vec<_>>();
 
+    let active_step_range = frame.active_step_range.map(|range| {
+        serde_json::json!({
+            "start": range.start,
+            "end_exclusive": range.end_exclusive,
+        })
+    });
+
     serde_json::json!({
         "terminal": {
             "width": size.width,
             "height": size.height,
         },
         "cursor": cursor,
+        "focus_anchor_row": frame.focus_anchor_row,
+        "focus_anchor_col": frame.focus_anchor_col,
+        "active_step_range": active_step_range,
         "cursor_visible": frame.cursor_visible,
         "lines": lines,
         "sticky": sticky,

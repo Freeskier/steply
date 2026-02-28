@@ -28,7 +28,7 @@ fn run() -> std::io::Result<()> {
     let state = AppState::with_tasks(flow, task_specs, task_subscriptions);
     let terminal = Terminal::new()?;
     let mut runtime = Runtime::new(state, terminal)
-        .with_render_mode(steply_v2::terminal::RenderMode::Inline)
+        .with_render_mode(steply_v2::terminal::RenderMode::AltScreen)
         .with_renderer_config(RendererConfig {
             decorations_enabled: true,
         });

@@ -97,7 +97,7 @@ fn apply_floating_overlay(
     frame.hit_map.extend(body.hit_map);
 
     if let Some(local_cursor) = body.cursor {
-        frame.cursor = Some(CursorPos {
+        let cursor = CursorPos {
             col: geometry.col.saturating_add(1).saturating_add(
                 local_cursor
                     .col
@@ -107,8 +107,19 @@ fn apply_floating_overlay(
                 .row
                 .saturating_add(1)
                 .saturating_add(local_cursor.row),
-        });
+        };
+        frame.cursor = Some(cursor);
+        frame.focus_anchor_row = Some(cursor.row);
+        frame.focus_anchor_col = Some(cursor.col);
         frame.cursor_visible = body.cursor_visible;
+    } else if let Some(anchor) = body.focus_anchor {
+        frame.focus_anchor_row = Some(geometry.row.saturating_add(1).saturating_add(anchor.row));
+        frame.focus_anchor_col = Some(
+            geometry
+                .col
+                .saturating_add(1)
+                .saturating_add(anchor.col.min(geometry.content_width.saturating_sub(1))),
+        );
     }
 }
 
@@ -154,6 +165,16 @@ fn apply_inline_overlay(
         .lines
         .splice(geometry.insert_row..geometry.insert_row, inserted);
 
+    if let Some(range) = frame.active_step_range.as_mut() {
+        let insert_row = geometry.insert_row.min(u16::MAX as usize) as u16;
+        if insert_row <= range.start {
+            range.start = range.start.saturating_add(inserted_len);
+            range.end_exclusive = range.end_exclusive.saturating_add(inserted_len);
+        } else if insert_row < range.end_exclusive {
+            range.end_exclusive = range.end_exclusive.saturating_add(inserted_len);
+        }
+    }
+
     body.hit_map
         .shift_rows(geometry.insert_row.min(u16::MAX as usize) as u16 + 1);
     body.hit_map
@@ -161,7 +182,7 @@ fn apply_inline_overlay(
     frame.hit_map.extend(body.hit_map);
 
     if let Some(local_cursor) = body.cursor {
-        frame.cursor = Some(CursorPos {
+        let cursor = CursorPos {
             col: (geometry
                 .content_col_offset()
                 .saturating_add(local_cursor.col as usize)) as u16,
@@ -169,18 +190,42 @@ fn apply_inline_overlay(
                 .row
                 .saturating_add(geometry.insert_row.min(u16::MAX as usize) as u16)
                 .saturating_add(1),
-        });
+        };
+        frame.cursor = Some(cursor);
+        frame.focus_anchor_row = Some(cursor.row);
+        frame.focus_anchor_col = Some(cursor.col);
         frame.cursor_visible = body.cursor_visible;
     } else if let Some(cursor) = frame.cursor.as_mut()
         && cursor.row as usize >= geometry.insert_row
     {
         cursor.row = cursor.row.saturating_add(inserted_len);
     }
+    if frame.cursor.is_none() {
+        if let Some(anchor) = body.focus_anchor {
+            frame.focus_anchor_row = Some(
+                anchor
+                    .row
+                    .saturating_add(geometry.insert_row.min(u16::MAX as usize) as u16)
+                    .saturating_add(1),
+            );
+            frame.focus_anchor_col = Some(
+                (geometry
+                    .content_col_offset()
+                    .saturating_add(anchor.col as usize)
+                    .min(u16::MAX as usize)) as u16,
+            );
+        } else if let Some(anchor) = frame.focus_anchor_row.as_mut()
+            && *anchor as usize >= geometry.insert_row
+        {
+            *anchor = anchor.saturating_add(inserted_len);
+        }
+    }
 }
 
 struct OverlayBody {
     lines: Vec<SpanLine>,
     cursor: Option<CursorPos>,
+    focus_anchor: Option<CursorPos>,
     cursor_visible: bool,
     hit_map: FrameHitMap,
 }
@@ -195,6 +240,7 @@ fn render_overlay_body(
 ) -> OverlayBody {
     let mut lines = Vec::<SpanLine>::new();
     let mut cursor = None;
+    let mut focus_anchor_row: Option<u16> = None;
     let mut cursor_visible = true;
     let mut row_offset: u16 = 0;
     let mut hit_map = FrameHitMap::default();
@@ -212,6 +258,7 @@ fn render_overlay_body(
         lines: &mut lines,
         sticky: None,
         cursor: &mut cursor,
+        focus_anchor: &mut focus_anchor_row,
         cursor_visible: &mut cursor_visible,
         row_offset: &mut row_offset,
         hit_map: Some(&mut hit_map),
@@ -230,16 +277,42 @@ fn render_overlay_body(
         },
     );
 
-    let layout_cursor = cursor.map(|local| (local.row as usize, local.col as usize));
-    let (lines, mapped_cursor) = Layout::compose_with_cursor(&lines, content_width, layout_cursor);
-    let cursor = mapped_cursor.map(|(row, col)| CursorPos {
-        row: row.min(u16::MAX as usize) as u16,
-        col: col.min(content_width.saturating_sub(1) as usize) as u16,
-    });
+    let focused_anchor_in_body = focused_id.and_then(|id| hit_map.first_region_for_node(id));
+    if let (Some(id), Some(cur)) = (focused_id, cursor)
+        && !hit_map.has_node_row(id, cur.row)
+    {
+        cursor = None;
+    }
+
+    let layout_marker = cursor
+        .map(|local| (local.row as usize, local.col as usize))
+        .or_else(|| focused_anchor_in_body.map(|(row, _)| (row as usize, 0usize)))
+        .or_else(|| focus_anchor_row.map(|row| (row as usize, 0usize)));
+    let (lines, mapped_marker) = Layout::compose_with_cursor(&lines, content_width, layout_marker);
+    let (cursor, focus_anchor) = if cursor.is_some() {
+        (
+            mapped_marker.map(|(row, col)| CursorPos {
+                row: row.min(u16::MAX as usize) as u16,
+                col: col.min(content_width.saturating_sub(1) as usize) as u16,
+            }),
+            None,
+        )
+    } else {
+        (
+            None,
+            mapped_marker.map(|(row, _)| CursorPos {
+                row: row.min(u16::MAX as usize) as u16,
+                col: focused_anchor_in_body
+                    .map(|(_, col)| col.min(content_width.saturating_sub(1)))
+                    .unwrap_or(0),
+            }),
+        )
+    };
 
     OverlayBody {
         lines,
         cursor,
+        focus_anchor,
         cursor_visible,
         hit_map,
     }

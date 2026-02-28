@@ -311,10 +311,6 @@ impl Runtime {
                 return Ok(());
             }
 
-            Intent::Back if self.terminal.is_inline() => {
-                return Ok(());
-            }
-
             Intent::Submit
             | Intent::InputKey(_)
             | Intent::TextAction(_)

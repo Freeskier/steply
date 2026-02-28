@@ -193,4 +193,33 @@ impl FrameHitMap {
         merged.push(current);
         merged
     }
+
+    pub fn first_row_for_node(&self, node_id: &str) -> Option<u16> {
+        self.regions
+            .iter()
+            .filter(|region| region.node_id == node_id)
+            .map(|region| region.row)
+            .min()
+    }
+
+    pub fn first_region_for_node(&self, node_id: &str) -> Option<(u16, u16)> {
+        self.regions
+            .iter()
+            .filter(|region| region.node_id == node_id)
+            .min_by_key(|region| (region.row, region.col_start))
+            .map(|region| (region.row, region.col_start))
+    }
+
+    pub fn first_region(&self) -> Option<(u16, u16)> {
+        self.regions
+            .iter()
+            .min_by_key(|region| (region.row, region.col_start))
+            .map(|region| (region.row, region.col_start))
+    }
+
+    pub fn has_node_row(&self, node_id: &str, row: u16) -> bool {
+        self.regions
+            .iter()
+            .any(|region| region.node_id == node_id && region.row == row)
+    }
 }

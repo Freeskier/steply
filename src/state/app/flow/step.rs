@@ -1,3 +1,4 @@
+use crate::core::NodeId;
 use crate::core::value::Value;
 use crate::state::app::AppState;
 use crate::state::step::StepNavigation;
@@ -64,6 +65,13 @@ impl AppState {
 
     fn leave_current_step(&mut self) -> String {
         let step_id = self.current_step_id().to_string();
+        if let Some(focused_id) = self.ui.focus.current_id() {
+            self.ui
+                .focus_memory_by_step
+                .insert(step_id.clone(), NodeId::from(focused_id));
+        } else {
+            self.ui.focus_memory_by_step.remove(step_id.as_str());
+        }
         trigger_step_exit_tasks(self, step_id.as_str());
         step_id
     }
@@ -108,8 +116,13 @@ impl AppState {
     fn enter_current_step_after_transition(&mut self) {
         self.ui.overlays.clear();
         self.hydrate_current_step_from_store();
-        self.rebuild_focus();
         let current_step_id = self.current_step_id().to_string();
+        let restore_focus = self
+            .ui
+            .focus_memory_by_step
+            .get(current_step_id.as_str())
+            .map(ToString::to_string);
+        self.rebuild_focus_with_target(restore_focus.as_deref(), true);
         trigger_step_enter_tasks(self, current_step_id.as_str());
     }
 

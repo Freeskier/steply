@@ -91,10 +91,7 @@ pub(super) fn estimate_self_reflow_cursor_delta(inline: &InlineState, new_width:
         return 0;
     }
 
-    let old_skip = inline
-        .last_frame
-        .len()
-        .saturating_sub(inline.last_drawn_count);
+    let old_skip = inline.last_skip;
     let visible_lines = &inline.last_frame[old_skip..];
     if visible_lines.is_empty() {
         return 0;

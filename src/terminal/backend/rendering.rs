@@ -13,6 +13,15 @@ struct VisibleSticky {
     bottom: Vec<SpanLine>,
 }
 
+#[derive(Debug, Clone)]
+struct StickyMetrics {
+    visible: VisibleSticky,
+    top_count: usize,
+    bottom_count: usize,
+    signature: u64,
+    body_height: usize,
+}
+
 fn plan_inline_layout(
     height: usize,
     frame_len: usize,
@@ -157,6 +166,34 @@ fn resolve_visible_sticky(frame: &RenderFrame, terminal_height: usize) -> Visibl
     }
 }
 
+fn sticky_metrics(frame: &RenderFrame, terminal_height: usize) -> StickyMetrics {
+    let visible = resolve_visible_sticky(frame, terminal_height);
+    let top_count = visible.top.len();
+    let bottom_count = visible.bottom.len();
+    let body_height = terminal_height.saturating_sub(top_count.saturating_add(bottom_count));
+    let signature = sticky_signature(&visible);
+    StickyMetrics {
+        visible,
+        top_count,
+        bottom_count,
+        signature,
+        body_height,
+    }
+}
+
+fn active_range(frame: &RenderFrame) -> Option<(usize, usize)> {
+    frame
+        .active_step_range
+        .map(|range| (range.start as usize, range.end_exclusive as usize))
+}
+
+fn follow_anchor_row(frame: &RenderFrame) -> Option<usize> {
+    frame
+        .cursor
+        .map(|cur| cur.row as usize)
+        .or_else(|| frame.focus_anchor_row.map(|row| row as usize))
+}
+
 impl Terminal {
     fn draw_dirty_rows(
         &mut self,
@@ -241,6 +278,89 @@ impl Terminal {
         Ok(())
     }
 
+    fn clear_removed_sticky_rows(
+        &mut self,
+        height: usize,
+        prev_top_count: usize,
+        prev_bottom_count: usize,
+        sticky_top_count: usize,
+        sticky_bottom_count: usize,
+    ) -> io::Result<()> {
+        if prev_top_count > sticky_top_count {
+            self.clear_rows(
+                sticky_top_count.min(u16::MAX as usize) as u16,
+                prev_top_count - sticky_top_count,
+            )?;
+        }
+        if prev_bottom_count > sticky_bottom_count {
+            let clear_start = height.saturating_sub(prev_bottom_count);
+            self.clear_rows(
+                clear_start.min(u16::MAX as usize) as u16,
+                prev_bottom_count - sticky_bottom_count,
+            )?;
+        }
+        Ok(())
+    }
+
+    fn draw_sticky_sections(
+        &mut self,
+        sticky: &VisibleSticky,
+        height: usize,
+        width: u16,
+    ) -> io::Result<()> {
+        self.draw_fixed_lines(sticky.top.as_slice(), 0, width)?;
+        let sticky_bottom_start = height.saturating_sub(sticky.bottom.len());
+        self.draw_fixed_lines(
+            sticky.bottom.as_slice(),
+            sticky_bottom_start.min(u16::MAX as usize) as u16,
+            width,
+        )?;
+        Ok(())
+    }
+
+    fn map_body_cursor_position(
+        &self,
+        frame: &RenderFrame,
+        source_offset: usize,
+        draw_count: usize,
+        target_row_offset: usize,
+        width: u16,
+    ) -> Option<(u16, u16)> {
+        let cursor = frame.cursor?;
+        let row = cursor.row as usize;
+        if row < source_offset {
+            return None;
+        }
+        let visible_row = row - source_offset;
+        if visible_row >= draw_count {
+            return None;
+        }
+        let col = cursor.col.min(width.saturating_sub(1));
+        let target_row = target_row_offset.saturating_add(visible_row) as u16;
+        Some((col, target_row))
+    }
+
+    fn map_body_focus_anchor_position(
+        &self,
+        frame: &RenderFrame,
+        source_offset: usize,
+        draw_count: usize,
+        target_row_offset: usize,
+        width: u16,
+    ) -> Option<(u16, u16)> {
+        let row = frame.focus_anchor_row? as usize;
+        if row < source_offset {
+            return None;
+        }
+        let visible_row = row - source_offset;
+        if visible_row >= draw_count {
+            return None;
+        }
+        let col = frame.focus_anchor_col.unwrap_or(0).min(width.saturating_sub(1));
+        let target_row = target_row_offset.saturating_add(visible_row) as u16;
+        Some((col, target_row))
+    }
+
     pub fn render_frame(&mut self, frame: &RenderFrame) -> io::Result<()> {
         self.refresh_size()?;
         self.state.cursor = frame.cursor;
@@ -259,23 +379,13 @@ impl Terminal {
             return Ok(());
         }
 
-        let sticky = resolve_visible_sticky(frame, height);
-        let sticky_top_count = sticky.top.len();
-        let sticky_bottom_count = sticky.bottom.len();
-        let sticky_signature = sticky_signature(&sticky);
-        let body_height =
-            height.saturating_sub(sticky_top_count.saturating_add(sticky_bottom_count));
+        let sticky = sticky_metrics(frame, height);
 
         let frame_len = frame.lines.len();
         let frame_signature = quick_frame_signature(frame.lines.as_slice());
-        let max_offset = frame_len.saturating_sub(body_height);
-        let active_range = frame
-            .active_step_range
-            .map(|range| (range.start as usize, range.end_exclusive as usize));
-        let follow_row = frame
-            .cursor
-            .map(|cur| cur.row as usize)
-            .or_else(|| frame.focus_anchor_row.map(|row| row as usize));
+        let max_offset = frame_len.saturating_sub(sticky.body_height);
+        let active_range = active_range(frame);
+        let follow_row = follow_anchor_row(frame);
         let scroll_offset = {
             let alt = self
                 .alt_screen
@@ -284,9 +394,15 @@ impl Terminal {
 
             if !alt.manually_scrolled {
                 alt.scroll_offset =
-                    fit_range_offset(alt.scroll_offset, active_range, body_height, max_offset)
+                    fit_range_offset(alt.scroll_offset, active_range, sticky.body_height, max_offset)
                         .unwrap_or_else(|| {
-                            follow_offset(alt.scroll_offset, follow_row, body_height, max_offset, 2)
+                            follow_offset(
+                                alt.scroll_offset,
+                                follow_row,
+                                sticky.body_height,
+                                max_offset,
+                                2,
+                            )
                         });
             }
 
@@ -300,9 +416,9 @@ impl Terminal {
                 .as_ref()
                 .expect("alt_screen must be Some in AltScreen mode");
             let size_changed = alt.last_rendered_size != self.state.size;
-            let sticky_layout_changed = alt.last_sticky_top_count != sticky_top_count
-                || alt.last_sticky_bottom_count != sticky_bottom_count;
-            let sticky_same = alt.last_sticky_signature == sticky_signature;
+            let sticky_layout_changed = alt.last_sticky_top_count != sticky.top_count
+                || alt.last_sticky_bottom_count != sticky.bottom_count;
+            let sticky_same = alt.last_sticky_signature == sticky.signature;
             let offset_same = alt.last_rendered_scroll_offset == scroll_offset;
             let cursor_same = alt.last_rendered_cursor == frame.cursor
                 && alt.last_rendered_cursor_visible == frame.cursor_visible
@@ -321,7 +437,7 @@ impl Terminal {
                     alt.last_rendered_scroll_offset,
                     frame.lines.as_slice(),
                     scroll_offset,
-                    body_height,
+                    sticky.body_height,
                     size_changed || sticky_layout_changed,
                 );
                 let dirty_is_empty = dirty.is_empty();
@@ -339,9 +455,9 @@ impl Terminal {
                 alt.last_rendered_cursor_visible = frame.cursor_visible;
                 alt.last_rendered_size = self.state.size;
                 alt.last_rendered_scroll_offset = scroll_offset;
-                alt.last_sticky_signature = sticky_signature;
-                alt.last_sticky_top_count = sticky_top_count;
-                alt.last_sticky_bottom_count = sticky_bottom_count;
+                alt.last_sticky_signature = sticky.signature;
+                alt.last_sticky_top_count = sticky.top_count;
+                alt.last_sticky_bottom_count = sticky.bottom_count;
                 alt.has_rendered_once = true;
             }
             return Ok(());
@@ -355,74 +471,42 @@ impl Terminal {
 
         queue!(self.stdout, BeginSynchronizedUpdate, Hide)?;
 
-        if prev_top_count > sticky_top_count {
-            self.clear_rows(
-                sticky_top_count.min(u16::MAX as usize) as u16,
-                prev_top_count - sticky_top_count,
-            )?;
-        }
-        if prev_bottom_count > sticky_bottom_count {
-            let clear_start = height.saturating_sub(prev_bottom_count);
-            self.clear_rows(
-                clear_start.min(u16::MAX as usize) as u16,
-                prev_bottom_count - sticky_bottom_count,
-            )?;
-        }
+        self.clear_removed_sticky_rows(
+            height,
+            prev_top_count,
+            prev_bottom_count,
+            sticky.top_count,
+            sticky.bottom_count,
+        )?;
 
-        if body_height > 0 {
+        if sticky.body_height > 0 {
             self.draw_dirty_rows(
                 frame,
                 width,
                 scroll_offset,
-                sticky_top_count.min(u16::MAX as usize) as u16,
-                body_height,
+                sticky.top_count.min(u16::MAX as usize) as u16,
+                sticky.body_height,
                 &dirty_rows,
             )?;
         }
 
-        self.draw_fixed_lines(sticky.top.as_slice(), 0, width)?;
-        let sticky_bottom_start = height.saturating_sub(sticky_bottom_count);
-        self.draw_fixed_lines(
-            sticky.bottom.as_slice(),
-            sticky_bottom_start.min(u16::MAX as usize) as u16,
-            width,
-        )?;
+        self.draw_sticky_sections(&sticky.visible, height, width)?;
 
-        let cursor_position = frame.cursor.and_then(|cur| {
-            if body_height == 0 {
-                return None;
-            }
-            let frame_row = cur.row as usize;
-            if frame_row < scroll_offset {
-                return None;
-            }
-            let body_row = frame_row - scroll_offset;
-            if body_row >= body_height {
-                return None;
-            }
-            let screen_row = sticky_top_count.saturating_add(body_row);
-            Some((cur.col.min(width.saturating_sub(1)), screen_row as u16))
-        });
+        let cursor_position = self.map_body_cursor_position(
+            frame,
+            scroll_offset,
+            sticky.body_height,
+            sticky.top_count,
+            width,
+        );
         let hidden_anchor = if cursor_position.is_none() {
-            frame.focus_anchor_row.and_then(|anchor_row| {
-                if body_height == 0 {
-                    return None;
-                }
-                let frame_row = anchor_row as usize;
-                if frame_row < scroll_offset {
-                    return None;
-                }
-                let body_row = frame_row - scroll_offset;
-                if body_row >= body_height {
-                    return None;
-                }
-                let screen_row = sticky_top_count.saturating_add(body_row) as u16;
-                let col = frame
-                    .focus_anchor_col
-                    .unwrap_or(0)
-                    .min(width.saturating_sub(1));
-                Some((col, screen_row))
-            })
+            self.map_body_focus_anchor_position(
+                frame,
+                scroll_offset,
+                sticky.body_height,
+                sticky.top_count,
+                width,
+            )
         } else {
             None
         };
@@ -436,9 +520,9 @@ impl Terminal {
             alt.last_rendered_cursor_visible = frame.cursor_visible;
             alt.last_rendered_size = self.state.size;
             alt.last_rendered_scroll_offset = scroll_offset;
-            alt.last_sticky_signature = sticky_signature;
-            alt.last_sticky_top_count = sticky_top_count;
-            alt.last_sticky_bottom_count = sticky_bottom_count;
+            alt.last_sticky_signature = sticky.signature;
+            alt.last_sticky_top_count = sticky.top_count;
+            alt.last_sticky_bottom_count = sticky.bottom_count;
             alt.has_rendered_once = true;
         }
 
@@ -454,12 +538,7 @@ impl Terminal {
             return Ok(());
         }
 
-        let sticky = resolve_visible_sticky(frame, height);
-        let sticky_top_count = sticky.top.len();
-        let sticky_bottom_count = sticky.bottom.len();
-        let sticky_signature = sticky_signature(&sticky);
-        let body_height =
-            height.saturating_sub(sticky_top_count.saturating_add(sticky_bottom_count));
+        let sticky = sticky_metrics(frame, height);
 
         self.reanchor_inline_after_resize_if_needed();
 
@@ -482,9 +561,9 @@ impl Terminal {
                     inline.last_rendered_cursor_visible == frame.cursor_visible;
                 let same_focus_anchor = inline.last_rendered_focus_anchor == frame.focus_anchor_row;
                 let same_size = inline.last_rendered_size == self.state.size;
-                let same_sticky = inline.last_sticky_signature == sticky_signature
-                    && inline.last_sticky_top_count == sticky_top_count
-                    && inline.last_sticky_bottom_count == sticky_bottom_count;
+                let same_sticky = inline.last_sticky_signature == sticky.signature
+                    && inline.last_sticky_top_count == sticky.top_count
+                    && inline.last_sticky_bottom_count == sticky.bottom_count;
                 let should_skip = inline.has_rendered_once
                     && !inline.reanchor_after_resize
                     && same_frame
@@ -508,25 +587,20 @@ impl Terminal {
             return Ok(());
         }
 
-        let content_origin = sticky_top_count.min(u16::MAX as usize) as u16;
+        let content_origin = sticky.top_count.min(u16::MAX as usize) as u16;
         let prev_content_origin = prev_sticky_top_count.min(u16::MAX as usize) as u16;
         let mut next_anchor_row = prev_anchor_row.saturating_sub(prev_content_origin);
         let mut prev_rendered_row =
             prev_rendered_block_start_row.saturating_sub(prev_content_origin);
         let frame_len = frame.lines.len();
 
-        let plan = plan_inline_layout(body_height, frame_len, prev_rendered_row);
+        let plan = plan_inline_layout(sticky.body_height, frame_len, prev_rendered_row);
         let block_start_row = content_origin.saturating_add(plan.block_start_row);
         let block_start = block_start_row as usize;
         let draw_count = plan.draw_count;
         let max_skip = frame_len.saturating_sub(draw_count);
-        let active_range = frame
-            .active_step_range
-            .map(|range| (range.start as usize, range.end_exclusive as usize));
-        let follow_row = frame
-            .cursor
-            .map(|cur| cur.row as usize)
-            .or_else(|| frame.focus_anchor_row.map(|row| row as usize));
+        let active_range = active_range(frame);
+        let follow_row = follow_anchor_row(frame);
         let skip = fit_range_offset(prev_skip, active_range, draw_count, max_skip)
             .unwrap_or_else(|| follow_offset(prev_skip, follow_row, draw_count, max_skip, 2));
         let scroll_up_lines = prev_rendered_row.saturating_sub(plan.block_start_row);
@@ -534,8 +608,8 @@ impl Terminal {
             next_anchor_row = next_anchor_row.saturating_sub(scroll_up_lines);
             prev_rendered_row = prev_rendered_row.saturating_sub(scroll_up_lines);
         }
-        let sticky_layout_changed = prev_sticky_top_count != sticky_top_count
-            || prev_sticky_bottom_count != sticky_bottom_count;
+        let sticky_layout_changed = prev_sticky_top_count != sticky.top_count
+            || prev_sticky_bottom_count != sticky.bottom_count;
         let clear_start_row = if sticky_layout_changed {
             prev_rendered_block_start_row.min(block_start_row)
         } else {
@@ -573,19 +647,13 @@ impl Terminal {
         };
 
         queue!(self.stdout, BeginSynchronizedUpdate, Hide)?;
-        if prev_sticky_top_count > sticky_top_count {
-            self.clear_rows(
-                sticky_top_count.min(u16::MAX as usize) as u16,
-                prev_sticky_top_count - sticky_top_count,
-            )?;
-        }
-        if prev_sticky_bottom_count > sticky_bottom_count {
-            let clear_start = height.saturating_sub(prev_sticky_bottom_count);
-            self.clear_rows(
-                clear_start.min(u16::MAX as usize) as u16,
-                prev_sticky_bottom_count - sticky_bottom_count,
-            )?;
-        }
+        self.clear_removed_sticky_rows(
+            height,
+            prev_sticky_top_count,
+            prev_sticky_bottom_count,
+            sticky.top_count,
+            sticky.bottom_count,
+        )?;
 
         if !can_diff_render || size_changed {
             if scroll_up_lines > 0 {
@@ -610,55 +678,19 @@ impl Terminal {
         } else {
             self.draw_dirty_rows(frame, width, skip, block_start_row, draw_count, &dirty_rows)?;
         }
-        self.draw_fixed_lines(sticky.top.as_slice(), 0, width)?;
-        let sticky_bottom_start = height.saturating_sub(sticky_bottom_count);
-        self.draw_fixed_lines(
-            sticky.bottom.as_slice(),
-            sticky_bottom_start.min(u16::MAX as usize) as u16,
-            width,
-        )?;
+        self.draw_sticky_sections(&sticky.visible, height, width)?;
 
         let mut next_last_cursor_row = 0u16;
         let mut next_last_cursor_col = 0u16;
-        let cursor_position = if let Some(cursor) = frame.cursor {
-            let cursor_row = cursor.row as usize;
-            if cursor_row >= skip {
-                let visible_row = cursor_row - skip;
-                if visible_row < draw_count {
-                    let target_row = block_start + visible_row;
-                    let col = cursor.col.min(width.saturating_sub(1));
-                    next_last_cursor_row = visible_row.min(u16::MAX as usize) as u16;
-                    next_last_cursor_col = col;
-                    Some((col, target_row as u16))
-                } else {
-                    None
-                }
-            } else {
-                None
-            }
-        } else {
-            None
-        };
+        let cursor_position =
+            self.map_body_cursor_position(frame, skip, draw_count, block_start, width);
+        if let Some((col, row)) = cursor_position {
+            next_last_cursor_col = col;
+            next_last_cursor_row = row.saturating_sub(block_start_row);
+        }
 
         let hidden_anchor = if cursor_position.is_none() {
-            frame
-                .focus_anchor_row
-                .and_then(|anchor_row| {
-                    let row = anchor_row as usize;
-                    if row < skip {
-                        return None;
-                    }
-                    let visible_row = row - skip;
-                    if visible_row >= draw_count {
-                        return None;
-                    }
-                    let target_row = block_start.saturating_add(visible_row) as u16;
-                    let col = frame
-                        .focus_anchor_col
-                        .unwrap_or(0)
-                        .min(width.saturating_sub(1));
-                    Some((col, target_row))
-                })
+            self.map_body_focus_anchor_position(frame, skip, draw_count, block_start, width)
                 .or(Some((0, block_start_row)))
         } else {
             Some((0, block_start_row))
@@ -679,9 +711,9 @@ impl Terminal {
             inline.last_rendered_cursor_visible = frame.cursor_visible;
             inline.last_rendered_focus_anchor = frame.focus_anchor_row;
             inline.last_rendered_size = self.state.size;
-            inline.last_sticky_signature = sticky_signature;
-            inline.last_sticky_top_count = sticky_top_count;
-            inline.last_sticky_bottom_count = sticky_bottom_count;
+            inline.last_sticky_signature = sticky.signature;
+            inline.last_sticky_top_count = sticky.top_count;
+            inline.last_sticky_bottom_count = sticky.bottom_count;
             inline.has_rendered_once = true;
         }
 

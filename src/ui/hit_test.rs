@@ -3,6 +3,7 @@ use crate::terminal::PointerSemantic;
 #[derive(Debug, Clone, Default)]
 pub struct FrameHitMap {
     regions: Vec<HitRegion>,
+    selection_ranges: Vec<RowRange>,
 }
 
 #[derive(Debug, Clone)]
@@ -14,6 +15,13 @@ pub struct HitRegion {
     pub col_end_exclusive: u16,
     pub local_col_offset: u16,
     pub local_semantic: PointerSemantic,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct RowRange {
+    row: u16,
+    col_start: u16,
+    col_end_exclusive: u16,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -117,12 +125,26 @@ impl FrameHitMap {
         }
     }
 
+    pub fn push_selection_range(&mut self, row: u16, col_start: u16, col_end_exclusive: u16) {
+        if col_end_exclusive <= col_start {
+            return;
+        }
+        self.selection_ranges.push(RowRange {
+            row,
+            col_start,
+            col_end_exclusive,
+        });
+    }
+
     pub fn shift_rows(&mut self, delta: u16) {
         if delta == 0 {
             return;
         }
         for region in &mut self.regions {
             region.row = region.row.saturating_add(delta);
+        }
+        for range in &mut self.selection_ranges {
+            range.row = range.row.saturating_add(delta);
         }
     }
 
@@ -133,6 +155,10 @@ impl FrameHitMap {
         for region in &mut self.regions {
             region.col_start = region.col_start.saturating_add(delta);
             region.col_end_exclusive = region.col_end_exclusive.saturating_add(delta);
+        }
+        for range in &mut self.selection_ranges {
+            range.col_start = range.col_start.saturating_add(delta);
+            range.col_end_exclusive = range.col_end_exclusive.saturating_add(delta);
         }
     }
 
@@ -145,10 +171,16 @@ impl FrameHitMap {
                 region.row = region.row.saturating_add(count);
             }
         }
+        for range in &mut self.selection_ranges {
+            if range.row >= at {
+                range.row = range.row.saturating_add(count);
+            }
+        }
     }
 
     pub fn extend(&mut self, mut other: FrameHitMap) {
         self.regions.append(&mut other.regions);
+        self.selection_ranges.append(&mut other.selection_ranges);
     }
 
     pub fn resolve(&self, row: u16, col: u16) -> Option<HitTarget<'_>> {
@@ -175,6 +207,12 @@ impl FrameHitMap {
             .filter(|region| region.row == row && region.col_end_exclusive > region.col_start)
             .map(|region| (region.col_start, region.col_end_exclusive))
             .collect::<Vec<_>>();
+        ranges.extend(
+            self.selection_ranges
+                .iter()
+                .filter(|range| range.row == row && range.col_end_exclusive > range.col_start)
+                .map(|range| (range.col_start, range.col_end_exclusive)),
+        );
         if ranges.is_empty() {
             return ranges;
         }

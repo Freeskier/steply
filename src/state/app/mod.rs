@@ -1,54 +1,13 @@
 use crate::core::NodeId;
-use crate::runtime::scheduler::SchedulerCommand;
 use crate::state::flow::Flow;
-use crate::state::focus::FocusState;
-use crate::state::overlay::OverlayState;
 use crate::state::step::Step;
-use crate::state::store::ValueStore;
 use crate::state::validation::ValidationState;
-use crate::task::{
-    TaskCancelToken, TaskId, TaskInvocation, TaskRequest, TaskRunState, TaskSpec, TaskSubscription,
-};
+use crate::task::{TaskId, TaskSpec, TaskSubscription};
 use crate::widgets::node::{Node, NodeWalkScope, find_overlay, find_overlay_mut, walk_nodes};
-use crate::widgets::node_index::NodeIndex;
 use crate::widgets::traits::{FocusMode, OverlayMode, OverlayPlacement};
-use input::completion::CompletionSession;
-use std::collections::{HashMap, VecDeque};
+use std::collections::HashMap;
 
-#[derive(Default)]
-struct ViewState {
-    overlays: OverlayState,
-    focus: FocusState,
-    focus_memory_by_step: HashMap<String, NodeId>,
-    active_node_index: NodeIndex,
-    completion_session: Option<CompletionSession>,
-    completion_tab_suppressed_for: Option<NodeId>,
-    hints_visible: bool,
-}
-
-#[derive(Default)]
-struct DataState {
-    store: ValueStore,
-}
-
-#[derive(Clone)]
-struct RunningTaskHandle {
-    run_id: u64,
-    cancel_token: TaskCancelToken,
-    origin_step_id: Option<String>,
-}
-
-#[derive(Default)]
-struct RuntimeState {
-    validation: ValidationState,
-    pending_scheduler: Vec<SchedulerCommand>,
-    pending_task_invocations: Vec<TaskInvocation>,
-    queued_task_requests: HashMap<TaskId, VecDeque<TaskRequest>>,
-    running_task_cancellations: HashMap<TaskId, Vec<RunningTaskHandle>>,
-    task_runs: HashMap<TaskId, TaskRunState>,
-    task_specs: HashMap<TaskId, TaskSpec>,
-    task_subscriptions: Vec<TaskSubscription>,
-}
+use self::state::{DataState, RuntimeState, ViewState};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ExitConfirmChoice {
@@ -92,16 +51,7 @@ impl AppState {
             flow,
             ui: ViewState::default(),
             data: DataState::default(),
-            runtime: RuntimeState {
-                validation: ValidationState::default(),
-                pending_scheduler: Vec::new(),
-                pending_task_invocations: Vec::new(),
-                queued_task_requests: HashMap::new(),
-                running_task_cancellations: HashMap::new(),
-                task_runs: HashMap::new(),
-                task_specs: spec_map,
-                task_subscriptions: subscriptions,
-            },
+            runtime: RuntimeState::with_tasks(spec_map, subscriptions),
             scratch_nodes: Vec::new(),
             should_exit: false,
             pending_back_confirm: None,
@@ -422,6 +372,7 @@ mod adapters;
 mod effects;
 mod flow;
 mod input;
+mod state;
 mod validation_runtime;
 mod value_sync;
 

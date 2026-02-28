@@ -173,7 +173,7 @@ impl AppState {
             .running_task_cancellations
             .entry(task_id)
             .or_default()
-            .push(crate::state::app::RunningTaskHandle {
+            .push(super::super::state::RunningTaskHandle {
                 run_id,
                 cancel_token,
                 origin_step_id,

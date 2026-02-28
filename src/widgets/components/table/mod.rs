@@ -331,8 +331,7 @@ impl Table {
     }
 
     fn toggle_filter_visibility(&mut self) {
-        let visible = self.filter.toggle_visibility(true);
-        if !visible {
+        if !list_core::toggle_filter_visibility(&mut self.filter, true) {
             self.apply_filter(self.active_row_id());
         }
     }
@@ -358,15 +357,12 @@ impl Table {
         if query.is_empty() {
             self.visible_rows.extend(0..self.rows.len());
         } else {
-            for row_idx in 0..self.rows.len() {
-                let matched = (0..self.columns.len()).any(|col_idx| {
+            self.visible_rows = list_core::collect_matching_indices(self.rows.len(), |row_idx| {
+                (0..self.columns.len()).any(|col_idx| {
                     let text = self.cell_filter_text(row_idx, col_idx);
                     match_text(query, text.as_str()).is_some()
-                });
-                if matched {
-                    self.visible_rows.push(row_idx);
-                }
-            }
+                })
+            });
         }
 
         if self.rows.is_empty() {
@@ -386,16 +382,12 @@ impl Table {
             return;
         }
 
-        if let Some(id) = preferred_row_id
-            && let Some(row_idx) = self.rows.iter().position(|row| row.id == id)
-            && self.visible_rows.contains(&row_idx)
+        let preferred_row_idx =
+            preferred_row_id.and_then(|id| self.rows.iter().position(|row| row.id == id));
+        if let Some(next) =
+            list_core::prefer_visible_index(&self.visible_rows, preferred_row_idx, self.active_row)
         {
-            self.active_row = row_idx;
-            return;
-        }
-
-        if !self.visible_rows.contains(&self.active_row) {
-            self.active_row = self.visible_rows[0];
+            self.active_row = next;
         }
     }
 

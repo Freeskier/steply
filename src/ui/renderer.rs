@@ -343,6 +343,16 @@ fn build_base_frame(
                 end_exclusive: start_row.saturating_add(block_len),
             });
         }
+        let selection_col_start = if config.decorations_enabled {
+            decoration_gutter_width().min(u16::MAX as usize) as u16
+        } else {
+            0
+        };
+        register_block_selection_ranges(
+            &mut block_hit_map,
+            block_lines.as_slice(),
+            selection_col_start,
+        );
         block_hit_map.shift_rows(start_row);
         frame.hit_map.extend(block_hit_map);
         frame.lines.extend(block_lines);
@@ -825,6 +835,21 @@ fn draw_nodes(
             sticky.extend(out.sticky);
         }
         state.lines.extend(out.lines);
+    }
+}
+
+fn register_block_selection_ranges(
+    hit_map: &mut FrameHitMap,
+    lines: &[SpanLine],
+    col_start: u16,
+) {
+    for (row, line) in lines.iter().enumerate() {
+        let row = row.min(u16::MAX as usize) as u16;
+        let width = Layout::line_width(line.as_slice()).min(u16::MAX as usize) as u16;
+        if width <= col_start {
+            continue;
+        }
+        hit_map.push_selection_range(row, col_start, width);
     }
 }
 

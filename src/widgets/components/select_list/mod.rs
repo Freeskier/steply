@@ -22,6 +22,7 @@ use crate::widgets::components::scroll::ScrollState;
 use crate::widgets::node::LeafComponent;
 use crate::widgets::shared::cursor_anchor;
 use crate::widgets::shared::filter;
+use crate::widgets::shared::list_core;
 use crate::widgets::traits::{
     CompletionState, DrawOutput, Drawable, FocusMode, HintContext, HintGroup, HintItem,
     InteractionResult, Interactive, PointerRowMap, RenderContext, TextAction,
@@ -220,8 +221,7 @@ impl SelectList {
     }
 
     fn toggle_filter_visibility(&mut self) {
-        let visible = self.filter.toggle_visibility(true);
-        if !visible {
+        if !list_core::toggle_filter_visibility(&mut self.filter, true) {
             self.apply_filter(None);
         }
     }

@@ -21,6 +21,7 @@ use crate::widgets::components::scroll::ScrollState;
 use crate::widgets::node::LeafComponent;
 use crate::widgets::shared::cursor_anchor;
 use crate::widgets::shared::filter;
+use crate::widgets::shared::list_core;
 use crate::widgets::traits::{
     CompletionState, DrawOutput, Drawable, FocusMode, HintContext, HintGroup, HintItem,
     InteractionResult, Interactive, PointerRowMap, RenderContext, TextAction,
@@ -221,8 +222,7 @@ impl<T: TreeItemLabel> TreeView<T> {
     }
 
     fn toggle_filter_visibility(&mut self) {
-        let visible = self.filter.toggle_visibility(false);
-        if !visible {
+        if !list_core::toggle_filter_visibility(&mut self.filter, false) {
             self.clear_filter();
         }
     }

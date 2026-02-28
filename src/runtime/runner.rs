@@ -486,7 +486,6 @@ impl Runtime {
             let selectable = selectable_ranges_for_row(
                 &self.last_hit_map,
                 row_idx as u16,
-                line.as_slice(),
                 line_width,
             );
             if selectable.is_empty() {
@@ -537,7 +536,6 @@ impl Runtime {
             let selectable = selectable_ranges_for_row(
                 &self.last_hit_map,
                 row_idx as u16,
-                line.as_slice(),
                 line_width,
             );
             if selectable.is_empty() {
@@ -651,35 +649,20 @@ fn display_width_for_line(line: &[Span]) -> usize {
 fn selectable_ranges_for_row(
     hit_map: &FrameHitMap,
     row: u16,
-    line: &[Span],
     line_width: u16,
 ) -> Vec<(u16, u16)> {
     let from_hit_map = hit_map.row_ranges(row);
     if !from_hit_map.is_empty() {
         return from_hit_map;
     }
-    fallback_selectable_ranges(line, line_width)
+    fallback_selectable_ranges(line_width)
 }
 
-fn fallback_selectable_ranges(line: &[Span], line_width: u16) -> Vec<(u16, u16)> {
+fn fallback_selectable_ranges(line_width: u16) -> Vec<(u16, u16)> {
     if line_width == 0 {
         return Vec::new();
     }
-
-    let mut start = 0u16;
-    if let Some(first) = line.first() {
-        let first_width = text_display_width(first.text.as_str()).min(u16::MAX as usize) as u16;
-        if first_width == 3 && first.text.ends_with("  ") {
-            // Skip decoration marker gutter (for step title/description content rows).
-            start = 3.min(line_width);
-        }
-    }
-
-    if start >= line_width {
-        Vec::new()
-    } else {
-        vec![(start, line_width)]
-    }
+    vec![(0, line_width)]
 }
 
 fn highlight_line_range(line: &mut SpanLine, start_col: usize, end_col: usize) {

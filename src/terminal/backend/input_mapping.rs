@@ -2,16 +2,19 @@ use super::{
     KeyCode, KeyEvent, KeyModifiers, PointerButton, PointerEvent, PointerKind, PointerSemantic,
 };
 use crossterm::event::{
-    KeyCode as CrosstermKeyCode, KeyEvent as CrosstermKeyEvent,
+    KeyCode as CrosstermKeyCode, KeyEvent as CrosstermKeyEvent, KeyEventKind,
     KeyModifiers as CrosstermKeyModifiers, MouseButton as CrosstermMouseButton, MouseEvent,
     MouseEventKind,
 };
 
-pub(super) fn map_key_event(key: CrosstermKeyEvent) -> KeyEvent {
-    KeyEvent {
+pub(super) fn map_key_event(key: CrosstermKeyEvent) -> Option<KeyEvent> {
+    if !matches!(key.kind, KeyEventKind::Press | KeyEventKind::Repeat) {
+        return None;
+    }
+    Some(KeyEvent {
         code: map_key_code(key.code),
         modifiers: map_key_modifiers(key.modifiers),
-    }
+    })
 }
 
 pub(super) fn map_pointer_event(mouse: MouseEvent) -> Option<PointerEvent> {

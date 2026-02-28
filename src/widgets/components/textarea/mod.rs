@@ -180,8 +180,8 @@ impl Drawable for TextAreaComponent {
             return Vec::new();
         }
         vec![
-            HintItem::new("Enter", "new line", HintGroup::Edit).with_priority(10),
-            HintItem::new("Ctrl+Enter / Esc", "finish", HintGroup::Action).with_priority(20),
+            HintItem::new("Shift+Enter / Alt+Enter", "new line", HintGroup::Edit).with_priority(10),
+            HintItem::new("Enter / Esc", "finish", HintGroup::Action).with_priority(20),
             HintItem::new("← → ↑ ↓", "move cursor", HintGroup::Navigation).with_priority(11),
             HintItem::new("Home / End", "line start/end", HintGroup::Navigation).with_priority(12),
         ]
@@ -198,14 +198,14 @@ impl Interactive for TextAreaComponent {
     fn on_key(&mut self, key: KeyEvent) -> InteractionResult {
         match key.code {
             KeyCode::Esc => InteractionResult::input_done(),
-            KeyCode::Enter if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                InteractionResult::input_done()
-            }
-
-            KeyCode::Enter => {
+            KeyCode::Enter
+                if key.modifiers.contains(KeyModifiers::SHIFT)
+                    || key.modifiers.contains(KeyModifiers::ALT) =>
+            {
                 self.split_line();
                 InteractionResult::handled()
             }
+            KeyCode::Enter => InteractionResult::input_done(),
 
             KeyCode::Char(ch) => {
                 text_edit::insert_char(&mut self.lines[self.row], &mut self.col, ch);
@@ -293,6 +293,11 @@ impl Interactive for TextAreaComponent {
     }
 
     fn on_text_action(&mut self, action: TextAction) -> InteractionResult {
+        if action == TextAction::DeleteWordLeft && self.col == 0 && self.row > 0 {
+            self.merge_with_prev();
+            return InteractionResult::handled();
+        }
+
         if action == TextAction::MoveWordLeft && self.col == 0 && self.row > 0 {
             self.row -= 1;
             self.col = text_edit::char_count(&self.lines[self.row]);

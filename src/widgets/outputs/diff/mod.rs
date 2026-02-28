@@ -1,6 +1,7 @@
 use similar::{DiffOp, TextDiff};
 
 use crate::terminal::{KeyCode, KeyEvent, KeyModifiers};
+use crate::ui::layout::{Layout, LineContinuation, RenderBlock};
 use crate::ui::span::Span;
 use crate::ui::style::{Color, Style};
 use crate::widgets::base::WidgetBase;
@@ -270,36 +271,80 @@ impl DiffOutput {
         }
     }
 
-    fn expand_gap(&mut self) {
+    fn expand_gap(&mut self) -> bool {
         if !matches!(self.rows.get(self.nav.active()), Some(DiffRow::Gap { .. })) {
-            return;
+            return false;
         }
         self.context += 3;
         let old_active = self.nav.active();
         self.rebuild();
         self.nav.set_active(old_active, self.rows.len());
+        true
     }
 
-    fn render_side(side: &Side, col_width: usize, text_style: Style, no_style: Style) -> Vec<Span> {
-        match side {
-            Side::Line { no, text } => {
-                let no_str = format!(" {:>3} ", no);
-                let avail = col_width.saturating_sub(no_str.len());
-                let truncated = Self::truncate(text, avail);
-                let padded = format!("{:<width$}", truncated, width = avail);
-                vec![
-                    Span::styled(no_str, no_style).no_wrap(),
-                    Span::styled(padded, text_style).no_wrap(),
-                ]
-            }
-            Side::Empty => {
-                vec![Span::styled(" ".repeat(col_width), Style::default()).no_wrap()]
-            }
+    fn line_no_width(&self) -> usize {
+        self.old
+            .lines()
+            .count()
+            .max(self.new.lines().count())
+            .max(1)
+            .to_string()
+            .len()
+            .max(3)
+    }
+
+    fn side_line_prefix(no: Option<usize>, width: usize, style: Style) -> Vec<Span> {
+        let prefix = match no {
+            Some(no) => format!(" {:>width$} ", no, width = width),
+            None => " ".repeat(width.saturating_add(2)),
+        };
+        vec![Span::styled(prefix, style).no_wrap()]
+    }
+
+    fn fit_line_with_style(mut line: Vec<Span>, width: usize, pad_style: Style) -> Vec<Span> {
+        let used = Layout::line_width(line.as_slice());
+        if used < width {
+            line.push(Span::styled(" ".repeat(width - used), pad_style).no_wrap());
         }
+        line
     }
 
-    fn truncate(s: &str, max: usize) -> String {
-        s.chars().take(max).collect()
+    fn blank_side_line(width: usize, style: Style) -> Vec<Span> {
+        vec![Span::styled(" ".repeat(width), style).no_wrap()]
+    }
+
+    fn render_side_wrapped(
+        side: &Side,
+        side_width: usize,
+        line_no_width: usize,
+        text_style: Style,
+        no_style: Style,
+    ) -> Vec<Vec<Span>> {
+        let side_width = side_width.max(1);
+        let (line_no, text) = match side {
+            Side::Line { no, text } => (Some(*no), text.clone()),
+            Side::Empty => (None, String::new()),
+        };
+
+        let first_prefix = Self::side_line_prefix(line_no, line_no_width, no_style);
+        let next_prefix = Self::side_line_prefix(None, line_no_width, no_style);
+        let wrapped = Layout::compose_block(
+            &RenderBlock {
+                start_col: 0,
+                end_col: Some(side_width.min(u16::MAX as usize) as u16),
+                lines: vec![vec![Span::styled(text, text_style).no_wrap()]],
+            },
+            side_width.min(u16::MAX as usize) as u16,
+            Some(&LineContinuation {
+                first_prefix,
+                next_prefix,
+            }),
+        );
+
+        wrapped
+            .into_iter()
+            .map(|line| Self::fit_line_with_style(line, side_width, text_style))
+            .collect()
     }
 }
 
@@ -331,8 +376,15 @@ impl Drawable for DiffOutput {
         let active_dim = Style::new()
             .color(Color::Rgb(120, 120, 140))
             .background(Color::Rgb(45, 45, 65));
-
-        let col_width = 38usize;
+        let wrap_width = ctx.terminal_size.width.max(1) as usize;
+        let marker_col_width = 3usize;
+        let separator_width = 3usize;
+        let side_total = wrap_width
+            .saturating_sub(marker_col_width.saturating_add(separator_width))
+            .max(2);
+        let left_col_width = (side_total / 2).max(1);
+        let right_col_width = side_total.saturating_sub(left_col_width).max(1);
+        let line_no_width = self.line_no_width();
 
         let mut lines: Vec<Vec<Span>> = Vec::new();
 
@@ -370,7 +422,7 @@ impl Drawable for DiffOutput {
                         dim
                     };
                     let label = if is_active {
-                        format!(" {} lines hidden [Enter: +3] ", hidden)
+                        format!(" {} lines hidden [Space: +3] ", hidden)
                     } else {
                         format!(" {} lines hidden [+3] ", hidden)
                     };
@@ -427,14 +479,48 @@ impl Drawable for DiffOutput {
                     let sep_st = if is_active { active_dim } else { dim };
                     let no_style = if is_active { active_dim } else { no_st };
 
-                    let mut line = vec![
-                        Span::styled(if is_active { "❯" } else { " " }, cursor_st).no_wrap(),
-                        Span::styled(format!("{} ", marker), marker_st).no_wrap(),
-                    ];
-                    line.extend(Self::render_side(left, col_width, l_st, no_style));
-                    line.push(Span::styled(" │ ", sep_st).no_wrap());
-                    line.extend(Self::render_side(right, col_width, r_st, no_style));
-                    lines.push(line);
+                    let left_lines = Self::render_side_wrapped(
+                        left,
+                        left_col_width,
+                        line_no_width,
+                        l_st,
+                        no_style,
+                    );
+                    let right_lines = Self::render_side_wrapped(
+                        right,
+                        right_col_width,
+                        line_no_width,
+                        r_st,
+                        no_style,
+                    );
+                    let wrapped_rows = left_lines.len().max(right_lines.len()).max(1);
+
+                    for row_idx in 0..wrapped_rows {
+                        let first = row_idx == 0;
+                        let marker_text = if first { marker } else { " " };
+                        let marker_style = if first { marker_st } else { sep_st };
+                        let cursor_text = if first && is_active { "❯" } else { " " };
+                        let cursor_style = if first { cursor_st } else { sep_st };
+
+                        let mut line = vec![
+                            Span::styled(cursor_text, cursor_style).no_wrap(),
+                            Span::styled(format!("{marker_text} "), marker_style).no_wrap(),
+                        ];
+                        line.extend(
+                            left_lines
+                                .get(row_idx)
+                                .cloned()
+                                .unwrap_or_else(|| Self::blank_side_line(left_col_width, l_st)),
+                        );
+                        line.push(Span::styled(" │ ", sep_st).no_wrap());
+                        line.extend(
+                            right_lines
+                                .get(row_idx)
+                                .cloned()
+                                .unwrap_or_else(|| Self::blank_side_line(right_col_width, r_st)),
+                        );
+                        lines.push(line);
+                    }
                 }
             }
         }
@@ -446,7 +532,7 @@ impl Drawable for DiffOutput {
         if focused {
             lines.push(vec![
                 Span::styled(
-                    "  ↑↓ navigate  Tab next chunk  Shift+Tab prev  Enter expand gap",
+                    "  ↑↓ navigate  Tab next chunk  Shift+Tab prev  Space expand gap  Enter submit step",
                     dim,
                 )
                 .no_wrap(),
@@ -480,9 +566,15 @@ impl Interactive for DiffOutput {
                 self.prev_chunk();
                 InteractionResult::handled()
             }
-            KeyCode::Enter => {
-                self.expand_gap();
-                InteractionResult::handled()
+            KeyCode::Char(' ') if key.modifiers == KeyModifiers::NONE => {
+                if self.expand_gap() {
+                    InteractionResult::handled()
+                } else {
+                    InteractionResult::ignored()
+                }
+            }
+            KeyCode::Enter if key.modifiers == KeyModifiers::NONE => {
+                InteractionResult::input_done()
             }
             _ => InteractionResult::ignored(),
         }

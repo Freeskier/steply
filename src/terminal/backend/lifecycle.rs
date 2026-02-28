@@ -19,7 +19,13 @@ impl Terminal {
 
     fn enter_altscreen(&mut self) -> io::Result<()> {
         terminal::enable_raw_mode()?;
-        execute!(self.stdout, EnterAlternateScreen, EnableMouseCapture, Hide)?;
+        execute!(
+            self.stdout,
+            EnterAlternateScreen,
+            EnableMouseCapture,
+            PushKeyboardEnhancementFlags(keyboard_enhancement_flags()),
+            Hide
+        )?;
         Ok(())
     }
 
@@ -35,7 +41,12 @@ impl Terminal {
         inline.last_skip = 0;
         terminal::enable_raw_mode()?;
 
-        execute!(self.stdout, DisableLineWrap, Hide)?;
+        execute!(
+            self.stdout,
+            DisableLineWrap,
+            PushKeyboardEnhancementFlags(keyboard_enhancement_flags()),
+            Hide
+        )?;
         Ok(())
     }
 
@@ -44,6 +55,7 @@ impl Terminal {
         execute!(
             self.stdout,
             DisableMouseCapture,
+            PopKeyboardEnhancementFlags,
             LeaveAlternateScreen,
             EnableLineWrap,
             Show
@@ -74,7 +86,12 @@ impl Terminal {
         };
 
         queue!(self.stdout, MoveTo(0, last_row))?;
-        execute!(self.stdout, EnableLineWrap, Show)?;
+        execute!(
+            self.stdout,
+            PopKeyboardEnhancementFlags,
+            EnableLineWrap,
+            Show
+        )?;
         terminal::disable_raw_mode()?;
         self.stdout.write_all(b"\r\n")?;
         self.stdout.flush()?;

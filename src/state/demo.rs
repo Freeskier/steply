@@ -746,6 +746,8 @@ fn step_validation_demo() -> Step {
 
 pub fn build_demo_flow() -> Flow {
     Flow::new(vec![
+        step_diff(),
+        step_textarea(),
         step_file_browser(),
         step_table(),
         step_selection(),
@@ -760,7 +762,6 @@ pub fn build_demo_flow() -> Flow {
         step_toggles(),
         step_outputs(),
         step_color(),
-        step_textarea(),
         step_confirm(),
         step_back_allowed(),
         step_back_destructive(),
@@ -769,7 +770,6 @@ pub fn build_demo_flow() -> Flow {
         step_pokemon_search(),
         step_task_log(),
         step_snippet(),
-        step_diff(),
     ])
 }
 

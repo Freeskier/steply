@@ -4,7 +4,9 @@ use crate::ui::style::{Color, Strike};
 use crate::ui::text::{clip_to_display_width_without_linebreaks, text_display_width};
 use crossterm::cursor::{Hide, MoveTo, Show, position};
 use crossterm::event::{
-    self, DisableMouseCapture, EnableMouseCapture, Event as CrosstermEvent, MouseEventKind,
+    self, DisableMouseCapture, EnableMouseCapture, Event as CrosstermEvent,
+    KeyboardEnhancementFlags, MouseEventKind, PopKeyboardEnhancementFlags,
+    PushKeyboardEnhancementFlags,
 };
 use crossterm::style::{
     Attribute, Color as CrosstermColor, Print, ResetColor, SetAttribute, SetBackgroundColor,
@@ -29,6 +31,12 @@ use frame_diff::{
     DirtyRows, compute_dirty_rows, estimate_self_reflow_cursor_delta, quick_frame_signature,
 };
 use input_mapping::{map_key_event, map_pointer_event};
+
+fn keyboard_enhancement_flags() -> KeyboardEnhancementFlags {
+    KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES
+        | KeyboardEnhancementFlags::REPORT_ALL_KEYS_AS_ESCAPE_CODES
+        | KeyboardEnhancementFlags::REPORT_EVENT_TYPES
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum RenderMode {
@@ -355,7 +363,9 @@ impl Terminal {
     pub fn poll_event(&mut self, timeout: Duration) -> io::Result<TerminalEvent> {
         if event::poll(timeout)? {
             match event::read()? {
-                CrosstermEvent::Key(key) => Ok(TerminalEvent::Key(map_key_event(key))),
+                CrosstermEvent::Key(key) => Ok(map_key_event(key)
+                    .map(TerminalEvent::Key)
+                    .unwrap_or(TerminalEvent::Tick)),
                 CrosstermEvent::Resize(width, height) => {
                     Ok(TerminalEvent::Resize(TerminalSize { width, height }))
                 }

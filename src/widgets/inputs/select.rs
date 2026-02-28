@@ -166,4 +166,8 @@ impl Interactive for SelectInput {
             &Value::Text(self.selected_text().to_string()),
         )
     }
+
+    fn cursor_visible(&self) -> bool {
+        false
+    }
 }

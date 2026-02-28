@@ -11,7 +11,7 @@ use crate::ui::text::text_display_width;
 use crate::widgets::node::{Node, NodeWalkScope, walk_nodes};
 use crate::widgets::traits::{
     CompletionMenu, DrawOutput, HintContext, HintGroup, HintItem, PointerRowMap, RenderContext,
-    StickyBlock, StickyPosition,
+    StickyBlock,
 };
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -22,7 +22,6 @@ mod overlay_geometry;
 
 use decorations::{
     StepFooter, append_step_footer_plain, decorate_step_block, decoration_gutter_width,
-    help_toggle_line,
 };
 use overlay::apply_overlay;
 
@@ -158,16 +157,15 @@ impl Renderer {
             if terminal_size.width > 0 {
                 cursor.col = cursor.col.min(terminal_size.width.saturating_sub(1));
             }
-
-            let max_row = frame
-                .lines
-                .len()
-                .saturating_sub(1)
-                .min(terminal_size.height.saturating_sub(1) as usize)
-                as u16;
+            let max_row = frame.lines.len().saturating_sub(1) as u16;
             if cursor.row > max_row {
-                frame.cursor = None;
-                frame.cursor_visible = false;
+                cursor.row = max_row;
+            }
+        }
+        if let Some(anchor_row) = frame.focus_anchor_row.as_mut() {
+            let max_row = frame.lines.len().saturating_sub(1) as u16;
+            if *anchor_row > max_row {
+                *anchor_row = max_row;
             }
         }
     }
@@ -322,16 +320,6 @@ fn build_base_frame(
         }
 
         let footer = step_footer(status, view, has_hints);
-        let (footer, sticky_help) = match footer {
-            Some(StepFooter::HelpToggle) => (
-                None,
-                Some(help_toggle_sticky_block(config.decorations_enabled)),
-            ),
-            other => (other, None),
-        };
-        if let Some(block) = sticky_help {
-            frame.sticky.push(block);
-        }
 
         if config.decorations_enabled {
             let include_top = idx == 0;
@@ -413,10 +401,20 @@ fn build_base_frame(
         }
 
         if !hints_panel_lines.is_empty() {
-            frame.sticky.push(hints_panel_sticky_block(
-                hints_panel_lines,
-                config.decorations_enabled,
-            ));
+            if config.decorations_enabled {
+                let hint_prefix = if idx < render_up_to {
+                    Span::styled("│  ", Style::new().color(Color::Green)).no_wrap()
+                } else {
+                    Span::new(" ".repeat(decoration_gutter_width())).no_wrap()
+                };
+                for line in hints_panel_lines {
+                    let mut prefixed = vec![hint_prefix.clone()];
+                    prefixed.extend(line);
+                    frame.lines.push(prefixed);
+                }
+            } else {
+                frame.lines.extend(hints_panel_lines);
+            }
         }
     }
     frame
@@ -436,27 +434,6 @@ fn step_description_style(status: StepVisualStatus) -> Style {
         StepVisualStatus::Done | StepVisualStatus::Pending => Style::new().color(Color::DarkGrey),
         StepVisualStatus::Cancelled => Style::new().color(Color::Red),
     }
-}
-
-fn help_toggle_sticky_block(decorations_enabled: bool) -> StickyBlock {
-    let mut line = help_toggle_line();
-    if decorations_enabled {
-        line.insert(
-            0,
-            Span::new(" ".repeat(decoration_gutter_width())).no_wrap(),
-        );
-    }
-    StickyBlock::new(StickyPosition::Bottom, 200, vec![line])
-}
-
-fn hints_panel_sticky_block(mut lines: Vec<SpanLine>, decorations_enabled: bool) -> StickyBlock {
-    if decorations_enabled {
-        let prefix = Span::new(" ".repeat(decoration_gutter_width())).no_wrap();
-        for line in &mut lines {
-            line.insert(0, prefix.clone());
-        }
-    }
-    StickyBlock::new(StickyPosition::Bottom, 150, lines)
 }
 
 fn step_content_tint(status: StepVisualStatus) -> Option<Color> {

@@ -88,7 +88,6 @@ pub(super) fn decorate_step_block(
         out_line.extend(line);
         decorated.push(out_line);
     }
-
     match footer {
         Some(StepFooter::Error {
             message,
@@ -137,6 +136,12 @@ pub(super) fn decorate_step_block(
                 let cont = if connect_to_next { "│  " } else { "   " };
                 decorated.push(with_gutter_prefix(cont, decor_style, help_toggle_line()));
             }
+            let spacer = if connect_to_next { "│  " } else { "   " };
+            decorated.push(with_gutter_prefix(
+                spacer,
+                decor_style,
+                vec![Span::new("").no_wrap()],
+            ));
         }
         Some(StepFooter::ExitConfirm { choice }) => {
             let bottom = if connect_to_next { "├  " } else { "└  " };
@@ -147,8 +152,8 @@ pub(super) fn decorate_step_block(
             ));
         }
         Some(StepFooter::HelpToggle) => {
-            let prefix = if connect_to_next { "│  " } else { "└  " };
-            decorated.push(with_gutter_prefix(prefix, decor_style, help_toggle_line()));
+            let bottom = if connect_to_next { "│  " } else { "└  " };
+            decorated.push(with_gutter_prefix(bottom, decor_style, help_toggle_line()));
         }
         None => {
             if connect_to_next {
@@ -204,6 +209,7 @@ pub(super) fn append_step_footer_plain(lines: &mut Vec<SpanLine>, footer: Option
             if show_help_toggle {
                 lines.push(help_toggle_line());
             }
+            lines.push(vec![Span::new("").no_wrap()]);
         }
         Some(StepFooter::ExitConfirm { choice }) => {
             lines.push(exit_confirm_line(choice));

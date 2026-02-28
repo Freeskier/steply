@@ -316,7 +316,9 @@ impl Drawable for Calendar {
         }
 
         if self.mode != CalendarMode::Date {
-            let time_spans = self.time_input.render_spans();
+            let time_spans = self
+                .time_input
+                .render_spans_with_active(focused && self.is_time_section());
             let dim = Style::new().color(Color::DarkGrey);
             let mut line: Vec<Span> = Vec::new();
 
@@ -422,6 +424,10 @@ impl Interactive for Calendar {
             }
             Section::Time => None,
         }
+    }
+
+    fn cursor_visible(&self) -> bool {
+        self.is_time_section()
     }
 
     fn on_key(&mut self, key: KeyEvent) -> InteractionResult {

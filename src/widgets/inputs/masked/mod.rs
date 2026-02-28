@@ -319,7 +319,16 @@ impl MaskedInput {
     }
 
     pub fn render_spans(&self) -> Vec<Span> {
-        format::render_spans(self.tokens.as_slice())
+        format::render_spans(self.tokens.as_slice(), None)
+    }
+
+    pub fn render_spans_with_active(&self, active: bool) -> Vec<Span> {
+        let active_segment = if active {
+            Some(self.cursor_token)
+        } else {
+            None
+        };
+        format::render_spans(self.tokens.as_slice(), active_segment)
     }
 
     pub fn cursor_col(&self) -> usize {
@@ -354,7 +363,7 @@ impl Drawable for MaskedInput {
 
     fn draw(&self, ctx: &RenderContext) -> DrawOutput {
         let spans = if self.base.is_focused(ctx) {
-            format::render_spans(self.tokens.as_slice())
+            self.render_spans_with_active(true)
         } else {
             let plain = format::render_plain_value(self.tokens.as_slice());
             vec![crate::ui::span::Span::new(plain).no_wrap()]

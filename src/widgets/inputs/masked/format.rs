@@ -43,9 +43,11 @@ pub(super) fn next_literal_char(tokens: &[MaskToken], current_token: usize) -> O
     })
 }
 
-pub(super) fn render_spans(tokens: &[MaskToken]) -> Vec<Span> {
+pub(super) fn render_spans(tokens: &[MaskToken], active_segment: Option<usize>) -> Vec<Span> {
     let mut spans = Vec::<Span>::new();
-    for token in tokens {
+    let active_style = Style::new().color(Color::Cyan).bold();
+    for (token_idx, token) in tokens.iter().enumerate() {
+        let is_active = active_segment.is_some_and(|idx| idx == token_idx);
         match token {
             MaskToken::Literal(ch) => spans.push(Span::new(ch.to_string()).no_wrap()),
             MaskToken::Segment(segment) => {
@@ -64,12 +66,18 @@ pub(super) fn render_spans(tokens: &[MaskToken]) -> Vec<Span> {
 
                     for (idx, ch) in out.into_iter().enumerate() {
                         if idx < text_edit::char_count(segment.value.as_str()) {
-                            spans.push(Span::new(ch.to_string()).no_wrap());
+                            if is_active {
+                                spans.push(Span::styled(ch.to_string(), active_style).no_wrap());
+                            } else {
+                                spans.push(Span::new(ch.to_string()).no_wrap());
+                            }
                         } else {
-                            spans.push(
-                                Span::styled(ch.to_string(), Style::new().color(Color::DarkGrey))
-                                    .no_wrap(),
-                            );
+                            let style = if is_active {
+                                active_style
+                            } else {
+                                Style::new().color(Color::DarkGrey)
+                            };
+                            spans.push(Span::styled(ch.to_string(), style).no_wrap());
                         }
                     }
                     continue;
@@ -77,23 +85,39 @@ pub(super) fn render_spans(tokens: &[MaskToken]) -> Vec<Span> {
 
                 let used = text_edit::char_count(segment.value.as_str());
                 for ch in segment.value.chars() {
-                    spans.push(Span::new(ch.to_string()).no_wrap());
+                    if is_active {
+                        spans.push(Span::styled(ch.to_string(), active_style).no_wrap());
+                    } else {
+                        spans.push(Span::new(ch.to_string()).no_wrap());
+                    }
                 }
 
                 if let Some(max_len) = segment.max_len {
                     if segment.min_len == max_len {
                         let pad = max_len.saturating_sub(used);
                         for _ in 0..pad {
-                            spans.push(
-                                Span::styled("_", Style::new().color(Color::DarkGrey)).no_wrap(),
-                            );
+                            let style = if is_active {
+                                active_style
+                            } else {
+                                Style::new().color(Color::DarkGrey)
+                            };
+                            spans.push(Span::styled("_", style).no_wrap());
                         }
                     } else if used == 0 {
-                        spans
-                            .push(Span::styled("_", Style::new().color(Color::DarkGrey)).no_wrap());
+                        let style = if is_active {
+                            active_style
+                        } else {
+                            Style::new().color(Color::DarkGrey)
+                        };
+                        spans.push(Span::styled("_", style).no_wrap());
                     }
                 } else if used == 0 {
-                    spans.push(Span::styled("_", Style::new().color(Color::DarkGrey)).no_wrap());
+                    let style = if is_active {
+                        active_style
+                    } else {
+                        Style::new().color(Color::DarkGrey)
+                    };
+                    spans.push(Span::styled("_", style).no_wrap());
                 }
             }
         }

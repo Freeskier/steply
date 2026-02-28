@@ -752,7 +752,7 @@ pub fn build_demo_flow() -> Flow {
         step_thinking_output(),
         step_object_editor(),
         step_repeater(),
-        step_command_runner(),
+        //step_command_runner(),
         step_tree_view(),
         step_calendar(),
         step_text_inputs(),

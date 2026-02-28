@@ -206,7 +206,7 @@ impl InlineKeyValueEditor {
             }
             InlineValueField::Masked(masked) => {
                 if self.focus == InlineKeyValueFocus::Value {
-                    out.extend(masked.render_spans());
+                    out.extend(masked.render_spans_with_active(true));
                 } else {
                     out.push(Span::styled(self.value_text(), value_style).no_wrap());
                 }

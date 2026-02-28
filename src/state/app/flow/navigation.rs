@@ -43,12 +43,11 @@ impl AppState {
         if prune_validation {
             self.prune_validation_for_active_nodes();
         }
-        if let Some(focused_id) = self.ui.focus.current_id().map(|id| id.to_string()) {
-            let result = self.broadcast_system_event(&SystemEvent::RequestFocus {
-                target: focused_id.into(),
-            });
-            self.process_broadcast_result(result);
-        }
+        let focused_id = self.ui.focus.current_id().unwrap_or("").to_string();
+        let result = self.broadcast_system_event(&SystemEvent::RequestFocus {
+            target: focused_id.into(),
+        });
+        self.process_broadcast_result(result);
     }
 
     pub(in crate::state::app) fn rebuild_focus(&mut self) {

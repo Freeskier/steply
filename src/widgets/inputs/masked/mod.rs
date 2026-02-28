@@ -6,6 +6,7 @@ use crate::core::NodeId;
 use crate::core::value::Value;
 use crate::core::value_path::{ValuePath, ValueTarget};
 use crate::terminal::{CursorPos, KeyCode, KeyEvent};
+use crate::ui::inline::{Inline, InlineGroup};
 use crate::ui::span::Span;
 use crate::widgets::base::WidgetBase;
 use crate::widgets::shared::text_edit;
@@ -362,13 +363,16 @@ impl Drawable for MaskedInput {
     }
 
     fn draw(&self, ctx: &RenderContext) -> DrawOutput {
-        let spans = if self.base.is_focused(ctx) {
-            self.render_spans_with_active(true)
+        if self.base.is_focused(ctx) {
+            let spans = self.render_spans_with_active(true);
+            let group = Inline::group(InlineGroup::no_break(
+                spans.into_iter().map(Inline::from).collect(),
+            ));
+            return DrawOutput::with_inline_lines(vec![vec![group]]);
         } else {
             let plain = format::render_plain_value(self.tokens.as_slice());
-            vec![crate::ui::span::Span::new(plain).no_wrap()]
-        };
-        DrawOutput::with_lines(vec![spans])
+            return DrawOutput::with_lines(vec![vec![Span::new(plain).no_wrap()]]);
+        }
     }
 }
 

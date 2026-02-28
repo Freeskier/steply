@@ -149,29 +149,37 @@ fn step_snippet() -> Step {
     Step::new(
         "step_snippet",
         "Snippet",
-        vec![Node::Component(Box::new(
-            Snippet::new(
-                "snip",
-                "Snippet",
-                "  Connect to <ip> on port <port>\n  as user <user> since <date> <port>",
-            )
-            .with_input(Node::Input(Box::new(MaskedInput::new(
-                "ip",
-                "IP",
-                "###.###.###.###",
-            ))))
-            .with_input(Node::Input(Box::new(MaskedInput::new(
-                "port",
-                "Port",
-                "#{1,5:1-65535}",
-            ))))
-            .with_input(Node::Input(Box::new(TextInput::new("user", "User"))))
-            .with_input(Node::Input(Box::new(MaskedInput::new(
-                "date",
-                "Date",
-                "DD/MM/YYYY",
-            )))),
-        ))],
+        vec![
+            Node::Output(Box::new(TextOutput::new(
+                "snip_intro",
+                "Tab/Shift+Tab przełącza sloty. Enter na ostatnim slocie zapisuje wynik do pola preview.",
+            ))),
+            Node::Component(Box::new(
+                Snippet::new(
+                    "snip",
+                    "Deploy command",
+                    "deploy --env <env> --service <service> --version <version> --region <region>\nrollback --env <env> --service <service> --region <region>",
+                )
+                .with_input(Node::Input(Box::new(SelectInput::new(
+                    "env",
+                    "Environment",
+                    vec!["dev".into(), "staging".into(), "prod".into()],
+                ))))
+                .with_input(Node::Input(Box::new(TextInput::new("service", "Service"))))
+                .with_input(Node::Input(Box::new(MaskedInput::new(
+                    "version",
+                    "Version",
+                    "v#.#.#",
+                ))))
+                .with_input(Node::Input(Box::new(SelectInput::new(
+                    "region",
+                    "Region",
+                    vec!["eu-central-1".into(), "us-east-1".into(), "ap-southeast-1".into()],
+                ))))
+                .with_submit_target("snippet_preview"),
+            )),
+            Node::Input(Box::new(TextInput::new("snippet_preview", "Rendered snippet"))),
+        ],
     )
 }
 
@@ -746,6 +754,7 @@ fn step_validation_demo() -> Step {
 
 pub fn build_demo_flow() -> Flow {
     Flow::new(vec![
+        step_snippet(),
         step_diff(),
         step_textarea(),
         step_file_browser(),
@@ -769,7 +778,6 @@ pub fn build_demo_flow() -> Flow {
         step_validation_demo(),
         step_pokemon_search(),
         step_task_log(),
-        step_snippet(),
     ])
 }
 

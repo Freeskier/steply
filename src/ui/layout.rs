@@ -1,4 +1,4 @@
-use crate::ui::span::{Span, SpanLine};
+use crate::ui::span::{Span, SpanLine, WrapMode};
 use crate::ui::text::{split_prefix_at_display_width, text_display_width};
 
 pub struct Layout;
@@ -40,8 +40,9 @@ impl Layout {
         for (source_row, line) in lines.iter().enumerate() {
             let mut source_col = 0usize;
 
-            for span in line {
+            for (span_idx, span) in line.iter().enumerate() {
                 let mut rest = span.text.as_str();
+                let mut at_span_start = true;
                 while !rest.is_empty() {
                     if current_width >= max_width {
                         push_line(&mut out, &mut current, &mut current_width);
@@ -51,6 +52,47 @@ impl Layout {
                     if remaining == 0 {
                         push_line(&mut out, &mut current, &mut current_width);
                         continue;
+                    }
+
+                    if matches!(span.wrap_mode, WrapMode::NoWrap) {
+                        if at_span_start
+                            && is_start_of_nowrap_run(line.as_slice(), span_idx)
+                            && current_width > 0
+                        {
+                            let run_width = nowrap_run_width(line.as_slice(), span_idx);
+                            if run_width > remaining {
+                                push_line(&mut out, &mut current, &mut current_width);
+                                continue;
+                            }
+                        }
+
+                        let rest_width = text_display_width(rest);
+                        if rest_width <= remaining {
+                            map_cursor_in_segment(
+                                cursor_target,
+                                source_row,
+                                source_col,
+                                rest_width,
+                                out.len(),
+                                current_width,
+                                &mut mapped_cursor,
+                            );
+
+                            let mut piece = span.clone();
+                            piece.text = rest.to_string();
+                            current_width = current_width.saturating_add(rest_width);
+                            current.push(piece);
+                            source_col = source_col.saturating_add(rest_width);
+                            rest = "";
+                            at_span_start = false;
+                            continue;
+                        }
+
+                        // Keep no-wrap spans/runs intact where possible.
+                        if current_width > 0 {
+                            push_line(&mut out, &mut current, &mut current_width);
+                            continue;
+                        }
                     }
 
                     let (left, tail) = split_prefix_at_display_width(rest, remaining);
@@ -73,6 +115,7 @@ impl Layout {
                     source_col = source_col.saturating_add(piece_width);
 
                     rest = tail;
+                    at_span_start = false;
                     if !rest.is_empty() {
                         push_line(&mut out, &mut current, &mut current_width);
                     }
@@ -239,4 +282,31 @@ fn map_cursor_in_segment(
         let delta = target_col.saturating_sub(source_col).min(segment_width);
         *mapped_cursor = Some((out_row, out_col.saturating_add(delta)));
     }
+}
+
+fn is_start_of_nowrap_run(line: &[Span], idx: usize) -> bool {
+    if !matches!(line[idx].wrap_mode, WrapMode::NoWrap) {
+        return false;
+    }
+    if idx == 0 {
+        return true;
+    }
+    !continues_nowrap_run(&line[idx - 1], &line[idx])
+}
+
+fn nowrap_run_width(line: &[Span], start_idx: usize) -> usize {
+    let mut width = 0usize;
+    for idx in start_idx..line.len() {
+        if idx > start_idx && !continues_nowrap_run(&line[idx - 1], &line[idx]) {
+            break;
+        }
+        width = width.saturating_add(text_display_width(line[idx].text.as_str()));
+    }
+    width
+}
+
+fn continues_nowrap_run(prev: &Span, current: &Span) -> bool {
+    matches!(prev.wrap_mode, WrapMode::NoWrap)
+        && matches!(current.wrap_mode, WrapMode::NoWrap)
+        && current.no_wrap_join_prev
 }

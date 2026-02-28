@@ -21,7 +21,7 @@ mod overlay;
 mod overlay_geometry;
 
 use decorations::{
-    StepFooter, append_step_footer_plain, decorate_step_block, decoration_gutter_width,
+    StepFrameFooter, append_step_frame_footer_plain, apply_step_frame, decoration_gutter_width,
     hint_line_prefix,
 };
 use overlay::apply_overlay;
@@ -112,11 +112,12 @@ impl Renderer {
     }
 
     pub fn render(&mut self, view: &RenderView, terminal_size: TerminalSize) -> RenderFrame {
+        let layout_terminal_size = effective_layout_terminal_size(terminal_size);
         let running_marker = self.running_spinner.glyph();
         self.running_spinner.tick();
-        let mut frame = self.render_steps_pass(view, terminal_size, running_marker);
-        self.apply_overlay_pass(view, terminal_size, &mut frame);
-        self.finalize_cursor_pass(terminal_size, &mut frame);
+        let mut frame = self.render_steps_pass(view, layout_terminal_size, running_marker);
+        self.apply_overlay_pass(view, layout_terminal_size, &mut frame);
+        self.finalize_cursor_pass(layout_terminal_size, &mut frame);
         frame
     }
 
@@ -175,6 +176,17 @@ impl Renderer {
 impl Default for Renderer {
     fn default() -> Self {
         Self::new(RendererConfig::default())
+    }
+}
+
+fn effective_layout_terminal_size(size: TerminalSize) -> TerminalSize {
+    TerminalSize {
+        width: if size.width > 1 {
+            size.width.saturating_sub(1)
+        } else {
+            size.width
+        },
+        height: size.height,
     }
 }
 
@@ -298,11 +310,11 @@ fn build_base_frame(
             tint_block(&mut block_lines, tint);
         }
 
-        let footer = step_footer(status, view, has_hints);
+        let footer = step_frame_footer(status, view, has_hints);
 
         if config.decorations_enabled {
             let include_top = idx == 0;
-            decorate_step_block(
+            apply_step_frame(
                 &mut block_lines,
                 &mut block_cursor,
                 idx < render_up_to,
@@ -319,7 +331,7 @@ fn build_base_frame(
             }
             block_hit_map.shift_cols(decoration_gutter_width().min(u16::MAX as usize) as u16);
         } else {
-            append_step_footer_plain(&mut block_lines, footer);
+            append_step_frame_footer_plain(&mut block_lines, footer);
         }
 
         let focused_anchor_in_block =
@@ -405,13 +417,13 @@ fn step_content_tint(status: StepVisualStatus) -> Option<Color> {
     }
 }
 
-fn step_footer<'a>(
+fn step_frame_footer<'a>(
     status: StepVisualStatus,
     view: &'a RenderView<'a>,
     has_hints: bool,
-) -> Option<StepFooter<'a>> {
+) -> Option<StepFrameFooter<'a>> {
     if status == StepVisualStatus::Cancelled {
-        return Some(StepFooter::Error {
+        return Some(StepFrameFooter::Error {
             message: "Exiting.",
             description: None,
             show_help_toggle: false,
@@ -423,11 +435,11 @@ fn step_footer<'a>(
     }
 
     if let Some(choice) = view.exit_confirm {
-        return Some(StepFooter::ExitConfirm { choice });
+        return Some(StepFrameFooter::ExitConfirm { choice });
     }
 
     if let Some(msg) = view.back_confirm {
-        return Some(StepFooter::Warning {
+        return Some(StepFrameFooter::Warning {
             message: msg,
             description: Some("[Enter] confirm  •  [Esc] cancel"),
             show_help_toggle: false,
@@ -435,7 +447,7 @@ fn step_footer<'a>(
     }
 
     if let Some(msg) = view.step_errors.first() {
-        return Some(StepFooter::Error {
+        return Some(StepFrameFooter::Error {
             message: msg.as_str(),
             description: None,
             show_help_toggle: has_hints,
@@ -443,14 +455,14 @@ fn step_footer<'a>(
     }
 
     if let Some(msg) = view.step_warnings.first() {
-        return Some(StepFooter::Warning {
+        return Some(StepFrameFooter::Warning {
             message: msg.as_str(),
             description: Some("[Enter] confirm  •  [Esc] cancel"),
             show_help_toggle: false,
         });
     }
 
-    has_hints.then_some(StepFooter::HelpToggle)
+    has_hints.then_some(StepFrameFooter::HelpToggle)
 }
 
 fn step_hints_panel_lines(
@@ -737,7 +749,6 @@ fn draw_nodes(
         let (label_prefix, label_offset) = input_label_prefix(node, ctx.focused_id.as_deref());
 
         apply_input_validation_overlay(node, ctx, &mut out);
-
         if options.strikethrough_inputs && matches!(node, Node::Input(_)) {
             for line in &mut out.lines {
                 let has_content = line
@@ -838,11 +849,7 @@ fn draw_nodes(
     }
 }
 
-fn register_block_selection_ranges(
-    hit_map: &mut FrameHitMap,
-    lines: &[SpanLine],
-    col_start: u16,
-) {
+fn register_block_selection_ranges(hit_map: &mut FrameHitMap, lines: &[SpanLine], col_start: u16) {
     for (row, line) in lines.iter().enumerate() {
         let row = row.min(u16::MAX as usize) as u16;
         let width = Layout::line_width(line.as_slice()).min(u16::MAX as usize) as u16;

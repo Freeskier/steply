@@ -483,11 +483,8 @@ impl Runtime {
             if row_end <= row_start {
                 continue;
             }
-            let selectable = selectable_ranges_for_row(
-                &self.last_hit_map,
-                row_idx as u16,
-                line_width,
-            );
+            let selectable =
+                selectable_ranges_for_row(&self.last_hit_map, row_idx as u16, line_width);
             if selectable.is_empty() {
                 continue;
             }
@@ -533,11 +530,8 @@ impl Runtime {
                 continue;
             }
 
-            let selectable = selectable_ranges_for_row(
-                &self.last_hit_map,
-                row_idx as u16,
-                line_width,
-            );
+            let selectable =
+                selectable_ranges_for_row(&self.last_hit_map, row_idx as u16, line_width);
             if selectable.is_empty() {
                 continue;
             }
@@ -646,11 +640,7 @@ fn display_width_for_line(line: &[Span]) -> usize {
         .sum()
 }
 
-fn selectable_ranges_for_row(
-    hit_map: &FrameHitMap,
-    row: u16,
-    line_width: u16,
-) -> Vec<(u16, u16)> {
+fn selectable_ranges_for_row(hit_map: &FrameHitMap, row: u16, line_width: u16) -> Vec<(u16, u16)> {
     let from_hit_map = hit_map.row_ranges(row);
     if !from_hit_map.is_empty() {
         return from_hit_map;

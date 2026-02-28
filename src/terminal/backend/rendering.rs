@@ -356,7 +356,10 @@ impl Terminal {
         if visible_row >= draw_count {
             return None;
         }
-        let col = frame.focus_anchor_col.unwrap_or(0).min(width.saturating_sub(1));
+        let col = frame
+            .focus_anchor_col
+            .unwrap_or(0)
+            .min(width.saturating_sub(1));
         let target_row = target_row_offset.saturating_add(visible_row) as u16;
         Some((col, target_row))
     }
@@ -393,17 +396,21 @@ impl Terminal {
                 .expect("alt_screen must be Some in AltScreen mode");
 
             if !alt.manually_scrolled {
-                alt.scroll_offset =
-                    fit_range_offset(alt.scroll_offset, active_range, sticky.body_height, max_offset)
-                        .unwrap_or_else(|| {
-                            follow_offset(
-                                alt.scroll_offset,
-                                follow_row,
-                                sticky.body_height,
-                                max_offset,
-                                2,
-                            )
-                        });
+                alt.scroll_offset = fit_range_offset(
+                    alt.scroll_offset,
+                    active_range,
+                    sticky.body_height,
+                    max_offset,
+                )
+                .unwrap_or_else(|| {
+                    follow_offset(
+                        alt.scroll_offset,
+                        follow_row,
+                        sticky.body_height,
+                        max_offset,
+                        2,
+                    )
+                });
             }
 
             alt.scroll_offset = alt.scroll_offset.min(max_offset);

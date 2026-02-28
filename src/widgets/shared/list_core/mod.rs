@@ -33,10 +33,7 @@ pub fn move_by(current: usize, delta: isize, len: usize) -> Option<usize> {
     Some(next)
 }
 
-pub fn toggle_filter_visibility(
-    filter: &mut FilterController,
-    clear_on_hide: bool,
-) -> bool {
+pub fn toggle_filter_visibility(filter: &mut FilterController, clear_on_hide: bool) -> bool {
     filter.toggle_visibility(clear_on_hide)
 }
 
@@ -61,7 +58,9 @@ pub fn prefer_visible_index(
     if visible.is_empty() {
         return None;
     }
-    if let Some(preferred) = preferred && visible.contains(&preferred) {
+    if let Some(preferred) = preferred
+        && visible.contains(&preferred)
+    {
         return Some(preferred);
     }
     if visible.contains(&current) {

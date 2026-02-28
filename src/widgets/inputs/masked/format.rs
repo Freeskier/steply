@@ -151,7 +151,31 @@ pub(super) fn render_plain_value(tokens: &[MaskToken]) -> String {
     for token in tokens {
         match token {
             MaskToken::Literal(ch) => out.push(*ch),
-            MaskToken::Segment(segment) => out.push_str(segment.value.as_str()),
+            MaskToken::Segment(segment) => {
+                if !segment.value.is_empty() {
+                    out.push_str(segment.value.as_str());
+                    continue;
+                }
+
+                let placeholder_len = match segment.kind {
+                    SegmentKind::Digit | SegmentKind::NumericRange { .. } => {
+                        if let Some(max_len) = segment.max_len {
+                            if segment.min_len == max_len {
+                                max_len
+                            } else {
+                                segment.min_len.max(1)
+                            }
+                        } else {
+                            segment.min_len.max(1)
+                        }
+                    }
+                    SegmentKind::Alpha | SegmentKind::Alnum => 0,
+                };
+
+                if placeholder_len > 0 {
+                    out.push_str("_".repeat(placeholder_len).as_str());
+                }
+            }
         }
     }
     out

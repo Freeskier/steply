@@ -1,6 +1,7 @@
 pub mod frame_json;
 pub mod highlight;
 pub mod hit_test;
+pub mod inline;
 pub mod layout;
 pub mod render_view;
 pub mod renderer;

@@ -11,6 +11,7 @@ pub struct Span {
     pub text: String,
     pub style: Style,
     pub wrap_mode: WrapMode,
+    pub no_wrap_join_prev: bool,
 }
 
 impl Span {
@@ -19,6 +20,7 @@ impl Span {
             text: text.into(),
             style: Style::default(),
             wrap_mode: WrapMode::Wrap,
+            no_wrap_join_prev: false,
         }
     }
 
@@ -27,11 +29,17 @@ impl Span {
             text: text.into(),
             style,
             wrap_mode: WrapMode::Wrap,
+            no_wrap_join_prev: false,
         }
     }
 
     pub fn no_wrap(mut self) -> Self {
         self.wrap_mode = WrapMode::NoWrap;
+        self
+    }
+
+    pub fn join_no_wrap_with_prev(mut self) -> Self {
+        self.no_wrap_join_prev = true;
         self
     }
 }

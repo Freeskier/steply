@@ -2,6 +2,7 @@ use crate::core::NodeId;
 use crate::core::value::Value;
 use crate::core::value_path::{ValuePath, ValueTarget};
 use crate::terminal::{KeyCode, KeyEvent};
+use crate::ui::inline::{Inline, InlineGroup};
 use crate::ui::span::Span;
 use crate::ui::style::{Color, Style};
 use crate::widgets::base::WidgetBase;
@@ -104,20 +105,23 @@ impl Drawable for SelectInput {
     }
 
     fn draw(&self, ctx: &RenderContext) -> DrawOutput {
-        let lines = if self.base.is_focused(ctx) {
-            vec![vec![
-                Span::styled("‹", Style::new().color(Color::Yellow).bold()).no_wrap(),
-                Span::new(" ").no_wrap(),
-                Span::styled(self.selected_text().to_string(), Style::default()).no_wrap(),
-                Span::new(" ").no_wrap(),
-                Span::styled("›", Style::new().color(Color::Yellow).bold()).no_wrap(),
-            ]]
-        } else {
-            vec![vec![
-                Span::styled(self.selected_text().to_string(), Style::default()).no_wrap(),
-            ]]
-        };
-        DrawOutput::with_lines(lines)
+        if self.base.is_focused(ctx) {
+            let control = Inline::group(InlineGroup::no_break(vec![
+                Inline::text(Span::styled("‹", Style::new().color(Color::Yellow).bold())),
+                Inline::text(Span::new(" ")),
+                Inline::text(Span::styled(
+                    self.selected_text().to_string(),
+                    Style::default(),
+                )),
+                Inline::text(Span::new(" ")),
+                Inline::text(Span::styled("›", Style::new().color(Color::Yellow).bold())),
+            ]));
+            return DrawOutput::with_inline_lines(vec![vec![control]]);
+        }
+
+        DrawOutput::with_lines(vec![vec![
+            Span::styled(self.selected_text().to_string(), Style::default()).no_wrap(),
+        ]])
     }
 }
 

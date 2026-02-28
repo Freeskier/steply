@@ -3,6 +3,7 @@ use crate::core::value_path::ValueTarget;
 use crate::runtime::event::{SystemEvent, ValueChange, WidgetAction};
 use crate::task::{TaskSpec, TaskSubscription};
 use crate::terminal::{CursorPos, KeyEvent, PointerEvent, PointerSemantic, TerminalSize};
+use crate::ui::inline::{InlineLine, flatten_lines};
 use crate::ui::span::{Span, SpanLine};
 use crate::widgets::shared::text_edit;
 use std::borrow::Cow;
@@ -138,6 +139,13 @@ impl DrawOutput {
     pub fn with_lines(lines: Vec<SpanLine>) -> Self {
         Self {
             lines,
+            sticky: Vec::new(),
+        }
+    }
+
+    pub fn with_inline_lines(lines: Vec<InlineLine>) -> Self {
+        Self {
+            lines: flatten_lines(lines),
             sticky: Vec::new(),
         }
     }

@@ -46,6 +46,7 @@ pub(super) fn next_literal_char(tokens: &[MaskToken], current_token: usize) -> O
 pub(super) fn render_spans(tokens: &[MaskToken], active_segment: Option<usize>) -> Vec<Span> {
     let mut spans = Vec::<Span>::new();
     let active_style = Style::new().color(Color::Cyan).bold();
+    let placeholder_style = Style::new().color(Color::DarkGrey);
     for (token_idx, token) in tokens.iter().enumerate() {
         let is_active = active_segment.is_some_and(|idx| idx == token_idx);
         match token {
@@ -72,12 +73,7 @@ pub(super) fn render_spans(tokens: &[MaskToken], active_segment: Option<usize>) 
                                 spans.push(Span::new(ch.to_string()).no_wrap());
                             }
                         } else {
-                            let style = if is_active {
-                                active_style
-                            } else {
-                                Style::new().color(Color::DarkGrey)
-                            };
-                            spans.push(Span::styled(ch.to_string(), style).no_wrap());
+                            spans.push(Span::styled(ch.to_string(), placeholder_style).no_wrap());
                         }
                     }
                     continue;
@@ -96,28 +92,13 @@ pub(super) fn render_spans(tokens: &[MaskToken], active_segment: Option<usize>) 
                     if segment.min_len == max_len {
                         let pad = max_len.saturating_sub(used);
                         for _ in 0..pad {
-                            let style = if is_active {
-                                active_style
-                            } else {
-                                Style::new().color(Color::DarkGrey)
-                            };
-                            spans.push(Span::styled("_", style).no_wrap());
+                            spans.push(Span::styled("_", placeholder_style).no_wrap());
                         }
                     } else if used == 0 {
-                        let style = if is_active {
-                            active_style
-                        } else {
-                            Style::new().color(Color::DarkGrey)
-                        };
-                        spans.push(Span::styled("_", style).no_wrap());
+                        spans.push(Span::styled("_", placeholder_style).no_wrap());
                     }
                 } else if used == 0 {
-                    let style = if is_active {
-                        active_style
-                    } else {
-                        Style::new().color(Color::DarkGrey)
-                    };
-                    spans.push(Span::styled("_", style).no_wrap());
+                    spans.push(Span::styled("_", placeholder_style).no_wrap());
                 }
             }
         }
@@ -134,9 +115,12 @@ pub(super) fn cursor_offset(
     for (idx, token) in tokens.iter().enumerate() {
         match token {
             MaskToken::Literal(_) => out += 1,
-            MaskToken::Segment(segment) => {
+            MaskToken::Segment(_) => {
                 if idx == cursor_token {
-                    out += cursor_offset.min(text_edit::char_count(segment.value.as_str()));
+                    let limit = segment_display_len(token);
+                    if limit > 0 {
+                        out += cursor_offset.min(limit.saturating_sub(1));
+                    }
                     return out;
                 }
                 out += segment_display_len(token);
@@ -144,6 +128,13 @@ pub(super) fn cursor_offset(
         }
     }
     out
+}
+
+pub(super) fn cursor_limit(tokens: &[MaskToken], cursor_token: usize) -> usize {
+    tokens
+        .get(cursor_token)
+        .map(segment_display_len)
+        .unwrap_or(0)
 }
 
 pub(super) fn render_plain_value(tokens: &[MaskToken]) -> String {

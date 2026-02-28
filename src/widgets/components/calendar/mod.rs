@@ -343,15 +343,24 @@ impl Drawable for Calendar {
         if !ctx.focused {
             return Vec::new();
         }
-        let mut hints = vec![
-            HintItem::new("Tab / Shift+Tab", "switch section", HintGroup::Navigation)
-                .with_priority(10),
-            HintItem::new("Enter", "select / submit", HintGroup::Action).with_priority(20),
-        ];
+        let mut hints =
+            vec![HintItem::new("Enter", "select / submit", HintGroup::Action).with_priority(20)];
         if self.is_time_section() {
+            hints.push(
+                HintItem::new(
+                    "Tab / Shift+Tab",
+                    "next/prev segment (edge: section)",
+                    HintGroup::Navigation,
+                )
+                .with_priority(10),
+            );
             hints.push(HintItem::new("Type", "edit time", HintGroup::Edit).with_priority(11));
             return hints;
         }
+        hints.push(
+            HintItem::new("Tab / Shift+Tab", "switch section", HintGroup::Navigation)
+                .with_priority(10),
+        );
         match self.section {
             Section::Month | Section::Year => {
                 hints.push(
@@ -435,8 +444,13 @@ impl Interactive for Calendar {
 
         if self.is_time_section() {
             match key.code {
-                KeyCode::Tab => {
-                    self.section = if shift {
+                KeyCode::Tab | KeyCode::BackTab => {
+                    let segment_result = self.time_input.on_key(key);
+                    if segment_result.handled {
+                        return segment_result;
+                    }
+                    let go_prev = matches!(key.code, KeyCode::BackTab) || shift;
+                    self.section = if go_prev {
                         self.prev_section()
                     } else {
                         self.next_section()

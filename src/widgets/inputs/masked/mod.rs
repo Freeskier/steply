@@ -5,7 +5,7 @@ mod parser;
 use crate::core::NodeId;
 use crate::core::value::Value;
 use crate::core::value_path::{ValuePath, ValueTarget};
-use crate::terminal::{CursorPos, KeyCode, KeyEvent};
+use crate::terminal::{CursorPos, KeyCode, KeyEvent, KeyModifiers};
 use crate::ui::inline::{Inline, InlineGroup};
 use crate::ui::span::Span;
 use crate::widgets::base::WidgetBase;
@@ -112,11 +112,17 @@ impl MaskedInput {
         self.cursor_offset = 0;
     }
 
+    fn current_cursor_limit(&self) -> usize {
+        format::cursor_limit(self.tokens.as_slice(), self.cursor_token)
+    }
+
+    fn current_max_cursor_pos(&self) -> usize {
+        self.current_cursor_limit().saturating_sub(1)
+    }
+
     fn clamp_cursor(&mut self) {
-        if let Some(segment) = self.current_segment() {
-            self.cursor_offset = self
-                .cursor_offset
-                .min(text_edit::char_count(segment.value.as_str()));
+        if self.current_segment().is_some() {
+            self.cursor_offset = self.cursor_offset.min(self.current_max_cursor_pos());
         } else {
             self.cursor_offset = 0;
         }
@@ -151,7 +157,7 @@ impl MaskedInput {
                 self.cursor_token = next_segment;
                 self.cursor_offset = 0;
             } else {
-                self.cursor_offset = new_len.min(max_len);
+                self.cursor_offset = max_len.saturating_sub(1);
             }
             return true;
         }
@@ -203,37 +209,49 @@ impl MaskedInput {
             return true;
         }
 
-        if let Some(prev_segment) =
-            format::prev_segment_pos(self.tokens.as_slice(), self.cursor_token)
-        {
-            self.cursor_token = prev_segment;
-            self.cursor_offset = self
-                .current_segment()
-                .map(|segment| text_edit::char_count(segment.value.as_str()))
-                .unwrap_or(0);
-            return true;
-        }
-
-        false
+        self.move_prev_segment_last_pos()
     }
 
     fn move_right(&mut self) -> bool {
-        if let Some(segment) = self.current_segment()
-            && self.cursor_offset < text_edit::char_count(segment.value.as_str())
-        {
+        if self.cursor_offset < self.current_max_cursor_pos() {
             self.cursor_offset += 1;
             return true;
         }
 
-        if let Some(next_segment) =
-            format::next_segment_pos(self.tokens.as_slice(), self.cursor_token)
-        {
-            self.cursor_token = next_segment;
-            self.cursor_offset = 0;
-            return true;
-        }
+        self.move_next_segment_start()
+    }
 
-        false
+    fn move_next_segment_start(&mut self) -> bool {
+        let Some(next_segment) =
+            format::next_segment_pos(self.tokens.as_slice(), self.cursor_token)
+        else {
+            return false;
+        };
+        self.cursor_token = next_segment;
+        self.cursor_offset = 0;
+        true
+    }
+
+    fn move_prev_segment_end(&mut self) -> bool {
+        let Some(prev_segment) =
+            format::prev_segment_pos(self.tokens.as_slice(), self.cursor_token)
+        else {
+            return false;
+        };
+        self.cursor_token = prev_segment;
+        self.cursor_offset = self.current_max_cursor_pos();
+        true
+    }
+
+    fn move_prev_segment_last_pos(&mut self) -> bool {
+        let Some(prev_segment) =
+            format::prev_segment_pos(self.tokens.as_slice(), self.cursor_token)
+        else {
+            return false;
+        };
+        self.cursor_token = prev_segment;
+        self.cursor_offset = self.current_max_cursor_pos();
+        true
     }
 
     fn increment_current(&mut self, delta: i64) -> bool {
@@ -258,7 +276,7 @@ impl MaskedInput {
         } else {
             segment.value = next.to_string();
         }
-        self.cursor_offset = text_edit::char_count(segment.value.as_str());
+        self.cursor_offset = text_edit::char_count(segment.value.as_str()).saturating_sub(1);
         true
     }
 
@@ -383,47 +401,73 @@ impl Interactive for MaskedInput {
 
     fn on_key(&mut self, key: KeyEvent) -> InteractionResult {
         match key.code {
+            KeyCode::Tab => {
+                let moved = if key.modifiers.contains(KeyModifiers::SHIFT) {
+                    self.move_prev_segment_end()
+                } else {
+                    self.move_next_segment_start()
+                };
+                if moved {
+                    InteractionResult::handled()
+                } else {
+                    InteractionResult::ignored()
+                }
+            }
+            KeyCode::BackTab => {
+                if self.move_prev_segment_end() {
+                    InteractionResult::handled()
+                } else {
+                    InteractionResult::ignored()
+                }
+            }
             KeyCode::Char(ch) => {
                 if self.insert_char(ch) {
-                    return InteractionResult::handled();
+                    InteractionResult::handled()
+                } else {
+                    InteractionResult::ignored()
                 }
-                InteractionResult::ignored()
             }
             KeyCode::Backspace => {
                 if self.delete_prev() {
-                    return InteractionResult::handled();
+                    InteractionResult::handled()
+                } else {
+                    InteractionResult::ignored()
                 }
-                InteractionResult::ignored()
             }
             KeyCode::Delete => {
                 if self.delete_current() {
-                    return InteractionResult::handled();
+                    InteractionResult::handled()
+                } else {
+                    InteractionResult::ignored()
                 }
-                InteractionResult::ignored()
             }
             KeyCode::Left => {
                 if self.move_left() {
-                    return InteractionResult::handled();
+                    InteractionResult::handled()
+                } else {
+                    InteractionResult::ignored()
                 }
-                InteractionResult::ignored()
             }
             KeyCode::Right => {
                 if self.move_right() {
-                    return InteractionResult::handled();
+                    InteractionResult::handled()
+                } else {
+                    InteractionResult::ignored()
                 }
-                InteractionResult::ignored()
             }
             KeyCode::Up => {
                 if self.increment_current(1) {
-                    return InteractionResult::handled();
+                    InteractionResult::handled()
+                } else {
+                    InteractionResult::ignored()
                 }
-                InteractionResult::ignored()
             }
             KeyCode::Down => {
                 if self.increment_current(-1) {
-                    return InteractionResult::handled();
+                    InteractionResult::handled()
+                } else {
+                    InteractionResult::ignored()
                 }
-                InteractionResult::ignored()
             }
             KeyCode::Enter => {
                 let value =

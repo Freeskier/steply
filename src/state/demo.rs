@@ -754,6 +754,7 @@ fn step_validation_demo() -> Step {
 
 pub fn build_demo_flow() -> Flow {
     Flow::new(vec![
+        step_structured_inputs(),
         step_snippet(),
         step_diff(),
         step_textarea(),
@@ -767,7 +768,6 @@ pub fn build_demo_flow() -> Flow {
         step_tree_view(),
         step_calendar(),
         step_text_inputs(),
-        step_structured_inputs(),
         step_toggles(),
         step_outputs(),
         step_color(),

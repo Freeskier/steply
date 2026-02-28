@@ -147,8 +147,8 @@ pub(super) fn decorate_step_block(
             ));
         }
         Some(StepFooter::HelpToggle) => {
-            let bottom = if connect_to_next { "├  " } else { "└  " };
-            decorated.push(with_gutter_prefix(bottom, decor_style, help_toggle_line()));
+            let prefix = if connect_to_next { "│  " } else { "└  " };
+            decorated.push(with_gutter_prefix(prefix, decor_style, help_toggle_line()));
         }
         None => {
             if connect_to_next {
@@ -222,7 +222,7 @@ fn with_gutter_prefix(prefix: &str, gutter_style: Style, mut content: SpanLine) 
     line
 }
 
-fn help_toggle_line() -> SpanLine {
+pub(super) fn help_toggle_line() -> SpanLine {
     vec![
         Span::styled("Ctrl+h", Style::new().color(Color::DarkGrey).bold()).no_wrap(),
         Span::styled(" Toggle help", Style::new().color(Color::DarkGrey)).no_wrap(),

@@ -276,7 +276,7 @@ impl Drawable for TaskLog {
             }
         }
 
-        DrawOutput { lines }
+        DrawOutput::with_lines(lines)
     }
 }
 

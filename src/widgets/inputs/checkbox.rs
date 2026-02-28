@@ -66,9 +66,7 @@ impl Drawable for CheckboxInput {
             Span::styled(text, style).no_wrap()
         };
 
-        DrawOutput {
-            lines: vec![vec![span]],
-        }
+        DrawOutput::with_lines(vec![vec![span]])
     }
 }
 

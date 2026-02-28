@@ -453,7 +453,7 @@ impl Drawable for DiffOutput {
             ]);
         }
 
-        DrawOutput { lines }
+        DrawOutput::with_lines(lines)
     }
 }
 

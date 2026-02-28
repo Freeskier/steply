@@ -249,7 +249,7 @@ impl Drawable for Snippet {
     fn draw(&self, ctx: &RenderContext) -> DrawOutput {
         let focused = self.base.is_focused(ctx);
         let (lines, _cursor) = self.render_lines(focused, ctx);
-        DrawOutput { lines }
+        DrawOutput::with_lines(lines)
     }
 
     fn hints(&self, ctx: HintContext) -> Vec<HintItem> {

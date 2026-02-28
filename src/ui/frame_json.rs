@@ -1,6 +1,7 @@
 use crate::terminal::TerminalSize;
 use crate::ui::renderer::RenderFrame;
 use crate::ui::style::{Color, Strike};
+use crate::widgets::traits::StickyPosition;
 
 pub fn frame_to_json(frame: &RenderFrame, size: TerminalSize) -> serde_json::Value {
     let cursor = frame.cursor.map(|c| {
@@ -40,6 +41,50 @@ pub fn frame_to_json(frame: &RenderFrame, size: TerminalSize) -> serde_json::Val
         })
         .collect::<Vec<_>>();
 
+    let sticky = frame
+        .sticky
+        .iter()
+        .map(|block| {
+            let lines = block
+                .lines
+                .iter()
+                .map(|line| {
+                    serde_json::Value::Array(
+                        line.iter()
+                            .map(|span| {
+                                serde_json::json!({
+                                    "text": span.text,
+                                    "wrap_mode": match span.wrap_mode {
+                                        crate::ui::span::WrapMode::NoWrap => "no_wrap",
+                                        crate::ui::span::WrapMode::Wrap => "wrap",
+                                    },
+                                    "style": {
+                                        "color": span.style.color.map(color_to_json),
+                                        "background": span.style.background.map(color_to_json),
+                                        "bold": span.style.bold,
+                                        "strike": match span.style.strike {
+                                            Strike::Inherit => "inherit",
+                                            Strike::On => "on",
+                                            Strike::Off => "off",
+                                        },
+                                    }
+                                })
+                            })
+                            .collect(),
+                    )
+                })
+                .collect::<Vec<_>>();
+            serde_json::json!({
+                "position": match block.position {
+                    StickyPosition::Top => "top",
+                    StickyPosition::Bottom => "bottom",
+                },
+                "priority": block.priority,
+                "lines": lines,
+            })
+        })
+        .collect::<Vec<_>>();
+
     serde_json::json!({
         "terminal": {
             "width": size.width,
@@ -48,6 +93,7 @@ pub fn frame_to_json(frame: &RenderFrame, size: TerminalSize) -> serde_json::Val
         "cursor": cursor,
         "cursor_visible": frame.cursor_visible,
         "lines": lines,
+        "sticky": sticky,
     })
 }
 

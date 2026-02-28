@@ -334,7 +334,7 @@ impl Drawable for Calendar {
             lines.push(line);
         }
 
-        DrawOutput { lines }
+        DrawOutput::with_lines(lines)
     }
 
     fn hints(&self, ctx: HintContext) -> Vec<HintItem> {

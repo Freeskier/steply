@@ -118,7 +118,7 @@ impl Drawable for ThinkingOutput {
 
         if self.chars.is_empty() {
             lines.push(vec![Span::new(self.text.clone()).no_wrap()]);
-            return DrawOutput { lines };
+            return DrawOutput::with_lines(lines);
         }
 
         let mut text_line = Vec::<Span>::with_capacity(self.chars.len());
@@ -128,7 +128,7 @@ impl Drawable for ThinkingOutput {
             text_line.push(Span::styled(ch.to_string(), style).no_wrap());
         }
         lines.push(text_line);
-        DrawOutput { lines }
+        DrawOutput::with_lines(lines)
     }
 }
 

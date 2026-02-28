@@ -172,9 +172,7 @@ impl Drawable for TextAreaComponent {
             ]);
         }
 
-        DrawOutput {
-            lines: output_lines,
-        }
+        DrawOutput::with_lines(output_lines)
     }
 
     fn hints(&self, ctx: HintContext) -> Vec<HintItem> {

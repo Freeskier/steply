@@ -163,7 +163,7 @@ impl Drawable for SliderInput {
             s
         };
 
-        DrawOutput { lines: vec![spans] }
+        DrawOutput::with_lines(vec![spans])
     }
 }
 

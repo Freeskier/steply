@@ -15,12 +15,6 @@ impl FileBrowserComponent {
         self.overlay_open && self.browse_dir.parent().is_some()
     }
 
-    fn has_searching_list_option(&self) -> bool {
-        self.overlay_open
-            && self.browser_mode == BrowserMode::List
-            && (self.scanning || self.tree_building)
-    }
-
     fn parent_option_item() -> SelectItem {
         SelectItem::new(
             Value::Text("..".to_string()),
@@ -33,36 +27,6 @@ impl FileBrowserComponent {
             },
         )
         .with_search_text("..")
-    }
-
-    fn searching_option_item() -> SelectItem {
-        SelectItem::new(
-            Value::Text("__searching__".to_string()),
-            SelectItemView::Styled {
-                text: "searching…".to_string(),
-                highlights: vec![],
-                style: crate::ui::style::Style::new().color(crate::ui::style::Color::DarkGrey),
-            },
-        )
-        .with_search_text("searching")
-    }
-
-    pub(super) fn show_searching_in_list(&mut self) {
-        if !(self.overlay_open && self.browser_mode == BrowserMode::List) {
-            return;
-        }
-        let prev_active = self.list.active_index();
-        let mut options = if let Some(result) = self.last_scan_result.as_ref() {
-            self.overlay_list_options(result).0
-        } else if self.should_show_parent_option() {
-            vec![Self::parent_option_item()]
-        } else {
-            Vec::new()
-        };
-        let insert_at = usize::from(self.should_show_parent_option()).min(options.len());
-        options.insert(insert_at, Self::searching_option_item());
-        self.list.set_options(options);
-        self.list.set_active_index(prev_active);
     }
 
     fn overlay_list_options(&self, result: &ScanResult) -> (Vec<SelectItem>, bool) {
@@ -215,10 +179,7 @@ impl FileBrowserComponent {
         if has_parent && idx == 0 {
             return Some(ActiveOverlayItem::Parent);
         }
-        if self.has_searching_list_option() && idx == usize::from(has_parent) {
-            return None;
-        }
-        let offset = usize::from(has_parent) + usize::from(self.has_searching_list_option());
+        let offset = usize::from(has_parent);
         let entries = self.last_scan_result.as_ref()?.entries.as_slice();
         idx.checked_sub(offset)
             .and_then(|entry_idx| entries.get(entry_idx))

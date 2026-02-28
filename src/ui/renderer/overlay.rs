@@ -210,6 +210,7 @@ fn render_overlay_body(
     );
     let mut draw_state = DrawNodesState {
         lines: &mut lines,
+        sticky: None,
         cursor: &mut cursor,
         cursor_visible: &mut cursor_visible,
         row_offset: &mut row_offset,
@@ -225,6 +226,7 @@ fn render_overlay_body(
         DrawNodesOptions {
             track_cursor: true,
             strikethrough_inputs: false,
+            collect_sticky: false,
         },
     );
 

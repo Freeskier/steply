@@ -133,7 +133,7 @@ impl TableOutput {
         }
 
         lines.push(border_line('└', '┴', '┘', widths));
-        DrawOutput { lines }
+        DrawOutput::with_lines(lines)
     }
 
     fn render_clean(
@@ -166,7 +166,7 @@ impl TableOutput {
             ));
         }
 
-        DrawOutput { lines }
+        DrawOutput::with_lines(lines)
     }
 }
 
@@ -185,7 +185,7 @@ impl Drawable for TableOutput {
             lines.push(vec![
                 Span::styled("No rows", Style::new().color(Color::DarkGrey)).no_wrap(),
             ]);
-            return DrawOutput { lines };
+            return DrawOutput::with_lines(lines);
         }
 
         let headers = self.normalized_headers(cols);

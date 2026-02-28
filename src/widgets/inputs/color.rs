@@ -307,7 +307,7 @@ impl Drawable for ColorInput {
     fn draw(&self, ctx: &RenderContext) -> DrawOutput {
         let focused = self.base.is_focused(ctx);
         let (parts, _) = self.render_parts(focused);
-        DrawOutput { lines: vec![parts] }
+        DrawOutput::with_lines(vec![parts])
     }
 }
 

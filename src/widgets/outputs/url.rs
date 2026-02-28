@@ -43,12 +43,10 @@ impl Drawable for UrlOutput {
     fn draw(&self, _ctx: &RenderContext) -> DrawOutput {
         let label = self.rendered_label();
         let linked = Self::osc8_link(self.url.as_str(), label.as_str());
-        DrawOutput {
-            lines: vec![vec![
-                Span::styled(linked, Style::new().color(Color::Blue).bold()).no_wrap(),
-                Span::styled("↗", Style::new().color(Color::DarkGrey)).no_wrap(),
-            ]],
-        }
+        DrawOutput::with_lines(vec![vec![
+            Span::styled(linked, Style::new().color(Color::Blue).bold()).no_wrap(),
+            Span::styled("↗", Style::new().color(Color::DarkGrey)).no_wrap(),
+        ]])
     }
 }
 

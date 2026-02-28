@@ -271,7 +271,7 @@ impl Drawable for ArrayInput {
         let focused = self.base.is_focused(ctx);
         let (content, _) = self.build_content(focused);
         let spans = content;
-        DrawOutput { lines: vec![spans] }
+        DrawOutput::with_lines(vec![spans])
     }
 }
 

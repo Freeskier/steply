@@ -267,7 +267,7 @@ impl Drawable for CommandRunner {
                 )
                 .no_wrap(),
             ]);
-            return DrawOutput { lines };
+            return DrawOutput::with_lines(lines);
         }
 
         if let Some(status_line) = self.status_line(focused) {
@@ -275,7 +275,7 @@ impl Drawable for CommandRunner {
         }
 
         lines.extend(self.log.draw(ctx).lines);
-        DrawOutput { lines }
+        DrawOutput::with_lines(lines)
     }
 
     fn hints(&self, ctx: HintContext) -> Vec<HintItem> {

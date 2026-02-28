@@ -1,10 +1,3 @@
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum ViewportSizing {
-    #[default]
-    ContentDriven,
-    StickyGrow,
-}
-
 #[derive(Debug, Clone)]
 pub struct CursorNav {
     active: usize,
@@ -25,14 +18,6 @@ impl CursorNav {
 
     pub fn set_max_visible(&mut self, n: usize) {
         self.scroll.max_visible = Some(n);
-    }
-
-    pub fn set_viewport_sizing(&mut self, sizing: ViewportSizing) {
-        self.scroll.set_viewport_sizing(sizing);
-    }
-
-    pub fn reset_preserved_viewport(&mut self) {
-        self.scroll.reset_preserved_viewport();
     }
 
     pub fn move_by(&mut self, delta: isize, total: usize) -> usize {
@@ -78,8 +63,6 @@ impl CursorNav {
 pub struct ScrollState {
     pub offset: usize,
     pub max_visible: Option<usize>,
-    sizing: ViewportSizing,
-    peak_visible: usize,
 }
 
 impl ScrollState {
@@ -87,24 +70,10 @@ impl ScrollState {
         Self {
             offset: 0,
             max_visible,
-            sizing: ViewportSizing::ContentDriven,
-            peak_visible: 0,
         }
-    }
-
-    pub fn set_viewport_sizing(&mut self, sizing: ViewportSizing) {
-        self.sizing = sizing;
-        if sizing == ViewportSizing::ContentDriven {
-            self.peak_visible = 0;
-        }
-    }
-
-    pub fn reset_preserved_viewport(&mut self) {
-        self.peak_visible = 0;
     }
 
     pub fn ensure_visible(&mut self, active: usize, total: usize) {
-        self.observe_total(total);
         let Some(max) = self.max_visible else {
             return;
         };
@@ -119,30 +88,6 @@ impl ScrollState {
         let last = self.offset.saturating_add(max).saturating_sub(1);
         if active > last {
             self.offset = active + 1 - max;
-        }
-    }
-
-    fn observe_total(&mut self, total: usize) {
-        let Some(max) = self.max_visible else {
-            self.peak_visible = 0;
-            return;
-        };
-        let current = total.min(max);
-        if self.sizing == ViewportSizing::StickyGrow {
-            self.peak_visible = self.peak_visible.max(current);
-        } else {
-            self.peak_visible = current;
-        }
-    }
-
-    fn reserved_visible(&self, total: usize) -> usize {
-        let Some(max) = self.max_visible else {
-            return total;
-        };
-        let current = total.min(max);
-        match self.sizing {
-            ViewportSizing::ContentDriven => current,
-            ViewportSizing::StickyGrow => current.max(self.peak_visible.min(max)),
         }
     }
 
@@ -189,6 +134,7 @@ impl ScrollState {
     pub fn placeholder_count(&self, total: usize) -> usize {
         let (start, end) = self.visible_range(total);
         let visible = end.saturating_sub(start);
-        self.reserved_visible(total).saturating_sub(visible)
+        let reserved = self.max_visible.map_or(total, |max| total.min(max));
+        reserved.saturating_sub(visible)
     }
 }

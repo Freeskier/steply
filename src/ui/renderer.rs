@@ -11,6 +11,7 @@ use crate::ui::text::text_display_width;
 use crate::widgets::node::{Node, NodeWalkScope, walk_nodes};
 use crate::widgets::traits::{
     CompletionMenu, DrawOutput, HintContext, HintGroup, HintItem, PointerRowMap, RenderContext,
+    StickyBlock, StickyPosition,
 };
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -21,12 +22,14 @@ mod overlay_geometry;
 
 use decorations::{
     StepFooter, append_step_footer_plain, decorate_step_block, decoration_gutter_width,
+    help_toggle_line,
 };
 use overlay::apply_overlay;
 
 #[derive(Debug, Default, Clone)]
 pub struct RenderFrame {
     pub lines: Vec<SpanLine>,
+    pub sticky: Vec<StickyBlock>,
     pub cursor: Option<CursorPos>,
     pub cursor_visible: bool,
     pub hit_map: FrameHitMap,
@@ -61,6 +64,7 @@ enum StepVisualStatus {
 
 pub(super) struct DrawNodesState<'a> {
     pub lines: &'a mut Vec<SpanLine>,
+    pub sticky: Option<&'a mut Vec<StickyBlock>>,
     pub cursor: &'a mut Option<CursorPos>,
     pub cursor_visible: &'a mut bool,
     pub row_offset: &'a mut u16,
@@ -74,6 +78,7 @@ pub(super) struct DrawNodesState<'a> {
 pub(super) struct DrawNodesOptions {
     pub track_cursor: bool,
     pub strikethrough_inputs: bool,
+    pub collect_sticky: bool,
 }
 
 impl From<StepStatus> for StepVisualStatus {
@@ -249,6 +254,7 @@ fn build_base_frame(
         let mut hit_row_offset = Layout::compose(&block_lines, compose_width).len() as u16;
         let mut draw_state = DrawNodesState {
             lines: &mut block_lines,
+            sticky: Some(&mut frame.sticky),
             cursor: &mut block_cursor,
             cursor_visible: &mut block_cursor_visible,
             row_offset: &mut row_offset,
@@ -264,6 +270,7 @@ fn build_base_frame(
             DrawNodesOptions {
                 track_cursor: status == StepVisualStatus::Active && !blocking_overlay,
                 strikethrough_inputs: status == StepVisualStatus::Cancelled,
+                collect_sticky: status == StepVisualStatus::Active && !blocking_overlay,
             },
         );
 
@@ -297,6 +304,16 @@ fn build_base_frame(
         }
 
         let footer = step_footer(status, view, has_hints);
+        let (footer, sticky_help) = match footer {
+            Some(StepFooter::HelpToggle) => (
+                None,
+                Some(help_toggle_sticky_block(config.decorations_enabled)),
+            ),
+            other => (other, None),
+        };
+        if let Some(block) = sticky_help {
+            frame.sticky.push(block);
+        }
 
         if config.decorations_enabled {
             let include_top = idx == 0;
@@ -334,17 +351,10 @@ fn build_base_frame(
         }
 
         if !hints_panel_lines.is_empty() {
-            if config.decorations_enabled {
-                let gutter = decoration_gutter_width().min(u16::MAX as usize);
-                let prefix = " ".repeat(gutter);
-                for line in hints_panel_lines {
-                    let mut prefixed = vec![Span::new(prefix.clone()).no_wrap()];
-                    prefixed.extend(line);
-                    frame.lines.push(prefixed);
-                }
-            } else {
-                frame.lines.extend(hints_panel_lines);
-            }
+            frame.sticky.push(hints_panel_sticky_block(
+                hints_panel_lines,
+                config.decorations_enabled,
+            ));
         }
     }
     frame
@@ -364,6 +374,27 @@ fn step_description_style(status: StepVisualStatus) -> Style {
         StepVisualStatus::Done | StepVisualStatus::Pending => Style::new().color(Color::DarkGrey),
         StepVisualStatus::Cancelled => Style::new().color(Color::Red),
     }
+}
+
+fn help_toggle_sticky_block(decorations_enabled: bool) -> StickyBlock {
+    let mut line = help_toggle_line();
+    if decorations_enabled {
+        line.insert(
+            0,
+            Span::new(" ".repeat(decoration_gutter_width())).no_wrap(),
+        );
+    }
+    StickyBlock::new(StickyPosition::Bottom, 200, vec![line])
+}
+
+fn hints_panel_sticky_block(mut lines: Vec<SpanLine>, decorations_enabled: bool) -> StickyBlock {
+    if decorations_enabled {
+        let prefix = Span::new(" ".repeat(decoration_gutter_width())).no_wrap();
+        for line in &mut lines {
+            line.insert(0, prefix.clone());
+        }
+    }
+    StickyBlock::new(StickyPosition::Bottom, 150, lines)
 }
 
 fn step_content_tint(status: StepVisualStatus) -> Option<Color> {
@@ -689,6 +720,12 @@ fn draw_nodes(
             *state.cursor_visible = node.cursor_visible();
         }
         *state.row_offset = (*state.row_offset).saturating_add(out.lines.len() as u16);
+        if options.collect_sticky
+            && let Some(sticky) = state.sticky.as_deref_mut()
+            && !out.sticky.is_empty()
+        {
+            sticky.extend(out.sticky);
+        }
         state.lines.extend(out.lines);
     }
 }

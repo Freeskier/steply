@@ -105,19 +105,56 @@ impl RenderContext {
     }
 }
 
-#[derive(Debug, Clone, Default)]
-pub struct DrawOutput {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StickyPosition {
+    Top,
+    Bottom,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StickyBlock {
+    pub position: StickyPosition,
+    pub priority: u8,
     pub lines: Vec<SpanLine>,
 }
 
+impl StickyBlock {
+    pub fn new(position: StickyPosition, priority: u8, lines: Vec<SpanLine>) -> Self {
+        Self {
+            position,
+            priority,
+            lines,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct DrawOutput {
+    pub lines: Vec<SpanLine>,
+    pub sticky: Vec<StickyBlock>,
+}
+
 impl DrawOutput {
+    pub fn with_lines(lines: Vec<SpanLine>) -> Self {
+        Self {
+            lines,
+            sticky: Vec::new(),
+        }
+    }
+
     pub fn plain_lines(lines: Vec<String>) -> Self {
         Self {
             lines: lines
                 .into_iter()
                 .map(|line| vec![Span::new(line).no_wrap()])
                 .collect(),
+            sticky: Vec::new(),
         }
+    }
+
+    pub fn with_sticky_block(mut self, block: StickyBlock) -> Self {
+        self.sticky.push(block);
+        self
     }
 }
 

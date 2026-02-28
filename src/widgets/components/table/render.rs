@@ -346,7 +346,7 @@ impl Drawable for Table {
 
         decorate_component_validation(&mut lines, ctx, self.base.id());
 
-        DrawOutput { lines }
+        DrawOutput::with_lines(lines)
     }
 
     fn hints(&self, ctx: HintContext) -> Vec<HintItem> {

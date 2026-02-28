@@ -117,7 +117,7 @@ impl Drawable for SelectInput {
                 Span::styled(self.selected_text().to_string(), Style::default()).no_wrap(),
             ]]
         };
-        DrawOutput { lines }
+        DrawOutput::with_lines(lines)
     }
 }
 

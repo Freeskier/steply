@@ -81,9 +81,7 @@ impl Drawable for ButtonInput {
             Style::new().color(Color::DarkGrey)
         };
 
-        DrawOutput {
-            lines: vec![vec![Span::styled(label, style).no_wrap()]],
-        }
+        DrawOutput::with_lines(vec![vec![Span::styled(label, style).no_wrap()]])
     }
 }
 

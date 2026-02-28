@@ -155,6 +155,9 @@ struct AltScreenState {
     last_rendered_cursor_visible: bool,
     last_rendered_size: TerminalSize,
     last_rendered_scroll_offset: usize,
+    last_sticky_signature: u64,
+    last_sticky_top_count: usize,
+    last_sticky_bottom_count: usize,
     has_rendered_once: bool,
 }
 
@@ -172,6 +175,9 @@ impl AltScreenState {
                 height: 0,
             },
             last_rendered_scroll_offset: 0,
+            last_sticky_signature: 0,
+            last_sticky_top_count: 0,
+            last_sticky_bottom_count: 0,
             has_rendered_once: false,
         }
     }
@@ -195,6 +201,9 @@ struct InlineState {
     last_rendered_cursor_visible: bool,
 
     last_rendered_size: TerminalSize,
+    last_sticky_signature: u64,
+    last_sticky_top_count: usize,
+    last_sticky_bottom_count: usize,
 
     has_rendered_once: bool,
 
@@ -221,6 +230,9 @@ impl InlineState {
                 width: 0,
                 height: 0,
             },
+            last_sticky_signature: 0,
+            last_sticky_top_count: 0,
+            last_sticky_bottom_count: 0,
             has_rendered_once: false,
             reanchor_after_resize: false,
             last_resize_width_delta: 0,
@@ -279,18 +291,34 @@ impl Terminal {
     pub fn map_screen_row_to_frame_row(&self, screen_row: u16) -> u16 {
         match self.mode {
             RenderMode::AltScreen => {
+                let Some(alt) = self.alt_screen.as_ref() else {
+                    return screen_row;
+                };
+                let top = alt.last_sticky_top_count.min(u16::MAX as usize) as u16;
+                let bottom = alt.last_sticky_bottom_count.min(u16::MAX as usize) as u16;
+                let height = self.state.size.height;
+                if screen_row < top || (bottom > 0 && screen_row >= height.saturating_sub(bottom)) {
+                    return u16::MAX;
+                }
                 let offset = self
                     .alt_screen
                     .as_ref()
                     .map(|alt| alt.scroll_offset)
                     .unwrap_or(0);
-                let row = offset.saturating_add(screen_row as usize);
+                let body_row = screen_row.saturating_sub(top) as usize;
+                let row = offset.saturating_add(body_row);
                 row.min(u16::MAX as usize) as u16
             }
             RenderMode::Inline => {
                 let Some(inline) = self.inline_state.as_ref() else {
                     return screen_row;
                 };
+                let top = inline.last_sticky_top_count.min(u16::MAX as usize) as u16;
+                let bottom = inline.last_sticky_bottom_count.min(u16::MAX as usize) as u16;
+                let height = self.state.size.height;
+                if screen_row < top || (bottom > 0 && screen_row >= height.saturating_sub(bottom)) {
+                    return u16::MAX;
+                }
                 let screen = screen_row as usize;
                 let block_start = inline.last_rendered_block_start_row as usize;
                 if screen < block_start {

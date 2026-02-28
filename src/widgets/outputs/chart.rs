@@ -173,11 +173,11 @@ impl Drawable for ChartOutput {
             lines.push(vec![
                 Span::styled("No data yet", Style::new().color(Color::DarkGrey)).no_wrap(),
             ]);
-            return DrawOutput { lines };
+            return DrawOutput::with_lines(lines);
         }
 
         let Some((min, max)) = self.value_range() else {
-            return DrawOutput { lines };
+            return DrawOutput::with_lines(lines);
         };
         let normalized = self.normalized_points(min, max);
         let series = self.render_series(normalized.as_slice());
@@ -208,7 +208,7 @@ impl Drawable for ChartOutput {
         ]);
         lines.push(self.render_series_line(series.as_slice()));
 
-        DrawOutput { lines }
+        DrawOutput::with_lines(lines)
     }
 }
 

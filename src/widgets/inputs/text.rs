@@ -181,9 +181,7 @@ impl Drawable for TextInput {
             first_line.push(Span::styled(suffix, Style::new().color(Color::DarkGrey)).no_wrap());
         }
 
-        DrawOutput {
-            lines: vec![first_line],
-        }
+        DrawOutput::with_lines(vec![first_line])
     }
 }
 

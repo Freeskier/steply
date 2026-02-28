@@ -140,7 +140,7 @@ impl Drawable for ConfirmInput {
             }
         };
 
-        DrawOutput { lines: vec![spans] }
+        DrawOutput::with_lines(vec![spans])
     }
 
     fn hints(&self, ctx: HintContext) -> Vec<HintItem> {

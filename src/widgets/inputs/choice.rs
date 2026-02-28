@@ -143,7 +143,7 @@ impl Drawable for ChoiceInput {
             vec![Span::new(self.selected_text().to_string()).no_wrap()]
         };
 
-        DrawOutput { lines: vec![spans] }
+        DrawOutput::with_lines(vec![spans])
     }
 
     fn hints(&self, ctx: HintContext) -> Vec<HintItem> {

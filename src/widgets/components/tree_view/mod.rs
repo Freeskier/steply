@@ -17,7 +17,7 @@ use crate::ui::layout::Layout;
 use crate::ui::span::Span;
 use crate::ui::style::{Color, Style};
 use crate::widgets::base::WidgetBase;
-use crate::widgets::components::scroll::{ScrollState, ViewportSizing};
+use crate::widgets::components::scroll::ScrollState;
 use crate::widgets::node::LeafComponent;
 use crate::widgets::shared::cursor_anchor;
 use crate::widgets::shared::filter;
@@ -140,20 +140,8 @@ impl<T: TreeItemLabel> TreeView<T> {
         } else {
             Some(max_visible)
         };
-        self.scroll.reset_preserved_viewport();
         self.rebuild();
         self
-    }
-
-    pub fn with_viewport_sizing(mut self, sizing: ViewportSizing) -> Self {
-        self.set_viewport_sizing(sizing);
-        self
-    }
-
-    pub fn set_viewport_sizing(&mut self, sizing: ViewportSizing) {
-        self.scroll.set_viewport_sizing(sizing);
-        self.scroll
-            .ensure_visible(self.active_index, self.visible.len());
     }
 
     pub fn with_submit_target(mut self, target: impl Into<NodeId>) -> Self {
@@ -661,7 +649,7 @@ impl<T: TreeItemLabel> Drawable for TreeView<T> {
         }
 
         lines.extend(self.render_lines(focused));
-        DrawOutput { lines }
+        DrawOutput::with_lines(lines)
     }
 
     fn pointer_rows(&self, ctx: &RenderContext) -> Vec<PointerRowMap> {

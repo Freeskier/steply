@@ -359,7 +359,7 @@ impl Drawable for MaskedInput {
             let plain = format::render_plain_value(self.tokens.as_slice());
             vec![crate::ui::span::Span::new(plain).no_wrap()]
         };
-        DrawOutput { lines: vec![spans] }
+        DrawOutput::with_lines(vec![spans])
     }
 }
 

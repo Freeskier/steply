@@ -312,7 +312,7 @@ impl Drawable for ObjectEditor {
             lines.push(vec![Span::styled(hint, inactive).no_wrap()]);
         }
 
-        DrawOutput { lines }
+        DrawOutput::with_lines(lines)
     }
 
     fn hints(&self, ctx: HintContext) -> Vec<HintItem> {

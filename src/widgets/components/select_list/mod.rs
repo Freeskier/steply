@@ -18,7 +18,7 @@ use crate::ui::layout::{Layout, LineContinuation, RenderBlock};
 use crate::ui::span::Span;
 use crate::ui::style::{Color, Style};
 use crate::widgets::base::WidgetBase;
-use crate::widgets::components::scroll::{ScrollState, ViewportSizing};
+use crate::widgets::components::scroll::ScrollState;
 use crate::widgets::node::LeafComponent;
 use crate::widgets::shared::cursor_anchor;
 use crate::widgets::shared::filter;
@@ -108,20 +108,8 @@ impl SelectList {
         } else {
             Some(max_visible)
         };
-        self.scroll.reset_preserved_viewport();
         self.scroll.offset = 0;
         ScrollState::clamp_active(&mut self.active_index, self.options.len());
-        self.scroll
-            .ensure_visible(self.active_index, self.options.len());
-    }
-
-    pub fn with_viewport_sizing(mut self, sizing: ViewportSizing) -> Self {
-        self.set_viewport_sizing(sizing);
-        self
-    }
-
-    pub fn set_viewport_sizing(&mut self, sizing: ViewportSizing) {
-        self.scroll.set_viewport_sizing(sizing);
         self.scroll
             .ensure_visible(self.active_index, self.options.len());
     }
@@ -769,7 +757,7 @@ impl Drawable for SelectList {
 
         let wrap_width = ctx.terminal_size.width.max(1);
         lines.extend(self.line_items(focused && !self.filter.is_focused(), wrap_width));
-        DrawOutput { lines }
+        DrawOutput::with_lines(lines)
     }
 
     fn pointer_rows(&self, ctx: &RenderContext) -> Vec<PointerRowMap> {

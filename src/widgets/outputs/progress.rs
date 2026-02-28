@@ -237,7 +237,7 @@ impl Drawable for ProgressOutput {
             .no_wrap(),
         ]);
 
-        DrawOutput { lines }
+        DrawOutput::with_lines(lines)
     }
 }
 

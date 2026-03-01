@@ -1,6 +1,7 @@
 use super::*;
 use crate::runtime::event::WidgetAction;
 use crate::terminal::{PointerButton, PointerEvent, PointerKind};
+use crate::widgets::shared::keymap;
 use crate::widgets::shared::list_core;
 
 impl Table {
@@ -179,7 +180,7 @@ impl Table {
                     self.set_body_mode(TableBodyMode::Edit);
                     InteractionResult::handled()
                 }
-                KeyCode::Char(ch) if key.modifiers == KeyModifiers::NONE && !ch.is_control() => {
+                KeyCode::Char(ch) if keymap::has_no_modifiers(key) && !ch.is_control() => {
                     self.set_body_mode(TableBodyMode::Edit);
                     let Some(cell) = self.active_cell_mut() else {
                         return InteractionResult::ignored();
@@ -276,7 +277,7 @@ impl Interactive for Table {
     }
 
     fn on_key(&mut self, key: KeyEvent) -> InteractionResult {
-        if key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('f') {
+        if keymap::is_ctrl_char(key, 'f') {
             self.toggle_filter_visibility();
             return InteractionResult::handled();
         }

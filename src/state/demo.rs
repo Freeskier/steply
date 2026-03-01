@@ -754,13 +754,12 @@ fn step_validation_demo() -> Step {
 
 pub fn build_demo_flow() -> Flow {
     Flow::new(vec![
-        step_structured_inputs(),
-        step_snippet(),
         step_diff(),
         step_textarea(),
         step_file_browser(),
         step_table(),
         step_selection(),
+        step_structured_inputs(),
         step_thinking_output(),
         step_object_editor(),
         step_repeater(),
@@ -777,6 +776,7 @@ pub fn build_demo_flow() -> Flow {
         step_back_reset(),
         step_validation_demo(),
         step_pokemon_search(),
+        step_snippet(),
         step_task_log(),
     ])
 }

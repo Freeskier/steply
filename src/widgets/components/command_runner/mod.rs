@@ -7,6 +7,7 @@ use crate::ui::style::{Color, Style};
 use crate::widgets::base::WidgetBase;
 use crate::widgets::node::{Component, Node};
 use crate::widgets::outputs::task_log::{TaskLog, TaskLogStep};
+use crate::widgets::shared::keymap;
 use crate::widgets::shared::task_watcher::TaskWatcherStatus;
 use crate::widgets::traits::{
     DrawOutput, Drawable, FocusMode, HintContext, HintGroup, HintItem, InteractionResult,
@@ -303,13 +304,11 @@ impl Interactive for CommandRunner {
     }
 
     fn on_key(&mut self, key: KeyEvent) -> InteractionResult {
-        match key.code {
-            KeyCode::Enter => {
-                self.auto_run_armed = false;
-                self.start_run()
-            }
-            _ => InteractionResult::ignored(),
+        if keymap::is_plain_key(key, KeyCode::Enter) {
+            self.auto_run_armed = false;
+            return self.start_run();
         }
+        InteractionResult::ignored()
     }
 
     fn on_system_event(&mut self, event: &SystemEvent) -> InteractionResult {

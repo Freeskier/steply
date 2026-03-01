@@ -5,8 +5,8 @@ use super::overlay_geometry::{
     FloatingOverlayGeometry, InlineOverlayGeometry, OverlayGeometry, resolve_overlay_geometry,
 };
 use super::{
-    DrawNodesOptions, DrawNodesState, RenderFrame, StepVisualStatus, draw_nodes,
-    render_context_for_nodes,
+    DrawNodesOptions, DrawNodesState, FocusApplyMode, FocusCursorState, RenderFrame,
+    StepVisualStatus, apply_focus_cursor_state, draw_nodes, render_context_for_nodes,
 };
 use crate::state::validation::ValidationState;
 use crate::terminal::{CursorPos, TerminalSize};
@@ -96,7 +96,7 @@ fn apply_floating_overlay(
     body.hit_map.shift_cols(geometry.col.saturating_add(1));
     frame.hit_map.extend(body.hit_map);
 
-    if let Some(local_cursor) = body.cursor {
+    let overlay_focus = if let Some(local_cursor) = body.cursor {
         let cursor = CursorPos {
             col: geometry.col.saturating_add(1).saturating_add(
                 local_cursor
@@ -108,19 +108,25 @@ fn apply_floating_overlay(
                 .saturating_add(1)
                 .saturating_add(local_cursor.row),
         };
-        frame.cursor = Some(cursor);
-        frame.focus_anchor_row = Some(cursor.row);
-        frame.focus_anchor_col = Some(cursor.col);
-        frame.cursor_visible = body.cursor_visible;
-    } else if let Some(anchor) = body.focus_anchor {
-        frame.focus_anchor_row = Some(geometry.row.saturating_add(1).saturating_add(anchor.row));
-        frame.focus_anchor_col = Some(
-            geometry
-                .col
-                .saturating_add(1)
-                .saturating_add(anchor.col.min(geometry.content_width.saturating_sub(1))),
-        );
-    }
+        FocusCursorState {
+            cursor: Some(cursor),
+            focus_anchor: None,
+            cursor_visible: body.cursor_visible,
+        }
+    } else {
+        FocusCursorState {
+            cursor: None,
+            focus_anchor: body.focus_anchor.map(|anchor| CursorPos {
+                row: geometry.row.saturating_add(1).saturating_add(anchor.row),
+                col: geometry
+                    .col
+                    .saturating_add(1)
+                    .saturating_add(anchor.col.min(geometry.content_width.saturating_sub(1))),
+            }),
+            cursor_visible: body.cursor_visible,
+        }
+    };
+    apply_focus_cursor_state(frame, overlay_focus, FocusApplyMode::OverrideExisting);
 }
 
 fn apply_inline_overlay(
@@ -191,10 +197,15 @@ fn apply_inline_overlay(
                 .saturating_add(geometry.insert_row.min(u16::MAX as usize) as u16)
                 .saturating_add(1),
         };
-        frame.cursor = Some(cursor);
-        frame.focus_anchor_row = Some(cursor.row);
-        frame.focus_anchor_col = Some(cursor.col);
-        frame.cursor_visible = body.cursor_visible;
+        apply_focus_cursor_state(
+            frame,
+            FocusCursorState {
+                cursor: Some(cursor),
+                focus_anchor: None,
+                cursor_visible: body.cursor_visible,
+            },
+            FocusApplyMode::OverrideExisting,
+        );
     } else if let Some(cursor) = frame.cursor.as_mut()
         && cursor.row as usize >= geometry.insert_row
     {
@@ -202,17 +213,24 @@ fn apply_inline_overlay(
     }
     if frame.cursor.is_none() {
         if let Some(anchor) = body.focus_anchor {
-            frame.focus_anchor_row = Some(
-                anchor
+            let anchor = CursorPos {
+                row: anchor
                     .row
                     .saturating_add(geometry.insert_row.min(u16::MAX as usize) as u16)
                     .saturating_add(1),
-            );
-            frame.focus_anchor_col = Some(
-                (geometry
+                col: (geometry
                     .content_col_offset()
                     .saturating_add(anchor.col as usize)
                     .min(u16::MAX as usize)) as u16,
+            };
+            apply_focus_cursor_state(
+                frame,
+                FocusCursorState {
+                    cursor: None,
+                    focus_anchor: Some(anchor),
+                    cursor_visible: body.cursor_visible,
+                },
+                FocusApplyMode::OverrideExisting,
             );
         } else if let Some(anchor) = frame.focus_anchor_row.as_mut()
             && *anchor as usize >= geometry.insert_row

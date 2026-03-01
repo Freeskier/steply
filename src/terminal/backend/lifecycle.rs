@@ -19,13 +19,17 @@ impl Terminal {
 
     fn enter_altscreen(&mut self) -> io::Result<()> {
         terminal::enable_raw_mode()?;
-        execute!(
-            self.stdout,
-            EnterAlternateScreen,
-            EnableMouseCapture,
-            PushKeyboardEnhancementFlags(keyboard_enhancement_flags()),
-            Hide
-        )?;
+        if keyboard_enhancements_enabled() {
+            execute!(
+                self.stdout,
+                EnterAlternateScreen,
+                EnableMouseCapture,
+                PushKeyboardEnhancementFlags(keyboard_enhancement_flags()),
+                Hide
+            )?;
+        } else {
+            execute!(self.stdout, EnterAlternateScreen, EnableMouseCapture, Hide)?;
+        }
         Ok(())
     }
 
@@ -41,25 +45,39 @@ impl Terminal {
         inline.last_skip = 0;
         terminal::enable_raw_mode()?;
 
-        execute!(
-            self.stdout,
-            DisableLineWrap,
-            PushKeyboardEnhancementFlags(keyboard_enhancement_flags()),
-            Hide
-        )?;
+        if keyboard_enhancements_enabled() {
+            execute!(
+                self.stdout,
+                DisableLineWrap,
+                PushKeyboardEnhancementFlags(keyboard_enhancement_flags()),
+                Hide
+            )?;
+        } else {
+            execute!(self.stdout, DisableLineWrap, Hide)?;
+        }
         Ok(())
     }
 
     fn exit_altscreen(&mut self) -> io::Result<()> {
         terminal::disable_raw_mode()?;
-        execute!(
-            self.stdout,
-            DisableMouseCapture,
-            PopKeyboardEnhancementFlags,
-            LeaveAlternateScreen,
-            EnableLineWrap,
-            Show
-        )?;
+        if keyboard_enhancements_enabled() {
+            execute!(
+                self.stdout,
+                DisableMouseCapture,
+                PopKeyboardEnhancementFlags,
+                LeaveAlternateScreen,
+                EnableLineWrap,
+                Show
+            )?;
+        } else {
+            execute!(
+                self.stdout,
+                DisableMouseCapture,
+                LeaveAlternateScreen,
+                EnableLineWrap,
+                Show
+            )?;
+        }
 
         if let Some(alt) = &self.alt_screen {
             let last_frame = alt.last_frame.clone();
@@ -86,12 +104,16 @@ impl Terminal {
         };
 
         queue!(self.stdout, MoveTo(0, last_row))?;
-        execute!(
-            self.stdout,
-            PopKeyboardEnhancementFlags,
-            EnableLineWrap,
-            Show
-        )?;
+        if keyboard_enhancements_enabled() {
+            execute!(
+                self.stdout,
+                PopKeyboardEnhancementFlags,
+                EnableLineWrap,
+                Show
+            )?;
+        } else {
+            execute!(self.stdout, EnableLineWrap, Show)?;
+        }
         terminal::disable_raw_mode()?;
         self.stdout.write_all(b"\r\n")?;
         self.stdout.flush()?;

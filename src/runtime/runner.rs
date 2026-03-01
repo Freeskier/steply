@@ -286,6 +286,17 @@ impl Runtime {
 
     fn process_intent(&mut self, intent: Intent) -> io::Result<()> {
         match &intent {
+            Intent::Exit => {
+                // Compatibility fallback:
+                // some terminals may collapse Ctrl+Shift+C to Ctrl+C.
+                // If there is an active selection, prefer copy over exit.
+                if self.selection.range().is_some() {
+                    if let Err(err) = self.copy_selection_to_clipboard() {
+                        eprintln!("failed to copy selection: {err}");
+                    }
+                    return Ok(());
+                }
+            }
             Intent::ScrollUp => {
                 self.terminal.scroll(-1);
                 return self.render();
@@ -500,6 +511,15 @@ impl Runtime {
 
     fn selected_text(&self) -> Option<String> {
         let range = self.selection.range()?;
+        self.selected_text_with_mode(range, true)
+            .or_else(|| self.selected_text_with_mode(range, false))
+    }
+
+    fn selected_text_with_mode(
+        &self,
+        range: SelectionRange,
+        strict_hit_map: bool,
+    ) -> Option<String> {
         if self.last_frame_lines.is_empty() {
             return None;
         }
@@ -530,8 +550,12 @@ impl Runtime {
                 continue;
             }
 
-            let selectable =
-                selectable_ranges_for_row(&self.last_hit_map, row_idx as u16, line_width);
+            let selectable = selectable_ranges_for_row_mode(
+                &self.last_hit_map,
+                row_idx as u16,
+                line_width,
+                strict_hit_map,
+            );
             if selectable.is_empty() {
                 continue;
             }
@@ -641,9 +665,21 @@ fn display_width_for_line(line: &[Span]) -> usize {
 }
 
 fn selectable_ranges_for_row(hit_map: &FrameHitMap, row: u16, line_width: u16) -> Vec<(u16, u16)> {
+    selectable_ranges_for_row_mode(hit_map, row, line_width, true)
+}
+
+fn selectable_ranges_for_row_mode(
+    hit_map: &FrameHitMap,
+    row: u16,
+    line_width: u16,
+    strict_hit_map: bool,
+) -> Vec<(u16, u16)> {
     let from_hit_map = hit_map.row_ranges(row);
     if !from_hit_map.is_empty() {
         return from_hit_map;
+    }
+    if strict_hit_map && hit_map.has_any_ranges() {
+        return Vec::new();
     }
     fallback_selectable_ranges(line_width)
 }

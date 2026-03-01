@@ -55,7 +55,21 @@ impl KeyBindings {
     }
 
     pub fn resolve(&self, event: KeyEvent) -> Option<Intent> {
-        self.bindings.get(&KeyBinding::from_event(event)).cloned()
+        if is_copy_selection_shortcut(event) {
+            return Some(Intent::CopySelection);
+        }
+        if let Some(intent) = self.bindings.get(&KeyBinding::from_event(event)).cloned() {
+            return Some(intent);
+        }
+
+        // Terminal compatibility:
+        // some terminals report Ctrl+Shift+<letter> as uppercase char.
+        // Fall back to Ctrl+<lowercase letter> bindings when possible.
+        normalized_ctrl_char_event(event).and_then(|normalized| {
+            self.bindings
+                .get(&KeyBinding::from_event(normalized))
+                .cloned()
+        })
     }
 
     fn install_defaults(&mut self) {
@@ -107,6 +121,8 @@ impl KeyBindings {
             KeyBinding::new(KeyCode::BackTab, KeyModifiers::SHIFT),
             Intent::CompletePrev,
         );
+        // Terminal compatibility: some environments report BackTab without SHIFT flag.
+        self.bind(KeyBinding::key(KeyCode::BackTab), Intent::CompletePrev);
         self.bind(KeyBinding::alt(KeyCode::Down), Intent::Submit);
         self.bind(KeyBinding::alt(KeyCode::Up), Intent::Back);
         self.bind(
@@ -142,4 +158,39 @@ impl KeyBindings {
         );
         self.bind(KeyBinding::alt(KeyCode::Char('c')), Intent::CopySelection);
     }
+}
+
+fn is_copy_selection_shortcut(event: KeyEvent) -> bool {
+    if !event.modifiers.contains(KeyModifiers::CONTROL) {
+        return false;
+    }
+    match event.code {
+        // Standard explicit binding: Ctrl+Shift+C.
+        KeyCode::Char('c') => event.modifiers.contains(KeyModifiers::SHIFT),
+        // Compatibility binding:
+        // Some terminals fold Shift into uppercase char and omit SHIFT modifier.
+        KeyCode::Char('C') => true,
+        _ => false,
+    }
+}
+
+fn normalized_ctrl_char_event(event: KeyEvent) -> Option<KeyEvent> {
+    if !event.modifiers.contains(KeyModifiers::CONTROL)
+        || event.modifiers.contains(KeyModifiers::ALT)
+        || !event.modifiers.contains(KeyModifiers::SHIFT)
+    {
+        return None;
+    }
+
+    let KeyCode::Char(ch) = event.code else {
+        return None;
+    };
+    if !ch.is_ascii_alphabetic() {
+        return None;
+    }
+
+    Some(KeyEvent {
+        code: KeyCode::Char(ch.to_ascii_lowercase()),
+        modifiers: KeyModifiers::CONTROL,
+    })
 }

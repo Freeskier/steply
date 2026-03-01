@@ -6,7 +6,7 @@ use unicode_width::UnicodeWidthStr;
 
 use crate::core::search::fuzzy::match_text;
 use crate::core::value::Value;
-use crate::terminal::{CursorPos, KeyCode, KeyEvent, KeyModifiers, TerminalSize};
+use crate::terminal::{CursorPos, KeyCode, KeyEvent, TerminalSize};
 use crate::ui::layout::Layout;
 use crate::ui::span::{Span, SpanLine};
 use crate::ui::style::{Color, Style};

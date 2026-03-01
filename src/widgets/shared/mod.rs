@@ -1,6 +1,7 @@
 pub mod calendar;
 pub mod cursor_anchor;
 pub mod filter;
+pub mod keymap;
 pub mod list_core;
 pub mod render_ctx;
 pub mod task_watcher;

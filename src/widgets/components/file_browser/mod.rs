@@ -99,6 +99,7 @@ use crate::widgets::components::select_list::{SelectList, SelectMode};
 use crate::widgets::components::tree_view::{TreeItemLabel, TreeNode, TreeView};
 use crate::widgets::inputs::text::TextInput;
 use crate::widgets::node::LeafComponent;
+use crate::widgets::shared::keymap;
 use crate::widgets::traits::{
     CompletionState, DrawOutput, Drawable, FocusMode, HintContext, HintGroup, HintItem,
     InteractionResult, Interactive, RenderContext, TextEditState, ValidationMode,
@@ -600,7 +601,8 @@ impl Interactive for FileBrowserComponent {
 
     fn on_key(&mut self, key: KeyEvent) -> InteractionResult {
         if key.code == KeyCode::Char(' ')
-            && (key.modifiers == KeyModifiers::SHIFT || key.modifiers == KeyModifiers::ALT)
+            && (keymap::has_exact_modifiers(key, KeyModifiers::SHIFT)
+                || keymap::has_exact_modifiers(key, KeyModifiers::ALT))
         {
             return self.open_browser();
         }

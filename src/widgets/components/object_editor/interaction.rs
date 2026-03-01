@@ -1,4 +1,5 @@
 use super::*;
+use crate::widgets::shared::keymap;
 
 impl Interactive for ObjectEditor {
     fn focus_mode(&self) -> FocusMode {
@@ -6,7 +7,7 @@ impl Interactive for ObjectEditor {
     }
 
     fn on_key(&mut self, key: KeyEvent) -> InteractionResult {
-        if key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('f') {
+        if keymap::is_ctrl_char(key, 'f') {
             self.toggle_filter_visibility();
             return InteractionResult::handled();
         }
@@ -181,7 +182,7 @@ impl ObjectEditor {
     }
 
     fn handle_normal(&mut self, key: KeyEvent) -> InteractionResult {
-        if key.modifiers != KeyModifiers::NONE {
+        if !keymap::has_no_modifiers(key) {
             return InteractionResult::ignored();
         }
         match key.code {

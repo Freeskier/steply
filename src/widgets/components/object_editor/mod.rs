@@ -9,7 +9,7 @@ use crate::core::search::fuzzy::match_text;
 use crate::core::value::Value;
 use crate::core::value_path::{PathSegment, ValuePath, ValueTarget};
 
-use crate::terminal::{CursorPos, KeyCode, KeyEvent, KeyModifiers};
+use crate::terminal::{CursorPos, KeyCode, KeyEvent};
 use crate::ui::highlight::render_text_spans;
 use crate::ui::span::Span;
 use crate::ui::style::{Color, Style};

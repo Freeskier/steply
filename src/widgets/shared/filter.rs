@@ -1,9 +1,10 @@
 use crate::core::value::Value;
 use crate::runtime::event::WidgetAction;
-use crate::terminal::{CursorPos, KeyCode, KeyEvent, KeyModifiers};
+use crate::terminal::{CursorPos, KeyCode, KeyEvent};
 use crate::ui::span::{Span, SpanLine};
 use crate::ui::style::{Color, Style};
 use crate::widgets::inputs::text::TextInput;
+use crate::widgets::shared::keymap;
 use crate::widgets::traits::{
     CompletionState, Drawable, InteractionResult, Interactive, RenderContext, TextAction,
 };
@@ -196,17 +197,23 @@ pub fn handle_key(
     key: KeyEvent,
     esc_behavior: FilterEscBehavior,
 ) -> FilterKeyOutcome {
-    if key.modifiers != KeyModifiers::NONE {
+    // Allow shifted printable characters (e.g. Shift+8 => '*') in filters.
+    // Control/Alt combos are reserved for global shortcuts.
+    if key
+        .modifiers
+        .contains(crate::terminal::KeyModifiers::CONTROL)
+        || key.modifiers.contains(crate::terminal::KeyModifiers::ALT)
+    {
         return FilterKeyOutcome::Ignored;
     }
 
     let before = current_query(filter);
     match key.code {
-        KeyCode::Esc => match esc_behavior {
+        KeyCode::Esc if keymap::has_no_modifiers(key) => match esc_behavior {
             FilterEscBehavior::Hide => FilterKeyOutcome::Hide,
             FilterEscBehavior::Blur => FilterKeyOutcome::Blur,
         },
-        KeyCode::Enter | KeyCode::Down => FilterKeyOutcome::Blur,
+        KeyCode::Enter | KeyCode::Down if keymap::has_no_modifiers(key) => FilterKeyOutcome::Blur,
         _ => {
             let result = sanitize_interaction_result(filter.on_key(key));
             let query_changed = current_query(filter) != before;

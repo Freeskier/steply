@@ -1,10 +1,11 @@
 use super::overlay::ActiveOverlayItem;
 use super::*;
 use crate::widgets::components::tree_view::TreeNode;
+use crate::widgets::shared::keymap;
 
 impl FileBrowserComponent {
     pub(super) fn handle_browser_key(&mut self, key: KeyEvent) -> InteractionResult {
-        if key.code == KeyCode::Char('t') && key.modifiers.contains(KeyModifiers::CONTROL) {
+        if keymap::is_ctrl_char(key, 't') {
             self.browser_mode = match self.browser_mode {
                 BrowserMode::List => BrowserMode::Tree,
                 BrowserMode::Tree => BrowserMode::List,
@@ -43,13 +44,7 @@ impl FileBrowserComponent {
                     self.navigate_item(item, false)
                 }
             }
-            KeyCode::Left => {
-                if self.navigate_parent() {
-                    InteractionResult::handled()
-                } else {
-                    InteractionResult::ignored()
-                }
-            }
+            KeyCode::Left => InteractionResult::handled_if(self.navigate_parent()),
 
             KeyCode::Up | KeyCode::Down => self.list.on_key(key),
 
@@ -61,30 +56,18 @@ impl FileBrowserComponent {
         match key.code {
             KeyCode::Esc => self.reset_query_or_close_browser(),
 
-            KeyCode::Up => {
-                if self
-                    .tree
+            KeyCode::Up => InteractionResult::handled_if(
+                self.tree
                     .as_mut()
                     .map(|t| t.move_active(-1))
-                    .unwrap_or(false)
-                {
-                    InteractionResult::handled()
-                } else {
-                    InteractionResult::ignored()
-                }
-            }
-            KeyCode::Down => {
-                if self
-                    .tree
+                    .unwrap_or(false),
+            ),
+            KeyCode::Down => InteractionResult::handled_if(
+                self.tree
                     .as_mut()
                     .map(|t| t.move_active(1))
-                    .unwrap_or(false)
-                {
-                    InteractionResult::handled()
-                } else {
-                    InteractionResult::ignored()
-                }
-            }
+                    .unwrap_or(false),
+            ),
 
             KeyCode::Right => {
                 let Some(item) = self.active_tree_item() else {

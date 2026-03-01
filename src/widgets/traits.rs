@@ -280,6 +280,14 @@ impl InteractionResult {
         }
     }
 
+    pub fn handled_if(changed: bool) -> Self {
+        if changed {
+            Self::handled()
+        } else {
+            Self::ignored()
+        }
+    }
+
     pub fn with_action(action: WidgetAction) -> Self {
         Self {
             handled: true,

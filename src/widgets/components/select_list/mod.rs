@@ -11,8 +11,7 @@ use crate::core::value_path::{ValuePath, ValueTarget};
 use crate::runtime::event::WidgetAction;
 
 use crate::terminal::{
-    CursorPos, KeyCode, KeyEvent, KeyModifiers, PointerButton, PointerEvent, PointerKind,
-    PointerSemantic,
+    CursorPos, KeyCode, KeyEvent, PointerButton, PointerEvent, PointerKind, PointerSemantic,
 };
 use crate::ui::layout::{Layout, LineContinuation, RenderBlock};
 use crate::ui::span::Span;
@@ -22,6 +21,7 @@ use crate::widgets::components::scroll::ScrollState;
 use crate::widgets::node::LeafComponent;
 use crate::widgets::shared::cursor_anchor;
 use crate::widgets::shared::filter;
+use crate::widgets::shared::keymap;
 use crate::widgets::shared::list_core;
 use crate::widgets::traits::{
     CompletionState, DrawOutput, Drawable, FocusMode, HintContext, HintGroup, HintItem,
@@ -104,15 +104,10 @@ impl SelectList {
     }
 
     pub fn set_max_visible(&mut self, max_visible: usize) {
-        self.scroll.max_visible = if max_visible == 0 {
-            None
-        } else {
-            Some(max_visible)
-        };
+        self.scroll.set_max_visible(max_visible);
         self.scroll.offset = 0;
-        ScrollState::clamp_active(&mut self.active_index, self.options.len());
         self.scroll
-            .ensure_visible(self.active_index, self.options.len());
+            .clamp_and_ensure(&mut self.active_index, self.options.len());
     }
 
     pub fn with_options(mut self, options: Vec<SelectItem>) -> Self {
@@ -202,14 +197,8 @@ impl SelectList {
     }
 
     pub fn set_active_index(&mut self, index: usize) {
-        if self.options.is_empty() {
-            self.active_index = 0;
-            self.scroll.offset = 0;
-            return;
-        }
-        self.active_index = index.min(self.options.len() - 1);
         self.scroll
-            .ensure_visible(self.active_index, self.options.len());
+            .set_active_clamped(&mut self.active_index, self.options.len(), index);
     }
 
     pub fn mode(&self) -> SelectMode {
@@ -274,8 +263,8 @@ impl SelectList {
         self.ensure_radio_selection();
 
         if self.options.is_empty() {
-            self.active_index = 0;
-            self.scroll.offset = 0;
+            self.scroll
+                .set_active_clamped(&mut self.active_index, self.options.len(), 0);
             return;
         }
 
@@ -293,8 +282,9 @@ impl SelectList {
             self.active_index = self.options.len() - 1;
         }
 
+        let active = self.active_index;
         self.scroll
-            .ensure_visible(self.active_index, self.options.len());
+            .set_active_clamped(&mut self.active_index, self.options.len(), active);
     }
 
     fn marker_cursor_pos(&self) -> Option<CursorPos> {
@@ -427,19 +417,8 @@ impl SelectList {
     }
 
     fn move_active(&mut self, delta: isize) -> bool {
-        if self.options.is_empty() {
-            return false;
-        }
-        let len = self.options.len() as isize;
-        let current = self.active_index as isize;
-        let next = ((current + delta + len) % len) as usize;
-        if next == self.active_index {
-            return false;
-        }
-        self.active_index = next;
         self.scroll
-            .ensure_visible(self.active_index, self.options.len());
-        true
+            .move_active_wrapped(&mut self.active_index, self.options.len(), delta)
     }
 
     fn activate_current(&mut self) -> bool {
@@ -690,7 +669,7 @@ impl SelectList {
     }
 
     fn handle_list_key(&mut self, key: KeyEvent) -> InteractionResult {
-        if key.modifiers != KeyModifiers::NONE {
+        if !keymap::has_no_modifiers(key) {
             return InteractionResult::ignored();
         }
 
@@ -700,17 +679,9 @@ impl SelectList {
                     self.filter.set_focused(true);
                     return InteractionResult::handled();
                 }
-                if self.move_active(-1) {
-                    return InteractionResult::handled();
-                }
-                InteractionResult::ignored()
+                InteractionResult::handled_if(self.move_active(-1))
             }
-            KeyCode::Down => {
-                if self.move_active(1) {
-                    return InteractionResult::handled();
-                }
-                InteractionResult::ignored()
-            }
+            KeyCode::Down => InteractionResult::handled_if(self.move_active(1)),
             KeyCode::Char(' ') => {
                 if self.mode == SelectMode::List {
                     return InteractionResult::ignored();
@@ -792,7 +763,7 @@ impl Interactive for SelectList {
     }
 
     fn on_key(&mut self, key: KeyEvent) -> InteractionResult {
-        if key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('f') {
+        if keymap::is_ctrl_char(key, 'f') {
             self.toggle_filter_visibility();
             return InteractionResult::handled();
         }

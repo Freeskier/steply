@@ -17,29 +17,21 @@ impl CursorNav {
     }
 
     pub fn set_max_visible(&mut self, n: usize) {
-        self.scroll.max_visible = Some(n);
+        self.scroll.set_max_visible(n);
     }
 
     pub fn move_by(&mut self, delta: isize, total: usize) -> usize {
-        if total == 0 {
-            self.active = 0;
-            return 0;
-        }
-        let len = total as isize;
-        self.active = ((self.active as isize + delta + len) % len) as usize;
-        self.scroll.ensure_visible(self.active, total);
+        self.scroll
+            .move_active_wrapped(&mut self.active, total, delta);
         self.active
     }
 
     pub fn set_active(&mut self, idx: usize, total: usize) {
-        self.active = idx;
-        ScrollState::clamp_active(&mut self.active, total);
-        self.scroll.ensure_visible(self.active, total);
+        self.scroll.set_active_clamped(&mut self.active, total, idx);
     }
 
     pub fn clamp(&mut self, total: usize) {
-        ScrollState::clamp_active(&mut self.active, total);
-        self.scroll.ensure_visible(self.active, total);
+        self.scroll.clamp_and_ensure(&mut self.active, total);
     }
 
     pub fn visible_range(&self, total: usize) -> (usize, usize) {
@@ -73,6 +65,10 @@ impl ScrollState {
         }
     }
 
+    pub fn set_max_visible(&mut self, max_visible: usize) {
+        self.max_visible = (max_visible > 0).then_some(max_visible);
+    }
+
     pub fn ensure_visible(&mut self, active: usize, total: usize) {
         let Some(max) = self.max_visible else {
             return;
@@ -97,6 +93,42 @@ impl ScrollState {
         } else if *active >= total {
             *active = total - 1;
         }
+    }
+
+    pub fn set_active_clamped(&mut self, active: &mut usize, total: usize, index: usize) {
+        if total == 0 {
+            *active = 0;
+            self.offset = 0;
+            return;
+        }
+        *active = index.min(total.saturating_sub(1));
+        self.ensure_visible(*active, total);
+    }
+
+    pub fn clamp_and_ensure(&mut self, active: &mut usize, total: usize) {
+        if total == 0 {
+            *active = 0;
+            self.offset = 0;
+            return;
+        }
+        Self::clamp_active(active, total);
+        self.ensure_visible(*active, total);
+    }
+
+    pub fn move_active_wrapped(&mut self, active: &mut usize, total: usize, delta: isize) -> bool {
+        if total == 0 {
+            *active = 0;
+            self.offset = 0;
+            return false;
+        }
+        let len = total as isize;
+        let next = ((*active as isize + delta + len) % len) as usize;
+        if next == *active {
+            return false;
+        }
+        *active = next;
+        self.ensure_visible(*active, total);
+        true
     }
 
     pub fn visible_range(&self, total: usize) -> (usize, usize) {

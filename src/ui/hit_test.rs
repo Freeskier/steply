@@ -60,6 +60,10 @@ pub struct HitTarget<'a> {
 }
 
 impl FrameHitMap {
+    pub fn has_any_ranges(&self) -> bool {
+        !self.regions.is_empty() || !self.selection_ranges.is_empty()
+    }
+
     pub fn push_node_row(
         &mut self,
         node_id: impl Into<String>,

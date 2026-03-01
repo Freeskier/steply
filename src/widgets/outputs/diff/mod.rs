@@ -1,12 +1,13 @@
 use similar::{DiffOp, TextDiff};
 
-use crate::terminal::{KeyCode, KeyEvent, KeyModifiers};
+use crate::terminal::{KeyCode, KeyEvent};
 use crate::ui::layout::{Layout, LineContinuation, RenderBlock};
 use crate::ui::span::Span;
 use crate::ui::style::{Color, Style};
 use crate::widgets::base::WidgetBase;
 use crate::widgets::components::scroll::CursorNav;
 use crate::widgets::node::LeafComponent;
+use crate::widgets::shared::keymap;
 use crate::widgets::traits::{
     DrawOutput, Drawable, FocusMode, InteractionResult, Interactive, RenderContext, ValidationMode,
 };
@@ -558,7 +559,7 @@ impl Interactive for DiffOutput {
                 self.move_cursor(1);
                 InteractionResult::handled()
             }
-            KeyCode::Tab if key.modifiers == KeyModifiers::NONE => {
+            KeyCode::Tab if keymap::has_no_modifiers(key) => {
                 self.next_chunk();
                 InteractionResult::handled()
             }
@@ -566,14 +567,10 @@ impl Interactive for DiffOutput {
                 self.prev_chunk();
                 InteractionResult::handled()
             }
-            KeyCode::Char(' ') if key.modifiers == KeyModifiers::NONE => {
-                if self.expand_gap() {
-                    InteractionResult::handled()
-                } else {
-                    InteractionResult::ignored()
-                }
+            KeyCode::Char(' ') if keymap::has_no_modifiers(key) => {
+                InteractionResult::handled_if(self.expand_gap())
             }
-            KeyCode::Enter if key.modifiers == KeyModifiers::NONE => {
+            KeyCode::Enter if keymap::is_plain_key(key, KeyCode::Enter) => {
                 InteractionResult::input_done()
             }
             _ => InteractionResult::ignored(),

@@ -39,86 +39,21 @@ impl Layout {
 
         for (source_row, line) in lines.iter().enumerate() {
             let mut source_col = 0usize;
+            let mut compose_state = ComposeState {
+                source_row,
+                source_col: &mut source_col,
+                max_width,
+                out: &mut out,
+                current: &mut current,
+                current_width: &mut current_width,
+                cursor_target,
+                mapped_cursor: &mut mapped_cursor,
+            };
 
-            for (span_idx, span) in line.iter().enumerate() {
-                let mut rest = span.text.as_str();
-                let mut at_span_start = true;
-                while !rest.is_empty() {
-                    if current_width >= max_width {
-                        push_line(&mut out, &mut current, &mut current_width);
-                    }
-
-                    let remaining = max_width.saturating_sub(current_width);
-                    if remaining == 0 {
-                        push_line(&mut out, &mut current, &mut current_width);
-                        continue;
-                    }
-
-                    if matches!(span.wrap_mode, WrapMode::NoWrap) {
-                        if at_span_start
-                            && is_start_of_nowrap_run(line.as_slice(), span_idx)
-                            && current_width > 0
-                        {
-                            let run_width = nowrap_run_width(line.as_slice(), span_idx);
-                            if run_width > remaining {
-                                push_line(&mut out, &mut current, &mut current_width);
-                                continue;
-                            }
-                        }
-
-                        let rest_width = text_display_width(rest);
-                        if rest_width <= remaining {
-                            map_cursor_in_segment(
-                                cursor_target,
-                                source_row,
-                                source_col,
-                                rest_width,
-                                out.len(),
-                                current_width,
-                                &mut mapped_cursor,
-                            );
-
-                            let mut piece = span.clone();
-                            piece.text = rest.to_string();
-                            current_width = current_width.saturating_add(rest_width);
-                            current.push(piece);
-                            source_col = source_col.saturating_add(rest_width);
-                            rest = "";
-                            at_span_start = false;
-                            continue;
-                        }
-
-                        // Keep no-wrap spans/runs intact where possible.
-                        if current_width > 0 {
-                            push_line(&mut out, &mut current, &mut current_width);
-                            continue;
-                        }
-                    }
-
-                    let (left, tail) = split_prefix_at_display_width(rest, remaining);
-                    let piece_width = text_display_width(left);
-
-                    map_cursor_in_segment(
-                        cursor_target,
-                        source_row,
-                        source_col,
-                        piece_width,
-                        out.len(),
-                        current_width,
-                        &mut mapped_cursor,
-                    );
-
-                    let mut piece = span.clone();
-                    piece.text = left.to_string();
-                    current_width = current_width.saturating_add(piece_width);
-                    current.push(piece);
-                    source_col = source_col.saturating_add(piece_width);
-
-                    rest = tail;
-                    at_span_start = false;
-                    if !rest.is_empty() {
-                        push_line(&mut out, &mut current, &mut current_width);
-                    }
+            for unit in compose_units(line.as_slice()) {
+                match unit {
+                    ComposeUnit::WrapSpan(span) => compose_wrap_span(span, &mut compose_state),
+                    ComposeUnit::NoWrapRun(run) => compose_nowrap_run(run, &mut compose_state),
                 }
             }
 
@@ -284,29 +219,195 @@ fn map_cursor_in_segment(
     }
 }
 
-fn is_start_of_nowrap_run(line: &[Span], idx: usize) -> bool {
-    if !matches!(line[idx].wrap_mode, WrapMode::NoWrap) {
-        return false;
-    }
-    if idx == 0 {
-        return true;
-    }
-    !continues_nowrap_run(&line[idx - 1], &line[idx])
-}
-
-fn nowrap_run_width(line: &[Span], start_idx: usize) -> usize {
-    let mut width = 0usize;
-    for idx in start_idx..line.len() {
-        if idx > start_idx && !continues_nowrap_run(&line[idx - 1], &line[idx]) {
-            break;
-        }
-        width = width.saturating_add(text_display_width(line[idx].text.as_str()));
-    }
-    width
-}
-
 fn continues_nowrap_run(prev: &Span, current: &Span) -> bool {
     matches!(prev.wrap_mode, WrapMode::NoWrap)
         && matches!(current.wrap_mode, WrapMode::NoWrap)
         && current.no_wrap_join_prev
+}
+
+#[derive(Debug, Clone)]
+enum ComposeUnit {
+    WrapSpan(Span),
+    NoWrapRun(SpanLine),
+}
+
+fn compose_units(line: &[Span]) -> Vec<ComposeUnit> {
+    let mut out = Vec::new();
+    let mut idx = 0usize;
+    while idx < line.len() {
+        let span = &line[idx];
+        if !matches!(span.wrap_mode, WrapMode::NoWrap) {
+            out.push(ComposeUnit::WrapSpan(span.clone()));
+            idx = idx.saturating_add(1);
+            continue;
+        }
+
+        let mut run = vec![span.clone()];
+        idx = idx.saturating_add(1);
+        while idx < line.len() && continues_nowrap_run(run.last().unwrap_or(span), &line[idx]) {
+            run.push(line[idx].clone());
+            idx = idx.saturating_add(1);
+        }
+        out.push(ComposeUnit::NoWrapRun(run));
+    }
+    out
+}
+
+struct ComposeState<'a> {
+    source_row: usize,
+    source_col: &'a mut usize,
+    max_width: usize,
+    out: &'a mut Vec<SpanLine>,
+    current: &'a mut SpanLine,
+    current_width: &'a mut usize,
+    cursor_target: Option<(usize, usize)>,
+    mapped_cursor: &'a mut Option<(usize, usize)>,
+}
+
+fn compose_wrap_span(span: Span, state: &mut ComposeState<'_>) {
+    let mut rest = span.text.as_str();
+    while !rest.is_empty() {
+        if *state.current_width >= state.max_width {
+            push_line(state.out, state.current, state.current_width);
+        }
+
+        let remaining = state.max_width.saturating_sub(*state.current_width);
+        if remaining == 0 {
+            push_line(state.out, state.current, state.current_width);
+            continue;
+        }
+
+        let (left, tail) = split_prefix_at_display_width(rest, remaining);
+        let piece_width = text_display_width(left);
+
+        map_cursor_in_segment(
+            state.cursor_target,
+            state.source_row,
+            *state.source_col,
+            piece_width,
+            state.out.len(),
+            *state.current_width,
+            state.mapped_cursor,
+        );
+
+        let mut piece = span.clone();
+        piece.text = left.to_string();
+        *state.current_width = state.current_width.saturating_add(piece_width);
+        state.current.push(piece);
+        *state.source_col = state.source_col.saturating_add(piece_width);
+
+        rest = tail;
+        if !rest.is_empty() {
+            push_line(state.out, state.current, state.current_width);
+        }
+    }
+}
+
+fn compose_nowrap_run(mut run: SpanLine, state: &mut ComposeState<'_>) {
+    while !run.is_empty() {
+        if *state.current_width >= state.max_width {
+            push_line(state.out, state.current, state.current_width);
+        }
+
+        let remaining = state.max_width.saturating_sub(*state.current_width);
+        if remaining == 0 {
+            push_line(state.out, state.current, state.current_width);
+            continue;
+        }
+
+        let run_width = spans_width(run.as_slice());
+        if run_width <= remaining {
+            map_cursor_in_segment(
+                state.cursor_target,
+                state.source_row,
+                *state.source_col,
+                run_width,
+                state.out.len(),
+                *state.current_width,
+                state.mapped_cursor,
+            );
+            *state.current_width = state.current_width.saturating_add(run_width);
+            *state.source_col = state.source_col.saturating_add(run_width);
+            state.current.extend(run);
+            break;
+        }
+
+        if *state.current_width > 0 {
+            push_line(state.out, state.current, state.current_width);
+            continue;
+        }
+
+        let (prefix, prefix_width, rest) =
+            take_spans_prefix_display_width(run.as_slice(), remaining);
+        if prefix.is_empty() {
+            break;
+        }
+        map_cursor_in_segment(
+            state.cursor_target,
+            state.source_row,
+            *state.source_col,
+            prefix_width,
+            state.out.len(),
+            *state.current_width,
+            state.mapped_cursor,
+        );
+        *state.current_width = state.current_width.saturating_add(prefix_width);
+        *state.source_col = state.source_col.saturating_add(prefix_width);
+        state.current.extend(prefix);
+        run = rest;
+        if !run.is_empty() {
+            push_line(state.out, state.current, state.current_width);
+        }
+    }
+}
+
+fn take_spans_prefix_display_width(
+    spans: &[Span],
+    max_width: usize,
+) -> (SpanLine, usize, SpanLine) {
+    if max_width == 0 || spans.is_empty() {
+        return (Vec::new(), 0, spans.to_vec());
+    }
+
+    let mut taken = Vec::new();
+    let mut rest = Vec::new();
+    let mut used = 0usize;
+    let mut split_done = false;
+
+    for span in spans {
+        if split_done {
+            rest.push(span.clone());
+            continue;
+        }
+
+        let span_width = text_display_width(span.text.as_str());
+        if used.saturating_add(span_width) <= max_width {
+            taken.push(span.clone());
+            used = used.saturating_add(span_width);
+            continue;
+        }
+
+        let remaining = max_width.saturating_sub(used);
+        if remaining == 0 {
+            rest.push(span.clone());
+            split_done = true;
+            continue;
+        }
+
+        let (left, right) = split_prefix_at_display_width(span.text.as_str(), remaining);
+        if !left.is_empty() {
+            let mut left_span = span.clone();
+            left_span.text = left.to_string();
+            used = used.saturating_add(text_display_width(left));
+            taken.push(left_span);
+        }
+        if !right.is_empty() {
+            let mut right_span = span.clone();
+            right_span.text = right.to_string();
+            rest.push(right_span);
+        }
+        split_done = true;
+    }
+
+    (taken, used, rest)
 }

@@ -9,8 +9,7 @@ use crate::core::value_path::{ValuePath, ValueTarget};
 use crate::runtime::event::WidgetAction;
 
 use crate::terminal::{
-    CursorPos, KeyCode, KeyEvent, KeyModifiers, PointerButton, PointerEvent, PointerKind,
-    PointerSemantic,
+    CursorPos, KeyCode, KeyEvent, PointerButton, PointerEvent, PointerKind, PointerSemantic,
 };
 use crate::ui::highlight::render_text_spans;
 use crate::ui::layout::Layout;
@@ -21,6 +20,7 @@ use crate::widgets::components::scroll::ScrollState;
 use crate::widgets::node::LeafComponent;
 use crate::widgets::shared::cursor_anchor;
 use crate::widgets::shared::filter;
+use crate::widgets::shared::keymap;
 use crate::widgets::shared::list_core;
 use crate::widgets::traits::{
     CompletionState, DrawOutput, Drawable, FocusMode, HintContext, HintGroup, HintItem,
@@ -136,11 +136,7 @@ impl<T: TreeItemLabel> TreeView<T> {
     }
 
     pub fn with_max_visible(mut self, max_visible: usize) -> Self {
-        self.scroll.max_visible = if max_visible == 0 {
-            None
-        } else {
-            Some(max_visible)
-        };
+        self.scroll.set_max_visible(max_visible);
         self.rebuild();
         self
     }
@@ -164,14 +160,8 @@ impl<T: TreeItemLabel> TreeView<T> {
     }
 
     pub fn set_active_visible_index(&mut self, index: usize) {
-        if self.visible.is_empty() {
-            self.active_index = 0;
-            self.scroll.offset = 0;
-            return;
-        }
-        self.active_index = index.min(self.visible.len() - 1);
         self.scroll
-            .ensure_visible(self.active_index, self.visible.len());
+            .set_active_clamped(&mut self.active_index, self.visible.len(), index);
     }
 
     pub fn visible(&self) -> &[usize] {
@@ -301,9 +291,8 @@ impl<T: TreeItemLabel> TreeView<T> {
         } else {
             rebuild_visible_filtered(&self.nodes, self.filter_query.as_str())
         };
-        ScrollState::clamp_active(&mut self.active_index, self.visible.len());
         self.scroll
-            .ensure_visible(self.active_index, self.visible.len());
+            .clamp_and_ensure(&mut self.active_index, self.visible.len());
     }
 
     fn expand_ancestors_for_filter(&mut self, query: &str) {
@@ -337,19 +326,8 @@ impl<T: TreeItemLabel> TreeView<T> {
     }
 
     pub fn move_active(&mut self, delta: isize) -> bool {
-        let len = self.visible.len();
-        if len == 0 {
-            return false;
-        }
-        let current = self.active_index as isize;
-        let next = ((current + delta + len as isize) % len as isize) as usize;
-        if next == self.active_index {
-            return false;
-        }
-        self.active_index = next;
         self.scroll
-            .ensure_visible(self.active_index, self.visible.len());
-        true
+            .move_active_wrapped(&mut self.active_index, self.visible.len(), delta)
     }
 
     pub fn expand_active(&mut self) -> bool {
@@ -389,9 +367,8 @@ impl<T: TreeItemLabel> TreeView<T> {
         if let Some(parent_node_idx) = parent_node_idx
             && let Some(pos) = self.visible.iter().position(|&i| i == parent_node_idx)
         {
-            self.active_index = pos;
             self.scroll
-                .ensure_visible(self.active_index, self.visible.len());
+                .set_active_clamped(&mut self.active_index, self.visible.len(), pos);
             return true;
         }
 
@@ -601,9 +578,8 @@ impl<T: TreeItemLabel> TreeView<T> {
         let Some(node_idx) = self.visible.get(vis_pos).copied() else {
             return InteractionResult::ignored();
         };
-        self.active_index = vis_pos;
         self.scroll
-            .ensure_visible(self.active_index, self.visible.len());
+            .set_active_clamped(&mut self.active_index, self.visible.len(), vis_pos);
 
         let depth = self.nodes.get(node_idx).map(|node| node.depth).unwrap_or(0);
         let has_children = self
@@ -618,9 +594,8 @@ impl<T: TreeItemLabel> TreeView<T> {
                 }
                 self.rebuild();
                 if let Some(pos) = self.visible.iter().position(|idx| *idx == node_idx) {
-                    self.active_index = pos;
                     self.scroll
-                        .ensure_visible(self.active_index, self.visible.len());
+                        .set_active_clamped(&mut self.active_index, self.visible.len(), pos);
                 }
             }
         }
@@ -680,7 +655,7 @@ impl<T: TreeItemLabel> Interactive for TreeView<T> {
     }
 
     fn on_key(&mut self, key: KeyEvent) -> InteractionResult {
-        if key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('f') {
+        if keymap::is_ctrl_char(key, 'f') {
             self.toggle_filter_visibility();
             return InteractionResult::handled();
         }
@@ -689,39 +664,15 @@ impl<T: TreeItemLabel> Interactive for TreeView<T> {
             return self.handle_filter_key(key);
         }
 
-        if key.modifiers != KeyModifiers::NONE {
+        if !keymap::has_no_modifiers(key) {
             return InteractionResult::ignored();
         }
 
         match key.code {
-            KeyCode::Up => {
-                if self.move_active(-1) {
-                    InteractionResult::handled()
-                } else {
-                    InteractionResult::ignored()
-                }
-            }
-            KeyCode::Down => {
-                if self.move_active(1) {
-                    InteractionResult::handled()
-                } else {
-                    InteractionResult::ignored()
-                }
-            }
-            KeyCode::Right => {
-                if self.expand_active() {
-                    InteractionResult::handled()
-                } else {
-                    InteractionResult::ignored()
-                }
-            }
-            KeyCode::Left => {
-                if self.collapse_active() {
-                    InteractionResult::handled()
-                } else {
-                    InteractionResult::ignored()
-                }
-            }
+            KeyCode::Up => InteractionResult::handled_if(self.move_active(-1)),
+            KeyCode::Down => InteractionResult::handled_if(self.move_active(1)),
+            KeyCode::Right => InteractionResult::handled_if(self.expand_active()),
+            KeyCode::Left => InteractionResult::handled_if(self.collapse_active()),
             KeyCode::Enter => {
                 let Some(value) = self.value() else {
                     return InteractionResult::input_done();
@@ -753,9 +704,8 @@ impl<T: TreeItemLabel> Interactive for TreeView<T> {
             .iter()
             .position(|&idx| self.nodes[idx].item.label() == text.as_str())
         {
-            self.active_index = pos;
             self.scroll
-                .ensure_visible(self.active_index, self.visible.len());
+                .set_active_clamped(&mut self.active_index, self.visible.len(), pos);
         }
     }
 

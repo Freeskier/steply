@@ -3,7 +3,6 @@ mod state;
 use std::borrow::Cow;
 
 use crate::core::NodeId;
-use crate::core::search::fuzzy::match_text;
 use crate::core::value::Value;
 use crate::core::value_path::{ValuePath, ValueTarget};
 use crate::runtime::event::WidgetAction;
@@ -109,7 +108,7 @@ pub struct TreeView<T: TreeItemLabel> {
     submit_target: Option<ValueTarget>,
     show_label: bool,
     show_indent_guides: bool,
-    filter: filter::FilterController,
+    filter: filter::ListFilter,
     filter_query: String,
 
     pub pending_expand: Option<usize>,
@@ -127,7 +126,11 @@ impl<T: TreeItemLabel> TreeView<T> {
             submit_target: None,
             show_label: true,
             show_indent_guides: false,
-            filter: filter::FilterController::new(format!("{id}__filter")),
+            filter: filter::ListFilter::new(
+                format!("{id}__filter"),
+                filter::FilterEscBehavior::Blur,
+                false,
+            ),
             filter_query: String::new(),
             pending_expand: None,
         };
@@ -211,12 +214,6 @@ impl<T: TreeItemLabel> TreeView<T> {
         self.rebuild();
     }
 
-    fn toggle_filter_visibility(&mut self) {
-        if !list_core::toggle_filter_visibility(&mut self.filter, false) {
-            self.clear_filter();
-        }
-    }
-
     fn handled_with_focus(&self) -> InteractionResult {
         let mut result = InteractionResult::handled();
         result.actions.push(WidgetAction::RequestFocus {
@@ -226,19 +223,9 @@ impl<T: TreeItemLabel> TreeView<T> {
     }
 
     fn handle_filter_key(&mut self, key: KeyEvent) -> InteractionResult {
-        match self
-            .filter
-            .handle_key_with_change(key, filter::FilterEscBehavior::Blur)
-        {
-            filter::FilterKeyOutcome::Ignored => InteractionResult::ignored(),
-            filter::FilterKeyOutcome::Hide | filter::FilterKeyOutcome::Blur => {
-                self.filter.set_focused(false);
-                InteractionResult::handled()
-            }
-            filter::FilterKeyOutcome::Edited(outcome) => {
-                outcome.refresh_if_changed(|| self.sync_filter_from_input())
-            }
-        }
+        self.filter
+            .handle_key(key)
+            .refresh_if_changed(|| self.sync_filter_from_input())
     }
 
     pub fn active_node(&self) -> Option<&TreeNode<T>> {
@@ -311,7 +298,7 @@ impl<T: TreeItemLabel> TreeView<T> {
 
         for idx in 0..self.nodes.len() {
             let search = self.nodes[idx].item.search_text();
-            let matched = match_text(q, search.as_ref()).is_some();
+            let matched = list_core::text_matches(q, search.as_ref());
             if !matched {
                 continue;
             }
@@ -420,9 +407,7 @@ impl<T: TreeItemLabel> TreeView<T> {
         let highlights = if self.filter_query.trim().is_empty() {
             Vec::new()
         } else {
-            match_text(self.filter_query.as_str(), node.item.label())
-                .map(|(_, ranges)| ranges)
-                .unwrap_or_default()
+            list_core::text_match_ranges(self.filter_query.as_str(), node.item.label())
         };
         line.extend(node.item.render_spans(TreeItemRenderState {
             focused,
@@ -620,7 +605,7 @@ impl<T: TreeItemLabel> Drawable for TreeView<T> {
         }
 
         if self.filter.is_visible() {
-            lines.push(filter::render_filter_line(&self.filter, ctx, focused));
+            lines.push(self.filter.draw_line(ctx, focused));
         }
 
         lines.extend(self.render_lines(focused));
@@ -655,9 +640,12 @@ impl<T: TreeItemLabel> Interactive for TreeView<T> {
     }
 
     fn on_key(&mut self, key: KeyEvent) -> InteractionResult {
-        if keymap::is_ctrl_char(key, 'f') {
-            self.toggle_filter_visibility();
-            return InteractionResult::handled();
+        if let Some(outcome) = self.filter.handle_toggle_shortcut(key) {
+            if outcome.hidden {
+                self.clear_filter();
+                return InteractionResult::handled();
+            }
+            return outcome.refresh_if_changed(|| self.sync_filter_from_input());
         }
 
         if self.filter.is_focused() {
@@ -714,7 +702,7 @@ impl<T: TreeItemLabel> Interactive for TreeView<T> {
             return InteractionResult::ignored();
         }
         self.filter
-            .handle_text_action_with_change(action)
+            .handle_text_action(action)
             .refresh_if_changed(|| self.sync_filter_from_input())
     }
 

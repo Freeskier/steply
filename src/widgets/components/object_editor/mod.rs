@@ -5,7 +5,6 @@ use std::sync::Arc;
 use indexmap::IndexMap;
 
 use crate::core::NodeId;
-use crate::core::search::fuzzy::match_text;
 use crate::core::value::Value;
 use crate::core::value_path::{PathSegment, ValuePath, ValueTarget};
 
@@ -18,6 +17,7 @@ use crate::widgets::components::tree_view::{TreeItemLabel, TreeNode, TreeView};
 use crate::widgets::inputs::select::SelectInput;
 use crate::widgets::node::LeafComponent;
 use crate::widgets::shared::filter;
+use crate::widgets::shared::list_core;
 use crate::widgets::traits::{
     DrawOutput, Drawable, FocusMode, HintContext, HintGroup, HintItem, InteractionResult,
     Interactive, RenderContext, ValidationMode,
@@ -170,7 +170,7 @@ pub struct ObjectEditor {
     expanded: HashSet<String>,
     array_item_names: HashMap<String, String>,
     tree: TreeView<ObjectTreeNode>,
-    filter: filter::FilterController,
+    filter: filter::ListFilter,
     insert_types: Vec<InsertType>,
     mode: Mode,
     submit_target: Option<ValueTarget>,
@@ -239,7 +239,7 @@ impl ObjectEditor {
             expanded: HashSet::new(),
             array_item_names: HashMap::new(),
             tree: TreeView::new(tree_id, "", Vec::new()).with_show_label(false),
-            filter: filter::FilterController::new(filter_id),
+            filter: filter::ListFilter::new(filter_id, filter::FilterEscBehavior::Blur, false),
             insert_types: Vec::new(),
             mode: Mode::Normal,
             submit_target: None,
@@ -364,14 +364,6 @@ impl ObjectEditor {
 
     fn filter_query(&self) -> String {
         self.filter.query()
-    }
-
-    fn toggle_filter_visibility(&mut self) {
-        let visible = self.filter.toggle_visibility(false);
-        if visible {
-            return;
-        }
-        self.tree.clear_filter();
     }
 
     fn apply_filter_from_input(&mut self) {

@@ -4,7 +4,6 @@ use std::sync::Arc;
 use indexmap::IndexMap;
 use unicode_width::UnicodeWidthStr;
 
-use crate::core::search::fuzzy::match_text;
 use crate::core::value::Value;
 use crate::terminal::{CursorPos, KeyCode, KeyEvent, TerminalSize};
 use crate::ui::layout::Layout;
@@ -74,7 +73,7 @@ pub struct Table {
     active_row: usize,
     active_col: usize,
     body_mode: TableBodyMode,
-    filter: filter_utils::FilterController,
+    filter: filter_utils::ListFilter,
     visible_rows: Vec<usize>,
     sort: Option<(usize, SortDirection)>,
     next_row_id: u64,
@@ -94,7 +93,11 @@ impl Table {
             active_row: 0,
             active_col: 0,
             body_mode: TableBodyMode::Navigate,
-            filter: filter_utils::FilterController::new(format!("{id}__filter")),
+            filter: filter_utils::ListFilter::new(
+                format!("{id}__filter"),
+                filter_utils::FilterEscBehavior::Hide,
+                true,
+            ),
             visible_rows: Vec::new(),
             sort: None,
             next_row_id: 1,
@@ -330,12 +333,6 @@ impl Table {
         self.active_row = list_core::clamp_index(self.active_row, self.rows.len());
     }
 
-    fn toggle_filter_visibility(&mut self) {
-        if !list_core::toggle_filter_visibility(&mut self.filter, true) {
-            self.apply_filter(self.active_row_id());
-        }
-    }
-
     fn filter_query(&self) -> String {
         self.filter.query()
     }
@@ -357,12 +354,14 @@ impl Table {
         if query.is_empty() {
             self.visible_rows.extend(0..self.rows.len());
         } else {
-            self.visible_rows = list_core::collect_matching_indices(self.rows.len(), |row_idx| {
-                (0..self.columns.len()).any(|col_idx| {
-                    let text = self.cell_filter_text(row_idx, col_idx);
-                    match_text(query, text.as_str()).is_some()
+            self.visible_rows = (0..self.rows.len())
+                .filter(|&row_idx| {
+                    (0..self.columns.len()).any(|col_idx| {
+                        let text = self.cell_filter_text(row_idx, col_idx);
+                        list_core::text_matches(query, text.as_str())
+                    })
                 })
-            });
+                .collect();
         }
 
         if self.rows.is_empty() {
@@ -384,8 +383,10 @@ impl Table {
 
         let preferred_row_idx =
             preferred_row_id.and_then(|id| self.rows.iter().position(|row| row.id == id));
-        if let Some(next) =
-            list_core::prefer_visible_index(&self.visible_rows, preferred_row_idx, self.active_row)
+        if let Some(preferred) = preferred_row_idx.filter(|idx| self.visible_rows.contains(idx)) {
+            self.active_row = preferred;
+        } else if !self.visible_rows.contains(&self.active_row)
+            && let Some(next) = self.visible_rows.first().copied()
         {
             self.active_row = next;
         }

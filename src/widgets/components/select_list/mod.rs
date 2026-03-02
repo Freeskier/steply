@@ -5,7 +5,6 @@ mod state;
 use std::sync::Arc;
 
 use crate::core::NodeId;
-use crate::core::search::fuzzy::match_text;
 use crate::core::value::Value;
 use crate::core::value_path::{ValuePath, ValueTarget};
 use crate::runtime::event::WidgetAction;
@@ -45,7 +44,7 @@ pub struct SelectList {
     scroll: ScrollState,
     submit_target: Option<ValueTarget>,
     show_label: bool,
-    filter: filter::FilterController,
+    filter: filter::ListFilter,
     option_renderer: OptionRenderer,
 }
 
@@ -64,7 +63,11 @@ impl SelectList {
             scroll: ScrollState::new(None),
             submit_target: None,
             show_label: true,
-            filter: filter::FilterController::new(format!("{id}__filter")),
+            filter: filter::ListFilter::new(
+                format!("{id}__filter"),
+                filter::FilterEscBehavior::Hide,
+                true,
+            ),
             option_renderer: default_option_renderer(),
         };
         this.apply_filter(None);
@@ -209,26 +212,12 @@ impl SelectList {
         self.options.is_empty()
     }
 
-    fn toggle_filter_visibility(&mut self) {
-        if !list_core::toggle_filter_visibility(&mut self.filter, true) {
-            self.apply_filter(None);
-        }
-    }
-
     fn handled_with_focus(&self) -> InteractionResult {
         let mut result = InteractionResult::handled();
         result.actions.push(WidgetAction::RequestFocus {
             target: self.base.id().to_string().into(),
         });
         result
-    }
-
-    fn filter_query(&self) -> String {
-        self.filter.query()
-    }
-
-    fn active_source_index(&self) -> Option<usize> {
-        self.visible_to_source.get(self.active_index).copied()
     }
 
     fn ensure_radio_selection(&mut self) {
@@ -240,20 +229,21 @@ impl SelectList {
         }
     }
 
-    fn apply_filter_on_change(&mut self, outcome: filter::FilterEditOutcome) -> InteractionResult {
+    fn apply_filter_on_change(&mut self, outcome: filter::ListFilterUpdate) -> InteractionResult {
         outcome.refresh_if_changed(|| self.apply_filter(None))
     }
 
     fn apply_filter(&mut self, preferred_source: Option<usize>) {
-        let preferred_source = preferred_source.or_else(|| self.active_source_index());
-        let query = self.filter_query();
+        let preferred_source =
+            preferred_source.or_else(|| self.visible_to_source.get(self.active_index).copied());
+        let query = self.filter.query();
         let query = query.trim();
 
         if query.is_empty() {
             self.options = self.source_options.clone();
             self.visible_to_source = (0..self.source_options.len()).collect();
         } else {
-            let (options, mapping) = fuzzy_filter_options(query, self.source_options.as_slice());
+            let (options, mapping) = filter_options(query, self.source_options.as_slice());
             self.options = options;
             self.visible_to_source = mapping;
         }
@@ -651,21 +641,8 @@ impl SelectList {
     }
 
     fn handle_filter_key(&mut self, key: KeyEvent) -> InteractionResult {
-        match self
-            .filter
-            .handle_key_with_change(key, filter::FilterEscBehavior::Hide)
-        {
-            filter::FilterKeyOutcome::Ignored => InteractionResult::ignored(),
-            filter::FilterKeyOutcome::Hide => {
-                self.toggle_filter_visibility();
-                InteractionResult::handled()
-            }
-            filter::FilterKeyOutcome::Blur => {
-                self.filter.set_focused(false);
-                InteractionResult::handled()
-            }
-            filter::FilterKeyOutcome::Edited(outcome) => self.apply_filter_on_change(outcome),
-        }
+        let outcome = self.filter.handle_key(key);
+        self.apply_filter_on_change(outcome)
     }
 
     fn handle_list_key(&mut self, key: KeyEvent) -> InteractionResult {
@@ -723,7 +700,7 @@ impl Drawable for SelectList {
         }
 
         if self.filter.is_visible() {
-            lines.push(filter::render_filter_line(&self.filter, ctx, focused));
+            lines.push(self.filter.draw_line(ctx, focused));
         }
 
         let wrap_width = ctx.terminal_size.width.max(1);
@@ -763,9 +740,8 @@ impl Interactive for SelectList {
     }
 
     fn on_key(&mut self, key: KeyEvent) -> InteractionResult {
-        if keymap::is_ctrl_char(key, 'f') {
-            self.toggle_filter_visibility();
-            return InteractionResult::handled();
+        if let Some(outcome) = self.filter.handle_toggle_shortcut(key) {
+            return self.apply_filter_on_change(outcome);
         }
 
         if self.filter.is_focused() {
@@ -787,7 +763,7 @@ impl Interactive for SelectList {
             return InteractionResult::ignored();
         }
 
-        let outcome = self.filter.handle_text_action_with_change(action);
+        let outcome = self.filter.handle_text_action(action);
         self.apply_filter_on_change(outcome)
     }
 
@@ -865,62 +841,64 @@ impl Interactive for SelectList {
     }
 }
 
-fn fuzzy_filter_options(
-    query: &str,
-    source_options: &[SelectItem],
-) -> (Vec<SelectItem>, Vec<usize>) {
-    let mut scored = Vec::<(usize, i32, SelectItem)>::new();
-    for (index, option) in source_options.iter().enumerate() {
-        let Some((score, option)) = highlight_item_for_query(query, option) else {
-            continue;
-        };
-        scored.push((index, score, option));
+fn filter_options(query: &str, source_options: &[SelectItem]) -> (Vec<SelectItem>, Vec<usize>) {
+    let ranked = list_core::rank_by_filter(query, source_options, filter_fields_for_item);
+    let mut mapping = Vec::<usize>::with_capacity(ranked.len());
+    let mut options = Vec::<SelectItem>::with_capacity(ranked.len());
+
+    for (index, highlights) in ranked {
+        let option = &source_options[index];
+        mapping.push(index);
+        options.push(with_highlights(query, option, highlights.as_slice()));
     }
 
-    scored.sort_by(|left, right| right.1.cmp(&left.1).then_with(|| left.0.cmp(&right.0)));
-
-    let mapping = scored
-        .iter()
-        .map(|(index, _, _)| *index)
-        .collect::<Vec<_>>();
-    let options = scored.into_iter().map(|(_, _, option)| option).collect();
     (options, mapping)
 }
 
-fn highlight_item_for_query(query: &str, option: &SelectItem) -> Option<(i32, SelectItem)> {
-    let (search_score, _) = fuzzy_match_text(query, item_search_text(option))?;
-    let mut highlighted = option.clone();
-    let mut score = search_score;
-
-    match &mut highlighted.view {
-        SelectItemView::Plain { text, highlights } => {
-            *highlights = fuzzy_match_text(query, text.as_str())
-                .map(|(_, ranges)| ranges)
-                .unwrap_or_default();
-        }
+fn filter_fields_for_item(item: &SelectItem) -> Vec<list_core::FilterField<'_>> {
+    let search = list_core::FilterField {
+        text: item_search_text(item),
+        boost: 0,
+    };
+    match &item.view {
         SelectItemView::Detailed {
-            title,
-            description,
+            title, description, ..
+        } => vec![
+            search,
+            list_core::FilterField {
+                text: title.as_str(),
+                boost: 30,
+            },
+            list_core::FilterField {
+                text: description.as_str(),
+                boost: 0,
+            },
+        ],
+        SelectItemView::Plain { .. }
+        | SelectItemView::Styled { .. }
+        | SelectItemView::Split { .. }
+        | SelectItemView::Suffix { .. }
+        | SelectItemView::SplitSuffix { .. } => vec![search],
+    }
+}
+
+fn with_highlights(
+    query: &str,
+    option: &SelectItem,
+    field_highlights: &[Vec<(usize, usize)>],
+) -> SelectItem {
+    let mut highlighted = option.clone();
+    match &mut highlighted.view {
+        SelectItemView::Detailed {
             title_highlights,
             description_highlights,
             ..
         } => {
-            let title_match = fuzzy_match_text(query, title.as_str());
-            let description_match = fuzzy_match_text(query, description.as_str());
-            *title_highlights = title_match
-                .as_ref()
-                .map(|(_, ranges)| ranges.clone())
-                .unwrap_or_default();
-            *description_highlights = description_match
-                .as_ref()
-                .map(|(_, ranges)| ranges.clone())
-                .unwrap_or_default();
-
-            let title_score = title_match.map(|(s, _)| s + 30).unwrap_or_default();
-            let description_score = description_match.map(|(s, _)| s).unwrap_or_default();
-            score = score.max(title_score.max(description_score));
+            *title_highlights = field_highlights.get(1).cloned().unwrap_or_default();
+            *description_highlights = field_highlights.get(2).cloned().unwrap_or_default();
         }
-        SelectItemView::Styled {
+        SelectItemView::Plain { text, highlights }
+        | SelectItemView::Styled {
             text, highlights, ..
         }
         | SelectItemView::Split {
@@ -932,17 +910,10 @@ fn highlight_item_for_query(query: &str, option: &SelectItem) -> Option<(i32, Se
         | SelectItemView::SplitSuffix {
             text, highlights, ..
         } => {
-            *highlights = fuzzy_match_text(query, text.as_str())
-                .map(|(_, ranges)| ranges)
-                .unwrap_or_default();
+            *highlights = list_core::text_match_ranges(query, text.as_str());
         }
     }
-
-    Some((score, highlighted))
-}
-
-fn fuzzy_match_text(query: &str, text: &str) -> Option<(i32, Vec<(usize, usize)>)> {
-    match_text(query, text)
+    highlighted
 }
 
 fn options_from_value(value: &Value) -> Option<Vec<SelectItem>> {

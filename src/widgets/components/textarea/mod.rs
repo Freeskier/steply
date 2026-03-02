@@ -154,8 +154,7 @@ impl Drawable for TextAreaComponent {
             let real_idx = start + i;
             if real_idx < self.lines.len() {
                 let gutter = self.build_gutter_span(real_idx, focused);
-                let content_text = self.lines[real_idx].clone();
-                let content = Span::new(content_text).no_wrap();
+                let content = Span::new(self.lines[real_idx].clone()).no_wrap();
                 output_lines.push(vec![gutter, content]);
             } else {
                 output_lines.push(vec![self.build_tilde_span()]);

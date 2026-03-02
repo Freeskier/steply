@@ -251,23 +251,9 @@ impl Table {
     }
 
     fn handle_filter_key(&mut self, key: KeyEvent) -> InteractionResult {
-        match self
-            .filter
-            .handle_key_with_change(key, filter_utils::FilterEscBehavior::Hide)
-        {
-            filter_utils::FilterKeyOutcome::Ignored => InteractionResult::ignored(),
-            filter_utils::FilterKeyOutcome::Hide => {
-                self.toggle_filter_visibility();
-                InteractionResult::handled()
-            }
-            filter_utils::FilterKeyOutcome::Blur => {
-                self.filter.set_focused(false);
-                InteractionResult::handled()
-            }
-            filter_utils::FilterKeyOutcome::Edited(outcome) => {
-                outcome.refresh_if_changed(|| self.apply_filter(self.active_row_id()))
-            }
-        }
+        self.filter
+            .handle_key(key)
+            .refresh_if_changed(|| self.apply_filter(self.active_row_id()))
     }
 }
 
@@ -277,9 +263,8 @@ impl Interactive for Table {
     }
 
     fn on_key(&mut self, key: KeyEvent) -> InteractionResult {
-        if keymap::is_ctrl_char(key, 'f') {
-            self.toggle_filter_visibility();
-            return InteractionResult::handled();
+        if let Some(outcome) = self.filter.handle_toggle_shortcut(key) {
+            return outcome.refresh_if_changed(|| self.apply_filter(self.active_row_id()));
         }
         if self.filter.is_focused() {
             return self.handle_filter_key(key);
@@ -302,7 +287,7 @@ impl Interactive for Table {
         if self.filter.is_focused() {
             return self
                 .filter
-                .handle_text_action_with_change(action)
+                .handle_text_action(action)
                 .refresh_if_changed(|| self.apply_filter(self.active_row_id()));
         }
         if !self.is_body_edit_mode() {

@@ -1,4 +1,4 @@
-use crate::core::search::fuzzy::match_text;
+use crate::widgets::shared::list_core;
 
 use super::TreeItemLabel;
 use super::TreeNode;
@@ -53,7 +53,7 @@ pub(super) fn rebuild_visible_filtered<T: TreeItemLabel>(
         .iter()
         .map(|node| {
             let search = node.item.search_text();
-            match_text(q, search.as_ref()).is_some()
+            list_core::text_matches(q, search.as_ref())
         })
         .collect::<Vec<_>>();
 

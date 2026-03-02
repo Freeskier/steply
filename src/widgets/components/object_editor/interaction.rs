@@ -7,9 +7,12 @@ impl Interactive for ObjectEditor {
     }
 
     fn on_key(&mut self, key: KeyEvent) -> InteractionResult {
-        if keymap::is_ctrl_char(key, 'f') {
-            self.toggle_filter_visibility();
-            return InteractionResult::handled();
+        if let Some(outcome) = self.filter.handle_toggle_shortcut(key) {
+            if outcome.hidden {
+                self.tree.clear_filter();
+                return InteractionResult::handled();
+            }
+            return outcome.refresh_if_changed(|| self.apply_filter_from_input());
         }
 
         if self.filter.is_focused() {
@@ -124,7 +127,7 @@ impl Interactive for ObjectEditor {
         if self.filter.is_focused() {
             return self
                 .filter
-                .handle_text_action_with_change(action)
+                .handle_text_action(action)
                 .refresh_if_changed(|| self.apply_filter_from_input());
         }
 
@@ -160,25 +163,11 @@ impl Interactive for ObjectEditor {
 
 impl ObjectEditor {
     fn handle_filter_key(&mut self, key: KeyEvent) -> InteractionResult {
-        match self
-            .filter
-            .handle_key_with_change(key, crate::widgets::shared::filter::FilterEscBehavior::Blur)
-        {
-            crate::widgets::shared::filter::FilterKeyOutcome::Ignored => {
-                InteractionResult::ignored()
-            }
-            crate::widgets::shared::filter::FilterKeyOutcome::Hide
-            | crate::widgets::shared::filter::FilterKeyOutcome::Blur => {
-                self.filter.set_focused(false);
-                if key.code == KeyCode::Down {
-                    self.tree.move_active(1);
-                }
-                InteractionResult::handled()
-            }
-            crate::widgets::shared::filter::FilterKeyOutcome::Edited(outcome) => {
-                outcome.refresh_if_changed(|| self.apply_filter_from_input())
-            }
+        let outcome = self.filter.handle_key(key);
+        if outcome.blurred && key.code == KeyCode::Down {
+            self.tree.move_active(1);
         }
+        outcome.refresh_if_changed(|| self.apply_filter_from_input())
     }
 
     fn handle_normal(&mut self, key: KeyEvent) -> InteractionResult {

@@ -109,13 +109,12 @@ impl Table {
         let query = query.trim();
         if !query.is_empty() {
             let text = span_line_text(line.as_slice());
-            if let Some((_, ranges)) = match_text(query, text.as_str()) {
-                highlight_span_line(
-                    &mut line,
-                    ranges.as_slice(),
-                    Style::new().color(Color::Yellow).bold(),
-                );
-            }
+            let ranges = list_core::text_match_ranges(query, text.as_str());
+            highlight_span_line(
+                &mut line,
+                ranges.as_slice(),
+                Style::new().color(Color::Yellow).bold(),
+            );
         }
 
         if !self.show_row_numbers && col_idx == 0 {
@@ -157,12 +156,9 @@ impl Table {
             lines.push(vec![Span::new(self.base.label()).no_wrap()]);
         }
         if self.filter.is_visible() {
-            lines.push(filter_utils::render_filter_line_with(
-                &self.filter,
-                ctx,
-                focused,
-                |ctx, focused_id| self.child_context(ctx, focused_id),
-            ));
+            lines.push(self.filter.draw_line_with(ctx, focused, |ctx, focused_id| {
+                self.child_context(ctx, focused_id)
+            }));
         }
 
         let mut widths = Vec::<usize>::new();
@@ -223,12 +219,9 @@ impl Table {
             lines.push(vec![Span::new(self.base.label()).no_wrap()]);
         }
         if self.filter.is_visible() {
-            lines.push(filter_utils::render_filter_line_with(
-                &self.filter,
-                ctx,
-                focused,
-                |ctx, focused_id| self.child_context(ctx, focused_id),
-            ));
+            lines.push(self.filter.draw_line_with(ctx, focused, |ctx, focused_id| {
+                self.child_context(ctx, focused_id)
+            }));
         }
 
         let mut header_cells = Vec::<SpanLine>::new();

@@ -5,7 +5,7 @@ use crate::widgets::node::Node;
 use crate::widgets::traits::OverlayPlacement;
 
 pub struct RenderView<'a> {
-    pub steps: &'a [Step],
+    pub steps: Vec<&'a Step>,
     pub current_step_index: usize,
     pub step_statuses: Vec<StepStatus>,
     pub has_blocking_overlay: bool,
@@ -35,11 +35,17 @@ pub struct OverlayView<'a> {
 
 impl<'a> RenderView<'a> {
     pub fn from_state(state: &'a AppState) -> Self {
-        let steps = state.steps();
-        let current_step_index = state.current_step_index();
+        let visible_indices = state.visible_step_indices();
+        let steps: Vec<&Step> = visible_indices
+            .iter()
+            .filter_map(|&idx| state.steps().get(idx))
+            .collect();
+        let current_step_index = state.current_visible_step_index();
 
-        let step_statuses: Vec<StepStatus> =
-            (0..steps.len()).map(|i| state.step_status_at(i)).collect();
+        let step_statuses: Vec<StepStatus> = visible_indices
+            .iter()
+            .map(|&i| state.step_status_at(i))
+            .collect();
 
         let overlay_ids = state.overlay_stack_ids();
         let overlay_count = overlay_ids.len();

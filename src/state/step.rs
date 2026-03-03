@@ -1,3 +1,5 @@
+use crate::core::value::Value;
+use crate::state::store::ValueStore;
 use crate::state::validation::{StepContext, StepIssue, StepValidator};
 use crate::widgets::node::Component;
 use crate::widgets::node::Node;
@@ -33,6 +35,30 @@ pub struct Step {
     pub nodes: Vec<Node>,
     pub validators: Vec<StepValidator>,
     pub navigation: StepNavigation,
+    pub when: Option<StepCondition>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum StepCondition {
+    Equal { field: String, value: Value },
+    NotEqual { field: String, value: Value },
+    NotEmpty { field: String },
+    All(Vec<StepCondition>),
+    Any(Vec<StepCondition>),
+    Not(Box<StepCondition>),
+}
+
+impl StepCondition {
+    pub fn evaluate(&self, store: &ValueStore) -> bool {
+        match self {
+            Self::Equal { field, value } => store.get(field.as_str()).is_some_and(|v| v == value),
+            Self::NotEqual { field, value } => store.get(field.as_str()) != Some(value),
+            Self::NotEmpty { field } => store.get(field.as_str()).is_some_and(|v| !v.is_empty()),
+            Self::All(conditions) => conditions.iter().all(|condition| condition.evaluate(store)),
+            Self::Any(conditions) => conditions.iter().any(|condition| condition.evaluate(store)),
+            Self::Not(condition) => !condition.evaluate(store),
+        }
+    }
 }
 
 impl Step {
@@ -44,6 +70,7 @@ impl Step {
             nodes,
             validators: Vec::new(),
             navigation: StepNavigation::default(),
+            when: None,
         }
     }
 
@@ -86,6 +113,17 @@ impl Step {
         self
     }
 
+    pub fn with_when(mut self, when: StepCondition) -> Self {
+        self.when = Some(when);
+        self
+    }
+
+    pub fn is_visible(&self, store: &ValueStore) -> bool {
+        self.when
+            .as_ref()
+            .is_none_or(|condition| condition.evaluate(store))
+    }
+
     pub fn builder(id: impl Into<String>, prompt: impl Into<String>) -> StepBuilder {
         StepBuilder::new(id, prompt)
     }
@@ -98,6 +136,7 @@ pub struct StepBuilder {
     nodes: Vec<Node>,
     validators: Vec<StepValidator>,
     navigation: StepNavigation,
+    when: Option<StepCondition>,
 }
 
 impl StepBuilder {
@@ -109,6 +148,7 @@ impl StepBuilder {
             nodes: Vec::new(),
             validators: Vec::new(),
             navigation: StepNavigation::default(),
+            when: None,
         }
     }
 
@@ -176,6 +216,11 @@ impl StepBuilder {
         self
     }
 
+    pub fn when(mut self, when: StepCondition) -> Self {
+        self.when = Some(when);
+        self
+    }
+
     pub fn build(self) -> Step {
         Step {
             id: self.id,
@@ -184,6 +229,7 @@ impl StepBuilder {
             nodes: self.nodes,
             validators: self.validators,
             navigation: self.navigation,
+            when: self.when,
         }
     }
 }

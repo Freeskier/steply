@@ -233,7 +233,7 @@ fn build_base_frame(
 ) -> RenderFrame {
     let mut frame = RenderFrame::default();
     let current_idx = view.current_step_index;
-    let steps = view.steps;
+    let steps = &view.steps;
     if steps.is_empty() {
         frame.lines.push(vec![Span::styled(
             "No steps configured.",

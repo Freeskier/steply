@@ -60,6 +60,7 @@ impl AppState {
         if state.flow.is_empty() {
             state.should_exit = true;
         } else {
+            state.reconcile_current_step_visibility();
             state.rebuild_focus();
             crate::task::engine::trigger_flow_start_tasks(&mut state);
             let current_step_id = state.current_step_id().to_string();
@@ -80,12 +81,54 @@ impl AppState {
         self.flow.current_index()
     }
 
+    pub fn current_visible_step_index(&self) -> usize {
+        let visible = self.visible_step_indices();
+        visible
+            .iter()
+            .position(|&index| index == self.flow.current_index())
+            .unwrap_or(0)
+    }
+
     pub fn steps(&self) -> &[Step] {
         self.flow.steps()
     }
 
     pub fn step_status_at(&self, index: usize) -> crate::state::step::StepStatus {
         self.flow.status_at(index)
+    }
+
+    pub fn step_visible_at(&self, index: usize) -> bool {
+        self.flow
+            .steps()
+            .get(index)
+            .is_some_and(|step| step.is_visible(&self.data.store))
+    }
+
+    pub fn visible_step_indices(&self) -> Vec<usize> {
+        self.flow
+            .steps()
+            .iter()
+            .enumerate()
+            .filter_map(|(index, step)| step.is_visible(&self.data.store).then_some(index))
+            .collect()
+    }
+
+    pub(super) fn reconcile_current_step_visibility(&mut self) {
+        if self.flow.is_empty() || self.step_visible_at(self.flow.current_index()) {
+            return;
+        }
+
+        while self.flow.advance() {
+            if self.step_visible_at(self.flow.current_index()) {
+                return;
+            }
+        }
+
+        while self.flow.go_back() {
+            if self.step_visible_at(self.flow.current_index()) {
+                return;
+            }
+        }
     }
 
     pub fn current_prompt(&self) -> &str {

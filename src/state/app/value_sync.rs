@@ -39,6 +39,11 @@ impl AppState {
         if let Some(updated) = updated {
             let changed = before.as_ref().is_none_or(|previous| previous != &updated);
             self.apply_value_to_step(root.as_str(), updated.clone());
+            let prev_current = self.current_step_id().to_string();
+            self.reconcile_current_step_visibility();
+            if self.current_step_id() != prev_current {
+                self.rebuild_focus();
+            }
             if changed {
                 crate::task::engine::trigger_node_value_changed_tasks(
                     self,

@@ -33,7 +33,7 @@ impl AppState {
     }
 
     pub fn handle_step_back(&mut self) {
-        if !self.flow.has_prev() || self.pending_back_confirm.is_some() {
+        if !self.has_prev_visible_step() || self.pending_back_confirm.is_some() {
             return;
         }
         match self.flow.current_step().navigation.clone() {
@@ -135,15 +135,38 @@ impl AppState {
     }
 
     fn transition_forward_after_submit(&mut self) {
-        if self.flow.advance() {
-            self.enter_current_step_after_transition();
-        } else {
+        if !self.advance_to_next_visible_step() {
             self.finish_flow_after_last_submit();
+            return;
         }
+        self.enter_current_step_after_transition();
     }
 
     fn transition_back_to_previous(&mut self) {
-        self.flow.go_back();
+        let _ = self.go_back_to_previous_visible_step();
         self.enter_current_step_after_transition();
+    }
+
+    fn has_prev_visible_step(&self) -> bool {
+        let current = self.flow.current_index();
+        (0..current).rev().any(|index| self.step_visible_at(index))
+    }
+
+    fn advance_to_next_visible_step(&mut self) -> bool {
+        while self.flow.advance() {
+            if self.step_visible_at(self.flow.current_index()) {
+                return true;
+            }
+        }
+        false
+    }
+
+    fn go_back_to_previous_visible_step(&mut self) -> bool {
+        while self.flow.go_back() {
+            if self.step_visible_at(self.flow.current_index()) {
+                return true;
+            }
+        }
+        false
     }
 }

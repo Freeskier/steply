@@ -30,7 +30,7 @@ fn run() -> std::io::Result<()> {
     let mut runtime = Runtime::new(state, terminal)
         .with_render_mode(steply_v2::terminal::RenderMode::AltScreen)
         .with_renderer_config(RendererConfig {
-            decorations_enabled: true,
+            chrome_enabled: true,
         });
     if render_json_enabled() {
         return runtime.print_render_json();

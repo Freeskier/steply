@@ -2,10 +2,10 @@ use std::path::Path;
 
 use globset::{Glob, GlobBuilder, GlobSetBuilder};
 
-use crate::core::search::fuzzy;
 use crate::core::value::Value;
 use crate::ui::style::{Color, Style};
 use crate::widgets::components::select_list::{SelectItem, SelectItemView};
+use crate::widgets::shared::list_policy;
 
 use super::DisplayMode;
 use super::model::{
@@ -46,18 +46,26 @@ pub fn fuzzy_search(
         };
     }
 
-    let candidate_names: Vec<String> = indices.iter().map(|&i| entries[i].name.clone()).collect();
+    let candidates = indices
+        .iter()
+        .filter_map(|&idx| entries.get(idx))
+        .collect::<Vec<_>>();
+    let mut ranked = list_policy::rank_by_filter(query, candidates.as_slice(), |entry| {
+        vec![list_policy::FilterField {
+            text: entry.name.as_str(),
+            boost: 0,
+        }]
+    });
+    let total_matches = ranked.len();
+    ranked.truncate(MAX_MATCHES);
 
-    let mut matches = fuzzy::ranked_matches(query, &candidate_names);
-    let total_matches = matches.len();
-    matches.truncate(MAX_MATCHES);
-
-    let mut ranked_rows: Vec<(FileEntry, Vec<(usize, usize)>)> = Vec::with_capacity(matches.len());
-    for m in &matches {
-        if let Some(&ei) = indices.get(m.index)
-            && let Some(entry) = entries.get(ei)
-        {
-            ranked_rows.push((entry.clone(), m.ranges.clone()));
+    let mut ranked_rows: Vec<(FileEntry, Vec<(usize, usize)>)> = Vec::with_capacity(ranked.len());
+    for (candidate_idx, highlights) in ranked {
+        if let Some(entry) = candidates.get(candidate_idx) {
+            ranked_rows.push((
+                (*entry).clone(),
+                highlights.into_iter().next().unwrap_or_default(),
+            ));
         }
     }
 

@@ -325,6 +325,7 @@ impl Runtime {
             Intent::Submit
             | Intent::InputKey(_)
             | Intent::TextAction(_)
+            | Intent::DeleteWordLeftOrToggleHints
             | Intent::ToggleCompletion
             | Intent::CompleteNext
             | Intent::CompletePrev

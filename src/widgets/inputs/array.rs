@@ -112,20 +112,8 @@ impl ArrayInput {
         self.ensure_invariants();
     }
 
-    fn insert_char(&mut self, ch: char) {
-        let mut cursor = self.cursor;
-        text_edit::insert_char(self.active_item_mut(), &mut cursor, ch);
-        self.cursor = cursor;
-    }
-
-    fn backspace(&mut self) -> bool {
+    fn backspace_at_start(&mut self) -> bool {
         self.ensure_invariants();
-        let mut cursor = self.cursor;
-        if text_edit::backspace_char(self.active_item_mut(), &mut cursor) {
-            self.cursor = cursor;
-            return true;
-        }
-
         if self.active == 0 {
             return false;
         }
@@ -142,15 +130,8 @@ impl ArrayInput {
         true
     }
 
-    fn delete_forward(&mut self) -> bool {
+    fn delete_at_end(&mut self) -> bool {
         self.ensure_invariants();
-
-        let mut cursor = self.cursor;
-        if text_edit::delete_char(self.active_item_mut(), &mut cursor) {
-            self.cursor = cursor;
-            return true;
-        }
-
         if self.active + 1 >= self.items.len() {
             return false;
         }
@@ -162,12 +143,8 @@ impl ArrayInput {
         true
     }
 
-    fn move_left(&mut self) -> bool {
+    fn move_left_at_start(&mut self) -> bool {
         self.ensure_invariants();
-        if self.cursor > 0 {
-            self.cursor -= 1;
-            return true;
-        }
         if self.active > 0 {
             self.active -= 1;
             self.cursor = text_edit::char_count(self.items[self.active].as_str());
@@ -176,13 +153,8 @@ impl ArrayInput {
         false
     }
 
-    fn move_right(&mut self) -> bool {
+    fn move_right_at_end(&mut self) -> bool {
         self.ensure_invariants();
-        let active_len = text_edit::char_count(self.active_item());
-        if self.cursor < active_len {
-            self.cursor += 1;
-            return true;
-        }
         if self.active + 1 < self.items.len() {
             self.active += 1;
             self.cursor = 0;
@@ -286,41 +258,33 @@ impl Interactive for ArrayInput {
                 self.split_active();
                 InteractionResult::handled()
             }
-            KeyCode::Backspace => {
-                if self.backspace() {
-                    return InteractionResult::handled();
+            _ => {
+                let mut cursor = self.cursor;
+                let outcome = {
+                    let item = self.active_item_mut();
+                    text_edit::apply_single_line_key(item, &mut cursor, key)
+                };
+                self.cursor = cursor;
+                match outcome {
+                    text_edit::TextKeyOutcome::Ignored => InteractionResult::ignored(),
+                    text_edit::TextKeyOutcome::Changed | text_edit::TextKeyOutcome::CursorMoved => {
+                        InteractionResult::handled()
+                    }
+                    text_edit::TextKeyOutcome::Submit => InteractionResult::input_done(),
+                    text_edit::TextKeyOutcome::BackspaceAtStart => {
+                        InteractionResult::handled_if(self.backspace_at_start())
+                    }
+                    text_edit::TextKeyOutcome::DeleteAtEnd => {
+                        InteractionResult::handled_if(self.delete_at_end())
+                    }
+                    text_edit::TextKeyOutcome::MoveLeftAtStart => {
+                        InteractionResult::handled_if(self.move_left_at_start())
+                    }
+                    text_edit::TextKeyOutcome::MoveRightAtEnd => {
+                        InteractionResult::handled_if(self.move_right_at_end())
+                    }
                 }
-                InteractionResult::ignored()
             }
-            KeyCode::Delete => {
-                if self.delete_forward() {
-                    return InteractionResult::handled();
-                }
-                InteractionResult::ignored()
-            }
-            KeyCode::Left => {
-                if self.move_left() {
-                    InteractionResult::handled()
-                } else {
-                    InteractionResult::ignored()
-                }
-            }
-            KeyCode::Right => {
-                if self.move_right() {
-                    InteractionResult::handled()
-                } else {
-                    InteractionResult::ignored()
-                }
-            }
-            KeyCode::Char(ch) => {
-                if ch.is_control() {
-                    return InteractionResult::ignored();
-                }
-                self.insert_char(ch);
-                InteractionResult::handled()
-            }
-            KeyCode::Enter => InteractionResult::input_done(),
-            _ => InteractionResult::ignored(),
         }
     }
 

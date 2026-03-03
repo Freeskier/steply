@@ -52,15 +52,11 @@ impl Interactive for ObjectEditor {
     }
     fn cursor_pos(&self) -> Option<CursorPos> {
         if self.filter.is_focused() {
-            let local = self.filter.cursor_pos()?;
             let mut row: u16 = 0;
             if !self.base.label().is_empty() {
                 row = row.saturating_add(1);
             }
-            return Some(CursorPos {
-                col: local.col.saturating_add(8),
-                row,
-            });
+            return self.filter.anchored_cursor_pos(row);
         }
         let header_rows = self.headers_row_offset();
         let (start, end) = self.tree.visible_range();
@@ -110,16 +106,7 @@ impl Interactive for ObjectEditor {
                         .saturating_add(if inline_on_placeholder { 0 } else { 1 }),
                 })
             }
-            _ => {
-                let active_visible_index = self.tree.active_visible_index();
-                if active_visible_index < start || active_visible_index >= end {
-                    return None;
-                }
-                Some(crate::widgets::shared::cursor_anchor::anchored_cursor(
-                    header_rows.saturating_add((active_visible_index - start) as u16) as usize,
-                    0,
-                ))
-            }
+            _ => None,
         }
     }
 
@@ -146,22 +133,27 @@ impl Interactive for ObjectEditor {
         }
         self.filter.completion()
     }
-
-    fn cursor_visible(&self) -> bool {
-        crate::widgets::shared::cursor_anchor::visible_when_text_cursor(
-            self.filter.is_focused()
-                || matches!(
-                    self.mode,
-                    Mode::EditValue { .. }
-                        | Mode::EditKey { .. }
-                        | Mode::InsertType { .. }
-                        | Mode::InsertValue { .. }
-                ),
-        )
-    }
 }
 
 impl ObjectEditor {
+    fn back_to_normal_mode(&mut self) -> InteractionResult {
+        self.mode = Mode::Normal;
+        InteractionResult::handled()
+    }
+
+    fn forward_mode_key(&mut self, key: KeyEvent) {
+        match &mut self.mode {
+            Mode::EditValue { key_value, .. }
+            | Mode::EditKey { key_value, .. }
+            | Mode::InsertType { key_value, .. }
+            | Mode::InsertValue { key_value, .. } => key_value.on_key(key),
+            Mode::ConfirmDelete { select, .. } => {
+                let _ = select.on_key(key);
+            }
+            Mode::Normal | Mode::Move { .. } => {}
+        }
+    }
+
     fn handle_filter_key(&mut self, key: KeyEvent) -> InteractionResult {
         let outcome = self.filter.handle_key(key);
         if outcome.blurred && key.code == KeyCode::Down {
@@ -232,14 +224,9 @@ impl ObjectEditor {
                 self.start_edit_key();
                 InteractionResult::handled()
             }
-            KeyCode::Esc => {
-                self.mode = Mode::Normal;
-                InteractionResult::handled()
-            }
+            KeyCode::Esc => self.back_to_normal_mode(),
             _ => {
-                if let Mode::EditValue { key_value, .. } = &mut self.mode {
-                    key_value.on_key(key);
-                }
+                self.forward_mode_key(key);
                 InteractionResult::handled()
             }
         }
@@ -256,14 +243,9 @@ impl ObjectEditor {
                 self.start_edit_value();
                 InteractionResult::handled()
             }
-            KeyCode::Esc => {
-                self.mode = Mode::Normal;
-                InteractionResult::handled()
-            }
+            KeyCode::Esc => self.back_to_normal_mode(),
             _ => {
-                if let Mode::EditKey { key_value, .. } = &mut self.mode {
-                    key_value.on_key(key);
-                }
+                self.forward_mode_key(key);
                 InteractionResult::handled()
             }
         }
@@ -271,18 +253,13 @@ impl ObjectEditor {
 
     fn handle_insert_type(&mut self, key: KeyEvent) -> InteractionResult {
         match key.code {
-            KeyCode::Esc => {
-                self.mode = Mode::Normal;
-                InteractionResult::handled()
-            }
+            KeyCode::Esc => self.back_to_normal_mode(),
             KeyCode::Enter => {
                 self.commit_insert_type();
                 InteractionResult::handled()
             }
             _ => {
-                if let Mode::InsertType { key_value, .. } = &mut self.mode {
-                    key_value.on_key(key);
-                }
+                self.forward_mode_key(key);
                 InteractionResult::handled()
             }
         }
@@ -290,10 +267,7 @@ impl ObjectEditor {
 
     fn handle_insert_value(&mut self, key: KeyEvent) -> InteractionResult {
         match key.code {
-            KeyCode::Esc => {
-                self.mode = Mode::Normal;
-                InteractionResult::handled()
-            }
+            KeyCode::Esc => self.back_to_normal_mode(),
             KeyCode::Enter => {
                 if self.pending_insert_value_error().is_some() {
                     return InteractionResult::with_action(
@@ -304,9 +278,7 @@ impl ObjectEditor {
                 InteractionResult::handled()
             }
             _ => {
-                if let Mode::InsertValue { key_value, .. } = &mut self.mode {
-                    key_value.on_key(key);
-                }
+                self.forward_mode_key(key);
                 InteractionResult::handled()
             }
         }
@@ -314,10 +286,7 @@ impl ObjectEditor {
 
     fn handle_confirm_delete(&mut self, key: KeyEvent) -> InteractionResult {
         match key.code {
-            KeyCode::Esc => {
-                self.mode = Mode::Normal;
-                InteractionResult::handled()
-            }
+            KeyCode::Esc => self.back_to_normal_mode(),
             KeyCode::Enter => {
                 let confirmed = if let Mode::ConfirmDelete { select, .. } = &self.mode {
                     select
@@ -332,9 +301,7 @@ impl ObjectEditor {
                 InteractionResult::handled()
             }
             _ => {
-                if let Mode::ConfirmDelete { select, .. } = &mut self.mode {
-                    select.on_key(key);
-                }
+                self.forward_mode_key(key);
                 InteractionResult::handled()
             }
         }
@@ -342,10 +309,7 @@ impl ObjectEditor {
 
     fn handle_move(&mut self, key: KeyEvent) -> InteractionResult {
         match key.code {
-            KeyCode::Esc | KeyCode::Char('m') => {
-                self.mode = Mode::Normal;
-                InteractionResult::handled()
-            }
+            KeyCode::Esc | KeyCode::Char('m') => self.back_to_normal_mode(),
             KeyCode::Up => {
                 self.move_node(-1);
                 InteractionResult::handled()

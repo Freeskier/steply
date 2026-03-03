@@ -191,45 +191,21 @@ impl Interactive for TextInput {
     }
 
     fn on_key(&mut self, key: KeyEvent) -> InteractionResult {
-        match key.code {
-            KeyCode::Char(ch) => {
-                text_edit::insert_char(&mut self.value, &mut self.cursor, ch);
-                self.edited_result()
-            }
-            KeyCode::Backspace => {
-                if text_edit::backspace_char(&mut self.value, &mut self.cursor) {
-                    return self.edited_result();
-                }
-                InteractionResult::ignored()
-            }
-            KeyCode::Delete => {
-                if text_edit::delete_char(&mut self.value, &mut self.cursor) {
-                    return self.edited_result();
-                }
-                InteractionResult::ignored()
-            }
+        if self.mode == TextMode::Secret {
+            return match key.code {
+                KeyCode::Enter => InteractionResult::submit_or_produce(
+                    self.submit_target.as_ref(),
+                    Value::Text(self.value.clone()),
+                ),
+                _ => InteractionResult::ignored(),
+            };
+        }
 
-            KeyCode::Left if self.mode != TextMode::Secret => {
-                if text_edit::move_left(&mut self.cursor, &self.value) {
-                    return InteractionResult::handled();
-                }
-                InteractionResult::ignored()
-            }
-            KeyCode::Right if self.mode != TextMode::Secret => {
-                if text_edit::move_right(&mut self.cursor, &self.value) {
-                    return InteractionResult::handled();
-                }
-                InteractionResult::ignored()
-            }
-            KeyCode::Home if self.mode != TextMode::Secret => {
-                self.cursor = 0;
-                InteractionResult::handled()
-            }
-            KeyCode::End if self.mode != TextMode::Secret => {
-                self.cursor = text_edit::char_count(&self.value);
-                InteractionResult::handled()
-            }
-            KeyCode::Enter => InteractionResult::submit_or_produce(
+        match text_edit::apply_single_line_key(&mut self.value, &mut self.cursor, key) {
+            text_edit::TextKeyOutcome::Ignored => InteractionResult::ignored(),
+            text_edit::TextKeyOutcome::Changed => self.edited_result(),
+            text_edit::TextKeyOutcome::CursorMoved => InteractionResult::handled(),
+            text_edit::TextKeyOutcome::Submit => InteractionResult::submit_or_produce(
                 self.submit_target.as_ref(),
                 Value::Text(self.value.clone()),
             ),

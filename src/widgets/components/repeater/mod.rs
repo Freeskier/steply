@@ -11,8 +11,7 @@ use crate::ui::span::{Span, SpanLine};
 use crate::ui::style::{Color, Style};
 use crate::widgets::base::WidgetBase;
 use crate::widgets::node::LeafComponent;
-use crate::widgets::shared::cursor_anchor;
-use crate::widgets::shared::list_core;
+use crate::widgets::shared::list_policy;
 use crate::widgets::shared::validation::decorate_component_validation;
 use crate::widgets::shared::value_seed::{normalize_ascii_key, seed_value_from_record};
 use crate::widgets::traits::{
@@ -227,8 +226,8 @@ impl Repeater {
     }
 
     fn clamp_cursor(&mut self) {
-        self.active_item = list_core::clamp_index(self.active_item, self.rows.len());
-        self.active_field = list_core::clamp_index(self.active_field, self.fields.len());
+        self.active_item = list_policy::clamp_index(self.active_item, self.rows.len());
+        self.active_field = list_policy::clamp_index(self.active_field, self.fields.len());
     }
 
     fn completed_items(&self) -> usize {

@@ -1,2 +1,2 @@
 pub(super) mod completion;
-mod dispatch;
+mod input_dispatch;

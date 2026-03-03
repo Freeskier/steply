@@ -11,9 +11,8 @@ use crate::ui::span::{Span, SpanLine};
 use crate::ui::style::{Color, Style};
 use crate::widgets::base::WidgetBase;
 use crate::widgets::node::LeafComponent;
-use crate::widgets::shared::cursor_anchor;
 use crate::widgets::shared::filter as filter_utils;
-use crate::widgets::shared::list_core;
+use crate::widgets::shared::list_policy;
 use crate::widgets::shared::validation::decorate_component_validation;
 use crate::widgets::shared::value_seed::{normalize_ascii_key, seed_value_from_record};
 use crate::widgets::traits::{
@@ -123,7 +122,7 @@ impl Table {
         if !self.rows.is_empty() {
             self.focus = TableFocus::Body;
             self.active_row = 0;
-            self.active_col = list_core::clamp_index(0, self.columns.len());
+            self.active_col = list_policy::clamp_index(0, self.columns.len());
             self.body_mode = TableBodyMode::Edit;
             self.apply_filter(self.active_row_id());
         }
@@ -158,7 +157,7 @@ impl Table {
         if let Some(pos) = self.rows.iter().position(|r| r.id == row_id) {
             self.active_row = pos;
         }
-        self.active_col = list_core::clamp_index(self.active_col, self.columns.len());
+        self.active_col = list_policy::clamp_index(self.active_col, self.columns.len());
         self.active_row
     }
 
@@ -175,7 +174,7 @@ impl Table {
         self.sort = None;
         self.focus = TableFocus::Body;
         self.active_row = insert_at;
-        self.active_col = list_core::clamp_index(self.active_col, self.columns.len());
+        self.active_col = list_policy::clamp_index(self.active_col, self.columns.len());
         self.body_mode = TableBodyMode::Edit;
         self.apply_filter(Some(row_id));
     }
@@ -197,7 +196,7 @@ impl Table {
             self.focus = TableFocus::Header;
             self.active_row = 0;
         } else {
-            self.active_row = list_core::clamp_index(self.active_row, self.rows.len());
+            self.active_row = list_policy::clamp_index(self.active_row, self.rows.len());
         }
         self.apply_filter(preferred);
     }
@@ -206,7 +205,7 @@ impl Table {
         if self.rows.len() < 2 || self.focus != TableFocus::Body {
             return false;
         }
-        let Some(next_idx) = list_core::move_by(self.active_row, delta, self.rows.len()) else {
+        let Some(next_idx) = list_policy::move_by(self.active_row, delta, self.rows.len()) else {
             return false;
         };
         self.sort = None;
@@ -319,7 +318,7 @@ impl Table {
     }
 
     fn clamp_focus(&mut self) {
-        self.active_col = list_core::clamp_index(self.active_col, self.columns.len());
+        self.active_col = list_policy::clamp_index(self.active_col, self.columns.len());
 
         if self.rows.is_empty() {
             self.active_row = 0;
@@ -330,7 +329,7 @@ impl Table {
             return;
         }
 
-        self.active_row = list_core::clamp_index(self.active_row, self.rows.len());
+        self.active_row = list_policy::clamp_index(self.active_row, self.rows.len());
     }
 
     fn filter_query(&self) -> String {
@@ -358,7 +357,7 @@ impl Table {
                 .filter(|&row_idx| {
                     (0..self.columns.len()).any(|col_idx| {
                         let text = self.cell_filter_text(row_idx, col_idx);
-                        list_core::text_matches(query, text.as_str())
+                        list_policy::text_matches(query, text.as_str())
                     })
                 })
                 .collect();
@@ -402,7 +401,8 @@ impl Table {
         let Some(current_pos) = self.active_visible_pos() else {
             return false;
         };
-        let Some(next_pos) = list_core::move_by(current_pos, delta, self.visible_rows.len()) else {
+        let Some(next_pos) = list_policy::move_by(current_pos, delta, self.visible_rows.len())
+        else {
             return false;
         };
         let Some(next_row) = self.visible_rows.get(next_pos).copied() else {

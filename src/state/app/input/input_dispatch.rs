@@ -30,13 +30,7 @@ impl AppState {
             }
         }
 
-        self.clean_broken_overlays();
-        let result = {
-            let Some(node) = self.find_focused_node_mut(&focused_id) else {
-                return InteractionResult::ignored();
-            };
-            node.on_key(key)
-        };
+        let result = self.route_to_focused_node(&focused_id, |node| node.on_key(key));
 
         if result.handled {
             if should_clear_completion_suppression_for_key(key) {
@@ -52,13 +46,7 @@ impl AppState {
             return InteractionResult::ignored();
         };
 
-        self.clean_broken_overlays();
-        let result = {
-            let Some(node) = self.find_focused_node_mut(&focused_id) else {
-                return InteractionResult::ignored();
-            };
-            node.on_text_action(action)
-        };
+        let result = self.route_to_focused_node(&focused_id, |node| node.on_text_action(action));
 
         if result.handled {
             self.clear_completion_tab_suppression_for_focused();
@@ -113,11 +101,7 @@ impl AppState {
         }
 
         if self.has_completion_for_focused() {
-            if !reverse
-                && self
-                    .completion_snapshot()
-                    .is_some_and(|(_, matches, _, _)| matches.len() == 1)
-            {
+            if !reverse && self.completion_match_count_for_focused() == Some(1) {
                 self.accept_and_refresh_completion();
                 return InteractionResult::handled();
             }
@@ -183,6 +167,18 @@ impl AppState {
     fn find_focused_node_mut<'a>(&'a mut self, focused_id: &str) -> Option<&'a mut Node> {
         let nodes = self.active_nodes_mut();
         find_node_mut(nodes, focused_id)
+    }
+
+    fn route_to_focused_node(
+        &mut self,
+        focused_id: &str,
+        route: impl FnOnce(&mut Node) -> InteractionResult,
+    ) -> InteractionResult {
+        self.clean_broken_overlays();
+        let Some(node) = self.find_focused_node_mut(focused_id) else {
+            return InteractionResult::ignored();
+        };
+        route(node)
     }
 
     fn move_focus_for_tab(&mut self, reverse: bool) {

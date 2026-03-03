@@ -2,7 +2,7 @@ use super::*;
 use crate::runtime::event::WidgetAction;
 use crate::terminal::{PointerButton, PointerEvent, PointerKind};
 use crate::widgets::shared::keymap;
-use crate::widgets::shared::list_core;
+use crate::widgets::shared::list_nav;
 
 impl Table {
     fn handled_with_focus(&self) -> InteractionResult {
@@ -14,18 +14,32 @@ impl Table {
     }
 
     fn focus_next_column(&mut self) -> InteractionResult {
-        let Some(next) = list_core::cycle_next(self.active_col, self.columns.len()) else {
-            return InteractionResult::ignored();
-        };
-        self.active_col = next;
-        InteractionResult::handled()
+        InteractionResult::handled_if(list_nav::apply_cycle_index(
+            &mut self.active_col,
+            self.columns.len(),
+            false,
+        ))
     }
 
     fn focus_prev_column(&mut self) -> InteractionResult {
-        let Some(prev) = list_core::cycle_prev(self.active_col, self.columns.len()) else {
-            return InteractionResult::ignored();
-        };
-        self.active_col = prev;
+        InteractionResult::handled_if(list_nav::apply_cycle_index(
+            &mut self.active_col,
+            self.columns.len(),
+            true,
+        ))
+    }
+
+    fn handled_move_active_row_by(&mut self, delta: isize) -> InteractionResult {
+        InteractionResult::handled_if(self.move_active_row_by(delta))
+    }
+
+    fn handled_move_visible_or_header(&mut self, delta: isize) -> InteractionResult {
+        if delta < 0 && !self.move_active_visible(delta) {
+            self.focus = TableFocus::Header;
+            self.set_body_mode(TableBodyMode::Navigate);
+        } else if delta > 0 {
+            let _ = self.move_active_visible(delta);
+        }
         InteractionResult::handled()
     }
 
@@ -137,22 +151,8 @@ impl Table {
                     self.set_body_mode(TableBodyMode::Navigate);
                     InteractionResult::handled()
                 }
-                KeyCode::Up => {
-                    let moved = self.move_active_row_by(-1);
-                    if moved {
-                        InteractionResult::handled()
-                    } else {
-                        InteractionResult::ignored()
-                    }
-                }
-                KeyCode::Down => {
-                    let moved = self.move_active_row_by(1);
-                    if moved {
-                        InteractionResult::handled()
-                    } else {
-                        InteractionResult::ignored()
-                    }
-                }
+                KeyCode::Up => self.handled_move_active_row_by(-1),
+                KeyCode::Down => self.handled_move_active_row_by(1),
                 _ => InteractionResult::handled(),
             };
         }
@@ -191,17 +191,8 @@ impl Table {
                     }
                     result
                 }
-                KeyCode::Up => {
-                    if !self.move_active_visible(-1) {
-                        self.focus = TableFocus::Header;
-                        self.set_body_mode(TableBodyMode::Navigate);
-                    }
-                    InteractionResult::handled()
-                }
-                KeyCode::Down => {
-                    let _ = self.move_active_visible(1);
-                    InteractionResult::handled()
-                }
+                KeyCode::Up => self.handled_move_visible_or_header(-1),
+                KeyCode::Down => self.handled_move_visible_or_header(1),
                 KeyCode::Left => self.focus_prev_column(),
                 KeyCode::Right => self.focus_next_column(),
                 KeyCode::Tab => self.focus_next_column(),
@@ -233,17 +224,8 @@ impl Table {
             return result;
         }
         match key.code {
-            KeyCode::Up => {
-                if !self.move_active_visible(-1) {
-                    self.focus = TableFocus::Header;
-                    self.set_body_mode(TableBodyMode::Navigate);
-                }
-                InteractionResult::handled()
-            }
-            KeyCode::Down => {
-                let _ = self.move_active_visible(1);
-                InteractionResult::handled()
-            }
+            KeyCode::Up => self.handled_move_visible_or_header(-1),
+            KeyCode::Down => self.handled_move_visible_or_header(1),
             KeyCode::Left => self.focus_prev_column(),
             KeyCode::Right => self.focus_next_column(),
             _ => result,
@@ -315,12 +297,8 @@ impl Interactive for Table {
 
     fn cursor_pos(&self) -> Option<CursorPos> {
         if self.filter.is_focused() {
-            let local = self.filter.cursor_pos()?;
             let row = if self.base.label().is_empty() { 0 } else { 1 };
-            return Some(CursorPos {
-                col: local.col.saturating_add(8),
-                row,
-            });
+            return self.filter.anchored_cursor_pos(row);
         }
         if self.focus != TableFocus::Body {
             return None;
@@ -344,27 +322,11 @@ impl Interactive for Table {
             return None;
         }
 
-        if let Some(local) = self.active_cell().and_then(|cell| cell.cursor_pos()) {
-            return Some(CursorPos {
-                col: base_col.saturating_add(local.col),
-                row: base_row.saturating_add(local.row),
-            });
-        }
-
+        let local = self.active_cell().and_then(|cell| cell.cursor_pos())?;
         Some(CursorPos {
-            col: base_col,
-            row: base_row,
+            col: base_col.saturating_add(local.col),
+            row: base_row.saturating_add(local.row),
         })
-    }
-
-    fn cursor_visible(&self) -> bool {
-        let body_cursor_visible = self
-            .active_cell()
-            .map(|cell| cell.cursor_visible())
-            .unwrap_or(false);
-        cursor_anchor::visible_when_text_cursor(
-            self.filter.is_focused() || (self.is_body_edit_mode() && body_cursor_visible),
-        )
     }
 
     fn value(&self) -> Option<Value> {

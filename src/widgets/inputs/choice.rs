@@ -5,6 +5,7 @@ use crate::terminal::{KeyCode, KeyEvent};
 use crate::ui::span::Span;
 use crate::ui::style::{Color, Style};
 use crate::widgets::base::WidgetBase;
+use crate::widgets::shared::list_nav;
 use crate::widgets::traits::{
     DrawOutput, Drawable, FocusMode, HintContext, HintGroup, HintItem, InteractionResult,
     Interactive, RenderContext, ValidationMode,
@@ -62,23 +63,6 @@ impl ChoiceInput {
             .get(self.selected)
             .map(String::as_str)
             .unwrap_or("")
-    }
-
-    fn move_prev(&mut self) -> bool {
-        if self.options.is_empty() {
-            return false;
-        }
-        let len = self.options.len();
-        self.selected = (self.selected + len - 1) % len;
-        true
-    }
-
-    fn move_next(&mut self) -> bool {
-        if self.options.is_empty() {
-            return false;
-        }
-        self.selected = (self.selected + 1) % self.options.len();
-        true
     }
 
     fn select_by_letter(&mut self, ch: char) -> bool {
@@ -165,20 +149,12 @@ impl Interactive for ChoiceInput {
 
     fn on_key(&mut self, key: KeyEvent) -> InteractionResult {
         match key.code {
-            KeyCode::Left | KeyCode::Up => {
-                if self.move_prev() {
-                    InteractionResult::handled()
-                } else {
-                    InteractionResult::ignored()
-                }
-            }
-            KeyCode::Right | KeyCode::Down => {
-                if self.move_next() {
-                    InteractionResult::handled()
-                } else {
-                    InteractionResult::ignored()
-                }
-            }
+            KeyCode::Left | KeyCode::Up => InteractionResult::handled_if(
+                list_nav::apply_cycle_index(&mut self.selected, self.options.len(), true),
+            ),
+            KeyCode::Right | KeyCode::Down => InteractionResult::handled_if(
+                list_nav::apply_cycle_index(&mut self.selected, self.options.len(), false),
+            ),
             KeyCode::Char(ch) => {
                 if self.select_by_letter(ch) {
                     InteractionResult::handled()

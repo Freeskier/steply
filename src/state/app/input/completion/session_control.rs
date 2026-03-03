@@ -52,6 +52,12 @@ impl AppState {
             .is_some_and(|focused| session.belongs_to(focused))
     }
 
+    pub(crate) fn completion_match_count_for_focused(&self) -> Option<usize> {
+        let session = self.ui.completion_session.as_ref()?;
+        let focused = self.focused_id()?;
+        session.belongs_to(focused).then_some(session.matches.len())
+    }
+
     pub(crate) fn cancel_completion_for_focused(&mut self) -> bool {
         if self.has_completion_for_focused() {
             self.clear_completion_session();

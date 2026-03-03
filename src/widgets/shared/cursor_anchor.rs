@@ -24,7 +24,3 @@ pub fn visible_row_cursor(
     let row = prefix_rows.saturating_add(active_index.saturating_sub(start));
     Some(anchored_cursor(row, col))
 }
-
-pub fn visible_when_text_cursor(has_text_cursor: bool) -> bool {
-    has_text_cursor
-}

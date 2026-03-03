@@ -1,11 +1,11 @@
 mod async_utils;
 mod cache;
+mod interaction;
 mod model;
-mod nav;
-mod overlay;
+mod overlay_interaction;
 mod parser;
+mod query;
 mod scanner;
-mod search;
 mod tree_builder;
 mod tree_scanner;
 
@@ -109,8 +109,8 @@ use crate::widgets::validators::{Validator, run_validators};
 use cache::{CacheKey, ScanCache};
 use model::{EntryFilter as EF, completion_item_label, filter_entries, list_dir};
 use parser::parse_input;
+use query::ScanResult;
 use scanner::{ScanRequest, ScannerHandle};
-use search::ScanResult;
 use tree_scanner::TreeScannerHandle;
 
 const DEBOUNCE_MS: u64 = 120;

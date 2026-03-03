@@ -18,10 +18,9 @@ use crate::ui::style::{Color, Style};
 use crate::widgets::base::WidgetBase;
 use crate::widgets::components::scroll::ScrollState;
 use crate::widgets::node::LeafComponent;
-use crate::widgets::shared::cursor_anchor;
 use crate::widgets::shared::filter;
 use crate::widgets::shared::keymap;
-use crate::widgets::shared::list_core;
+use crate::widgets::shared::list_policy;
 use crate::widgets::traits::{
     CompletionState, DrawOutput, Drawable, FocusMode, HintContext, HintGroup, HintItem,
     InteractionResult, Interactive, PointerRowMap, RenderContext, TextAction,
@@ -268,55 +267,11 @@ impl SelectList {
             .and_then(|source| self.visible_to_source.iter().position(|idx| idx == source))
         {
             self.active_index = pos;
-        } else if self.active_index >= self.options.len() {
-            self.active_index = self.options.len() - 1;
         }
 
         let active = self.active_index;
         self.scroll
             .set_active_clamped(&mut self.active_index, self.options.len(), active);
-    }
-
-    fn marker_cursor_pos(&self) -> Option<CursorPos> {
-        if self.options.is_empty() {
-            return None;
-        }
-
-        let total = self.options.len();
-        let (start, end) = self.scroll.visible_range(total);
-
-        let mut row = 0usize;
-        if self.show_label && !self.base.label().is_empty() {
-            row += 1;
-        }
-        if self.filter.is_visible() {
-            row += 1;
-        }
-
-        for index in start..self.active_index {
-            let Some(option) = self.options.get(index) else {
-                continue;
-            };
-            let selected = self
-                .visible_to_source
-                .get(index)
-                .is_some_and(|source| self.selected.contains(source));
-            let line_count = (self.option_renderer)(
-                option,
-                SelectItemRenderState {
-                    focused: true,
-                    active: false,
-                    selected,
-                    mode: self.mode,
-                    base_style: Style::default(),
-                    highlight_style: Style::new().color(Color::Yellow).bold(),
-                },
-            )
-            .len()
-            .max(1);
-            row = row.saturating_add(line_count);
-        }
-        cursor_anchor::visible_row_cursor(self.active_index, start, end, row, 0)
     }
 
     fn option_line_count_for_pointer(&self, index: usize, wrap_width: u16) -> usize {
@@ -776,22 +731,14 @@ impl Interactive for SelectList {
 
     fn cursor_pos(&self) -> Option<CursorPos> {
         if self.filter.is_focused() {
-            let local = self.filter.cursor_pos()?;
             let row = if self.show_label && !self.base.label().is_empty() {
                 1
             } else {
                 0
             };
-            return Some(CursorPos {
-                col: local.col.saturating_add(8),
-                row,
-            });
+            return self.filter.anchored_cursor_pos(row);
         }
-        self.marker_cursor_pos()
-    }
-
-    fn cursor_visible(&self) -> bool {
-        self.filter.is_focused()
+        None
     }
 
     fn value(&self) -> Option<Value> {
@@ -842,7 +789,7 @@ impl Interactive for SelectList {
 }
 
 fn filter_options(query: &str, source_options: &[SelectItem]) -> (Vec<SelectItem>, Vec<usize>) {
-    let ranked = list_core::rank_by_filter(query, source_options, filter_fields_for_item);
+    let ranked = list_policy::rank_by_filter(query, source_options, filter_fields_for_item);
     let mut mapping = Vec::<usize>::with_capacity(ranked.len());
     let mut options = Vec::<SelectItem>::with_capacity(ranked.len());
 
@@ -855,8 +802,8 @@ fn filter_options(query: &str, source_options: &[SelectItem]) -> (Vec<SelectItem
     (options, mapping)
 }
 
-fn filter_fields_for_item(item: &SelectItem) -> Vec<list_core::FilterField<'_>> {
-    let search = list_core::FilterField {
+fn filter_fields_for_item(item: &SelectItem) -> Vec<list_policy::FilterField<'_>> {
+    let search = list_policy::FilterField {
         text: item_search_text(item),
         boost: 0,
     };
@@ -865,11 +812,11 @@ fn filter_fields_for_item(item: &SelectItem) -> Vec<list_core::FilterField<'_>> 
             title, description, ..
         } => vec![
             search,
-            list_core::FilterField {
+            list_policy::FilterField {
                 text: title.as_str(),
                 boost: 30,
             },
-            list_core::FilterField {
+            list_policy::FilterField {
                 text: description.as_str(),
                 boost: 0,
             },
@@ -910,7 +857,7 @@ fn with_highlights(
         | SelectItemView::SplitSuffix {
             text, highlights, ..
         } => {
-            *highlights = list_core::text_match_ranges(query, text.as_str());
+            *highlights = list_policy::text_match_ranges(query, text.as_str());
         }
     }
     highlighted

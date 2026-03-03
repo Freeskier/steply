@@ -1,30 +1,36 @@
 use crate::state::step::{Step, StepStatus};
 use crate::state::validation::ValidationState;
 use crate::terminal::{CursorPos, TerminalSize};
-use crate::ui::hit_test::{FrameHitMap, HitLocal};
+use crate::ui::hit_test::FrameHitMap;
 use crate::ui::layout::Layout;
 use crate::ui::render_view::{CompletionSnapshot, RenderView};
 use crate::ui::span::{Span, SpanLine};
 use crate::ui::spinner::{Spinner, SpinnerStyle};
-use crate::ui::style::{Color, Strike, Style};
+use crate::ui::style::{Color, Style};
 use crate::ui::text::text_display_width;
 use crate::widgets::node::{Node, NodeWalkScope, walk_nodes};
 use crate::widgets::traits::{
-    CompletionMenu, DrawOutput, HintContext, HintGroup, HintItem, PointerRowMap, RenderContext,
-    StickyBlock,
+    CompletionMenu, HintContext, HintGroup, HintItem, RenderContext, StickyBlock,
 };
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
-mod decorations;
+mod content_render;
+mod focus_policy;
 mod overlay;
 mod overlay_geometry;
+mod step_decoriation;
 
-use decorations::{
+pub(super) use content_render::{draw_nodes, register_block_selection_ranges};
+pub(super) use focus_policy::{
+    apply_focus_cursor_state, focused_cursor_in_hit_map, layout_marker_from_focus,
+    resolve_focus_anchor,
+};
+use overlay::apply_overlay;
+use step_decoriation::{
     StepFrameFooter, append_step_frame_footer_plain, apply_step_frame, decoration_gutter_width,
     hint_line_prefix,
 };
-use overlay::apply_overlay;
 
 #[derive(Debug, Default, Clone)]
 pub struct RenderFrame {
@@ -46,13 +52,13 @@ pub struct StepRenderRange {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct RendererConfig {
-    pub decorations_enabled: bool,
+    pub chrome_enabled: bool,
 }
 
 impl Default for RendererConfig {
     fn default() -> Self {
         Self {
-            decorations_enabled: true,
+            chrome_enabled: true,
         }
     }
 }
@@ -236,7 +242,7 @@ fn build_base_frame(
         return frame;
     }
     let blocking_overlay = view.has_blocking_overlay;
-    let compose_width = if config.decorations_enabled {
+    let compose_width = if config.chrome_enabled {
         terminal_size
             .width
             .saturating_sub(decoration_gutter_width().min(u16::MAX as usize) as u16)
@@ -276,7 +282,7 @@ fn build_base_frame(
         );
         let hints = render_step_hints(status, view, step.nodes.as_slice());
         let footer = step_frame_footer(status, view, hints.has_hints);
-        apply_step_chrome(
+        apply_step_decoriation(
             &mut content,
             idx,
             render_up_to,
@@ -294,7 +300,7 @@ fn build_base_frame(
                 end_exclusive: start_row.saturating_add(block_len),
             });
         }
-        let selection_col_start = if config.decorations_enabled {
+        let selection_col_start = if config.chrome_enabled {
             decoration_gutter_width().min(u16::MAX as usize) as u16
         } else {
             0
@@ -311,14 +317,14 @@ fn build_base_frame(
         frame.sticky.extend(content.sticky);
         apply_focus_cursor_state(&mut frame, focus_cursor, FocusApplyMode::PreserveExisting);
 
-        if status == StepVisualStatus::Done && !config.decorations_enabled {
+        if status == StepVisualStatus::Done && !config.chrome_enabled {
             frame.lines.push(vec![Span::new("")]);
         }
 
         append_step_hints_lines(
             &mut frame.lines,
             hints.panel_lines,
-            config.decorations_enabled,
+            config.chrome_enabled,
             idx < render_up_to,
         );
     }
@@ -410,7 +416,7 @@ fn render_step_content(
     content
 }
 
-fn apply_step_chrome<'a>(
+fn apply_step_decoriation<'a>(
     content: &mut StepContentRender,
     idx: usize,
     render_up_to: usize,
@@ -419,7 +425,7 @@ fn apply_step_chrome<'a>(
     footer: Option<StepFrameFooter<'a>>,
     running_marker: char,
 ) {
-    if config.decorations_enabled {
+    if config.chrome_enabled {
         let include_top = idx == 0;
         apply_step_frame(
             &mut content.lines,
@@ -450,60 +456,29 @@ fn resolve_step_focus_cursor(
     focused_id: Option<&str>,
     status: StepVisualStatus,
 ) -> FocusCursorState {
-    let cursor = match (focused_id, content.cursor) {
-        (Some(id), Some(cursor)) if content.hit_map.has_node_row(id, cursor.row) => Some(cursor),
-        (Some(_), Some(_)) => None,
-        (_, cursor) => cursor,
-    }
-    .map(|cursor| CursorPos {
-        row: cursor.row.saturating_add(start_row),
-        col: cursor.col,
-    });
-
-    let focus_anchor = focused_id
-        .and_then(|id| content.hit_map.first_region_for_node(id))
-        .or_else(|| {
-            if status == StepVisualStatus::Active {
-                content.hit_map.first_region()
-            } else {
-                None
+    let cursor =
+        focused_cursor_in_hit_map(focused_id, content.cursor, &content.hit_map).map(|cursor| {
+            CursorPos {
+                row: cursor.row.saturating_add(start_row),
+                col: cursor.col,
             }
-        })
-        .or_else(|| content.focus_anchor.map(|row| (row, 0)))
-        .map(|(row, col)| CursorPos {
-            row: row.saturating_add(start_row),
-            col,
         });
+
+    let focus_anchor = resolve_focus_anchor(
+        focused_id,
+        &content.hit_map,
+        status == StepVisualStatus::Active,
+        content.focus_anchor,
+    )
+    .map(|(row, col)| CursorPos {
+        row: row.saturating_add(start_row),
+        col,
+    });
 
     FocusCursorState {
         cursor,
         focus_anchor,
         cursor_visible: content.cursor_visible,
-    }
-}
-
-pub(super) fn apply_focus_cursor_state(
-    frame: &mut RenderFrame,
-    state: FocusCursorState,
-    mode: FocusApplyMode,
-) {
-    let override_existing = mode == FocusApplyMode::OverrideExisting;
-
-    if let Some(cursor) = state.cursor
-        && (override_existing || frame.cursor.is_none())
-    {
-        frame.cursor = Some(cursor);
-        frame.focus_anchor_row = Some(cursor.row);
-        frame.focus_anchor_col = Some(cursor.col);
-        frame.cursor_visible = state.cursor_visible;
-        return;
-    }
-
-    if let Some(anchor) = state.focus_anchor
-        && (override_existing || frame.focus_anchor_row.is_none())
-    {
-        frame.focus_anchor_row = Some(anchor.row);
-        frame.focus_anchor_col = Some(anchor.col);
     }
 }
 
@@ -613,9 +588,7 @@ fn remap_block_layout_marker(
     block_cursor: &mut Option<CursorPos>,
     block_focus_anchor: &mut Option<u16>,
 ) {
-    let layout_marker = block_cursor
-        .map(|cursor| (cursor.row as usize, cursor.col as usize))
-        .or_else(|| block_focus_anchor.map(|anchor_row| (anchor_row as usize, 0usize)));
+    let layout_marker = layout_marker_from_focus(*block_cursor, None, *block_focus_anchor);
     let (composed_lines, mapped_marker) =
         Layout::compose_with_cursor(block_lines.as_slice(), compose_width, layout_marker);
     *block_lines = composed_lines;
@@ -632,13 +605,13 @@ fn remap_block_layout_marker(
 fn append_step_hints_lines(
     frame_lines: &mut Vec<SpanLine>,
     hints_panel_lines: Vec<SpanLine>,
-    decorations_enabled: bool,
+    chrome_enabled: bool,
     connect_to_next: bool,
 ) {
     if hints_panel_lines.is_empty() {
         return;
     }
-    if decorations_enabled {
+    if chrome_enabled {
         let hint_prefix = hint_line_prefix(connect_to_next);
         for line in hints_panel_lines {
             let mut prefixed = vec![hint_prefix.clone()];
@@ -815,179 +788,6 @@ fn render_context_for_nodes(
         visible_errors: Arc::new(visible_errors),
         invalid_hidden: Arc::new(invalid_hidden),
         completion_menus: Arc::new(completion_menus),
-    }
-}
-
-fn draw_nodes(
-    nodes: &[Node],
-    ctx: &RenderContext,
-    state: &mut DrawNodesState<'_>,
-    options: DrawNodesOptions,
-) {
-    for node in nodes {
-        let mut out = node.draw(ctx);
-        let (label_prefix, label_offset) = input_label_prefix(node, ctx.focused_id.as_deref());
-
-        apply_input_validation_overlay(node, ctx, &mut out);
-        if options.strikethrough_inputs && matches!(node, Node::Input(_)) {
-            for line in &mut out.lines {
-                let has_content = line
-                    .iter()
-                    .any(|s| !s.text.trim().is_empty() && !matches!(s.style.strike, Strike::Off));
-                if has_content {
-                    for span in line.iter_mut() {
-                        if !matches!(span.style.strike, Strike::Off) {
-                            span.style.strike = Strike::On;
-                        }
-                    }
-                }
-            }
-        }
-
-        if let Some(prefix) = label_prefix {
-            if let Some(first) = out.lines.first_mut() {
-                let mut new_first = prefix;
-                new_first.append(first);
-                *first = new_first;
-            } else {
-                out.lines.insert(0, prefix);
-            }
-        }
-
-        if let Some(hit_map) = state.hit_map.as_deref_mut()
-            && let Some(hit_row_offset) = state.hit_row_offset.as_deref_mut()
-        {
-            let composed_lines = Layout::compose(&out.lines, state.compose_width.max(1));
-            let pointer_rows = node
-                .pointer_rows(ctx)
-                .into_iter()
-                .map(|entry| (entry.rendered_row, entry))
-                .collect::<HashMap<u16, PointerRowMap>>();
-            for (local_row, line) in composed_lines.iter().enumerate() {
-                let local_row_u16 = local_row.min(u16::MAX as usize) as u16;
-                let row = hit_row_offset.saturating_add(local_row_u16);
-                let width = Layout::line_width(line.as_slice()).min(u16::MAX as usize) as u16;
-                if pointer_rows.is_empty() {
-                    let local_col_offset = if local_row == 0 { label_offset } else { 0 };
-                    hit_map.push_node_row(
-                        node.id(),
-                        row,
-                        local_row_u16,
-                        state.hit_col_start,
-                        state.hit_col_start.saturating_add(width),
-                        local_col_offset,
-                    );
-                } else if let Some(PointerRowMap {
-                    local_row,
-                    local_col_offset,
-                    local_semantic,
-                    ..
-                }) = pointer_rows.get(&local_row_u16)
-                {
-                    hit_map.push_node_row_with_semantic(
-                        node.id(),
-                        row,
-                        state.hit_col_start,
-                        state.hit_col_start.saturating_add(width),
-                        HitLocal::row(*local_row)
-                            .with_col_offset(*local_col_offset)
-                            .with_semantic(*local_semantic),
-                    );
-                }
-            }
-            *hit_row_offset =
-                hit_row_offset.saturating_add(composed_lines.len().min(u16::MAX as usize) as u16);
-        }
-
-        if options.track_cursor
-            && ctx
-                .focused_id
-                .as_deref()
-                .is_some_and(|focused| focused == node.id())
-        {
-            if state.focus_anchor.is_none() {
-                *state.focus_anchor = Some(*state.row_offset);
-            }
-            if state.cursor.is_none()
-                && let Some(local_cursor) = node.cursor_pos()
-            {
-                *state.cursor = Some(CursorPos {
-                    col: local_cursor.col.saturating_add(label_offset),
-                    row: (*state.row_offset).saturating_add(local_cursor.row),
-                });
-                *state.cursor_visible = node.cursor_visible();
-            }
-        }
-        *state.row_offset = (*state.row_offset).saturating_add(out.lines.len() as u16);
-        if options.collect_sticky
-            && let Some(sticky) = state.sticky.as_deref_mut()
-            && !out.sticky.is_empty()
-        {
-            sticky.extend(out.sticky);
-        }
-        state.lines.extend(out.lines);
-    }
-}
-
-fn register_block_selection_ranges(hit_map: &mut FrameHitMap, lines: &[SpanLine], col_start: u16) {
-    for (row, line) in lines.iter().enumerate() {
-        let row = row.min(u16::MAX as usize) as u16;
-        let width = Layout::line_width(line.as_slice()).min(u16::MAX as usize) as u16;
-        if width <= col_start {
-            continue;
-        }
-        hit_map.push_selection_range(row, col_start, width);
-    }
-}
-
-fn input_label_prefix(node: &Node, focused_id: Option<&str>) -> (Option<Vec<Span>>, u16) {
-    let Node::Input(widget) = node else {
-        return (None, 0);
-    };
-
-    let label = widget.label();
-    if label.is_empty() {
-        return (None, 0);
-    }
-
-    let label_style = if focused_id.is_some_and(|id| id == widget.id()) {
-        Style::new().color(Color::White)
-    } else {
-        Style::default()
-    };
-    let prefix = vec![Span::styled(format!("{label}: "), label_style).no_wrap()];
-    let offset = text_display_width(label)
-        .saturating_add(2)
-        .min(u16::MAX as usize) as u16;
-
-    (Some(prefix), offset)
-}
-
-fn apply_input_validation_overlay(node: &Node, ctx: &RenderContext, out: &mut DrawOutput) {
-    if !matches!(node, Node::Input(_)) {
-        return;
-    }
-
-    if let Some(error) = ctx.visible_errors.get(node.id()) {
-        let error_span = Span::styled(
-            format!("✗ {}", error),
-            Style::new().color(Color::Red).bold(),
-        )
-        .no_wrap();
-        if let Some(first) = out.lines.first_mut() {
-            *first = vec![error_span];
-        } else {
-            out.lines.push(vec![error_span]);
-        }
-        return;
-    }
-
-    if ctx.invalid_hidden.contains(node.id()) {
-        for line in out.lines.iter_mut() {
-            for span in line.iter_mut() {
-                span.style.color = Some(Color::Red);
-            }
-        }
     }
 }
 

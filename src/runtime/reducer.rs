@@ -77,6 +77,17 @@ impl Reducer {
                 Intent::TextAction(action) => {
                     collect_effects(state.dispatch_text_action_to_focused(action))
                 }
+                Intent::DeleteWordLeftOrToggleHints => {
+                    let result = state.dispatch_text_action_to_focused(
+                        crate::widgets::traits::TextAction::DeleteWordLeft,
+                    );
+                    if result.handled {
+                        collect_effects(result)
+                    } else {
+                        state.toggle_hints_visibility();
+                        vec![Effect::RequestRender]
+                    }
+                }
                 Intent::OpenOverlay(overlay_id) => {
                     vec![Effect::System(SystemEvent::OpenOverlay { overlay_id })]
                 }
@@ -156,6 +167,7 @@ fn reduce_with_exit_confirm(state: &mut AppState, intent: Intent) -> Vec<Effect>
         | Intent::NextFocus
         | Intent::PrevFocus
         | Intent::TextAction(_)
+        | Intent::DeleteWordLeftOrToggleHints
         | Intent::OpenOverlay(_)
         | Intent::OpenOverlayAtIndex(_)
         | Intent::OpenOverlayShortcut

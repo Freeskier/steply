@@ -209,7 +209,7 @@ impl MaskedInput {
             return true;
         }
 
-        self.move_prev_segment_last_pos()
+        self.move_prev_segment_end()
     }
 
     fn move_right(&mut self) -> bool {
@@ -233,17 +233,6 @@ impl MaskedInput {
     }
 
     fn move_prev_segment_end(&mut self) -> bool {
-        let Some(prev_segment) =
-            format::prev_segment_pos(self.tokens.as_slice(), self.cursor_token)
-        else {
-            return false;
-        };
-        self.cursor_token = prev_segment;
-        self.cursor_offset = self.current_max_cursor_pos();
-        true
-    }
-
-    fn move_prev_segment_last_pos(&mut self) -> bool {
         let Some(prev_segment) =
             format::prev_segment_pos(self.tokens.as_slice(), self.cursor_token)
         else {
@@ -402,73 +391,20 @@ impl Interactive for MaskedInput {
     fn on_key(&mut self, key: KeyEvent) -> InteractionResult {
         match key.code {
             KeyCode::Tab => {
-                let moved = if key.modifiers.contains(KeyModifiers::SHIFT) {
+                InteractionResult::handled_if(if key.modifiers.contains(KeyModifiers::SHIFT) {
                     self.move_prev_segment_end()
                 } else {
                     self.move_next_segment_start()
-                };
-                if moved {
-                    InteractionResult::handled()
-                } else {
-                    InteractionResult::ignored()
-                }
+                })
             }
-            KeyCode::BackTab => {
-                if self.move_prev_segment_end() {
-                    InteractionResult::handled()
-                } else {
-                    InteractionResult::ignored()
-                }
-            }
-            KeyCode::Char(ch) => {
-                if self.insert_char(ch) {
-                    InteractionResult::handled()
-                } else {
-                    InteractionResult::ignored()
-                }
-            }
-            KeyCode::Backspace => {
-                if self.delete_prev() {
-                    InteractionResult::handled()
-                } else {
-                    InteractionResult::ignored()
-                }
-            }
-            KeyCode::Delete => {
-                if self.delete_current() {
-                    InteractionResult::handled()
-                } else {
-                    InteractionResult::ignored()
-                }
-            }
-            KeyCode::Left => {
-                if self.move_left() {
-                    InteractionResult::handled()
-                } else {
-                    InteractionResult::ignored()
-                }
-            }
-            KeyCode::Right => {
-                if self.move_right() {
-                    InteractionResult::handled()
-                } else {
-                    InteractionResult::ignored()
-                }
-            }
-            KeyCode::Up => {
-                if self.increment_current(1) {
-                    InteractionResult::handled()
-                } else {
-                    InteractionResult::ignored()
-                }
-            }
-            KeyCode::Down => {
-                if self.increment_current(-1) {
-                    InteractionResult::handled()
-                } else {
-                    InteractionResult::ignored()
-                }
-            }
+            KeyCode::BackTab => InteractionResult::handled_if(self.move_prev_segment_end()),
+            KeyCode::Char(ch) => InteractionResult::handled_if(self.insert_char(ch)),
+            KeyCode::Backspace => InteractionResult::handled_if(self.delete_prev()),
+            KeyCode::Delete => InteractionResult::handled_if(self.delete_current()),
+            KeyCode::Left => InteractionResult::handled_if(self.move_left()),
+            KeyCode::Right => InteractionResult::handled_if(self.move_right()),
+            KeyCode::Up => InteractionResult::handled_if(self.increment_current(1)),
+            KeyCode::Down => InteractionResult::handled_if(self.increment_current(-1)),
             KeyCode::Enter => {
                 let value =
                     format::formatted_complete_value(self.tokens.as_slice()).unwrap_or_default();

@@ -17,7 +17,7 @@ use crate::widgets::components::tree_view::{TreeItemLabel, TreeNode, TreeView};
 use crate::widgets::inputs::select::SelectInput;
 use crate::widgets::node::LeafComponent;
 use crate::widgets::shared::filter;
-use crate::widgets::shared::list_core;
+use crate::widgets::shared::list_policy;
 use crate::widgets::traits::{
     DrawOutput, Drawable, FocusMode, HintContext, HintGroup, HintItem, InteractionResult,
     Interactive, RenderContext, ValidationMode,

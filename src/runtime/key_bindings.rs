@@ -58,6 +58,9 @@ impl KeyBindings {
         if is_copy_selection_shortcut(event) {
             return Some(Intent::CopySelection);
         }
+        if is_ctrl_h_backspace_compat(event) {
+            return Some(Intent::DeleteWordLeftOrToggleHints);
+        }
         if let Some(intent) = self.bindings.get(&KeyBinding::from_event(event)).cloned() {
             return Some(intent);
         }
@@ -135,6 +138,10 @@ impl KeyBindings {
         );
         self.bind(
             KeyBinding::ctrl(KeyCode::Backspace),
+            Intent::DeleteWordLeftOrToggleHints,
+        );
+        self.bind(
+            KeyBinding::alt(KeyCode::Backspace),
             Intent::TextAction(TextAction::DeleteWordLeft),
         );
         self.bind(
@@ -172,6 +179,12 @@ fn is_copy_selection_shortcut(event: KeyEvent) -> bool {
         KeyCode::Char('C') => true,
         _ => false,
     }
+}
+
+fn is_ctrl_h_backspace_compat(event: KeyEvent) -> bool {
+    event.code == KeyCode::Backspace
+        && event.modifiers.contains(KeyModifiers::CONTROL)
+        && !event.modifiers.contains(KeyModifiers::ALT)
 }
 
 fn normalized_ctrl_char_event(event: KeyEvent) -> Option<KeyEvent> {

@@ -6,6 +6,7 @@ use crate::ui::inline::{Inline, InlineGroup};
 use crate::ui::span::Span;
 use crate::ui::style::{Color, Style};
 use crate::widgets::base::WidgetBase;
+use crate::widgets::shared::list_nav;
 use crate::widgets::traits::{
     DrawOutput, Drawable, FocusMode, InteractionResult, Interactive, RenderContext, ValidationMode,
 };
@@ -75,24 +76,6 @@ impl SelectInput {
             .map(String::as_str)
             .unwrap_or("")
     }
-
-    fn move_left(&mut self) -> bool {
-        if self.options.is_empty() {
-            return false;
-        }
-        let len = self.options.len();
-        self.selected = (self.selected + len - 1) % len;
-        true
-    }
-
-    fn move_right(&mut self) -> bool {
-        if self.options.is_empty() {
-            return false;
-        }
-        let len = self.options.len();
-        self.selected = (self.selected + 1) % len;
-        true
-    }
 }
 
 impl Drawable for SelectInput {
@@ -132,18 +115,16 @@ impl Interactive for SelectInput {
 
     fn on_key(&mut self, key: KeyEvent) -> InteractionResult {
         match key.code {
-            KeyCode::Left => {
-                if self.move_left() {
-                    return InteractionResult::handled();
-                }
-                InteractionResult::ignored()
-            }
-            KeyCode::Right => {
-                if self.move_right() {
-                    return InteractionResult::handled();
-                }
-                InteractionResult::ignored()
-            }
+            KeyCode::Left => InteractionResult::handled_if(list_nav::apply_cycle_index(
+                &mut self.selected,
+                self.options.len(),
+                true,
+            )),
+            KeyCode::Right => InteractionResult::handled_if(list_nav::apply_cycle_index(
+                &mut self.selected,
+                self.options.len(),
+                false,
+            )),
             KeyCode::Enter => InteractionResult::submit_or_produce(
                 self.submit_target.as_ref(),
                 Value::Text(self.selected_text().to_string()),
@@ -169,9 +150,5 @@ impl Interactive for SelectInput {
             &self.validators,
             &Value::Text(self.selected_text().to_string()),
         )
-    }
-
-    fn cursor_visible(&self) -> bool {
-        false
     }
 }

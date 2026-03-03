@@ -1,5 +1,63 @@
+use crate::terminal::{KeyCode, KeyEvent, KeyModifiers};
+
 pub fn char_count(value: &str) -> usize {
     value.chars().count()
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TextKeyOutcome {
+    Ignored,
+    Changed,
+    CursorMoved,
+    Submit,
+    BackspaceAtStart,
+    DeleteAtEnd,
+    MoveLeftAtStart,
+    MoveRightAtEnd,
+}
+
+pub fn apply_single_line_key(
+    value: &mut String,
+    cursor: &mut usize,
+    key: KeyEvent,
+) -> TextKeyOutcome {
+    if key.modifiers.contains(KeyModifiers::CONTROL) || key.modifiers.contains(KeyModifiers::ALT) {
+        return TextKeyOutcome::Ignored;
+    }
+
+    match key.code {
+        KeyCode::Char(ch) => {
+            if ch.is_control() {
+                return TextKeyOutcome::Ignored;
+            }
+            insert_char(value, cursor, ch);
+            TextKeyOutcome::Changed
+        }
+        KeyCode::Backspace => key_result(
+            backspace_char(value, cursor),
+            TextKeyOutcome::Changed,
+            TextKeyOutcome::BackspaceAtStart,
+        ),
+        KeyCode::Delete => key_result(
+            delete_char(value, cursor),
+            TextKeyOutcome::Changed,
+            TextKeyOutcome::DeleteAtEnd,
+        ),
+        KeyCode::Left => key_result(
+            move_left(cursor, value),
+            TextKeyOutcome::CursorMoved,
+            TextKeyOutcome::MoveLeftAtStart,
+        ),
+        KeyCode::Right => key_result(
+            move_right(cursor, value),
+            TextKeyOutcome::CursorMoved,
+            TextKeyOutcome::MoveRightAtEnd,
+        ),
+        KeyCode::Home => move_cursor_to(cursor, 0),
+        KeyCode::End => move_cursor_to(cursor, char_count(value)),
+        KeyCode::Enter => TextKeyOutcome::Submit,
+        _ => TextKeyOutcome::Ignored,
+    }
 }
 
 pub fn clamp_cursor(cursor: usize, value: &str) -> usize {
@@ -191,4 +249,17 @@ pub fn byte_index_at_char(value: &str, char_idx: usize) -> usize {
         .nth(char_idx)
         .map(|(idx, _)| idx)
         .unwrap_or(value.len())
+}
+
+fn key_result(changed: bool, yes: TextKeyOutcome, no: TextKeyOutcome) -> TextKeyOutcome {
+    if changed { yes } else { no }
+}
+
+fn move_cursor_to(cursor: &mut usize, next: usize) -> TextKeyOutcome {
+    if *cursor == next {
+        TextKeyOutcome::Ignored
+    } else {
+        *cursor = next;
+        TextKeyOutcome::CursorMoved
+    }
 }

@@ -8,7 +8,7 @@ use super::DisplayMode;
 use super::async_utils::{drain_receiver, recv_latest};
 use super::cache::CacheKey;
 use super::model::{EntryFilter, filter_entries, list_dir, list_dir_recursive};
-use super::search::{ScanResult, fuzzy_search, glob_search, list_dir_recursive_glob, plain_result};
+use super::query::{ScanResult, fuzzy_search, glob_search, list_dir_recursive_glob, plain_result};
 
 pub struct ScanRequest {
     pub key: CacheKey,

@@ -1,5 +1,5 @@
 use super::model::EntryFilter;
-use super::search::ScanResult;
+use super::query::ScanResult;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;

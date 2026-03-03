@@ -3,6 +3,7 @@ use std::sync::Arc;
 
 use super::*;
 use crate::widgets::components::select_list::{SelectItem, SelectItemView};
+use crate::widgets::shared::list_policy;
 
 #[derive(Clone)]
 pub(super) enum ActiveOverlayItem {
@@ -40,22 +41,14 @@ impl FileBrowserComponent {
     }
 
     fn set_preferred_list_active(&mut self, entries: &[model::FileEntry], has_parent: bool) {
-        match self.pending_focus_restore.as_ref() {
-            Some(FocusRestore::History(memory)) => {
-                if let Some(pref_path) = memory.path.as_ref()
-                    && let Some(pos) = preferred_entry_pos(entries, pref_path.as_path())
-                {
-                    self.list.set_active_index(pos + usize::from(has_parent));
-                    return;
-                }
-                self.list.set_active_index(memory.index);
-            }
-            Some(FocusRestore::FirstRealEntry) => {
-                if has_parent {
-                    self.list.set_active_index(1);
-                }
-            }
-            None => {}
+        let preferred = preferred_index_from_restore(
+            self.pending_focus_restore.as_ref(),
+            |path| preferred_entry_pos(entries, path).map(|pos| pos + usize::from(has_parent)),
+            entries.len() + usize::from(has_parent),
+            has_parent.then_some(1),
+        );
+        if let Some(index) = preferred {
+            self.list.set_active_index(index);
         }
     }
 
@@ -63,27 +56,19 @@ impl FileBrowserComponent {
         let Some(tree) = self.tree.as_mut() else {
             return;
         };
-        match self.pending_focus_restore.as_ref() {
-            Some(FocusRestore::History(memory)) => {
-                if let Some(pref_path) = memory.path.as_ref()
-                    && let Some(pos) = preferred_tree_visible_pos(tree, pref_path.as_path())
-                {
-                    tree.set_active_visible_index(pos);
-                    return;
-                }
-                tree.set_active_visible_index(memory.index);
-            }
-            Some(FocusRestore::FirstRealEntry) => {
-                let has_parent = tree
-                    .visible()
-                    .first()
-                    .and_then(|idx| tree.nodes().get(*idx))
-                    .is_some_and(|node| node.item.entry.name == "..");
-                if has_parent {
-                    tree.set_active_visible_index(1);
-                }
-            }
-            None => {}
+        let has_parent = tree
+            .visible()
+            .first()
+            .and_then(|idx| tree.nodes().get(*idx))
+            .is_some_and(|node| node.item.entry.name == "..");
+        let preferred = preferred_index_from_restore(
+            self.pending_focus_restore.as_ref(),
+            |path| preferred_tree_visible_pos(tree, path),
+            tree.visible().len(),
+            has_parent.then_some(1),
+        );
+        if let Some(index) = preferred {
+            tree.set_active_visible_index(index);
         }
     }
 
@@ -314,4 +299,21 @@ fn preferred_tree_visible_pos(tree: &TreeView<FileTreeItem>, pref_path: &Path) -
     tree.visible()
         .iter()
         .position(|&idx| tree.nodes()[idx].item.entry.name == pref_name)
+}
+
+fn preferred_index_from_restore(
+    restore: Option<&FocusRestore>,
+    by_path: impl FnOnce(&Path) -> Option<usize>,
+    len: usize,
+    first_real_index: Option<usize>,
+) -> Option<usize> {
+    match restore {
+        Some(FocusRestore::History(memory)) => memory
+            .path
+            .as_deref()
+            .and_then(by_path)
+            .or(Some(list_policy::clamp_index(memory.index, len))),
+        Some(FocusRestore::FirstRealEntry) => first_real_index,
+        None => None,
+    }
 }

@@ -198,27 +198,18 @@ impl Interactive for ConfirmInput {
                             InteractionResult::handled()
                         }
                     }
-                    KeyCode::Char(ch) => {
-                        text_edit::insert_char(&mut self.buffer, &mut self.cursor, ch);
-                        self.strict_error = false;
-                        InteractionResult::handled()
-                    }
-                    KeyCode::Backspace => {
-                        if text_edit::backspace_char(&mut self.buffer, &mut self.cursor) {
+                    _ => match text_edit::apply_single_line_key(
+                        &mut self.buffer,
+                        &mut self.cursor,
+                        key,
+                    ) {
+                        text_edit::TextKeyOutcome::Changed
+                        | text_edit::TextKeyOutcome::CursorMoved => {
                             self.strict_error = false;
-                            return InteractionResult::handled();
+                            InteractionResult::handled()
                         }
-                        InteractionResult::ignored()
-                    }
-                    KeyCode::Left => {
-                        text_edit::move_left(&mut self.cursor, &self.buffer);
-                        InteractionResult::handled()
-                    }
-                    KeyCode::Right => {
-                        text_edit::move_right(&mut self.cursor, &self.buffer);
-                        InteractionResult::handled()
-                    }
-                    _ => InteractionResult::ignored(),
+                        _ => InteractionResult::ignored(),
+                    },
                 }
             }
         }

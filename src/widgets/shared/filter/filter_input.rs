@@ -42,6 +42,8 @@ pub struct ListFilter {
 }
 
 impl ListFilter {
+    pub const PROMPT_COLS: u16 = 8;
+
     pub fn new(
         id: impl Into<String>,
         esc_behavior: FilterEscBehavior,
@@ -85,6 +87,14 @@ impl ListFilter {
 
     pub fn cursor_pos(&self) -> Option<CursorPos> {
         self.input.cursor_pos()
+    }
+
+    pub fn anchored_cursor_pos(&self, row: u16) -> Option<CursorPos> {
+        let local = self.cursor_pos()?;
+        Some(CursorPos {
+            col: local.col.saturating_add(Self::PROMPT_COLS),
+            row,
+        })
     }
 
     pub fn draw_line(&self, ctx: &RenderContext, focused: bool) -> SpanLine {

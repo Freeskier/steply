@@ -17,10 +17,9 @@ use crate::ui::style::{Color, Style};
 use crate::widgets::base::WidgetBase;
 use crate::widgets::components::scroll::ScrollState;
 use crate::widgets::node::LeafComponent;
-use crate::widgets::shared::cursor_anchor;
 use crate::widgets::shared::filter;
 use crate::widgets::shared::keymap;
-use crate::widgets::shared::list_core;
+use crate::widgets::shared::list_policy;
 use crate::widgets::traits::{
     CompletionState, DrawOutput, Drawable, FocusMode, HintContext, HintGroup, HintItem,
     InteractionResult, Interactive, PointerRowMap, RenderContext, TextAction,
@@ -223,9 +222,16 @@ impl<T: TreeItemLabel> TreeView<T> {
     }
 
     fn handle_filter_key(&mut self, key: KeyEvent) -> InteractionResult {
-        self.filter
-            .handle_key(key)
-            .refresh_if_changed(|| self.sync_filter_from_input())
+        let outcome = self.filter.handle_key(key);
+        self.apply_filter_outcome(outcome)
+    }
+
+    fn apply_filter_outcome(&mut self, outcome: filter::ListFilterUpdate) -> InteractionResult {
+        if outcome.hidden {
+            self.clear_filter();
+            return InteractionResult::handled();
+        }
+        outcome.refresh_if_changed(|| self.sync_filter_from_input())
     }
 
     pub fn active_node(&self) -> Option<&TreeNode<T>> {
@@ -298,7 +304,7 @@ impl<T: TreeItemLabel> TreeView<T> {
 
         for idx in 0..self.nodes.len() {
             let search = self.nodes[idx].item.search_text();
-            let matched = list_core::text_matches(q, search.as_ref());
+            let matched = list_policy::text_matches(q, search.as_ref());
             if !matched {
                 continue;
             }
@@ -407,7 +413,7 @@ impl<T: TreeItemLabel> TreeView<T> {
         let highlights = if self.filter_query.trim().is_empty() {
             Vec::new()
         } else {
-            list_core::text_match_ranges(self.filter_query.as_str(), node.item.label())
+            list_policy::text_match_ranges(self.filter_query.as_str(), node.item.label())
         };
         line.extend(node.item.render_spans(TreeItemRenderState {
             focused,
@@ -495,21 +501,6 @@ impl<T: TreeItemLabel> TreeView<T> {
             cur_depth = target_depth;
         }
         guides
-    }
-
-    fn marker_cursor_pos(&self) -> Option<CursorPos> {
-        if self.visible.is_empty() {
-            return None;
-        }
-        let (start, end) = self.scroll.visible_range(self.visible.len());
-        let mut row = 0usize;
-        if self.show_label && !self.base.label().is_empty() {
-            row += 1;
-        }
-        if self.filter.is_visible() {
-            row += 1;
-        }
-        cursor_anchor::visible_row_cursor(self.active_index, start, end, row, 0)
     }
 
     fn pointer_rows_for_draw(&self, wrap_width: u16) -> Vec<PointerRowMap> {
@@ -641,11 +632,7 @@ impl<T: TreeItemLabel> Interactive for TreeView<T> {
 
     fn on_key(&mut self, key: KeyEvent) -> InteractionResult {
         if let Some(outcome) = self.filter.handle_toggle_shortcut(key) {
-            if outcome.hidden {
-                self.clear_filter();
-                return InteractionResult::handled();
-            }
-            return outcome.refresh_if_changed(|| self.sync_filter_from_input());
+            return self.apply_filter_outcome(outcome);
         }
 
         if self.filter.is_focused() {
@@ -715,20 +702,12 @@ impl<T: TreeItemLabel> Interactive for TreeView<T> {
 
     fn cursor_pos(&self) -> Option<CursorPos> {
         if self.filter.is_focused() {
-            let local = self.filter.cursor_pos()?;
             let mut row: u16 = 0;
             if self.show_label && !self.base.label().is_empty() {
                 row = row.saturating_add(1);
             }
-            return Some(CursorPos {
-                col: local.col.saturating_add(8),
-                row,
-            });
+            return self.filter.anchored_cursor_pos(row);
         }
-        self.marker_cursor_pos()
-    }
-
-    fn cursor_visible(&self) -> bool {
-        self.filter.is_focused()
+        None
     }
 }

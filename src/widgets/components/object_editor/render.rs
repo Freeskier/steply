@@ -78,7 +78,7 @@ impl ObjectEditor {
         let mut key_part = if query.is_empty() {
             vec![Span::styled(obj.key.clone(), key_style).no_wrap()]
         } else {
-            let ranges = list_core::text_match_ranges(query, obj.key.as_str());
+            let ranges = list_policy::text_match_ranges(query, obj.key.as_str());
             render_text_spans(obj.key.as_str(), ranges.as_slice(), key_style, highlight_st)
         };
         key_part.push(Span::styled(":", key_style).no_wrap());
@@ -118,7 +118,7 @@ impl ObjectEditor {
         if query.is_empty() {
             val_part.push(Span::styled(text, style).no_wrap());
         } else {
-            let ranges = list_core::text_match_ranges(query, text.as_str());
+            let ranges = list_policy::text_match_ranges(query, text.as_str());
             val_part.extend(render_text_spans(
                 text.as_str(),
                 ranges.as_slice(),

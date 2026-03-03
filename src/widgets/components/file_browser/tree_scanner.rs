@@ -7,7 +7,7 @@ use crate::widgets::components::tree_view::TreeNode;
 
 use super::FileTreeItem;
 use super::async_utils::{drain_receiver, recv_latest};
-use super::search::ScanResult;
+use super::query::ScanResult;
 use super::tree_builder::build_tree_nodes_for;
 
 pub(super) struct TreeBuildRequest {

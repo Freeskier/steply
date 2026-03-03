@@ -399,7 +399,7 @@ pub trait Interactive: Send {
         None
     }
     fn cursor_visible(&self) -> bool {
-        true
+        self.cursor_pos().is_some()
     }
 
     fn value(&self) -> Option<Value> {

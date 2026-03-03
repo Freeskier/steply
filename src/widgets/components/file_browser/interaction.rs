@@ -1,24 +1,58 @@
-use super::overlay::ActiveOverlayItem;
+use super::overlay_interaction::ActiveOverlayItem;
 use super::*;
 use crate::widgets::components::tree_view::TreeNode;
 use crate::widgets::shared::keymap;
 
 impl FileBrowserComponent {
+    fn set_browser_mode(&mut self, mode: BrowserMode) {
+        if self.browser_mode == mode {
+            return;
+        }
+        self.browser_mode = mode;
+        if self.browser_mode == BrowserMode::Tree {
+            self.ensure_tree_widget();
+        }
+        self.refresh_overlay_from_last_result();
+    }
+
+    fn refresh_overlay_from_last_result(&mut self) {
+        if let Some(result) = self.last_scan_result.clone() {
+            self.apply_result(result);
+        }
+    }
+
+    fn active_item_in_mode(&self, mode: BrowserMode) -> Option<ActiveOverlayItem> {
+        match mode {
+            BrowserMode::List => self.active_list_item(),
+            BrowserMode::Tree => self.active_tree_item(),
+        }
+    }
+
+    fn navigate_active_item(
+        &mut self,
+        mode: BrowserMode,
+        allow_file_select: bool,
+    ) -> InteractionResult {
+        let Some(item) = self.active_item_in_mode(mode) else {
+            return InteractionResult::handled();
+        };
+        self.navigate_item(item, allow_file_select)
+    }
+
+    fn move_tree_active(&mut self, delta: isize) -> bool {
+        self.tree
+            .as_mut()
+            .map(|tree| tree.move_active(delta))
+            .unwrap_or(false)
+    }
+
     pub(super) fn handle_browser_key(&mut self, key: KeyEvent) -> InteractionResult {
         if keymap::is_ctrl_char(key, 't') {
-            self.browser_mode = match self.browser_mode {
+            let next = match self.browser_mode {
                 BrowserMode::List => BrowserMode::Tree,
                 BrowserMode::Tree => BrowserMode::List,
             };
-            if self.browser_mode == BrowserMode::Tree {
-                self.ensure_tree_widget();
-
-                if let Some(result) = self.last_scan_result.clone() {
-                    self.apply_result(result);
-                }
-            } else if let Some(result) = self.last_scan_result.clone() {
-                self.apply_result(result);
-            }
+            self.set_browser_mode(next);
             return InteractionResult::handled();
         }
 
@@ -28,15 +62,10 @@ impl FileBrowserComponent {
 
         match key.code {
             KeyCode::Esc => self.reset_query_or_close_browser(),
-            KeyCode::Enter => {
-                let Some(item) = self.active_list_item() else {
-                    return InteractionResult::handled();
-                };
-                self.navigate_item(item, true)
-            }
+            KeyCode::Enter => self.navigate_active_item(BrowserMode::List, true),
             KeyCode::Right => {
-                let Some(item) = self.active_list_item() else {
-                    return InteractionResult::ignored();
+                let Some(item) = self.active_item_in_mode(BrowserMode::List) else {
+                    return InteractionResult::handled();
                 };
                 if matches!(item, ActiveOverlayItem::Parent) {
                     InteractionResult::handled()
@@ -56,21 +85,11 @@ impl FileBrowserComponent {
         match key.code {
             KeyCode::Esc => self.reset_query_or_close_browser(),
 
-            KeyCode::Up => InteractionResult::handled_if(
-                self.tree
-                    .as_mut()
-                    .map(|t| t.move_active(-1))
-                    .unwrap_or(false),
-            ),
-            KeyCode::Down => InteractionResult::handled_if(
-                self.tree
-                    .as_mut()
-                    .map(|t| t.move_active(1))
-                    .unwrap_or(false),
-            ),
+            KeyCode::Up => InteractionResult::handled_if(self.move_tree_active(-1)),
+            KeyCode::Down => InteractionResult::handled_if(self.move_tree_active(1)),
 
             KeyCode::Right => {
-                let Some(item) = self.active_tree_item() else {
+                let Some(item) = self.active_item_in_mode(BrowserMode::Tree) else {
                     return InteractionResult::handled();
                 };
                 if matches!(item, ActiveOverlayItem::Parent) {
@@ -79,12 +98,7 @@ impl FileBrowserComponent {
                     self.navigate_item(item, false)
                 }
             }
-            KeyCode::Enter => {
-                let Some(item) = self.active_tree_item() else {
-                    return InteractionResult::handled();
-                };
-                self.navigate_item(item, true)
-            }
+            KeyCode::Enter => self.navigate_active_item(BrowserMode::Tree, true),
 
             KeyCode::Char(' ') => {
                 if matches!(self.active_tree_item(), Some(ActiveOverlayItem::Parent)) {

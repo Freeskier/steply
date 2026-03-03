@@ -48,6 +48,7 @@ fn map_pointer_button(button: CrosstermMouseButton) -> Option<PointerButton> {
 
 fn map_key_code(code: CrosstermKeyCode) -> KeyCode {
     match code {
+        CrosstermKeyCode::Char('\u{8}' | '\u{7f}') => KeyCode::Backspace,
         CrosstermKeyCode::Char(ch) => KeyCode::Char(ch),
         CrosstermKeyCode::Enter => KeyCode::Enter,
         CrosstermKeyCode::Tab => KeyCode::Tab,

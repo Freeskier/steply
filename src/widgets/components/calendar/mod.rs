@@ -414,29 +414,7 @@ impl Interactive for Calendar {
             });
         }
 
-        match self.section {
-            Section::Month => Some(crate::terminal::CursorPos { row: 1, col: 4 }),
-            Section::Year => Some(crate::terminal::CursorPos { row: 1, col: 19 }),
-            Section::Grid => {
-                let grid = MonthGrid::new(self.view_year, self.view_month);
-                let (grid_row, grid_col) = self.day_grid_pos(&grid, self.cursor_day);
-                let displayed_before = grid
-                    .cells
-                    .iter()
-                    .take(grid_row)
-                    .filter(|row| row.iter().any(|cell| cell.is_some()))
-                    .count() as u16;
-                Some(crate::terminal::CursorPos {
-                    row: 4u16.saturating_add(displayed_before),
-                    col: 2u16.saturating_add((grid_col as u16).saturating_mul(4).saturating_add(1)),
-                })
-            }
-            Section::Time => None,
-        }
-    }
-
-    fn cursor_visible(&self) -> bool {
-        self.is_time_section()
+        None
     }
 
     fn on_key(&mut self, key: KeyEvent) -> InteractionResult {

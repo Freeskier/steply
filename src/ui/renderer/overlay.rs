@@ -1,12 +1,13 @@
-use super::decorations::{
-    decoration_gutter_width, inline_modal_gutter_span, inline_modal_separator_line,
-};
 use super::overlay_geometry::{
     FloatingOverlayGeometry, InlineOverlayGeometry, OverlayGeometry, resolve_overlay_geometry,
 };
+use super::step_decoriation::{
+    decoration_gutter_width, inline_modal_gutter_span, inline_modal_separator_line,
+};
 use super::{
     DrawNodesOptions, DrawNodesState, FocusApplyMode, FocusCursorState, RenderFrame,
-    StepVisualStatus, apply_focus_cursor_state, draw_nodes, render_context_for_nodes,
+    StepVisualStatus, apply_focus_cursor_state, draw_nodes, focused_cursor_in_hit_map,
+    layout_marker_from_focus, render_context_for_nodes, resolve_focus_anchor,
 };
 use crate::state::validation::ValidationState;
 use crate::terminal::{CursorPos, TerminalSize};
@@ -295,17 +296,9 @@ fn render_overlay_body(
         },
     );
 
-    let focused_anchor_in_body = focused_id.and_then(|id| hit_map.first_region_for_node(id));
-    if let (Some(id), Some(cur)) = (focused_id, cursor)
-        && !hit_map.has_node_row(id, cur.row)
-    {
-        cursor = None;
-    }
-
-    let layout_marker = cursor
-        .map(|local| (local.row as usize, local.col as usize))
-        .or_else(|| focused_anchor_in_body.map(|(row, _)| (row as usize, 0usize)))
-        .or_else(|| focus_anchor_row.map(|row| (row as usize, 0usize)));
+    let focused_anchor_in_body = resolve_focus_anchor(focused_id, &hit_map, false, None);
+    cursor = focused_cursor_in_hit_map(focused_id, cursor, &hit_map);
+    let layout_marker = layout_marker_from_focus(cursor, focused_anchor_in_body, focus_anchor_row);
     let (lines, mapped_marker) = Layout::compose_with_cursor(&lines, content_width, layout_marker);
     let (cursor, focus_anchor) = if cursor.is_some() {
         (

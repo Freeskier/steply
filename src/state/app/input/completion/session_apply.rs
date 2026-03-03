@@ -1,10 +1,8 @@
 use super::{CompletionSession, CompletionStartResult};
 use crate::core::NodeId;
 use crate::state::app::AppState;
-use crate::widgets::node::find_node_mut;
-use crate::widgets::shared::text_edit;
 
-use super::super::engine::longest_common_prefix;
+use super::engine::longest_common_prefix;
 
 impl AppState {
     pub(in crate::state::app) fn accept_completion_for_focused(&mut self) -> bool {
@@ -29,45 +27,18 @@ impl AppState {
     }
 
     pub(in crate::state::app) fn expand_common_prefix_for_focused(&mut self) -> bool {
-        let Some(session) = self.ui.completion_session.as_ref() else {
-            return false;
-        };
         let Some(focused_id) = self.focused_id_owned() else {
             return false;
         };
-        if !session.belongs_to(&focused_id) || session.matches.len() <= 1 {
-            return false;
-        }
-        let prefix = longest_common_prefix(&session.matches);
-        let start = session.start;
-
-        let nodes = self.active_nodes_mut();
-        let Some(node) = find_node_mut(nodes, &focused_id) else {
+        let Some((start, matches)) = (match self.ui.completion_session.as_ref() {
+            Some(session) if session.belongs_to(&focused_id) && session.matches.len() > 1 => {
+                Some((session.start, session.matches.clone()))
+            }
+            _ => None,
+        }) else {
             return false;
         };
-        let mut changed = false;
-        {
-            let Some(state) = node.completion() else {
-                return false;
-            };
-
-            let chars: Vec<char> = state.value.chars().collect();
-            let pos = (*state.cursor).min(chars.len());
-            let s = start.min(pos);
-            let token: String = chars[s..pos].iter().collect();
-
-            if !prefix.is_empty()
-                && prefix.to_lowercase() != token.to_lowercase()
-                && prefix.len() > token.len()
-            {
-                text_edit::replace_completion_prefix(state.value, state.cursor, start, &prefix);
-                changed = true;
-            }
-        }
-        if changed {
-            node.on_text_edited();
-        }
-        changed
+        self.expand_focused_common_prefix(&focused_id, start, matches.as_slice())
     }
 
     pub(in crate::state::app) fn cycle_completion_for_focused(&mut self, reverse: bool) -> bool {
@@ -83,11 +54,7 @@ impl AppState {
             return false;
         }
 
-        session.index = if reverse {
-            (session.index + session.matches.len() - 1) % session.matches.len()
-        } else {
-            (session.index + 1) % session.matches.len()
-        };
+        session.index = cycle_index(session.index, session.matches.len(), reverse);
         true
     }
 
@@ -138,7 +105,7 @@ impl AppState {
                 let index = existing_session
                     .as_ref()
                     .filter(|(id, s, _)| id == &focused_id && *s == query.start)
-                    .map(|(_, _, idx)| (*idx).min(matches.len().saturating_sub(1)))
+                    .map(|(_, _, idx)| clamp_index(*idx, matches.len()))
                     .unwrap_or(0);
 
                 Some(CompletionSession::new(
@@ -202,5 +169,24 @@ impl AppState {
             CompletionStartResult::OpenedMenu => self.finalize_completion_update(true, false),
         }
         outcome
+    }
+}
+
+fn clamp_index(current: usize, len: usize) -> usize {
+    if len == 0 {
+        0
+    } else {
+        current.min(len.saturating_sub(1))
+    }
+}
+
+fn cycle_index(current: usize, len: usize, reverse: bool) -> usize {
+    if len == 0 {
+        return current;
+    }
+    if reverse {
+        (current + len - 1) % len
+    } else {
+        (current + 1) % len
     }
 }

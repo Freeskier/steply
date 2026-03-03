@@ -189,24 +189,13 @@ impl Interactive for Repeater {
         };
         let local = self
             .active_field_widget()
-            .and_then(|widget| widget.cursor_pos());
-        if let Some(local) = local {
-            return Some(CursorPos {
-                col: local
-                    .col
-                    .saturating_add(self.active_field_label().len() as u16 + 4),
-                row: row as u16 + local.row,
-            });
-        }
-        Some(cursor_anchor::first_col_cursor(row))
-    }
-
-    fn cursor_visible(&self) -> bool {
-        cursor_anchor::visible_when_text_cursor(
-            self.active_field_widget()
-                .and_then(|widget| widget.cursor_pos())
-                .is_some(),
-        )
+            .and_then(|widget| widget.cursor_pos())?;
+        Some(CursorPos {
+            col: local
+                .col
+                .saturating_add(self.active_field_label().len() as u16 + 4),
+            row: row as u16 + local.row,
+        })
     }
 
     fn value(&self) -> Option<Value> {

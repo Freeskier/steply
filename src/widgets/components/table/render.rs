@@ -109,7 +109,7 @@ impl Table {
         let query = query.trim();
         if !query.is_empty() {
             let text = span_line_text(line.as_slice());
-            let ranges = list_core::text_match_ranges(query, text.as_str());
+            let ranges = list_policy::text_match_ranges(query, text.as_str());
             highlight_span_line(
                 &mut line,
                 ranges.as_slice(),

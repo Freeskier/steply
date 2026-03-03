@@ -114,14 +114,14 @@ impl TextAreaComponent {
     fn build_gutter_span(&self, line_idx: usize, _focused: bool) -> Span {
         let num_w = self.num_width();
         let num_str = format!("{:>width$}", line_idx + 1, width = num_w);
-        let text = format!("│ {}  ", num_str);
+        let text = format!("┃ {}  ", num_str);
         Span::styled(text, Style::new().color(Color::DarkGrey).no_strikethrough()).no_wrap()
     }
 
     fn build_tilde_span(&self) -> Span {
         let num_w = self.num_width();
         let pad = num_w + 1;
-        let text = format!("│ ~{:pad$}", "", pad = pad);
+        let text = format!("┃ ~{:pad$}", "", pad = pad);
         Span::styled(text, Style::new().color(Color::DarkGrey).no_strikethrough()).no_wrap()
     }
 
@@ -205,53 +205,50 @@ impl Interactive for TextAreaComponent {
                 InteractionResult::handled()
             }
             KeyCode::Enter => InteractionResult::input_done(),
-
-            KeyCode::Char(ch) => {
-                text_edit::insert_char(&mut self.lines[self.row], &mut self.col, ch);
-                self.scroll.ensure_visible(self.row, self.lines.len());
-                InteractionResult::handled()
-            }
-
-            KeyCode::Backspace => {
-                if self.col > 0 {
-                    text_edit::backspace_char(&mut self.lines[self.row], &mut self.col);
-                } else {
-                    self.merge_with_prev();
+            KeyCode::Char(_)
+            | KeyCode::Backspace
+            | KeyCode::Delete
+            | KeyCode::Left
+            | KeyCode::Right
+            | KeyCode::Home
+            | KeyCode::End => {
+                let row = self.row;
+                let outcome =
+                    text_edit::apply_single_line_key(&mut self.lines[row], &mut self.col, key);
+                match outcome {
+                    text_edit::TextKeyOutcome::Ignored => InteractionResult::ignored(),
+                    text_edit::TextKeyOutcome::Changed | text_edit::TextKeyOutcome::CursorMoved => {
+                        self.scroll.ensure_visible(self.row, self.lines.len());
+                        InteractionResult::handled()
+                    }
+                    text_edit::TextKeyOutcome::BackspaceAtStart => {
+                        self.merge_with_prev();
+                        self.scroll.ensure_visible(self.row, self.lines.len());
+                        InteractionResult::handled()
+                    }
+                    text_edit::TextKeyOutcome::DeleteAtEnd => {
+                        self.merge_with_next();
+                        self.scroll.ensure_visible(self.row, self.lines.len());
+                        InteractionResult::handled()
+                    }
+                    text_edit::TextKeyOutcome::MoveLeftAtStart => {
+                        if self.row > 0 {
+                            self.row -= 1;
+                            self.col = self.current_line_len();
+                            self.scroll.ensure_visible(self.row, self.lines.len());
+                        }
+                        InteractionResult::handled()
+                    }
+                    text_edit::TextKeyOutcome::MoveRightAtEnd => {
+                        if self.row + 1 < self.lines.len() {
+                            self.row += 1;
+                            self.col = 0;
+                            self.scroll.ensure_visible(self.row, self.lines.len());
+                        }
+                        InteractionResult::handled()
+                    }
+                    text_edit::TextKeyOutcome::Submit => InteractionResult::ignored(),
                 }
-                self.scroll.ensure_visible(self.row, self.lines.len());
-                InteractionResult::handled()
-            }
-
-            KeyCode::Delete => {
-                let at_end = self.col >= self.current_line_len();
-                if !at_end {
-                    text_edit::delete_char(&mut self.lines[self.row], &mut self.col);
-                } else {
-                    self.merge_with_next();
-                }
-                self.scroll.ensure_visible(self.row, self.lines.len());
-                InteractionResult::handled()
-            }
-
-            KeyCode::Left => {
-                if self.col > 0 {
-                    text_edit::move_left(&mut self.col, &self.lines[self.row]);
-                } else if self.row > 0 {
-                    self.row -= 1;
-                    self.col = self.current_line_len();
-                    self.scroll.ensure_visible(self.row, self.lines.len());
-                }
-                InteractionResult::handled()
-            }
-            KeyCode::Right => {
-                if self.col < self.current_line_len() {
-                    text_edit::move_right(&mut self.col, &self.lines[self.row]);
-                } else if self.row + 1 < self.lines.len() {
-                    self.row += 1;
-                    self.col = 0;
-                    self.scroll.ensure_visible(self.row, self.lines.len());
-                }
-                InteractionResult::handled()
             }
 
             KeyCode::Up => {
@@ -268,15 +265,6 @@ impl Interactive for TextAreaComponent {
                     self.col = self.col.min(self.current_line_len());
                     self.scroll.ensure_visible(self.row, self.lines.len());
                 }
-                InteractionResult::handled()
-            }
-
-            KeyCode::Home => {
-                self.col = 0;
-                InteractionResult::handled()
-            }
-            KeyCode::End => {
-                self.col = self.current_line_len();
                 InteractionResult::handled()
             }
 

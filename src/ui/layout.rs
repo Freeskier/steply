@@ -303,111 +303,32 @@ fn compose_wrap_span(span: Span, state: &mut ComposeState<'_>) {
     }
 }
 
-fn compose_nowrap_run(mut run: SpanLine, state: &mut ComposeState<'_>) {
-    while !run.is_empty() {
-        if *state.current_width >= state.max_width {
-            push_line(state.out, state.current, state.current_width);
-        }
-
-        let remaining = state.max_width.saturating_sub(*state.current_width);
-        if remaining == 0 {
-            push_line(state.out, state.current, state.current_width);
-            continue;
-        }
-
-        let run_width = spans_width(run.as_slice());
-        if run_width <= remaining {
-            map_cursor_in_segment(
-                state.cursor_target,
-                state.source_row,
-                *state.source_col,
-                run_width,
-                state.out.len(),
-                *state.current_width,
-                state.mapped_cursor,
-            );
-            *state.current_width = state.current_width.saturating_add(run_width);
-            *state.source_col = state.source_col.saturating_add(run_width);
-            state.current.extend(run);
-            break;
-        }
-
-        if *state.current_width > 0 {
-            push_line(state.out, state.current, state.current_width);
-            continue;
-        }
-
-        let (prefix, prefix_width, rest) =
-            take_spans_prefix_display_width(run.as_slice(), remaining);
-        if prefix.is_empty() {
-            break;
-        }
-        map_cursor_in_segment(
-            state.cursor_target,
-            state.source_row,
-            *state.source_col,
-            prefix_width,
-            state.out.len(),
-            *state.current_width,
-            state.mapped_cursor,
-        );
-        *state.current_width = state.current_width.saturating_add(prefix_width);
-        *state.source_col = state.source_col.saturating_add(prefix_width);
-        state.current.extend(prefix);
-        run = rest;
-        if !run.is_empty() {
-            push_line(state.out, state.current, state.current_width);
-        }
+fn compose_nowrap_run(run: SpanLine, state: &mut ComposeState<'_>) {
+    if run.is_empty() {
+        return;
     }
-}
-
-fn take_spans_prefix_display_width(
-    spans: &[Span],
-    max_width: usize,
-) -> (SpanLine, usize, SpanLine) {
-    if max_width == 0 || spans.is_empty() {
-        return (Vec::new(), 0, spans.to_vec());
+    if *state.current_width >= state.max_width {
+        push_line(state.out, state.current, state.current_width);
     }
 
-    let mut taken = Vec::new();
-    let mut rest = Vec::new();
-    let mut used = 0usize;
-    let mut split_done = false;
-
-    for span in spans {
-        if split_done {
-            rest.push(span.clone());
-            continue;
-        }
-
-        let span_width = text_display_width(span.text.as_str());
-        if used.saturating_add(span_width) <= max_width {
-            taken.push(span.clone());
-            used = used.saturating_add(span_width);
-            continue;
-        }
-
-        let remaining = max_width.saturating_sub(used);
-        if remaining == 0 {
-            rest.push(span.clone());
-            split_done = true;
-            continue;
-        }
-
-        let (left, right) = split_prefix_at_display_width(span.text.as_str(), remaining);
-        if !left.is_empty() {
-            let mut left_span = span.clone();
-            left_span.text = left.to_string();
-            used = used.saturating_add(text_display_width(left));
-            taken.push(left_span);
-        }
-        if !right.is_empty() {
-            let mut right_span = span.clone();
-            right_span.text = right.to_string();
-            rest.push(right_span);
-        }
-        split_done = true;
+    let run_width = spans_width(run.as_slice());
+    let remaining = state.max_width.saturating_sub(*state.current_width);
+    if run_width > remaining && *state.current_width > 0 {
+        push_line(state.out, state.current, state.current_width);
     }
 
-    (taken, used, rest)
+    // No-wrap runs are atomic: when they do not fit, move the whole run to the next line.
+    // If a single run is wider than the viewport, keep it on one line and let clipping happen.
+    map_cursor_in_segment(
+        state.cursor_target,
+        state.source_row,
+        *state.source_col,
+        run_width,
+        state.out.len(),
+        *state.current_width,
+        state.mapped_cursor,
+    );
+    *state.current_width = state.current_width.saturating_add(run_width);
+    *state.source_col = state.source_col.saturating_add(run_width);
+    state.current.extend(run);
 }

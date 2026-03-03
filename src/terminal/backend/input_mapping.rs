@@ -11,9 +11,10 @@ pub(super) fn map_key_event(key: CrosstermKeyEvent) -> Option<KeyEvent> {
     if !matches!(key.kind, KeyEventKind::Press | KeyEventKind::Repeat) {
         return None;
     }
+    let modifiers = map_key_modifiers(key.modifiers);
     Some(KeyEvent {
-        code: map_key_code(key.code),
-        modifiers: map_key_modifiers(key.modifiers),
+        code: map_key_code(key.code, key.modifiers),
+        modifiers,
     })
 }
 
@@ -46,8 +47,16 @@ fn map_pointer_button(button: CrosstermMouseButton) -> Option<PointerButton> {
     }
 }
 
-fn map_key_code(code: CrosstermKeyCode) -> KeyCode {
+fn map_key_code(code: CrosstermKeyCode, modifiers: CrosstermKeyModifiers) -> KeyCode {
     match code {
+        // Some terminals emit Ctrl+H as backspace control character.
+        // Map it back to Ctrl+h so key bindings stay consistent.
+        CrosstermKeyCode::Char('\u{8}')
+            if modifiers.contains(CrosstermKeyModifiers::CONTROL)
+                && !modifiers.contains(CrosstermKeyModifiers::ALT) =>
+        {
+            KeyCode::Char('h')
+        }
         CrosstermKeyCode::Char('\u{8}' | '\u{7f}') => KeyCode::Backspace,
         CrosstermKeyCode::Char(ch) => KeyCode::Char(ch),
         CrosstermKeyCode::Enter => KeyCode::Enter,

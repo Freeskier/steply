@@ -19,7 +19,7 @@ mod content_render;
 mod focus_policy;
 mod overlay;
 mod overlay_geometry;
-mod step_decoriation;
+mod step_decoration;
 
 pub(super) use content_render::{draw_nodes, register_block_selection_ranges};
 pub(super) use focus_policy::{
@@ -27,7 +27,7 @@ pub(super) use focus_policy::{
     resolve_focus_anchor,
 };
 use overlay::apply_overlay;
-use step_decoriation::{
+use step_decoration::{
     StepFrameFooter, append_step_frame_footer_plain, apply_step_frame, decoration_gutter_width,
     hint_line_prefix,
 };
@@ -282,7 +282,7 @@ fn build_base_frame(
         );
         let hints = render_step_hints(status, view, step.nodes.as_slice());
         let footer = step_frame_footer(status, view, hints.has_hints);
-        apply_step_decoriation(
+        apply_step_decoration(
             &mut content,
             idx,
             render_up_to,
@@ -331,11 +331,11 @@ fn build_base_frame(
     frame
 }
 
-fn active_focus_id<'a>(
+fn active_focus_id(
     status: StepVisualStatus,
     blocking_overlay: bool,
-    focused_id: Option<&'a str>,
-) -> Option<&'a str> {
+    focused_id: Option<&str>,
+) -> Option<&str> {
     if status == StepVisualStatus::Active && !blocking_overlay {
         focused_id
     } else {
@@ -416,7 +416,7 @@ fn render_step_content(
     content
 }
 
-fn apply_step_decoriation<'a>(
+fn apply_step_decoration<'a>(
     content: &mut StepContentRender,
     idx: usize,
     render_up_to: usize,

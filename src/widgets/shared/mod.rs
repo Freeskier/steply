@@ -1,5 +1,4 @@
 pub mod calendar;
-pub mod cursor_anchor;
 pub mod filter;
 pub mod keymap;
 pub use filter::list_policy;

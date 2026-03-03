@@ -5,6 +5,7 @@ mod parser;
 use crate::core::NodeId;
 use crate::core::value::Value;
 use crate::core::value_path::{ValuePath, ValueTarget};
+use crate::runtime::event::SystemEvent;
 use crate::terminal::{CursorPos, KeyCode, KeyEvent, KeyModifiers};
 use crate::ui::inline::{Inline, InlineGroup};
 use crate::ui::span::Span;
@@ -126,6 +127,32 @@ impl MaskedInput {
         } else {
             self.cursor_offset = 0;
         }
+    }
+
+    pub fn focus_first_unfilled(&mut self) -> bool {
+        let mut first_segment: Option<(usize, usize)> = None;
+        let mut first_unfilled: Option<(usize, usize)> = None;
+        for (idx, token) in self.tokens.iter().enumerate() {
+            let MaskToken::Segment(segment) = token else {
+                continue;
+            };
+            let used = text_edit::char_count(segment.value.as_str());
+            if first_segment.is_none() {
+                first_segment = Some((idx, used.saturating_sub(1)));
+            }
+            let display_len = format::cursor_limit(self.tokens.as_slice(), idx);
+            if used < display_len {
+                first_unfilled = Some((idx, used));
+                break;
+            }
+        }
+
+        let (token, offset) = first_unfilled.or(first_segment).unwrap_or((0, 0));
+        let changed = self.cursor_token != token || self.cursor_offset != offset;
+        self.cursor_token = token;
+        self.cursor_offset = offset;
+        self.clamp_cursor();
+        changed
     }
 
     fn insert_char(&mut self, ch: char) -> bool {
@@ -375,10 +402,10 @@ impl Drawable for MaskedInput {
             let group = Inline::group(InlineGroup::no_break(
                 spans.into_iter().map(Inline::from).collect(),
             ));
-            return DrawOutput::with_inline_lines(vec![vec![group]]);
+            DrawOutput::with_inline_lines(vec![vec![group]])
         } else {
             let plain = format::render_plain_value(self.tokens.as_slice());
-            return DrawOutput::with_lines(vec![vec![Span::new(plain).no_wrap()]]);
+            DrawOutput::with_lines(vec![vec![Span::new(plain).no_wrap()]])
         }
     }
 }
@@ -415,6 +442,17 @@ impl Interactive for MaskedInput {
             }
             _ => InteractionResult::ignored(),
         }
+    }
+
+    fn on_system_event(&mut self, event: &SystemEvent) -> InteractionResult {
+        if let SystemEvent::RequestFocus { target } = event
+            && target
+                .as_ref()
+                .is_some_and(|target| target.as_str() == self.base.id())
+        {
+            return InteractionResult::handled_if(self.focus_first_unfilled());
+        }
+        InteractionResult::ignored()
     }
 
     fn value(&self) -> Option<Value> {

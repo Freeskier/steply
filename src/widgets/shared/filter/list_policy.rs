@@ -39,13 +39,15 @@ pub struct FilterField<'a> {
     pub boost: i32,
 }
 
+pub type FilterHighlights = Vec<Vec<(usize, usize)>>;
+
 pub fn rank_by_filter<'a, T>(
     query: &str,
     records: &'a [T],
     mut fields_for: impl FnMut(&'a T) -> Vec<FilterField<'a>>,
-) -> Vec<(usize, Vec<Vec<(usize, usize)>>)> {
+) -> Vec<(usize, FilterHighlights)> {
     let query = query.trim();
-    let mut ranked = Vec::<(usize, i32, Vec<Vec<(usize, usize)>>)>::new();
+    let mut ranked = Vec::<(usize, i32, FilterHighlights)>::new();
 
     for (index, record) in records.iter().enumerate() {
         let fields = fields_for(record);

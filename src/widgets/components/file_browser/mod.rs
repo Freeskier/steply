@@ -120,6 +120,8 @@ const SPINNER_FRAMES: &[char] = &['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦
 pub struct FileBrowserComponent {
     base: WidgetBase,
 
+    // Kept as a dedicated input intentionally: it is both the widget value owner
+    // and completion prefix owner for path/query editing.
     text: TextInput,
     list: SelectList,
 
@@ -149,6 +151,7 @@ pub struct FileBrowserComponent {
 
     browser_mode: BrowserMode,
     tree: Option<TreeView<FileTreeItem>>,
+    list_overlay_items: Vec<overlay_interaction::ActiveOverlayItem>,
     pending_tree_nodes: Option<(u64, Vec<TreeNode<FileTreeItem>>)>,
     tree_build_seq: u64,
     pending_focus_restore: Option<FocusRestore>,
@@ -207,6 +210,7 @@ impl FileBrowserComponent {
             tree_building: false,
             browser_mode: BrowserMode::List,
             tree: None,
+            list_overlay_items: Vec::new(),
             pending_tree_nodes: None,
             tree_build_seq: 0,
             pending_focus_restore: None,

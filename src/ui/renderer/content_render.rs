@@ -111,10 +111,10 @@ fn capture_node_focus_cursor(
     label_offset: u16,
 ) {
     if !options.track_cursor
-        || !ctx
+        || ctx
             .focused_id
             .as_deref()
-            .is_some_and(|focused| focused == node.id())
+            .is_none_or(|focused| focused != node.id())
     {
         return;
     }

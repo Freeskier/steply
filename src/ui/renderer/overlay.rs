@@ -1,7 +1,7 @@
 use super::overlay_geometry::{
     FloatingOverlayGeometry, InlineOverlayGeometry, OverlayGeometry, resolve_overlay_geometry,
 };
-use super::step_decoriation::{
+use super::step_decoration::{
     decoration_gutter_width, inline_modal_gutter_span, inline_modal_separator_line,
 };
 use super::{

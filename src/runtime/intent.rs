@@ -15,7 +15,6 @@ pub enum Intent {
     PrevFocus,
     InputKey(KeyEvent),
     TextAction(TextAction),
-    DeleteWordLeftOrToggleHints,
     OpenOverlay(NodeId),
     OpenOverlayAtIndex(usize),
     OpenOverlayShortcut,

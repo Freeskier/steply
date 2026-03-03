@@ -450,6 +450,9 @@ impl Interactive for Calendar {
                 } else {
                     self.next_section()
                 };
+                if self.is_time_section() {
+                    self.time_input.focus_first_unfilled();
+                }
                 InteractionResult::handled()
             }
             KeyCode::Left => match self.section {

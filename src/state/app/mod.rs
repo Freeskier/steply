@@ -356,7 +356,7 @@ impl AppState {
 
     pub(super) fn refresh_validation_after_change(&mut self) {
         self.validate_focused_live();
-        self.clear_step_errors();
+        self.runtime.validation.reset_warnings_acknowledged();
     }
 
     pub fn current_step_errors(&self) -> &[String] {

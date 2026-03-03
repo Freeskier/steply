@@ -114,14 +114,14 @@ impl TextAreaComponent {
     fn build_gutter_span(&self, line_idx: usize, _focused: bool) -> Span {
         let num_w = self.num_width();
         let num_str = format!("{:>width$}", line_idx + 1, width = num_w);
-        let text = format!("┃ {}  ", num_str);
+        let text = format!("│ {}  ", num_str);
         Span::styled(text, Style::new().color(Color::DarkGrey).no_strikethrough()).no_wrap()
     }
 
     fn build_tilde_span(&self) -> Span {
         let num_w = self.num_width();
         let pad = num_w + 1;
-        let text = format!("┃ ~{:pad$}", "", pad = pad);
+        let text = format!("│ ~{:pad$}", "", pad = pad);
         Span::styled(text, Style::new().color(Color::DarkGrey).no_strikethrough()).no_wrap()
     }
 

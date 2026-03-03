@@ -14,6 +14,7 @@ impl AppState {
         }
         self.validate_focused_live();
         self.ui.focus.next();
+        self.broadcast_current_focus_request();
     }
 
     pub fn focus_prev(&mut self) {
@@ -25,6 +26,7 @@ impl AppState {
         }
         self.validate_focused_live();
         self.ui.focus.prev();
+        self.broadcast_current_focus_request();
     }
 
     pub(in crate::state::app) fn rebuild_focus_with_target(
@@ -43,12 +45,16 @@ impl AppState {
         if prune_validation {
             self.prune_validation_for_active_nodes();
         }
-        let focused_id = self.ui.focus.current_id().map(|id| id.into());
-        let result = self.broadcast_system_event(&SystemEvent::RequestFocus { target: focused_id });
-        self.process_broadcast_result(result);
+        self.broadcast_current_focus_request();
     }
 
     pub(in crate::state::app) fn rebuild_focus(&mut self) {
         self.rebuild_focus_with_target(None, true);
+    }
+
+    fn broadcast_current_focus_request(&mut self) {
+        let focused_id = self.ui.focus.current_id().map(|id| id.into());
+        let result = self.broadcast_system_event(&SystemEvent::RequestFocus { target: focused_id });
+        self.process_broadcast_result(result);
     }
 }

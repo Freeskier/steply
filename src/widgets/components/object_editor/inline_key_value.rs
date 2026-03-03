@@ -137,15 +137,21 @@ impl InlineKeyValueEditor {
 
     pub fn set_focus(&mut self, focus: InlineKeyValueFocus) {
         self.focus = focus;
+        if self.focus == InlineKeyValueFocus::Value
+            && let InlineValueField::Masked(masked) = &mut self.value_field
+        {
+            masked.focus_first_unfilled();
+        }
     }
 
     pub fn on_key(&mut self, key: KeyEvent) {
         match key.code {
             KeyCode::Tab => {
-                self.focus = match self.focus {
+                let next = match self.focus {
                     InlineKeyValueFocus::Key => InlineKeyValueFocus::Value,
                     InlineKeyValueFocus::Value => InlineKeyValueFocus::Key,
                 };
+                self.set_focus(next);
             }
             _ => match self.focus {
                 InlineKeyValueFocus::Key => {

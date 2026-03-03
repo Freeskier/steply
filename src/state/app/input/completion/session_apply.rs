@@ -1,6 +1,7 @@
 use super::{CompletionSession, CompletionStartResult};
 use crate::core::NodeId;
 use crate::state::app::AppState;
+use crate::widgets::shared::list_policy;
 
 use super::engine::longest_common_prefix;
 
@@ -54,7 +55,12 @@ impl AppState {
             return false;
         }
 
-        session.index = cycle_index(session.index, session.matches.len(), reverse);
+        session.index = if reverse {
+            list_policy::cycle_prev(session.index, session.matches.len())
+        } else {
+            list_policy::cycle_next(session.index, session.matches.len())
+        }
+        .unwrap_or(session.index);
         true
     }
 
@@ -105,7 +111,7 @@ impl AppState {
                 let index = existing_session
                     .as_ref()
                     .filter(|(id, s, _)| id == &focused_id && *s == query.start)
-                    .map(|(_, _, idx)| clamp_index(*idx, matches.len()))
+                    .map(|(_, _, idx)| list_policy::clamp_index(*idx, matches.len()))
                     .unwrap_or(0);
 
                 Some(CompletionSession::new(
@@ -169,24 +175,5 @@ impl AppState {
             CompletionStartResult::OpenedMenu => self.finalize_completion_update(true, false),
         }
         outcome
-    }
-}
-
-fn clamp_index(current: usize, len: usize) -> usize {
-    if len == 0 {
-        0
-    } else {
-        current.min(len.saturating_sub(1))
-    }
-}
-
-fn cycle_index(current: usize, len: usize, reverse: bool) -> usize {
-    if len == 0 {
-        return current;
-    }
-    if reverse {
-        (current + len - 1) % len
-    } else {
-        (current + 1) % len
     }
 }

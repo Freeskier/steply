@@ -30,26 +30,40 @@ impl FileBrowserComponent {
         .with_search_text("..")
     }
 
-    fn overlay_list_options(&self, result: &ScanResult) -> (Vec<SelectItem>, bool) {
-        if !self.should_show_parent_option() {
-            return (result.options.clone(), false);
+    fn overlay_list_options(
+        &self,
+        result: &ScanResult,
+    ) -> (Vec<SelectItem>, Vec<ActiveOverlayItem>) {
+        let mut options = Vec::with_capacity(
+            result.options.len() + usize::from(self.should_show_parent_option()),
+        );
+        let mut items = Vec::with_capacity(
+            result.entries.len() + usize::from(self.should_show_parent_option()),
+        );
+
+        if self.should_show_parent_option() {
+            options.push(Self::parent_option_item());
+            items.push(ActiveOverlayItem::Parent);
         }
-        let mut options = Vec::with_capacity(result.options.len() + 1);
-        options.push(Self::parent_option_item());
+
         options.extend(result.options.clone());
-        (options, true)
+        items.extend(result.entries.iter().map(|entry| ActiveOverlayItem::Entry {
+            path: (*entry.path).clone(),
+            is_dir: entry.kind.is_dir(),
+        }));
+
+        (options, items)
     }
 
-    fn set_preferred_list_active(&mut self, entries: &[model::FileEntry], has_parent: bool) {
-        let preferred = preferred_index_from_restore(
+    fn preferred_list_active_index(&self, items: &[ActiveOverlayItem]) -> Option<usize> {
+        preferred_index_from_restore(
             self.pending_focus_restore.as_ref(),
-            |path| preferred_entry_pos(entries, path).map(|pos| pos + usize::from(has_parent)),
-            entries.len() + usize::from(has_parent),
-            has_parent.then_some(1),
-        );
-        if let Some(index) = preferred {
-            self.list.set_active_index(index);
-        }
+            |path| preferred_list_item_pos(items, path),
+            items.len(),
+            items
+                .iter()
+                .position(|item| matches!(item, ActiveOverlayItem::Entry { .. })),
+        )
     }
 
     fn set_preferred_tree_active(&mut self) {
@@ -91,9 +105,13 @@ impl FileBrowserComponent {
     }
 
     fn apply_list_result(&mut self, result: &ScanResult) {
-        let (options, has_parent_option) = self.overlay_list_options(result);
+        let (options, items) = self.overlay_list_options(result);
+        let preferred = self.preferred_list_active_index(items.as_slice());
         self.list.set_options(options);
-        self.set_preferred_list_active(result.entries.as_slice(), has_parent_option);
+        self.list_overlay_items = items;
+        if let Some(index) = preferred {
+            self.list.set_active_index(index);
+        }
         self.tree_building = false;
         self.pending_tree_nodes = None;
         self.clear_preferred_entry_state();
@@ -154,24 +172,10 @@ impl FileBrowserComponent {
         self.last_scan_result = Some(result);
     }
 
-    fn has_dotdot(&self) -> bool {
-        self.should_show_parent_option()
-    }
-
     pub(super) fn active_list_item(&self) -> Option<ActiveOverlayItem> {
-        let idx = self.list.active_index();
-        let has_parent = self.has_dotdot();
-        if has_parent && idx == 0 {
-            return Some(ActiveOverlayItem::Parent);
-        }
-        let offset = usize::from(has_parent);
-        let entries = self.last_scan_result.as_ref()?.entries.as_slice();
-        idx.checked_sub(offset)
-            .and_then(|entry_idx| entries.get(entry_idx))
-            .map(|entry| ActiveOverlayItem::Entry {
-                path: (*entry.path).clone(),
-                is_dir: entry.kind.is_dir(),
-            })
+        self.list_overlay_items
+            .get(self.list.active_index())
+            .cloned()
     }
 
     pub(super) fn active_tree_item(&self) -> Option<ActiveOverlayItem> {
@@ -274,16 +278,26 @@ impl FileBrowserComponent {
     }
 }
 
-fn preferred_entry_pos(entries: &[model::FileEntry], pref_path: &Path) -> Option<usize> {
-    if let Some(pos) = entries
-        .iter()
-        .position(|entry| entry.path.as_ref() == pref_path)
-    {
+fn preferred_list_item_pos(items: &[ActiveOverlayItem], pref_path: &Path) -> Option<usize> {
+    if let Some(pos) = items.iter().position(|item| {
+        matches!(
+            item,
+            ActiveOverlayItem::Entry { path, .. } if path.as_path() == pref_path
+        )
+    }) {
         return Some(pos);
     }
 
     let pref_name = pref_path.file_name()?.to_string_lossy();
-    entries.iter().position(|entry| entry.name == pref_name)
+    items.iter().position(|item| {
+        matches!(
+            item,
+            ActiveOverlayItem::Entry { path, .. }
+                if path
+                    .file_name()
+                    .is_some_and(|name| name.to_string_lossy() == pref_name)
+        )
+    })
 }
 
 fn preferred_tree_visible_pos(tree: &TreeView<FileTreeItem>, pref_path: &Path) -> Option<usize> {

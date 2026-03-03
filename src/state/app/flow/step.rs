@@ -99,9 +99,10 @@ impl AppState {
         let mut first_invalid: Option<String> = None;
         walk_nodes(
             self.current_step_nodes(),
-            NodeWalkScope::TopLevel,
+            NodeWalkScope::Recursive,
             &mut |node| {
                 if first_invalid.is_none()
+                    && node.is_focusable()
                     && self.runtime.validation.visible_error(node.id()).is_some()
                 {
                     first_invalid = Some(node.id().to_string());

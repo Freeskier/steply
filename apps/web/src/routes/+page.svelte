@@ -29,6 +29,13 @@
         height?: number;
     };
 
+    type PreviewKeyEvent = {
+        key: string;
+        ctrl: boolean;
+        alt: boolean;
+        shift: boolean;
+    };
+
     let hydrated = $state(false);
     let yamlText = $state("");
     let renderRequest = $state<PreviewRequest>({
@@ -39,6 +46,9 @@
     let rendered = $state<RenderDoc | null>(null);
     let errorText = $state<string | null>(null);
     let isRendering = $state(false);
+    let sessionId = $state<string | null>(null);
+    let interactive = $state(false);
+    let terminalGridEl = $state<HTMLDivElement | null>(null);
     let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 
     $effect(() => {
@@ -111,6 +121,9 @@
     }
 
     async function renderNow() {
+        if (sessionId) {
+            await stopInteractiveSession();
+        }
         isRendering = true;
         try {
             const response = await fetch("/api/preview", {
@@ -144,6 +157,100 @@
             void renderNow();
         }, 250);
     }
+
+    async function startInteractiveSession() {
+        isRendering = true;
+        try {
+            const response = await fetch("/api/session/create", {
+                method: "POST",
+                headers: { "content-type": "application/json" },
+                body: JSON.stringify({
+                    yaml: yamlText,
+                    request: renderRequest,
+                }),
+            });
+            const payload = await response.json();
+            if (!response.ok || !payload?.ok) {
+                sessionId = null;
+                interactive = false;
+                errorText =
+                    payload?.error ??
+                    `Interactive session failed (${response.status})`;
+                return;
+            }
+            sessionId = payload.sessionId as string;
+            interactive = true;
+            rendered = payload.rendered as RenderDoc;
+            errorText = null;
+            queueMicrotask(() => terminalGridEl?.focus());
+        } catch (error) {
+            sessionId = null;
+            interactive = false;
+            rendered = null;
+            errorText = error instanceof Error ? error.message : String(error);
+        } finally {
+            isRendering = false;
+        }
+    }
+
+    async function stopInteractiveSession() {
+        const current = sessionId;
+        sessionId = null;
+        interactive = false;
+        if (!current) return;
+        await fetch("/api/session/dispose", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ sessionId: current }),
+        }).catch(() => {});
+    }
+
+    async function onTerminalKeydown(event: KeyboardEvent) {
+        if (!interactive || !sessionId) return;
+
+        if (
+            event.key === "Control" ||
+            event.key === "Shift" ||
+            event.key === "Alt" ||
+            event.key === "Meta" ||
+            event.key === "CapsLock" ||
+            event.key === "NumLock" ||
+            event.key === "ScrollLock"
+        ) {
+            return;
+        }
+
+        const keyEvent: PreviewKeyEvent = {
+            key: event.key,
+            ctrl: event.ctrlKey || event.metaKey,
+            alt: event.altKey,
+            shift: event.shiftKey,
+        };
+        event.preventDefault();
+
+        try {
+            const response = await fetch("/api/session/event", {
+                method: "POST",
+                headers: { "content-type": "application/json" },
+                body: JSON.stringify({
+                    sessionId,
+                    keyEvent,
+                    request: renderRequest,
+                }),
+            });
+            const payload = await response.json();
+            if (!response.ok || !payload?.ok) {
+                errorText =
+                    payload?.error ??
+                    `Interactive key failed (${response.status})`;
+                return;
+            }
+            rendered = payload.rendered as RenderDoc;
+            errorText = null;
+        } catch (error) {
+            errorText = error instanceof Error ? error.message : String(error);
+        }
+    }
 </script>
 
 <svelte:head>
@@ -170,6 +277,16 @@
                     disabled={isRendering}
                 >
                     {isRendering ? "Rendering..." : "Render now"}
+                </button>
+                <button
+                    type="button"
+                    onclick={() =>
+                        interactive
+                            ? void stopInteractiveSession()
+                            : void startInteractiveSession()}
+                    disabled={isRendering}
+                >
+                    {interactive ? "Stop interactive" : "Start interactive"}
                 </button>
             </div>
             <textarea
@@ -198,6 +315,12 @@
                 <div class="terminal-body">
                     <div
                         class="terminal-grid"
+                        bind:this={terminalGridEl}
+                        role="textbox"
+                        aria-label="Interactive terminal preview"
+                        tabindex={interactive ? 0 : -1}
+                        onmousedown={() => terminalGridEl?.focus()}
+                        onkeydown={onTerminalKeydown}
                         style={`--cols:${terminalWidth()}; --rows:${terminalHeight()}; --cursor-col:${rendered.cursor?.col ?? 0}; --cursor-row:${rendered.cursor?.row ?? 0};`}
                     >
                         {#each rendered.lines ?? [] as line}
@@ -295,7 +418,8 @@
     }
 
     .pane-header {
-        grid-template-columns: 1fr auto;
+        grid-template-columns: 1fr auto auto;
+        gap: 8px;
     }
 
     .pane-header h2 {
@@ -314,6 +438,7 @@
         font-family: inherit;
         font-size: 12px;
         cursor: pointer;
+        white-space: nowrap;
     }
 
     .pane-header button:disabled {

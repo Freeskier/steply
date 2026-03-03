@@ -1,6 +1,6 @@
 use crate::runtime::event::AppEvent;
 use std::collections::{HashMap, VecDeque};
-use std::time::{Duration, Instant};
+use crate::time::{Duration, Instant};
 
 #[derive(Debug, Clone)]
 pub enum SchedulerCommand {

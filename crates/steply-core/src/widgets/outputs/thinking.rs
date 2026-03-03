@@ -1,4 +1,4 @@
-use std::time::{Duration, Instant};
+use crate::time::{Duration, Instant};
 
 use crate::ui::span::Span;
 use crate::ui::style::{Color, Style};

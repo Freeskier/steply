@@ -90,7 +90,7 @@ impl FileBrowserComponent {
         self.tree_build_seq = self.tree_build_seq.wrapping_add(1);
         self.tree_building = true;
         self.pending_tree_nodes = None;
-        self.spinner_last_tick = std::time::Instant::now();
+        self.spinner_last_tick = crate::time::Instant::now();
         self.tree_scanner
             .submit(super::tree_scanner::TreeBuildRequest {
                 seq: self.tree_build_seq,
@@ -141,7 +141,7 @@ impl FileBrowserComponent {
 
         if self
             .debounce_deadline
-            .is_some_and(|deadline| std::time::Instant::now() < deadline)
+            .is_some_and(|deadline| crate::time::Instant::now() < deadline)
         {
             return false;
         }

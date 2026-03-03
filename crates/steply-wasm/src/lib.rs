@@ -62,10 +62,24 @@ mod wasm_exports {
     use wasm_bindgen::prelude::*;
 
     #[wasm_bindgen]
+    pub fn preview_validate_yaml(yaml: &str) -> Result<String, JsValue> {
+        let loaded = steply_core::config::load_from_yaml_str(yaml)
+            .map_err(|e| JsValue::from_str(e.as_str()))?;
+        Ok(format!(
+            "ok: steps={}, tasks={}, subscriptions={}",
+            loaded.flow.steps().len(),
+            loaded.task_specs.len(),
+            loaded.task_subscriptions.len()
+        ))
+    }
+
+    #[wasm_bindgen]
     pub fn preview_render_json(yaml: &str, request_json: &str) -> Result<String, JsValue> {
         let request: WasmPreviewRequest =
             serde_json::from_str(request_json).map_err(|e| JsValue::from_str(&e.to_string()))?;
-        let request: RenderJsonRequest = request.try_into().map_err(|e| JsValue::from_str(&e))?;
+        let request: RenderJsonRequest = request
+            .try_into()
+            .map_err(|e: String| JsValue::from_str(e.as_str()))?;
 
         let mut service =
             PreviewService::from_yaml_str_with_options(yaml, PreviewServiceOptions::default())
@@ -80,7 +94,9 @@ mod wasm_exports {
     pub fn parse_preview_request_json(input: &str) -> Result<String, JsValue> {
         let req: WasmPreviewRequest =
             serde_json::from_str(input).map_err(|e| JsValue::from_str(&e.to_string()))?;
-        let parsed: RenderJsonRequest = req.try_into().map_err(|e| JsValue::from_str(&e))?;
+        let parsed: RenderJsonRequest = req
+            .try_into()
+            .map_err(|e: String| JsValue::from_str(e.as_str()))?;
         serde_json::to_string(&parsed).map_err(|e| JsValue::from_str(&e.to_string()))
     }
 }

@@ -1,5 +1,5 @@
 use crate::task::policy::RerunPolicy;
-use std::time::{Duration, Instant};
+use crate::time::{Duration, Instant};
 
 #[derive(Debug, Clone, Default)]
 pub struct TaskRunState {

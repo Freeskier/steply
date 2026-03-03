@@ -5,7 +5,7 @@ use crate::state::app::AppState;
 use crate::state::step::StepStatus;
 use crate::task::engine::{TaskEngineHost, TaskStartResult, value_to_task_arg};
 use crate::task::{TaskCancelToken, TaskId, TaskInvocation, TaskKind, TaskRequest, TaskSpec};
-use std::time::{Duration, Instant};
+use crate::time::{Duration, Instant};
 
 impl AppState {
     pub fn take_pending_task_invocations(&mut self) -> Vec<TaskInvocation> {

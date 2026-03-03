@@ -1,8 +1,8 @@
 use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::Arc;
+#[cfg(not(target_arch = "wasm32"))]
 use std::sync::mpsc::{self, Receiver, Sender};
-use std::thread;
 
 use super::DisplayMode;
 use super::async_utils::{drain_receiver, recv_latest};
@@ -23,30 +23,49 @@ pub struct ScanRequest {
 }
 
 pub struct ScannerHandle {
+    #[cfg(not(target_arch = "wasm32"))]
     tx: Sender<ScanRequest>,
+    #[cfg(not(target_arch = "wasm32"))]
     rx: Receiver<(CacheKey, Arc<ScanResult>)>,
 }
 
 impl ScannerHandle {
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn new() -> Self {
         let (req_tx, req_rx) = mpsc::channel::<ScanRequest>();
         let (res_tx, res_rx) = mpsc::channel::<(CacheKey, Arc<ScanResult>)>();
-        thread::spawn(move || worker(req_rx, res_tx));
+        std::thread::spawn(move || worker(req_rx, res_tx));
         Self {
             tx: req_tx,
             rx: res_rx,
         }
     }
 
+    #[cfg(target_arch = "wasm32")]
+    pub fn new() -> Self {
+        Self {}
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn submit(&self, request: ScanRequest) {
         let _ = self.tx.send(request);
     }
 
+    #[cfg(target_arch = "wasm32")]
+    pub fn submit(&self, _request: ScanRequest) {}
+
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn try_recv_all(&self) -> Vec<(CacheKey, Arc<ScanResult>)> {
         drain_receiver(&self.rx)
     }
+
+    #[cfg(target_arch = "wasm32")]
+    pub fn try_recv_all(&self) -> Vec<(CacheKey, Arc<ScanResult>)> {
+        Vec::new()
+    }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn worker(rx: Receiver<ScanRequest>, tx: Sender<(CacheKey, Arc<ScanResult>)>) {
     while let Some(req) = recv_latest(&rx) {
         let display_root = req.dir.clone();

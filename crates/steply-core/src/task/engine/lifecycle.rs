@@ -1,7 +1,7 @@
 use super::{TaskEngineHost, TaskStartResult};
 use crate::core::value_path::ValueTarget;
 use crate::task::{ConcurrencyPolicy, TaskAssign, TaskCompletion, TaskRequest};
-use std::time::Instant;
+use crate::time::Instant;
 
 pub fn request_task_run(host: &mut impl TaskEngineHost, request: TaskRequest) -> TaskStartResult {
     let requested_task_id = request.task_id.clone();

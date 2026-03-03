@@ -83,7 +83,7 @@ pub enum DisplayMode {
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use crate::time::{Duration, Instant};
 
 use crate::core::NodeId;
 use crate::core::value::Value;

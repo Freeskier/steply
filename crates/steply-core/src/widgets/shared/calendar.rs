@@ -78,16 +78,16 @@ pub fn weekday_of(date: Date) -> Weekday {
 }
 
 pub fn today() -> Date {
-    let secs = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
+    let secs = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
         .as_secs() as i64;
     date_from_unix_days(secs / 86400)
 }
 
 pub fn now_time() -> Time {
-    let secs = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
+    let secs = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
         .as_secs();
     let s = secs % 60;
@@ -263,3 +263,7 @@ pub mod fmt {
     pub const DATETIME_YMD_HM: &str = "YYYY-MM-DD HH:mm";
     pub const DATETIME_DMY_HMS: &str = "DD/MM/YYYY HH:mm:ss";
 }
+#[cfg(not(target_arch = "wasm32"))]
+use std::time::{SystemTime, UNIX_EPOCH};
+#[cfg(target_arch = "wasm32")]
+use web_time::{SystemTime, UNIX_EPOCH};

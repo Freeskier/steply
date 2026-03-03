@@ -5,7 +5,7 @@ mod triggering;
 use crate::core::value::Value;
 use crate::core::value_path::ValueTarget;
 use crate::task::{RerunPolicy, TaskId, TaskRequest, TaskSpec, TaskSubscription};
-use std::time::Instant;
+use crate::time::Instant;
 
 pub use keys::{fingerprint_value, interval_key, node_change_debounce_key, value_to_task_arg};
 pub use lifecycle::{complete_task_run, request_task_run};

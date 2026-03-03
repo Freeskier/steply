@@ -1,0 +1,75 @@
+version: 1
+
+steps:
+  - id: project_search
+    title: "Project search"
+    widgets:
+      - type: text_input
+        id: query
+        label: "Query"
+        placeholder: "Type project name..."
+      - type: select_list
+        id: results
+        label: "Results"
+        mode: list
+        max_visible: 8
+        options:
+          - value: api
+            title: API
+            description: Core service
+          - value: worker
+            title: Worker
+            description: Background jobs
+          - value: web
+            title: Web
+            description: Frontend app
+
+  - id: deploy_checks
+    title: "Deploy checks"
+    when:
+      all:
+        - ref: query
+          not_empty: true
+    widgets:
+      - type: command_runner
+        id: predeploy_runner
+        label: "Pre-deploy checks"
+        run_mode: manual
+        on_error: stay
+        commands:
+          - label: "Run lint"
+            program: bash
+            args: ["-lc", "cargo clippy --all-targets --all-features -q"]
+          - label: "Run tests"
+            program: bash
+            args: ["-lc", "cargo test -q"]
+
+tasks:
+  - id: search_projects
+    kind: exec
+    program: python3
+    args:
+      - -c
+      - |
+        import json,sys
+        q=(sys.argv[1] if len(sys.argv)>1 else "").strip().lower()
+        data=[{"value":"api","title":"API","description":"Core service"},
+              {"value":"worker","title":"Worker","description":"Background jobs"},
+              {"value":"web","title":"Web","description":"Frontend app"}]
+        out=[x for x in data if q in x["value"] or q in x["title"].lower()]
+        print(json.dumps(out[:20]))
+      - "${query}"
+    parse: json
+    timeout_ms: 12000
+
+subscriptions:
+  - task: search_projects
+    trigger:
+      on_input:
+        ref: query
+        debounce_ms: 180
+    target: results
+
+flow:
+  - step: project_search
+  - step: deploy_checks

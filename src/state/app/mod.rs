@@ -93,6 +93,26 @@ impl AppState {
         self.flow.steps()
     }
 
+    pub fn step_index_by_id(&self, step_id: &str) -> Option<usize> {
+        self.flow.steps().iter().position(|step| step.id == step_id)
+    }
+
+    pub fn set_current_step_for_preview(&mut self, index: usize) -> bool {
+        if !self.flow.set_current(index) {
+            return false;
+        }
+        self.reconcile_current_step_visibility();
+        self.rebuild_focus();
+        true
+    }
+
+    pub fn set_current_step_by_id_for_preview(&mut self, step_id: &str) -> bool {
+        let Some(index) = self.step_index_by_id(step_id) else {
+            return false;
+        };
+        self.set_current_step_for_preview(index)
+    }
+
     pub fn step_status_at(&self, index: usize) -> crate::state::step::StepStatus {
         self.flow.status_at(index)
     }

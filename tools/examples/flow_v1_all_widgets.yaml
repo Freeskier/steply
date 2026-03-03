@@ -1,0 +1,349 @@
+version: 1
+
+steps:
+  - id: intro
+    title: "YAML Runtime - full widget demo"
+    description: "Konfiguracja pokazuje inputy, komponenty, outputy, taski i conditional rendering."
+    widgets:
+      - type: text_output
+        id: intro_text
+        text: "Witaj! Ta konfiguracja demonstruje niemal wszystkie widgety."
+      - type: url_output
+        id: docs_link
+        url: "https://docs.rs"
+        name: "Docs"
+      - type: thinking_output
+        id: thinking_banner
+        label: "Thinking"
+        text: "Building runtime schema from YAML"
+        mode: wave
+        tail_len: 8
+        tick_ms: 45
+        base_rgb: [70, 78, 92]
+        peak_rgb: [228, 236, 252]
+
+  - id: inputs
+    title: "Input widgets"
+    navigation:
+      type: allowed
+    widgets:
+      - type: text_input
+        id: query
+        label: "Search query"
+        placeholder: "Type to trigger subscriptions..."
+        completion_items: ["rust", "ratatui", "tokio", "serde"]
+        validators:
+          - type: min_length
+            value: 2
+      - type: array_input
+        id: tags
+        label: "Tags"
+        items: ["cli", "tui"]
+        validators:
+          - type: min_selections
+            value: 1
+      - type: button_input
+        id: btn_refresh
+        label: "Refresh"
+        text: "Run refresh task"
+        task_id: refresh_data
+      - type: select
+        id: env
+        label: "Environment"
+        options: ["dev", "staging", "prod"]
+        selected: 0
+      - type: choice_input
+        id: editor
+        label: "Editor"
+        options: ["Neovim", "VSCode", "Helix"]
+        bullets: true
+      - type: select_list
+        id: search_results
+        label: "Search results"
+        mode: list
+        max_visible: 7
+        show_label: true
+        options:
+          - value: rust
+            title: Rust
+            description: Systems programming language
+          - value: ratatui
+            title: Ratatui
+            description: Terminal UI library
+      - type: masked_input
+        id: phone
+        label: "Phone"
+        mask: "(#{3}) #{3}-#{4}"
+      - type: slider
+        id: cpu_load
+        label: "CPU load"
+        min: 0
+        max: 100
+        step: 5
+        unit: "%"
+        default: 35
+      - type: color_input
+        id: accent
+        label: "Accent color"
+        rgb: [80, 120, 220]
+      - type: checkbox
+        id: show_advanced
+        label: "Show advanced step"
+        checked: true
+      - type: confirm_input
+        id: confirm_apply
+        label: "Apply changes?"
+        mode:
+          type: strict
+          word: apply
+      - type: calendar
+        id: release_date
+        label: "Release date"
+        mode: date_time
+      - type: textarea
+        id: notes
+        min_height: 3
+        max_height: 6
+        default: "Line 1\nLine 2"
+
+  - id: components
+    title: "Component widgets"
+    when:
+      ref: show_advanced
+      equal: true
+    widgets:
+      - type: table
+        id: services_table
+        label: "Services"
+        style: clean
+        row_numbers: false
+        initial_rows: 2
+        columns:
+          - header: Name
+            widget:
+              type: text_input
+              placeholder: service name
+          - header: Port
+            widget:
+              type: slider
+              min: 1000
+              max: 9999
+              step: 1
+          - header: Enabled
+            widget:
+              type: checkbox
+              checked: true
+      - type: repeater
+        id: team_repeater
+        label: "Team setup"
+        layout: stacked
+        header_template: "configuring [{index} of {total}] for {item}:"
+        items:
+          - alice
+          - bob
+        fields:
+          - key: path
+            label: Path
+            widget:
+              type: text_input
+              placeholder: /srv/app
+          - key: secret
+            label: Secret
+            widget:
+              type: masked_input
+              mask: "AAAA-####"
+      - type: snippet
+        id: deploy_snippet
+        label: "Deploy snippet"
+        template: "deploy --env <env_slot> --service <service_slot> --token <token_slot>"
+        inputs:
+          - type: select
+            id: env_slot
+            label: Env
+            options: ["dev", "staging", "prod"]
+          - type: text_input
+            id: service_slot
+            label: Service
+          - type: masked_input
+            id: token_slot
+            label: Token
+            mask: "AAAA-AAAA"
+      - type: tree_view
+        id: project_tree
+        label: "Project tree"
+        max_visible: 5
+        indent_guides: true
+        nodes:
+          - item: src/
+            depth: 0
+            has_children: true
+            expanded: true
+          - item: main.rs
+            depth: 1
+            has_children: false
+          - item: widgets/
+            depth: 1
+            has_children: true
+            expanded: true
+          - item: mod.rs
+            depth: 2
+            has_children: false
+          - item: Cargo.toml
+            depth: 0
+            has_children: false
+      - type: object_editor
+        id: payload
+        label: "Payload"
+        max_visible: 10
+        value:
+          service: api
+          retries: 3
+          features: [search, cache]
+      - type: file_browser
+        id: browser
+        label: "Project files"
+        browser_mode: tree
+        display_mode: relative
+        recursive: true
+        hide_hidden: true
+        ext_filter: [rs, toml, md]
+        max_visible: 8
+      - type: command_runner
+        id: checks
+        label: "Local checks"
+        run_mode: manual
+        on_error: stay
+        advance_on_success: false
+        visible_lines: 8
+        spinner_style: dots
+        timeout_ms: 20000
+        commands:
+          - label: format check
+            program: bash
+            args: ["-lc", "echo cargo fmt --check"]
+          - label: test smoke
+            program: bash
+            args: ["-lc", "echo cargo test -q"]
+
+  - id: outputs
+    title: "Output widgets"
+    widgets:
+      - type: progress_output
+        id: out_progress
+        label: "CPU"
+        min: 0
+        max: 100
+        unit: "%"
+        bar_width: 32
+        style: block_classic
+        transition:
+          type: tween
+          duration_ms: 300
+          easing: out_cubic
+      - type: chart_output
+        id: out_chart
+        label: "CPU history"
+        mode: braille
+        capacity: 40
+        min: 0
+        max: 100
+        unit: "%"
+        gradient: true
+      - type: table_output
+        id: results_table
+        label: "Search rows"
+        style: clean
+      - type: diff_output
+        id: out_diff
+        label: "Config diff"
+        old: |
+          [service]
+          name = "api"
+          port = 8080
+        new: |
+          [service]
+          name = "api-v2"
+          port = 8081
+        max_visible: 12
+      - type: task_log_output
+        id: out_task_log
+        visible_lines: 6
+        spinner_style: braille
+        steps:
+          - label: Search API
+            task_id: search_api
+          - label: Probe metrics
+            task_id: metrics_probe
+
+tasks:
+  - id: search_api
+    kind: exec
+    program: python3
+    args:
+      - -c
+      - |
+        import json,sys
+        q=(sys.argv[1] if len(sys.argv)>1 else "").strip().lower()
+        data=[
+          {"title":"Rust", "description":"Systems language"},
+          {"title":"Ratatui", "description":"Terminal UI"},
+          {"title":"Tokio", "description":"Async runtime"},
+          {"title":"Serde", "description":"Serialization"}
+        ]
+        out=[x for x in data if q in x["title"].lower() or q in x["description"].lower()]
+        print(json.dumps(out))
+      - "${query}"
+    parse: json
+    timeout_ms: 10000
+
+  - id: metrics_probe
+    kind: exec
+    program: python3
+    args:
+      - -c
+      - |
+        import json,random
+        print(random.randint(0, 100))
+    parse: number
+    timeout_ms: 5000
+
+  - id: refresh_data
+    kind: exec
+    program: bash
+    args: ["-lc", "echo refresh triggered"]
+    parse: raw_text
+
+subscriptions:
+  - task: search_api
+    trigger:
+      on_input:
+        ref: query
+        debounce_ms: 180
+    target: search_results
+
+  - task: search_api
+    trigger:
+      on_input:
+        ref: query
+        debounce_ms: 220
+    target: results_table
+
+  - task: metrics_probe
+    trigger:
+      on_input:
+        ref: cpu_load
+        debounce_ms: 120
+    target: out_progress
+
+  - task: metrics_probe
+    trigger:
+      on_input:
+        ref: cpu_load
+        debounce_ms: 120
+    target: out_chart
+
+flow:
+  - step: intro
+  - step: inputs
+  - step: components
+  - step: outputs

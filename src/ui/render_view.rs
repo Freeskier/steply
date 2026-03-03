@@ -36,11 +36,28 @@ pub struct OverlayView<'a> {
 impl<'a> RenderView<'a> {
     pub fn from_state(state: &'a AppState) -> Self {
         let visible_indices = state.visible_step_indices();
+        Self::from_state_with_visible_indices(state, visible_indices)
+    }
+
+    pub fn from_state_step(state: &'a AppState, step_index: usize) -> Option<Self> {
+        if step_index >= state.steps().len() {
+            return None;
+        }
+        Some(Self::from_state_with_visible_indices(
+            state,
+            vec![step_index],
+        ))
+    }
+
+    fn from_state_with_visible_indices(state: &'a AppState, visible_indices: Vec<usize>) -> Self {
         let steps: Vec<&Step> = visible_indices
             .iter()
             .filter_map(|&idx| state.steps().get(idx))
             .collect();
-        let current_step_index = state.current_visible_step_index();
+        let current_step_index = visible_indices
+            .iter()
+            .position(|&idx| idx == state.current_step_index())
+            .unwrap_or(0);
 
         let step_statuses: Vec<StepStatus> = visible_indices
             .iter()

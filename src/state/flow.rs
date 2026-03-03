@@ -114,4 +114,19 @@ impl Flow {
     pub fn current_step_mut(&mut self) -> &mut Step {
         &mut self.steps[self.current]
     }
+
+    pub fn set_current(&mut self, index: usize) -> bool {
+        if index >= self.steps.len() {
+            return false;
+        }
+        self.current = index;
+        for (idx, status) in self.statuses.iter_mut().enumerate() {
+            *status = if idx == index {
+                StepStatus::Active
+            } else {
+                StepStatus::Pending
+            };
+        }
+        true
+    }
 }

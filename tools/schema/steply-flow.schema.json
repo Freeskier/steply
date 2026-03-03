@@ -1,0 +1,877 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://steply.dev/schema/steply-flow.schema.json",
+  "title": "Steply Flow Config",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "steps"],
+  "properties": {
+    "version": {
+      "type": "integer",
+      "const": 1
+    },
+    "steps": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/step" }
+    },
+    "flow": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/flowItem" },
+      "default": []
+    },
+    "tasks": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/task" },
+      "default": []
+    },
+    "subscriptions": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/subscription" },
+      "default": []
+    }
+  },
+  "$defs": {
+    "step": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "title", "widgets"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "title": { "type": "string", "minLength": 1 },
+        "description": { "type": "string" },
+        "when": { "$ref": "#/$defs/when" },
+        "navigation": { "$ref": "#/$defs/navigation" },
+        "widgets": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/widget" }
+        }
+      }
+    },
+    "flowItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["step"],
+      "properties": {
+        "step": { "$ref": "#/$defs/id" },
+        "when": { "$ref": "#/$defs/when" }
+      }
+    },
+    "navigation": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type"],
+          "properties": { "type": { "const": "allowed" } }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type"],
+          "properties": { "type": { "const": "locked" } }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type"],
+          "properties": { "type": { "const": "reset" } }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "warning"],
+          "properties": {
+            "type": { "const": "destructive" },
+            "warning": { "type": "string", "minLength": 1 }
+          }
+        }
+      ]
+    },
+    "when": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["ref", "equal"],
+          "properties": {
+            "ref": { "type": "string", "minLength": 1 },
+            "equal": {}
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["ref", "not_equal"],
+          "properties": {
+            "ref": { "type": "string", "minLength": 1 },
+            "not_equal": {}
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["ref", "not_empty"],
+          "properties": {
+            "ref": { "type": "string", "minLength": 1 },
+            "not_empty": { "type": "boolean", "const": true }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["all"],
+          "properties": {
+            "all": {
+              "type": "array",
+              "minItems": 1,
+              "items": { "$ref": "#/$defs/when" }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["any"],
+          "properties": {
+            "any": {
+              "type": "array",
+              "minItems": 1,
+              "items": { "$ref": "#/$defs/when" }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["not"],
+          "properties": {
+            "not": { "$ref": "#/$defs/when" }
+          }
+        }
+      ]
+    },
+    "task": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "kind", "program"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "kind": { "type": "string", "const": "exec" },
+        "program": { "type": "string", "minLength": 1 },
+        "args": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": []
+        },
+        "parse": {
+          "type": "string",
+          "enum": ["raw_text", "number", "json", "lines"]
+        },
+        "timeout_ms": { "type": "integer", "minimum": 1 },
+        "enabled": { "type": "boolean" }
+      }
+    },
+    "subscription": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["task", "trigger"],
+      "properties": {
+        "task": { "$ref": "#/$defs/id" },
+        "target": { "type": "string", "minLength": 1 },
+        "enabled": { "type": "boolean" },
+        "trigger": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["on_input"],
+          "properties": {
+            "on_input": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["ref"],
+              "properties": {
+                "ref": { "type": "string", "minLength": 1 },
+                "debounce_ms": { "type": "integer", "minimum": 1 }
+              }
+            }
+          }
+        }
+      }
+    },
+    "validator": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type"],
+          "properties": {
+            "type": { "const": "required" },
+            "message": { "type": "string" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "value"],
+          "properties": {
+            "type": { "const": "min_length" },
+            "value": { "type": "integer", "minimum": 0 }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "value"],
+          "properties": {
+            "type": { "const": "max_length" },
+            "value": { "type": "integer", "minimum": 0 }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "value"],
+          "properties": {
+            "type": { "const": "min_selections" },
+            "value": { "type": "integer", "minimum": 0 }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "value"],
+          "properties": {
+            "type": { "const": "max_selections" },
+            "value": { "type": "integer", "minimum": 0 }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type"],
+          "properties": { "type": { "const": "must_be_checked" } }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "value"],
+          "properties": {
+            "type": { "const": "min_value" },
+            "value": { "type": "number" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "value"],
+          "properties": {
+            "type": { "const": "max_value" },
+            "value": { "type": "number" }
+          }
+        }
+      ]
+    },
+    "selectListOption": {
+      "oneOf": [
+        { "type": "string" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["value", "title", "description"],
+          "properties": {
+            "value": { "type": "string" },
+            "title": { "type": "string" },
+            "description": { "type": "string" }
+          }
+        }
+      ]
+    },
+    "treeNode": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["item", "depth", "has_children"],
+      "properties": {
+        "item": { "type": "string" },
+        "depth": { "type": "integer", "minimum": 0 },
+        "has_children": { "type": "boolean" },
+        "expanded": { "type": "boolean" }
+      }
+    },
+    "taskLogStep": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["label", "task_id"],
+      "properties": {
+        "label": { "type": "string" },
+        "task_id": { "$ref": "#/$defs/id" }
+      }
+    },
+    "cellWidget": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type"],
+          "properties": {
+            "type": { "const": "text_input" },
+            "placeholder": { "type": "string" },
+            "mode": { "type": "string", "enum": ["plain", "password", "secret"] }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "mask"],
+          "properties": {
+            "type": { "const": "masked_input" },
+            "mask": { "type": "string", "minLength": 1 }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "options"],
+          "properties": {
+            "type": { "const": "select" },
+            "options": { "type": "array", "items": { "type": "string" } }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "min", "max"],
+          "properties": {
+            "type": { "const": "slider" },
+            "min": { "type": "integer" },
+            "max": { "type": "integer" },
+            "step": { "type": "integer" },
+            "unit": { "type": "string" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type"],
+          "properties": {
+            "type": { "const": "checkbox" },
+            "checked": { "type": "boolean" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type"],
+          "properties": {
+            "type": { "const": "array_input" },
+            "items": { "type": "array", "items": { "type": "string" } }
+          }
+        }
+      ]
+    },
+    "widget": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": ["type", "id", "text"],
+          "additionalProperties": false,
+          "properties": {
+            "type": { "const": "text_output" },
+            "id": { "$ref": "#/$defs/id" },
+            "text": { "type": "string" }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["type", "id", "url"],
+          "additionalProperties": false,
+          "properties": {
+            "type": { "const": "url_output" },
+            "id": { "$ref": "#/$defs/id" },
+            "url": { "type": "string" },
+            "name": { "type": "string" }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["type", "id", "label", "text"],
+          "additionalProperties": false,
+          "properties": {
+            "type": { "const": "thinking_output" },
+            "id": { "$ref": "#/$defs/id" },
+            "label": { "type": "string" },
+            "text": { "type": "string" },
+            "mode": { "type": "string", "enum": ["beam", "wave"] },
+            "tail_len": { "type": "integer", "minimum": 2 },
+            "tick_ms": { "type": "integer", "minimum": 16 },
+            "base_rgb": { "$ref": "#/$defs/rgb" },
+            "peak_rgb": { "$ref": "#/$defs/rgb" }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["type", "id", "label"],
+          "additionalProperties": false,
+          "properties": {
+            "type": { "const": "progress_output" },
+            "id": { "$ref": "#/$defs/id" },
+            "label": { "type": "string" },
+            "min": { "type": "number" },
+            "max": { "type": "number" },
+            "unit": { "type": "string" },
+            "bar_width": { "type": "integer", "minimum": 8 },
+            "style": { "type": "string", "enum": ["classic_line", "block_classic"] },
+            "transition": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["type"],
+                  "properties": { "type": { "const": "immediate" } }
+                },
+                {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["type", "duration_ms"],
+                  "properties": {
+                    "type": { "const": "tween" },
+                    "duration_ms": { "type": "integer", "minimum": 1 },
+                    "easing": { "type": "string", "enum": ["linear", "out_quad", "out_cubic"] }
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["type", "id", "label"],
+          "additionalProperties": false,
+          "properties": {
+            "type": { "const": "chart_output" },
+            "id": { "$ref": "#/$defs/id" },
+            "label": { "type": "string" },
+            "mode": { "type": "string", "enum": ["braille", "dots", "sparkline"] },
+            "capacity": { "type": "integer", "minimum": 4 },
+            "min": { "type": "number" },
+            "max": { "type": "number" },
+            "unit": { "type": "string" },
+            "gradient": { "type": "boolean" }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["type", "id", "label"],
+          "additionalProperties": false,
+          "properties": {
+            "type": { "const": "table_output" },
+            "id": { "$ref": "#/$defs/id" },
+            "label": { "type": "string" },
+            "style": { "type": "string", "enum": ["grid", "clean"] },
+            "headers": { "type": "array", "items": { "type": "string" } },
+            "rows": {
+              "type": "array",
+              "items": { "type": "array", "items": { "type": "string" } }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["type", "id", "label", "old", "new"],
+          "additionalProperties": false,
+          "properties": {
+            "type": { "const": "diff_output" },
+            "id": { "$ref": "#/$defs/id" },
+            "label": { "type": "string" },
+            "old": { "type": "string" },
+            "new": { "type": "string" },
+            "max_visible": { "type": "integer", "minimum": 1 }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["type", "id", "steps"],
+          "additionalProperties": false,
+          "properties": {
+            "type": { "const": "task_log_output" },
+            "id": { "$ref": "#/$defs/id" },
+            "visible_lines": { "type": "integer", "minimum": 1 },
+            "spinner_style": { "type": "string", "enum": ["line", "dots", "arc", "braille"] },
+            "steps": { "type": "array", "items": { "$ref": "#/$defs/taskLogStep" } }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["type", "id", "label"],
+          "additionalProperties": false,
+          "properties": {
+            "type": { "const": "text_input" },
+            "id": { "$ref": "#/$defs/id" },
+            "label": { "type": "string" },
+            "placeholder": { "type": "string" },
+            "default": { "type": "string" },
+            "mode": { "type": "string", "enum": ["plain", "password", "secret"] },
+            "required": { "type": "boolean" },
+            "validators": { "type": "array", "items": { "$ref": "#/$defs/validator" } },
+            "completion_items": { "type": "array", "items": { "type": "string" } },
+            "submit_target": { "type": "string" },
+            "change_targets": { "type": "array", "items": { "type": "string" } }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["type", "id", "label"],
+          "additionalProperties": false,
+          "properties": {
+            "type": { "const": "array_input" },
+            "id": { "$ref": "#/$defs/id" },
+            "label": { "type": "string" },
+            "items": { "type": "array", "items": { "type": "string" } },
+            "required": { "type": "boolean" },
+            "validators": { "type": "array", "items": { "$ref": "#/$defs/validator" } }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["type", "id", "label"],
+          "additionalProperties": false,
+          "properties": {
+            "type": { "const": "button_input" },
+            "id": { "$ref": "#/$defs/id" },
+            "label": { "type": "string" },
+            "text": { "type": "string" },
+            "task_id": { "type": "string" }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["type", "id", "label", "options"],
+          "additionalProperties": false,
+          "properties": {
+            "type": { "const": "select" },
+            "id": { "$ref": "#/$defs/id" },
+            "label": { "type": "string" },
+            "options": { "type": "array", "items": { "type": "string" } },
+            "selected": { "type": "integer", "minimum": 0 },
+            "default": { "type": "string" },
+            "required": { "type": "boolean" },
+            "validators": { "type": "array", "items": { "$ref": "#/$defs/validator" } },
+            "submit_target": { "type": "string" }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["type", "id", "label", "options"],
+          "additionalProperties": false,
+          "properties": {
+            "type": { "const": "choice_input" },
+            "id": { "$ref": "#/$defs/id" },
+            "label": { "type": "string" },
+            "options": { "type": "array", "items": { "type": "string" } },
+            "bullets": { "type": "boolean" },
+            "default": { "type": "string" },
+            "required": { "type": "boolean" },
+            "validators": { "type": "array", "items": { "$ref": "#/$defs/validator" } },
+            "submit_target": { "type": "string" }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["type", "id", "label"],
+          "additionalProperties": false,
+          "properties": {
+            "type": { "const": "select_list" },
+            "id": { "$ref": "#/$defs/id" },
+            "label": { "type": "string" },
+            "options": { "type": "array", "items": { "$ref": "#/$defs/selectListOption" } },
+            "mode": { "type": "string", "enum": ["single", "multi", "radio", "list"] },
+            "max_visible": { "type": "integer", "minimum": 1 },
+            "selected": { "type": "array", "items": { "type": "integer", "minimum": 0 } },
+            "show_label": { "type": "boolean" },
+            "submit_target": { "type": "string" }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["type", "id", "label", "mask"],
+          "additionalProperties": false,
+          "properties": {
+            "type": { "const": "masked_input" },
+            "id": { "$ref": "#/$defs/id" },
+            "label": { "type": "string" },
+            "mask": { "type": "string", "minLength": 1 },
+            "default": { "type": "string" },
+            "required": { "type": "boolean" },
+            "validators": { "type": "array", "items": { "$ref": "#/$defs/validator" } },
+            "submit_target": { "type": "string" }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["type", "id", "label", "min", "max"],
+          "additionalProperties": false,
+          "properties": {
+            "type": { "const": "slider" },
+            "id": { "$ref": "#/$defs/id" },
+            "label": { "type": "string" },
+            "min": { "type": "integer" },
+            "max": { "type": "integer" },
+            "step": { "type": "integer" },
+            "unit": { "type": "string" },
+            "track_len": { "type": "integer", "minimum": 1 },
+            "default": { "type": "number" },
+            "required": { "type": "boolean" },
+            "validators": { "type": "array", "items": { "$ref": "#/$defs/validator" } },
+            "change_targets": { "type": "array", "items": { "type": "string" } }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["type", "id", "label"],
+          "additionalProperties": false,
+          "properties": {
+            "type": { "const": "color_input" },
+            "id": { "$ref": "#/$defs/id" },
+            "label": { "type": "string" },
+            "rgb": { "$ref": "#/$defs/rgb" },
+            "required": { "type": "boolean" },
+            "validators": { "type": "array", "items": { "$ref": "#/$defs/validator" } },
+            "submit_target": { "type": "string" }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["type", "id", "label"],
+          "additionalProperties": false,
+          "properties": {
+            "type": { "const": "checkbox" },
+            "id": { "$ref": "#/$defs/id" },
+            "label": { "type": "string" },
+            "checked": { "type": "boolean" },
+            "required": { "type": "boolean" },
+            "validators": { "type": "array", "items": { "$ref": "#/$defs/validator" } }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["type", "id", "label"],
+          "additionalProperties": false,
+          "properties": {
+            "type": { "const": "confirm_input" },
+            "id": { "$ref": "#/$defs/id" },
+            "label": { "type": "string" },
+            "mode": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["type"],
+                  "properties": { "type": { "const": "relaxed" } }
+                },
+                {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["type", "word"],
+                  "properties": {
+                    "type": { "const": "strict" },
+                    "word": { "type": "string", "minLength": 1 }
+                  }
+                }
+              ]
+            },
+            "yes_label": { "type": "string" },
+            "no_label": { "type": "string" },
+            "default": { "type": "boolean" }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["type", "id", "label"],
+          "additionalProperties": false,
+          "properties": {
+            "type": { "const": "calendar" },
+            "id": { "$ref": "#/$defs/id" },
+            "label": { "type": "string" },
+            "mode": { "type": "string", "enum": ["date", "time", "date_time"] },
+            "required": { "type": "boolean" },
+            "validators": { "type": "array", "items": { "$ref": "#/$defs/validator" } },
+            "submit_target": { "type": "string" }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["type", "id"],
+          "additionalProperties": false,
+          "properties": {
+            "type": { "const": "textarea" },
+            "id": { "$ref": "#/$defs/id" },
+            "min_height": { "type": "integer", "minimum": 1 },
+            "max_height": { "type": "integer", "minimum": 1 },
+            "default": { "type": "string" },
+            "required": { "type": "boolean" },
+            "validators": { "type": "array", "items": { "$ref": "#/$defs/validator" } }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["type", "id", "label", "commands"],
+          "additionalProperties": false,
+          "properties": {
+            "type": { "const": "command_runner" },
+            "id": { "$ref": "#/$defs/id" },
+            "label": { "type": "string" },
+            "run_mode": { "type": "string", "enum": ["manual", "auto"] },
+            "on_error": { "type": "string", "enum": ["stay", "continue"] },
+            "advance_on_success": { "type": "boolean" },
+            "visible_lines": { "type": "integer", "minimum": 1 },
+            "spinner_style": { "type": "string", "enum": ["line", "dots", "arc", "braille"] },
+            "timeout_ms": { "type": "integer", "minimum": 1 },
+            "commands": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["label", "program"],
+                "properties": {
+                  "label": { "type": "string" },
+                  "program": { "type": "string" },
+                  "args": { "type": "array", "items": { "type": "string" } }
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["type", "id", "label"],
+          "additionalProperties": false,
+          "properties": {
+            "type": { "const": "file_browser" },
+            "id": { "$ref": "#/$defs/id" },
+            "label": { "type": "string" },
+            "browser_mode": { "type": "string", "enum": ["list", "tree"] },
+            "display_mode": { "type": "string", "enum": ["full", "relative", "name"] },
+            "cwd": { "type": "string" },
+            "recursive": { "type": "boolean" },
+            "hide_hidden": { "type": "boolean" },
+            "ext_filter": { "type": "array", "items": { "type": "string" } },
+            "max_visible": { "type": "integer", "minimum": 1 },
+            "submit_target": { "type": "string" },
+            "required": { "type": "boolean" },
+            "validators": { "type": "array", "items": { "$ref": "#/$defs/validator" } }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["type", "id", "label", "nodes"],
+          "additionalProperties": false,
+          "properties": {
+            "type": { "const": "tree_view" },
+            "id": { "$ref": "#/$defs/id" },
+            "label": { "type": "string" },
+            "nodes": { "type": "array", "items": { "$ref": "#/$defs/treeNode" } },
+            "max_visible": { "type": "integer", "minimum": 1 },
+            "show_label": { "type": "boolean" },
+            "indent_guides": { "type": "boolean" },
+            "submit_target": { "type": "string" }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["type", "id", "label"],
+          "additionalProperties": false,
+          "properties": {
+            "type": { "const": "object_editor" },
+            "id": { "$ref": "#/$defs/id" },
+            "label": { "type": "string" },
+            "value": {},
+            "max_visible": { "type": "integer", "minimum": 1 },
+            "submit_target": { "type": "string" }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["type", "id", "label", "template"],
+          "additionalProperties": false,
+          "properties": {
+            "type": { "const": "snippet" },
+            "id": { "$ref": "#/$defs/id" },
+            "label": { "type": "string" },
+            "template": { "type": "string" },
+            "inputs": { "type": "array", "items": { "$ref": "#/$defs/widget" } },
+            "submit_target": { "type": "string" }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["type", "id", "label", "columns"],
+          "additionalProperties": false,
+          "properties": {
+            "type": { "const": "table" },
+            "id": { "$ref": "#/$defs/id" },
+            "label": { "type": "string" },
+            "style": { "type": "string", "enum": ["grid", "clean"] },
+            "row_numbers": { "type": "boolean" },
+            "initial_rows": { "type": "integer", "minimum": 0 },
+            "columns": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["header", "widget"],
+                "properties": {
+                  "header": { "type": "string" },
+                  "widget": { "$ref": "#/$defs/cellWidget" }
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["type", "id", "label", "fields"],
+          "additionalProperties": false,
+          "properties": {
+            "type": { "const": "repeater" },
+            "id": { "$ref": "#/$defs/id" },
+            "label": { "type": "string" },
+            "layout": { "type": "string", "enum": ["single_field", "stacked"] },
+            "show_label": { "type": "boolean" },
+            "show_progress": { "type": "boolean" },
+            "header_template": { "type": "string" },
+            "item_label_path": { "type": "string" },
+            "items": { "type": "array" },
+            "submit_target": { "type": "string" },
+            "fields": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["key", "label", "widget"],
+                "properties": {
+                  "key": { "type": "string" },
+                  "label": { "type": "string" },
+                  "widget": { "$ref": "#/$defs/cellWidget" }
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "rgb": {
+      "type": "array",
+      "prefixItems": [
+        { "type": "integer", "minimum": 0, "maximum": 255 },
+        { "type": "integer", "minimum": 0, "maximum": 255 },
+        { "type": "integer", "minimum": 0, "maximum": 255 }
+      ],
+      "items": false,
+      "minItems": 3,
+      "maxItems": 3
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_\\-:.]+$",
+      "minLength": 1
+    }
+  }
+}

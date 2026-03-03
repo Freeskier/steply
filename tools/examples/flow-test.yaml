@@ -1,0 +1,9 @@
+# yaml-language-server: $schema=../schema/steply-flow.schema.json
+
+steps:
+  - id: asd
+    title: asdasd   
+    widgets:
+      - type: color_input
+        rgb: [12,234,45] 
+        id: col

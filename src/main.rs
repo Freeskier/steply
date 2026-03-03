@@ -4,11 +4,7 @@ use std::io::Write;
 use std::panic::PanicHookInfo;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
-use steply_v2::runtime::Runtime;
-use steply_v2::state::app::AppState;
-use steply_v2::state::demo::{build_demo_flow, build_demo_tasks};
-use steply_v2::terminal::Terminal;
-use steply_v2::ui::renderer::RendererConfig;
+use steply_v2::app_entry::{StartOptions, run_with_options};
 
 fn main() {
     install_panic_logging();
@@ -23,30 +19,9 @@ fn main() {
 }
 
 fn run() -> std::io::Result<()> {
-    let flow = build_demo_flow();
-    let (task_specs, task_subscriptions) = build_demo_tasks();
-    let state = AppState::with_tasks(flow, task_specs, task_subscriptions);
-    let terminal = Terminal::new()?;
-    let mut runtime = Runtime::new(state, terminal)
-        .with_render_mode(steply_v2::terminal::RenderMode::AltScreen)
-        .with_renderer_config(RendererConfig {
-            chrome_enabled: true,
-        });
-    if render_json_enabled() {
-        return runtime.print_render_json();
-    }
-    runtime.run()
-}
-
-fn render_json_enabled() -> bool {
-    std::env::var("STEPLY_RENDER_JSON")
-        .map(|v| {
-            matches!(
-                v.trim().to_ascii_lowercase().as_str(),
-                "1" | "true" | "yes" | "on"
-            )
-        })
-        .unwrap_or(false)
+    let options = StartOptions::from_env()
+        .map_err(|err| std::io::Error::other(format!("cli error: {err}")))?;
+    run_with_options(options)
 }
 
 fn error_log_path() -> PathBuf {

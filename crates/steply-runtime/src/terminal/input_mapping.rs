@@ -80,13 +80,13 @@ fn map_key_code(code: CrosstermKeyCode, modifiers: CrosstermKeyModifiers) -> Key
 fn map_key_modifiers(modifiers: CrosstermKeyModifiers) -> KeyModifiers {
     let mut out = KeyModifiers::NONE;
     if modifiers.contains(CrosstermKeyModifiers::SHIFT) {
-        out.0 |= KeyModifiers::SHIFT.0;
+        out = out.union(KeyModifiers::SHIFT);
     }
     if modifiers.contains(CrosstermKeyModifiers::CONTROL) {
-        out.0 |= KeyModifiers::CONTROL.0;
+        out = out.union(KeyModifiers::CONTROL);
     }
     if modifiers.contains(CrosstermKeyModifiers::ALT) {
-        out.0 |= KeyModifiers::ALT.0;
+        out = out.union(KeyModifiers::ALT);
     }
     out
 }

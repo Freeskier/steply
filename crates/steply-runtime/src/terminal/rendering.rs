@@ -1,5 +1,5 @@
 use super::*;
-use crate::widgets::traits::StickyPosition;
+use steply_core::widgets::traits::StickyPosition;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct InlineLayoutPlan {

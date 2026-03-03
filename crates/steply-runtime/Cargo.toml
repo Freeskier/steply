@@ -1,0 +1,13 @@
+[package]
+name = "steply-runtime"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+steply-core = { path = "../steply-core" }
+serde_json = "1.0"
+regex = "1"
+crossterm = "0.29"

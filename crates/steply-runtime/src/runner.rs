@@ -1,28 +1,28 @@
-use crate::runtime::effect::Effect;
-use crate::runtime::event::{AppEvent, SystemEvent, WidgetAction};
-use crate::runtime::intent::Intent;
-use crate::runtime::key_bindings::KeyBindings;
-use crate::runtime::preview::{RenderJsonRequest, RenderJsonScope};
-use crate::runtime::reducer::Reducer;
-use crate::runtime::scheduler::Scheduler;
-use crate::state::app::AppState;
-use crate::task::{LogLine, TaskExecutor};
-use crate::terminal::{
-    KeyModifiers, PointerButton, PointerEvent, PointerKind, RenderMode, Terminal, TerminalEvent,
-};
-use crate::ui::frame_json::{draw_output_to_json, frame_to_json};
-use crate::ui::hit_test::FrameHitMap;
-use crate::ui::render_view::RenderView;
-use crate::ui::renderer::{Renderer, RendererConfig};
-use crate::ui::span::{Span, SpanLine};
-use crate::ui::style::{Color, Style};
-use crate::ui::text::{split_prefix_at_display_width, text_display_width};
-use crate::widgets::node::find_node;
-use crate::widgets::traits::RenderContext;
+use crate::task_executor::{LogLine, TaskExecutor};
 use std::io;
 use std::io::Write;
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
+use steply_core::preview::render::render_json as render_preview_json;
+use steply_core::preview::request::RenderJsonRequest;
+use steply_core::runtime::effect::Effect;
+use steply_core::runtime::event::{AppEvent, SystemEvent, WidgetAction};
+use steply_core::runtime::intent::Intent;
+use steply_core::runtime::key_bindings::KeyBindings;
+use steply_core::runtime::reducer::Reducer;
+use steply_core::runtime::scheduler::Scheduler;
+use steply_core::state::app::AppState;
+use steply_core::terminal::{
+    KeyModifiers, PointerButton, PointerEvent, PointerKind, TerminalEvent,
+};
+use steply_core::ui::hit_test::FrameHitMap;
+use steply_core::ui::render_view::RenderView;
+use steply_core::ui::renderer::{Renderer, RendererConfig};
+use steply_core::ui::span::{Span, SpanLine};
+use steply_core::ui::style::{Color, Style};
+use steply_core::ui::text::{split_prefix_at_display_width, text_display_width};
+
+use crate::terminal::{RenderMode, Terminal};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct SelectionPoint {
@@ -190,75 +190,13 @@ impl Runtime {
     }
 
     pub fn print_render_json_with_request(&mut self, request: RenderJsonRequest) -> io::Result<()> {
-        let doc = self.render_json_document(request)?;
+        let size = self.terminal.size();
+        let doc = render_preview_json(&mut self.state, &request, &mut self.renderer, size)
+            .map_err(io::Error::other)?;
         let json = serde_json::to_string_pretty(&doc)
             .map_err(|err| io::Error::other(format!("failed to encode render json: {err}")))?;
         println!("{json}");
         Ok(())
-    }
-
-    fn render_json_document(
-        &mut self,
-        request: RenderJsonRequest,
-    ) -> io::Result<serde_json::Value> {
-        if let Some(step_id) = request.active_step_id.as_deref() {
-            if !self.state.set_current_step_by_id_for_preview(step_id) {
-                return Err(io::Error::other(format!(
-                    "unknown active step id for render json: {step_id}"
-                )));
-            }
-        }
-        let size = request
-            .terminal_size
-            .unwrap_or_else(|| self.terminal.size());
-
-        match request.scope {
-            RenderJsonScope::Current | RenderJsonScope::Flow => {
-                let view = RenderView::from_state(&self.state);
-                let frame = self.renderer.render(&view, size);
-                Ok(frame_to_json(&frame, size))
-            }
-            RenderJsonScope::Step { step_id } => {
-                let Some(step_index) = self.state.step_index_by_id(step_id.as_str()) else {
-                    return Err(io::Error::other(format!(
-                        "unknown step id for render json: {step_id}"
-                    )));
-                };
-                if !self.state.set_current_step_for_preview(step_index) {
-                    return Err(io::Error::other(format!(
-                        "cannot activate step for render json: {step_id}"
-                    )));
-                }
-                let Some(view) = RenderView::from_state_step(&self.state, step_index) else {
-                    return Err(io::Error::other(format!(
-                        "cannot build render view for step: {step_id}"
-                    )));
-                };
-                let frame = self.renderer.render(&view, size);
-                Ok(frame_to_json(&frame, size))
-            }
-            RenderJsonScope::Widget { step_id, widget_id } => {
-                let Some(step_index) = self.state.step_index_by_id(step_id.as_str()) else {
-                    return Err(io::Error::other(format!(
-                        "unknown step id for widget render json: {step_id}"
-                    )));
-                };
-                let Some(step) = self.state.steps().get(step_index) else {
-                    return Err(io::Error::other(format!(
-                        "missing step for widget render json: {step_id}"
-                    )));
-                };
-                let Some(node) = find_node(step.nodes.as_slice(), widget_id.as_str()) else {
-                    return Err(io::Error::other(format!(
-                        "unknown widget id '{}' in step '{}'",
-                        widget_id, step_id
-                    )));
-                };
-                let ctx = RenderContext::empty(size).with_focus(Some(widget_id.clone()));
-                let output = node.draw(&ctx);
-                Ok(draw_output_to_json(&output, size))
-            }
-        }
     }
 
     fn process_scheduled_events(&mut self) -> io::Result<()> {

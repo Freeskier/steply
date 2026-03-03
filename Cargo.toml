@@ -1,15 +1,8 @@
-[package]
-name = "steply-v2"
-version = "0.1.0"
-edition = "2024"
-
-[dependencies]
-crossterm = "0.29"
-globset = "0.4.18"
-indexmap = { version = "2.13.0", features = ["serde"] }
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0.149"
-serde_yaml = "0.9"
-similar = { version = "2.7.0", features = ["inline"] }
-unicode-width = "0.2"
-regex = "1"
+[workspace]
+members = [
+  "crates/steply-core",
+  "crates/steply-cli",
+  "crates/steply-runtime",
+  "crates/steply-wasm",
+]
+resolver = "2"

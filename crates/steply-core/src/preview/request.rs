@@ -1,6 +1,8 @@
+use serde::{Deserialize, Serialize};
+
 use crate::terminal::TerminalSize;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum RenderJsonScope {
     Current,
     Flow,
@@ -8,7 +10,7 @@ pub enum RenderJsonScope {
     Widget { step_id: String, widget_id: String },
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RenderJsonRequest {
     pub scope: RenderJsonScope,
     pub active_step_id: Option<String>,

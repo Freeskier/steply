@@ -1,7 +1,8 @@
-use crate::task::execution::{TaskCompletion, TaskInvocation, execute_invocation};
-use crate::task::spec::TaskId;
+use crate::task_execution::execute_invocation;
 use std::sync::mpsc::{self, Receiver, Sender, SyncSender, TrySendError};
 use std::sync::{Arc, Mutex};
+use steply_core::task::execution::{TaskCompletion, TaskInvocation};
+use steply_core::task::spec::TaskId;
 
 pub struct LogLine {
     pub task_id: TaskId,

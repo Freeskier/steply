@@ -4,7 +4,7 @@ use std::io::Write;
 use std::panic::PanicHookInfo;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
-use steply_v2::app_entry::{StartOptions, run_with_options};
+use steply_runtime::{StartOptions, run_with_options};
 
 fn main() {
     install_panic_logging();

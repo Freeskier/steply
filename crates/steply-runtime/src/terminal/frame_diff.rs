@@ -1,7 +1,7 @@
 use super::InlineState;
-use crate::ui::span::{Span, SpanLine, WrapMode};
-use crate::ui::style::{Color, Strike};
-use crate::ui::text::char_display_width;
+use steply_core::ui::span::{Span, SpanLine, WrapMode};
+use steply_core::ui::style::{Color, Strike};
+use steply_core::ui::text::char_display_width;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) struct DirtyRange {

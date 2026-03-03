@@ -2,12 +2,13 @@ use std::env;
 use std::io;
 use std::path::PathBuf;
 
-use crate::config::load_from_yaml_file;
-use crate::runtime::{RenderJsonRequest, RenderJsonScope, Runtime};
-use crate::state::app::AppState;
-use crate::state::demo::{build_demo_flow, build_demo_tasks};
-use crate::terminal::{RenderMode, Terminal, TerminalSize};
-use crate::ui::renderer::RendererConfig;
+use crate::terminal::{RenderMode, Terminal};
+use crate::{RenderJsonRequest, RenderJsonScope, Runtime};
+use steply_core::config::load_from_yaml_file;
+use steply_core::state::app::AppState;
+use steply_core::state::demo::{build_demo_flow, build_demo_tasks};
+use steply_core::terminal::TerminalSize;
+use steply_core::ui::renderer::RendererConfig;
 
 #[derive(Debug, Clone, Default)]
 pub struct StartOptions {

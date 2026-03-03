@@ -23,8 +23,12 @@ pub struct LoadedConfig {
 pub fn load_from_yaml_file(path: &Path) -> Result<LoadedConfig, String> {
     let raw = fs::read_to_string(path)
         .map_err(|err| format!("failed to read yaml config {}: {err}", path.display()))?;
-    let doc: ConfigDoc = serde_yaml::from_str(raw.as_str())
-        .map_err(|err| format!("failed to parse yaml config {}: {err}", path.display()))?;
+    load_from_yaml_str(raw.as_str())
+}
+
+pub fn load_from_yaml_str(raw: &str) -> Result<LoadedConfig, String> {
+    let doc: ConfigDoc =
+        serde_yaml::from_str(raw).map_err(|err| format!("failed to parse yaml config: {err}"))?;
     compile(doc)
 }
 

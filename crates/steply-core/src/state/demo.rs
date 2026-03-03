@@ -3,7 +3,6 @@ use crate::state::flow::Flow;
 use crate::state::step::{Step, StepNavigation};
 use crate::task::{TaskAssign, TaskParse, TaskSpec, TaskSubscription, TaskTrigger};
 use crate::widgets::components::calendar::{Calendar, CalendarMode};
-use crate::widgets::components::command_runner::{CommandRunner, OnError, RunMode};
 use crate::widgets::components::file_browser::FileBrowserInput;
 use crate::widgets::components::object_editor::{InsertType, ObjectEditor};
 use crate::widgets::components::repeater::{Repeater, RepeaterLayout};
@@ -585,66 +584,6 @@ fn step_task_log() -> Step {
     )
 }
 
-fn step_command_runner() -> Step {
-    Step::new(
-        "step_command_runner",
-        "Command runner",
-        vec![
-            Node::Output(Box::new(TextOutput::new(
-                "cmd_intro",
-                "Press Enter on runner to start command. Logs stream below.",
-            ))),
-            Node::Component(Box::new(
-                CommandRunner::new("cmd_run", "Run diagnostics")
-                    .command(
-                        "Prepare",
-                        "bash",
-                        [
-                            "-c",
-                            r#"
-echo '[prep] Preparing environment...'
-sleep 1
-echo '[prep] Ready'
-"#,
-                        ],
-                    )
-                    .command(
-                        "Diagnostics",
-                        "bash",
-                        [
-                            "-c",
-                            r#"
-echo '[diag] Starting diagnostics (~10s)...'
-for i in $(seq 1 3); do
-  echo "[diag] step $i/3"
-  sleep 0.6
-done
-echo '[diag] Fatal check failed'
-exit 1
-"#,
-                        ],
-                    )
-                    .command(
-                        "Finalize",
-                        "bash",
-                        [
-                            "-c",
-                            r#"
-echo '[finalize] This should run only if diagnostics pass'
-sleep 1
-echo '[finalize] Done'
-"#,
-                        ],
-                    )
-                    .with_run_mode(RunMode::Auto)
-                    .with_advance_on_success(true)
-                    .with_on_error(OnError::Continue)
-                    .with_visible_lines(8),
-            )),
-        ],
-    )
-}
-
 fn step_back_allowed() -> Step {
     Step::new(
         "step_back_allowed",
@@ -763,7 +702,6 @@ pub fn build_demo_flow() -> Flow {
         step_structured_inputs(),
         step_thinking_output(),
         step_repeater(),
-        //step_command_runner(),
         step_tree_view(),
         step_calendar(),
         step_text_inputs(),

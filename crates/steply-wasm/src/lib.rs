@@ -58,9 +58,7 @@ impl TryFrom<WasmPreviewRequest> for RenderJsonRequest {
 #[cfg(target_arch = "wasm32")]
 mod wasm_exports {
     use super::*;
-    use steply_core::preview::render::render_json;
-    use steply_core::state::app::AppState;
-    use steply_core::ui::renderer::Renderer;
+    use steply_core::preview::{PreviewService, PreviewServiceOptions};
     use wasm_bindgen::prelude::*;
 
     #[wasm_bindgen]
@@ -69,21 +67,12 @@ mod wasm_exports {
             serde_json::from_str(request_json).map_err(|e| JsValue::from_str(&e.to_string()))?;
         let request: RenderJsonRequest = request.try_into().map_err(|e| JsValue::from_str(&e))?;
 
-        let loaded = steply_core::config::load_from_yaml_str(yaml)
+        let mut service =
+            PreviewService::from_yaml_str_with_options(yaml, PreviewServiceOptions::default())
+                .map_err(|e| JsValue::from_str(e.as_str()))?;
+        let doc = service
+            .render(&request)
             .map_err(|e| JsValue::from_str(e.as_str()))?;
-        let mut state =
-            AppState::with_tasks(loaded.flow, loaded.task_specs, loaded.task_subscriptions);
-        let mut renderer = Renderer::default();
-        let doc = render_json(
-            &mut state,
-            &request,
-            &mut renderer,
-            steply_core::terminal::TerminalSize {
-                width: 100,
-                height: 40,
-            },
-        )
-        .map_err(|e| JsValue::from_str(e.as_str()))?;
         serde_json::to_string(&doc).map_err(|e| JsValue::from_str(&e.to_string()))
     }
 

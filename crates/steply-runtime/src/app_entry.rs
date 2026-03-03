@@ -5,6 +5,7 @@ use std::path::PathBuf;
 use crate::terminal::{RenderMode, Terminal};
 use crate::{RenderJsonRequest, RenderJsonScope, Runtime};
 use steply_core::config::load_from_yaml_file;
+use steply_core::host::{HostContext, set_host_context};
 use steply_core::state::app::AppState;
 use steply_core::state::demo::{build_demo_flow, build_demo_tasks};
 use steply_core::terminal::TerminalSize;
@@ -98,6 +99,11 @@ impl StartOptions {
 }
 
 pub fn run_with_options(options: StartOptions) -> io::Result<()> {
+    let _ = set_host_context(HostContext {
+        cwd: std::env::current_dir().unwrap_or_else(|_| PathBuf::from("/")),
+        home_dir: std::env::var_os("HOME").map(PathBuf::from),
+    });
+
     let (flow, task_specs, task_subscriptions) = if let Some(config_path) = options.config_path {
         let loaded = load_from_yaml_file(config_path.as_path())
             .map_err(|err| io::Error::other(format!("yaml config error: {err}")))?;

@@ -77,7 +77,7 @@ fn normalize_path(path: &Path) -> PathBuf {
 }
 
 fn home_dir() -> Option<PathBuf> {
-    std::env::var_os("HOME").map(PathBuf::from)
+    crate::host::home_dir()
 }
 
 fn split_dir_query(path: &str) -> (&str, String) {

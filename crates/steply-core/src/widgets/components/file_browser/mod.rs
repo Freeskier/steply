@@ -176,7 +176,7 @@ impl FileBrowserComponent {
     pub fn new(id: impl Into<String>, label: impl Into<String>) -> Self {
         let id = id.into();
         let label = label.into();
-        let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("/"));
+        let cwd = crate::host::cwd();
 
         let text = TextInput::new(format!("{id}__text"), label.clone())
             .with_placeholder("Type a path or pattern (Tab for completion)");

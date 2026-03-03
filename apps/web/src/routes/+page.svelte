@@ -1,4 +1,6 @@
 <script lang="ts">
+    import { onMount } from "svelte";
+
     let { data } = $props();
 
     type RenderColor = string | { rgb: [number, number, number] } | null;
@@ -49,6 +51,7 @@
     let sessionId = $state<string | null>(null);
     let interactive = $state(false);
     let terminalGridEl = $state<HTMLDivElement | null>(null);
+    let yamlEditorHostEl = $state<HTMLDivElement | null>(null);
     let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 
     $effect(() => {
@@ -157,6 +160,47 @@
             void renderNow();
         }, 250);
     }
+
+    onMount(() => {
+        let editorView: { destroy: () => void } | null = null;
+        let disposed = false;
+
+        const boot = async () => {
+            if (!yamlEditorHostEl) return;
+            const [{ EditorState }, { EditorView }, { yaml }, { oneDark }] =
+                await Promise.all([
+                    import("@codemirror/state"),
+                    import("@codemirror/view"),
+                    import("@codemirror/lang-yaml"),
+                    import("@codemirror/theme-one-dark"),
+                ]);
+            if (disposed || !yamlEditorHostEl) return;
+
+            editorView = new EditorView({
+                state: EditorState.create({
+                    doc: yamlText,
+                    extensions: [
+                        oneDark,
+                        yaml(),
+                        EditorView.lineWrapping,
+                        EditorView.updateListener.of((update) => {
+                            if (!update.docChanged) return;
+                            yamlText = update.state.doc.toString();
+                            scheduleRender();
+                        }),
+                    ],
+                }),
+                parent: yamlEditorHostEl,
+            });
+        };
+
+        void boot();
+
+        return () => {
+            disposed = true;
+            editorView?.destroy();
+        };
+    });
 
     async function startInteractiveSession() {
         isRendering = true;
@@ -289,11 +333,7 @@
                     {interactive ? "Stop interactive" : "Start interactive"}
                 </button>
             </div>
-            <textarea
-                bind:value={yamlText}
-                oninput={scheduleRender}
-                spellcheck="false"
-            ></textarea>
+            <div class="yaml-editor" bind:this={yamlEditorHostEl}></div>
         </div>
 
         <div class="terminal-shell">
@@ -446,20 +486,39 @@
         cursor: wait;
     }
 
-    textarea {
+    .yaml-editor {
         width: 100%;
         min-height: calc(740px - 38px);
+        height: calc(740px - 38px);
         border: 0;
         margin: 0;
-        resize: vertical;
         background: #040912;
         color: #dce9ff;
-        padding: 14px;
         box-sizing: border-box;
-        font-family: inherit;
+        overflow: hidden;
+    }
+
+    :global(.yaml-editor .cm-editor) {
+        height: 100%;
+        background: #040912;
+        color: #dce9ff;
+        font-family: "JetBrains Mono", "Fira Code", "Cascadia Mono", monospace;
         font-size: 13px;
         line-height: 1.45;
-        outline: none;
+    }
+
+    :global(.yaml-editor .cm-scroller) {
+        padding: 14px;
+    }
+
+    :global(.yaml-editor .cm-activeLine) {
+        background: rgba(78, 118, 190, 0.12);
+    }
+
+    :global(.yaml-editor .cm-gutters) {
+        background: #040912;
+        border-right: 1px solid #1a2e4d;
+        color: #5f7aa3;
     }
 
     .terminal-header {
@@ -574,7 +633,7 @@
             min-height: 560px;
         }
 
-        textarea,
+        .yaml-editor,
         .terminal-body {
             min-height: calc(560px - 38px);
         }

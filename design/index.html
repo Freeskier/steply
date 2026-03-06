@@ -1,0 +1,1261 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Steply - Flow Builder + Terminal Preview</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Sora:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg-0: #0d0f14;
+      --bg-1: #11141b;
+      --bg-2: #171b24;
+      --panel-0: #131722;
+      --panel-1: #171c27;
+      --panel-2: #1c2230;
+      --line-0: rgba(240, 243, 255, 0.08);
+      --line-1: rgba(240, 243, 255, 0.12);
+      --line-2: rgba(240, 243, 255, 0.2);
+      --text-0: #edf1fa;
+      --text-1: #c4ccda;
+      --text-2: #818a9b;
+      --accent: #f1bc2d;
+      --accent-dim: rgba(241, 188, 45, 0.17);
+      --ok: #57bf84;
+      --radius-sm: 2px;
+      --radius-md: 4px;
+      --shadow-soft: 0 10px 30px rgba(0, 0, 0, 0.26);
+      --space-1: 8px;
+      --space-2: 12px;
+      --space-3: 16px;
+      --space-4: 24px;
+      --space-5: 32px;
+      --space-6: 48px;
+      --space-7: 72px;
+      --mono: "IBM Plex Mono", "SFMono-Regular", Menlo, Consolas, monospace;
+      --sans: "Sora", "Avenir Next", "Segoe UI", sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      margin: 0;
+      padding: 0;
+      background: var(--bg-0);
+      color: var(--text-0);
+      font-family: var(--sans);
+    }
+
+    body {
+      background-image: radial-gradient(circle at 20% 14%, rgba(241, 188, 45, 0.08), transparent 40%), radial-gradient(circle at 70% 40%, rgba(72, 92, 138, 0.12), transparent 42%);
+      min-height: 100vh;
+    }
+
+    .page {
+      position: relative;
+      isolation: isolate;
+      overflow: clip;
+    }
+
+    .page::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      background-image: linear-gradient(rgba(233, 238, 252, 0.036) 1px, transparent 1px), linear-gradient(90deg, rgba(233, 238, 252, 0.036) 1px, transparent 1px);
+      background-size: 44px 44px;
+      mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.75), transparent 85%);
+      z-index: -2;
+    }
+
+    .page::after {
+      content: "";
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      opacity: 0.08;
+      background-image: radial-gradient(rgba(255, 255, 255, 0.42) 0.4px, transparent 0.6px);
+      background-size: 3px 3px;
+      z-index: -1;
+    }
+
+    .container {
+      width: min(1240px, 92vw);
+      margin: 0 auto;
+    }
+
+    .topbar-wrap {
+      position: sticky;
+      top: 0;
+      z-index: 40;
+      backdrop-filter: blur(6px);
+      background: rgba(13, 16, 24, 0.78);
+      border-bottom: 1px solid var(--line-0);
+    }
+
+    .topbar {
+      height: 72px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: var(--space-3);
+    }
+
+    .brand {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 700;
+      color: var(--text-0);
+      text-decoration: none;
+      letter-spacing: 0.2px;
+      font-size: 16px;
+    }
+
+    .brand-mark {
+      width: 20px;
+      height: 20px;
+      display: grid;
+      place-items: center;
+      border-radius: var(--radius-sm);
+      background: var(--accent);
+      color: #17130a;
+      font-family: var(--mono);
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .nav {
+      margin-left: auto;
+      display: flex;
+      gap: 30px;
+      align-items: center;
+    }
+
+    .nav a {
+      color: var(--text-2);
+      text-decoration: none;
+      font-weight: 500;
+      font-size: 14px;
+    }
+
+    .nav a:hover {
+      color: var(--text-1);
+    }
+
+    .btn {
+      border: 1px solid transparent;
+      padding: 12px 18px;
+      text-decoration: none;
+      font-weight: 600;
+      font-size: 14px;
+      line-height: 1;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      transition: background-color 0.16s ease, border-color 0.16s ease, color 0.16s ease;
+      border-radius: var(--radius-sm);
+      white-space: nowrap;
+    }
+
+    .btn-primary {
+      background: var(--accent);
+      color: #17140d;
+      border-color: #d8a318;
+    }
+
+    .btn-primary:hover {
+      background: #f5c53f;
+    }
+
+    .btn-secondary {
+      background: rgba(23, 28, 39, 0.62);
+      color: var(--text-1);
+      border-color: var(--line-1);
+    }
+
+    .btn-secondary:hover {
+      border-color: var(--line-2);
+      color: var(--text-0);
+    }
+
+    .hero {
+      padding: 78px 0 56px;
+    }
+
+    .kicker {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-family: var(--mono);
+      font-size: 12px;
+      letter-spacing: 1.4px;
+      text-transform: uppercase;
+      color: #a0a9bc;
+      margin-bottom: 18px;
+    }
+
+    .kicker::before {
+      content: "";
+      width: 16px;
+      height: 1px;
+      background: var(--accent);
+    }
+
+    h1 {
+      margin: 0;
+      max-width: 980px;
+      font-size: clamp(44px, 8vw, 86px);
+      line-height: 0.96;
+      letter-spacing: -1.7px;
+      font-weight: 800;
+    }
+
+    .muted-line {
+      color: #8f97a8;
+      display: block;
+    }
+
+    .hero p {
+      margin: 28px 0 0;
+      max-width: 750px;
+      color: var(--text-1);
+      font-size: clamp(17px, 1.7vw, 23px);
+      line-height: 1.55;
+      letter-spacing: -0.1px;
+    }
+
+    .hero-actions {
+      display: flex;
+      gap: var(--space-2);
+      margin-top: 34px;
+      flex-wrap: wrap;
+    }
+
+    .meta-strip {
+      margin-top: 36px;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: var(--space-3);
+      color: #727b8e;
+      font-family: var(--mono);
+      font-size: 13px;
+    }
+
+    .dot {
+      width: 4px;
+      height: 4px;
+      border-radius: 999px;
+      background: #626b7d;
+    }
+
+    .showcase {
+      padding: 30px 0 48px;
+    }
+
+    .panel-frame {
+      border: 1px solid var(--line-1);
+      background: linear-gradient(180deg, rgba(30, 36, 49, 0.7), rgba(20, 24, 33, 0.72));
+      box-shadow: var(--shadow-soft);
+    }
+
+    .frame-top {
+      height: 42px;
+      border-bottom: 1px solid var(--line-0);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 16px;
+      font-family: var(--mono);
+      font-size: 12px;
+      color: #828ca0;
+      background: rgba(28, 33, 45, 0.68);
+      letter-spacing: 0.3px;
+    }
+
+    .window-dots {
+      display: inline-flex;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .window-dots span {
+      width: 9px;
+      height: 9px;
+      border-radius: 999px;
+      background: rgba(117, 126, 143, 0.22);
+      border: 1px solid rgba(127, 138, 158, 0.2);
+    }
+
+    .chip {
+      border: 1px solid rgba(241, 188, 45, 0.38);
+      color: #f3c857;
+      background: rgba(241, 188, 45, 0.08);
+      padding: 4px 8px;
+      font-family: var(--mono);
+      font-size: 11px;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+      border-radius: var(--radius-sm);
+    }
+
+    .split {
+      display: grid;
+      grid-template-columns: 2.2fr 1fr;
+      min-height: 520px;
+    }
+
+    .builder {
+      border-right: 1px solid var(--line-1);
+      display: grid;
+      grid-template-columns: 200px 1fr;
+      background: rgba(17, 21, 29, 0.78);
+    }
+
+    .palette {
+      border-right: 1px solid var(--line-0);
+      padding: 14px;
+      background: linear-gradient(180deg, rgba(27, 32, 43, 0.76), rgba(22, 27, 37, 0.76));
+    }
+
+    .search {
+      width: 100%;
+      height: 34px;
+      background: #1e2330;
+      color: #8f98aa;
+      border: 1px solid var(--line-1);
+      border-radius: var(--radius-sm);
+      padding: 0 10px;
+      font-family: var(--sans);
+      font-size: 13px;
+      display: flex;
+      align-items: center;
+    }
+
+    .group {
+      margin-top: 18px;
+    }
+
+    .group-title {
+      font-family: var(--mono);
+      color: #697286;
+      font-size: 11px;
+      letter-spacing: 1.3px;
+      text-transform: uppercase;
+      margin-bottom: 8px;
+    }
+
+    .widget {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 8px;
+      border: 1px solid transparent;
+      color: #9098aa;
+      font-size: 14px;
+      border-radius: var(--radius-sm);
+      margin-bottom: 3px;
+      gap: 8px;
+    }
+
+    .widget strong {
+      font-weight: 500;
+      color: inherit;
+    }
+
+    .widget code {
+      font-family: var(--mono);
+      font-size: 11px;
+      color: #676f82;
+    }
+
+    .widget.active {
+      border-color: rgba(241, 188, 45, 0.4);
+      background: rgba(241, 188, 45, 0.07);
+      color: #e9bd49;
+    }
+
+    .canvas-wrap {
+      display: grid;
+      grid-template-rows: 1fr 130px;
+      min-width: 0;
+    }
+
+    .canvas {
+      padding: 18px;
+      background: linear-gradient(180deg, rgba(19, 23, 32, 0.82), rgba(17, 20, 29, 0.86));
+      border-bottom: 1px solid var(--line-0);
+    }
+
+    .canvas-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      color: #9da6b8;
+      font-family: var(--mono);
+      font-size: 12px;
+      margin-bottom: 14px;
+    }
+
+    .steps {
+      display: grid;
+      gap: 10px;
+    }
+
+    .step-card {
+      border: 1px solid var(--line-0);
+      background: linear-gradient(90deg, rgba(28, 34, 47, 0.44), rgba(24, 29, 40, 0.18));
+      border-radius: var(--radius-sm);
+      padding: 12px;
+      display: grid;
+      gap: 8px;
+    }
+
+    .step-card .top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .step-id {
+      font-family: var(--mono);
+      font-size: 12px;
+      color: #73809a;
+    }
+
+    .step-name {
+      color: #ccd3e2;
+      font-size: 18px;
+      font-weight: 500;
+      margin-left: 4px;
+    }
+
+    .step-type {
+      font-family: var(--mono);
+      font-size: 11px;
+      text-transform: lowercase;
+      color: #808ca2;
+      border: 1px solid var(--line-0);
+      padding: 3px 7px;
+      border-radius: var(--radius-sm);
+      background: #252b39;
+    }
+
+    .step-card .meta-line {
+      font-family: var(--mono);
+      font-size: 12px;
+      color: #7d889f;
+    }
+
+    .step-card.active {
+      border-color: rgba(241, 188, 45, 0.55);
+      background: linear-gradient(90deg, rgba(42, 37, 25, 0.46), rgba(33, 30, 23, 0.22));
+    }
+
+    .step-card.active .step-name {
+      color: #f0f3fb;
+    }
+
+    .step-card.active .step-type {
+      border-color: rgba(241, 188, 45, 0.4);
+      color: #ecbf4c;
+      background: rgba(241, 188, 45, 0.14);
+    }
+
+    .properties {
+      padding: 12px 14px;
+      background: rgba(26, 31, 42, 0.72);
+    }
+
+    .properties-title {
+      font-family: var(--mono);
+      color: #7f899d;
+      font-size: 11px;
+      letter-spacing: 1.2px;
+      text-transform: uppercase;
+      margin-bottom: 10px;
+    }
+
+    .properties-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+    }
+
+    .mini-field {
+      height: 28px;
+      background: #262c39;
+      border: 1px solid var(--line-0);
+      color: #99a3b9;
+      padding: 0 9px;
+      font-family: var(--mono);
+      font-size: 12px;
+      border-radius: var(--radius-sm);
+      display: flex;
+      align-items: center;
+    }
+
+    .mini-field.accent {
+      border-color: rgba(241, 188, 45, 0.45);
+      color: #ebc35e;
+      background: rgba(241, 188, 45, 0.08);
+    }
+
+    .terminal {
+      background: linear-gradient(180deg, #0b0e14, #090c11);
+      padding: 14px;
+      min-width: 0;
+      font-family: var(--mono);
+      border-left: 1px solid var(--line-0);
+      color: #b6bfce;
+      font-size: 14px;
+      line-height: 1.5;
+    }
+
+    .terminal .head {
+      font-size: 12px;
+      color: #697487;
+      margin-bottom: 10px;
+    }
+
+    .term-line {
+      white-space: pre;
+      color: #b9c2d3;
+    }
+
+    .term-line.dim {
+      color: #616c80;
+    }
+
+    .term-line.accent {
+      color: #e9bf4f;
+    }
+
+    .term-line.ok {
+      color: var(--ok);
+    }
+
+    .term-line span {
+      color: #e7edf8;
+    }
+
+    .section {
+      padding: 78px 0;
+    }
+
+    .section-head {
+      display: flex;
+      align-items: end;
+      justify-content: space-between;
+      gap: var(--space-4);
+      margin-bottom: 24px;
+    }
+
+    .section h2 {
+      margin: 0;
+      font-size: clamp(28px, 4.2vw, 52px);
+      line-height: 1.02;
+      letter-spacing: -1px;
+      font-weight: 700;
+    }
+
+    .section p {
+      margin: 0;
+      max-width: 680px;
+      color: var(--text-1);
+      line-height: 1.58;
+      font-size: 17px;
+    }
+
+    .pillars {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 14px;
+      margin-top: 26px;
+    }
+
+    .pillar {
+      border: 1px solid var(--line-1);
+      background: rgba(25, 30, 41, 0.76);
+      padding: 20px;
+      border-radius: var(--radius-md);
+      min-height: 190px;
+    }
+
+    .pillar h3 {
+      margin: 12px 0 8px;
+      font-size: 22px;
+      letter-spacing: -0.4px;
+    }
+
+    .pillar p {
+      color: #aeb6c5;
+      font-size: 15px;
+      line-height: 1.56;
+    }
+
+    .icon-rail {
+      width: 30px;
+      height: 30px;
+      border: 1px solid var(--line-1);
+      background: #1d2331;
+      position: relative;
+    }
+
+    .icon-rail::before,
+    .icon-rail::after {
+      content: "";
+      position: absolute;
+      background: #69758b;
+    }
+
+    .icon-rail::before {
+      width: 1px;
+      height: 16px;
+      top: 6px;
+      left: 9px;
+    }
+
+    .icon-rail::after {
+      width: 12px;
+      height: 1px;
+      top: 12px;
+      left: 9px;
+    }
+
+    .process {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 10px;
+      margin-top: 26px;
+    }
+
+    .process-step {
+      border: 1px solid var(--line-1);
+      background: rgba(22, 27, 37, 0.78);
+      padding: 16px;
+      border-radius: var(--radius-sm);
+      min-height: 164px;
+    }
+
+    .process-step code {
+      font-family: var(--mono);
+      font-size: 12px;
+      color: #7f8aa0;
+    }
+
+    .process-step h4 {
+      margin: 12px 0 8px;
+      font-size: 20px;
+      letter-spacing: -0.3px;
+    }
+
+    .process-step p {
+      font-size: 14px;
+      color: #a6afc0;
+      line-height: 1.52;
+    }
+
+    .creator-artboard {
+      border: 1px solid var(--line-1);
+      background: rgba(19, 24, 33, 0.82);
+      box-shadow: var(--shadow-soft);
+      padding: 18px;
+    }
+
+    .creator-artboard .board-title {
+      margin-bottom: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      font-family: var(--mono);
+      color: #7f89a0;
+      font-size: 12px;
+    }
+
+    .creator-artboard .split {
+      min-height: 450px;
+    }
+
+    .components-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 14px;
+      margin-top: 24px;
+    }
+
+    .component-item {
+      border: 1px solid var(--line-1);
+      background: rgba(23, 28, 39, 0.75);
+      padding: 16px;
+      border-radius: var(--radius-sm);
+    }
+
+    .component-item h4 {
+      margin: 0 0 12px;
+      font-size: 15px;
+      font-family: var(--mono);
+      color: #8791a5;
+      text-transform: uppercase;
+      letter-spacing: 0.7px;
+    }
+
+    .component-demo {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .token-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 18px;
+      font-family: var(--mono);
+      font-size: 13px;
+      color: #aeb7c9;
+      background: rgba(23, 28, 39, 0.72);
+      border: 1px solid var(--line-1);
+    }
+
+    .token-table td,
+    .token-table th {
+      border-bottom: 1px solid var(--line-0);
+      border-right: 1px solid var(--line-0);
+      padding: 10px 12px;
+      text-align: left;
+    }
+
+    .token-table th {
+      color: #eef2fb;
+      font-weight: 500;
+      font-size: 12px;
+      letter-spacing: 0.6px;
+      text-transform: uppercase;
+      background: rgba(31, 37, 50, 0.66);
+    }
+
+    .token-table tr:last-child td {
+      border-bottom: 0;
+    }
+
+    .cta-final {
+      border: 1px solid var(--line-1);
+      background: linear-gradient(180deg, rgba(24, 30, 42, 0.9), rgba(18, 23, 33, 0.9));
+      padding: 30px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: var(--space-4);
+      border-radius: var(--radius-md);
+    }
+
+    .cta-final h3 {
+      margin: 0;
+      font-size: clamp(24px, 3vw, 38px);
+      letter-spacing: -0.7px;
+    }
+
+    .cta-final p {
+      margin-top: 8px;
+      color: #aeb7c8;
+      font-size: 16px;
+      line-height: 1.5;
+      max-width: 640px;
+    }
+
+    .footer {
+      padding: 38px 0 56px;
+      color: #6f788c;
+      border-top: 1px solid var(--line-0);
+      margin-top: 80px;
+      font-family: var(--mono);
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    @media (max-width: 1140px) {
+      .split {
+        grid-template-columns: 1fr;
+      }
+
+      .builder {
+        border-right: 0;
+        border-bottom: 1px solid var(--line-0);
+      }
+
+      .terminal {
+        border-left: 0;
+      }
+
+      .pillars,
+      .process,
+      .components-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+    }
+
+    @media (max-width: 820px) {
+      .nav {
+        display: none;
+      }
+
+      .topbar {
+        height: 66px;
+      }
+
+      .topbar .btn-primary {
+        padding: 10px 12px;
+        font-size: 12px;
+      }
+
+      .section {
+        padding: 54px 0;
+      }
+
+      .hero {
+        padding-top: 52px;
+      }
+
+      .builder {
+        grid-template-columns: 1fr;
+      }
+
+      .palette {
+        border-right: 0;
+        border-bottom: 1px solid var(--line-0);
+      }
+
+      .canvas-wrap {
+        grid-template-rows: 1fr auto;
+      }
+
+      .properties-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .section-head {
+        display: block;
+      }
+
+      .section-head p {
+        margin-top: 14px;
+      }
+    }
+
+    @media (max-width: 620px) {
+      .hero-actions .btn {
+        width: 100%;
+        justify-content: center;
+      }
+
+      .pillars,
+      .process,
+      .components-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .cta-final {
+        flex-direction: column;
+        align-items: flex-start;
+      }
+
+      .token-table {
+        display: block;
+        overflow-x: auto;
+      }
+
+      .term-line {
+        font-size: 13px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <div class="topbar-wrap">
+      <header class="container topbar">
+        <a href="#" class="brand" aria-label="Steply home">
+          <span class="brand-mark">S</span>
+          <span>Steply</span>
+        </a>
+
+        <nav class="nav" aria-label="Main navigation">
+          <a href="#creator">Creator</a>
+          <a href="#tokens">Docs</a>
+          <a href="#how">How it works</a>
+        </nav>
+
+        <a href="#creator" class="btn btn-primary">Open Creator ↗</a>
+      </header>
+    </div>
+
+    <main>
+      <section class="hero container" id="home">
+        <div class="kicker">YAML + TUI | schema-aware flow builder</div>
+        <h1>
+          Design flows visually.
+          <span class="muted-line">Preview in terminal.</span>
+        </h1>
+        <p>
+          Steply gives engineering teams one authoring surface for terminal experiences. Compose widget flow in YAML,
+          apply runtime conditions, and validate render behavior before runtime with strict preview parity.
+        </p>
+        <div class="hero-actions">
+          <a href="#creator" class="btn btn-primary">Open Creator ↗</a>
+          <a href="#how" class="btn btn-secondary">How it works</a>
+        </div>
+        <div class="meta-strip">
+          <span>v0.9.2</span>
+          <span class="dot"></span>
+          <span>schema-first</span>
+          <span class="dot"></span>
+          <span>composable runtime</span>
+          <span class="dot"></span>
+          <span>deterministic preview</span>
+        </div>
+      </section>
+
+      <section class="showcase container" id="creator">
+        <div class="panel-frame">
+          <div class="frame-top">
+            <span class="window-dots" aria-hidden="true"><span></span><span></span><span></span></span>
+            <span>steply creator</span>
+            <span class="chip">preview</span>
+          </div>
+
+          <div class="split">
+            <div class="builder">
+              <aside class="palette" aria-label="Widget palette">
+                <div class="search" aria-label="search widgets">Search widgets...</div>
+
+                <div class="group">
+                  <div class="group-title">Inputs</div>
+                  <div class="widget active"><strong>Text Input</strong> <code>input</code></div>
+                  <div class="widget"><strong>Select</strong> <code>select</code></div>
+                  <div class="widget"><strong>Confirm</strong> <code>confirm</code></div>
+                </div>
+
+                <div class="group">
+                  <div class="group-title">Components</div>
+                  <div class="widget"><strong>Table</strong> <code>table</code></div>
+                  <div class="widget"><strong>Tree</strong> <code>tree</code></div>
+                  <div class="widget"><strong>File Browser</strong> <code>file</code></div>
+                </div>
+
+                <div class="group">
+                  <div class="group-title">Outputs</div>
+                  <div class="widget"><strong>Output</strong> <code>output</code></div>
+                </div>
+              </aside>
+
+              <div class="canvas-wrap">
+                <div class="canvas">
+                  <div class="canvas-head">
+                    <span>FLOW / init-project.yaml</span>
+                    <span><span style="color: var(--accent);">●</span> 4 steps</span>
+                  </div>
+
+                  <div class="steps">
+                    <article class="step-card">
+                      <div class="top">
+                        <div>
+                          <span class="step-id">01</span>
+                          <span class="step-name">Project Name</span>
+                        </div>
+                        <span class="step-type">input</span>
+                      </div>
+                    </article>
+
+                    <article class="step-card active">
+                      <div class="top">
+                        <div>
+                          <span class="step-id">02</span>
+                          <span class="step-name">Select Framework</span>
+                        </div>
+                        <span class="step-type">select</span>
+                      </div>
+                      <div class="meta-line">id: framework</div>
+                    </article>
+
+                    <article class="step-card">
+                      <div class="top">
+                        <div>
+                          <span class="step-id">03</span>
+                          <span class="step-name">Features</span>
+                        </div>
+                        <span class="step-type">table</span>
+                      </div>
+                    </article>
+
+                    <article class="step-card">
+                      <div class="top">
+                        <div>
+                          <span class="step-id">04</span>
+                          <span class="step-name">Confirm Setup</span>
+                        </div>
+                        <span class="step-type">confirm</span>
+                      </div>
+                    </article>
+                  </div>
+                </div>
+
+                <div class="properties">
+                  <div class="properties-title">Properties / framework</div>
+                  <div class="properties-grid">
+                    <div class="mini-field">id: framework</div>
+                    <div class="mini-field">label: Select Framework</div>
+                    <div class="mini-field">placeholder: Choose one...</div>
+                    <div class="mini-field accent">when: project_name != ''</div>
+                    <div class="mini-field">target: config.framework</div>
+                    <div class="mini-field">hints: true</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <aside class="terminal" aria-label="Terminal preview">
+              <div class="head">steply preview - bash</div>
+              <div class="term-line accent">$ steply run init-project.yaml</div>
+              <div class="term-line">steply | init-project</div>
+              <div class="term-line dim">├──────────────────────────</div>
+              <div class="term-line">◇ Project Name <span>my-app</span></div>
+              <div class="term-line">│</div>
+              <div class="term-line accent">◇ Select Framework</div>
+              <div class="term-line">│  ◉ React</div>
+              <div class="term-line">│  ○ Vue</div>
+              <div class="term-line">│  ○ Svelte</div>
+              <div class="term-line">│  ○ Angular</div>
+              <div class="term-line">│</div>
+              <div class="term-line dim">├ Features (pending)</div>
+              <div class="term-line dim">└ Confirm Setup (pending)</div>
+              <div class="term-line"> </div>
+              <div class="term-line dim">↵ submit   ↑↓ navigate</div>
+              <div class="term-line ok">preview parity: 98%</div>
+            </aside>
+          </div>
+        </div>
+      </section>
+
+      <section class="section container" id="values">
+        <div class="section-head">
+          <h2>Built for predictable terminal UX.</h2>
+          <p>
+            Produkt nie zgaduje. Authoring, warunki i render opierają się na jawnych schema oraz spójnym modelu runtime,
+            dzięki czemu flow zachowuje się identycznie w creatorze i finalnym shellu.
+          </p>
+        </div>
+
+        <div class="pillars">
+          <article class="pillar">
+            <div class="icon-rail" aria-hidden="true"></div>
+            <h3>Schema-aware authoring</h3>
+            <p>Walidacja struktur YAML i konfiguracji widgetów na etapie projektowania, bez ręcznego debugowania po uruchomieniu.</p>
+          </article>
+          <article class="pillar">
+            <div class="icon-rail" aria-hidden="true"></div>
+            <h3>Composable runtime API</h3>
+            <p>Flow możesz składać z mniejszych bloków i mapować ich wynik bez utraty kontroli nad typami i kolejnością kroków.</p>
+          </article>
+          <article class="pillar">
+            <div class="icon-rail" aria-hidden="true"></div>
+            <h3>Preview parity</h3>
+            <p>To co widzisz w web preview, to to samo co renderuje się w terminalu podczas wykonania komendy w runtime.</p>
+          </article>
+        </div>
+      </section>
+
+      <section class="section container" id="how">
+        <div class="section-head">
+          <h2>Workflow in four steps.</h2>
+          <p>Od szablonu do uruchomienia: krótka ścieżka, z minimalną liczbą miejsc gdzie konfiguracja może się rozjechać.</p>
+        </div>
+        <div class="process">
+          <article class="process-step">
+            <code>01 / template</code>
+            <h4>Start from template</h4>
+            <p>Wybierz bazowy flow i wygeneruj szkic YAML z poprawną strukturą wejść i outputów.</p>
+          </article>
+          <article class="process-step">
+            <code>02 / edit</code>
+            <h4>Edit widgets</h4>
+            <p>Konfiguruj pola, etykiety i mapowania targetów, jednocześnie widząc status walidacji.</p>
+          </article>
+          <article class="process-step">
+            <code>03 / logic</code>
+            <h4>Conditions and tasks</h4>
+            <p>Dodawaj reguły `when`, sterowanie kolejnością kroków i zadania wykonywane po akceptacji flow.</p>
+          </article>
+          <article class="process-step">
+            <code>04 / run</code>
+            <h4>Preview and run</h4>
+            <p>Sprawdź interakcję w terminal preview, a następnie uruchom identyczny runtime przez CLI.</p>
+          </article>
+        </div>
+      </section>
+
+      <section class="section container" aria-labelledby="creator-board-title">
+        <div class="section-head">
+          <h2 id="creator-board-title">Creator-focused artboard.</h2>
+          <p>Drugi artboard eksponuje sam produkt: większa powierzchnia robocza i układ do prezentacji podczas demo.</p>
+        </div>
+
+        <div class="creator-artboard">
+          <div class="board-title">
+            <span>CREATOR PREVIEW / extended</span>
+            <span class="chip">live shell mirror</span>
+          </div>
+          <div class="panel-frame" style="margin: 0;">
+            <div class="split">
+              <div class="builder">
+                <aside class="palette">
+                  <div class="group-title">Quick Add</div>
+                  <div class="widget active"><strong>Input block</strong><code>/input</code></div>
+                  <div class="widget"><strong>Select block</strong><code>/select</code></div>
+                  <div class="widget"><strong>Confirm block</strong><code>/confirm</code></div>
+                  <div class="group" style="margin-top: 22px;">
+                    <div class="group-title">Recent flows</div>
+                    <div class="widget"><strong>init-project</strong><code>4 steps</code></div>
+                    <div class="widget"><strong>release-task</strong><code>7 steps</code></div>
+                  </div>
+                </aside>
+                <div class="canvas-wrap">
+                  <div class="canvas">
+                    <div class="canvas-head">
+                      <span>canvas / release-task.yaml</span>
+                      <span>status: synced</span>
+                    </div>
+                    <div class="steps">
+                      <article class="step-card active">
+                        <div class="top">
+                          <div><span class="step-id">05</span><span class="step-name">Deployment Region</span></div>
+                          <span class="step-type">select</span>
+                        </div>
+                        <div class="meta-line">choices: us-east-1, eu-west-1, ap-south-1</div>
+                      </article>
+                      <article class="step-card">
+                        <div class="top">
+                          <div><span class="step-id">06</span><span class="step-name">Approval</span></div>
+                          <span class="step-type">confirm</span>
+                        </div>
+                      </article>
+                    </div>
+                  </div>
+                  <div class="properties">
+                    <div class="properties-grid">
+                      <div class="mini-field">id: region</div>
+                      <div class="mini-field">label: Deployment Region</div>
+                      <div class="mini-field accent">when: env == 'prod'</div>
+                      <div class="mini-field">target: deploy.region</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <aside class="terminal">
+                <div class="head">runtime shell mirror</div>
+                <div class="term-line">$ steply run release-task.yaml</div>
+                <div class="term-line">◇ Deployment Region</div>
+                <div class="term-line accent">│  ◉ us-east-1</div>
+                <div class="term-line">│  ○ eu-west-1</div>
+                <div class="term-line">│  ○ ap-south-1</div>
+                <div class="term-line">│</div>
+                <div class="term-line">└ ◇ Approval</div>
+                <div class="term-line ok">sync: creator == terminal</div>
+              </aside>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="section container" aria-labelledby="components-title">
+        <div class="section-head">
+          <h2 id="components-title">UI Components</h2>
+          <p>Podstawowe komponenty i style do dalszego rozwijania design systemu Steply.</p>
+        </div>
+
+        <div class="components-grid">
+          <article class="component-item">
+            <h4>Buttons + Chip</h4>
+            <div class="component-demo">
+              <span class="btn btn-primary">Open Creator</span>
+              <span class="btn btn-secondary">Secondary</span>
+              <span class="chip">preview</span>
+            </div>
+          </article>
+          <article class="component-item">
+            <h4>Input + Panel</h4>
+            <div class="component-demo" style="display: block;">
+              <div class="mini-field" style="margin-bottom: 8px;">Search widgets...</div>
+              <div class="panel-frame" style="padding: 10px; font-family: var(--mono); font-size: 12px; color: #8f99ab;">
+                panel / properties
+              </div>
+            </div>
+          </article>
+          <article class="component-item">
+            <h4>Step + Terminal lines</h4>
+            <div class="component-demo" style="display: block;">
+              <div class="step-card active" style="margin-bottom: 8px;">
+                <div class="top"><div><span class="step-id">03</span><span class="step-name">Features</span></div><span class="step-type">table</span></div>
+              </div>
+              <div class="term-line">│ ◇ Example line</div>
+              <div class="term-line accent">└ ◉ Active option</div>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <section class="section container" id="tokens" aria-labelledby="tokens-title">
+        <div class="section-head">
+          <h2 id="tokens-title">Design Tokens</h2>
+          <p>Jedno miejsce na kolory, typografię, spacing, radius, border i shadow użyte w layoutach.</p>
+        </div>
+
+        <table class="token-table">
+          <thead>
+            <tr>
+              <th>Category</th>
+              <th>Token</th>
+              <th>Value</th>
+              <th>Usage</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td>Color</td><td>--bg-0</td><td>#0d0f14</td><td>Global background</td></tr>
+            <tr><td>Color</td><td>--panel-1</td><td>#171c27</td><td>Panels, cards</td></tr>
+            <tr><td>Color</td><td>--text-0</td><td>#edf1fa</td><td>Primary text</td></tr>
+            <tr><td>Color</td><td>--accent</td><td>#f1bc2d</td><td>CTA, active states</td></tr>
+            <tr><td>Typography</td><td>--sans</td><td>Sora</td><td>Headings, content</td></tr>
+            <tr><td>Typography</td><td>--mono</td><td>IBM Plex Mono</td><td>Terminal + metadata</td></tr>
+            <tr><td>Spacing</td><td>--space-1..7</td><td>8px - 72px</td><td>Layout rhythm</td></tr>
+            <tr><td>Radius</td><td>--radius-sm/md</td><td>2px / 4px</td><td>System corners</td></tr>
+            <tr><td>Border</td><td>--line-0..2</td><td>rgba white @ 8-20%</td><td>Separators, inputs</td></tr>
+            <tr><td>Shadow</td><td>--shadow-soft</td><td>0 10px 30px rgba(0,0,0,.26)</td><td>Large artboards</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section class="section container" aria-labelledby="final-cta-title">
+        <div class="cta-final">
+          <div>
+            <h3 id="final-cta-title">Solid system you can trust.</h3>
+            <p>Build once in Steply Creator, verify behavior in preview, and ship exactly the same terminal experience to runtime.</p>
+          </div>
+          <a href="#creator" class="btn btn-primary">Open Creator ↗</a>
+        </div>
+      </section>
+    </main>
+
+    <footer class="footer container">Steply / engineering-grade flow builder for terminal interfaces</footer>
+  </div>
+</body>
+</html>

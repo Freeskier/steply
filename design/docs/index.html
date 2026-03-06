@@ -1,0 +1,945 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Steply Docs - Runtime API & Variables</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Sora:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg-0: #0b0e14;
+      --bg-1: #10141d;
+      --bg-2: #151b27;
+      --panel-0: #131a26;
+      --panel-1: #171f2d;
+      --panel-2: #1d2636;
+      --line-0: rgba(239, 244, 255, 0.08);
+      --line-1: rgba(239, 244, 255, 0.13);
+      --line-2: rgba(239, 244, 255, 0.2);
+      --text-0: #eef2fb;
+      --text-1: #c8d0de;
+      --text-2: #8a94a8;
+      --accent: #f1bc2d;
+      --accent-soft: rgba(241, 188, 45, 0.14);
+      --ok: #62c28a;
+      --warn: #e0a958;
+      --danger: #ea6d6d;
+      --mono: "IBM Plex Mono", "SFMono-Regular", Menlo, Consolas, monospace;
+      --sans: "Sora", "Avenir Next", "Segoe UI", sans-serif;
+      --radius-sm: 2px;
+      --radius-md: 4px;
+      --shadow: 0 16px 40px rgba(0, 0, 0, 0.3);
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body {
+      margin: 0;
+      padding: 0;
+      background: var(--bg-0);
+      color: var(--text-0);
+      font-family: var(--sans);
+    }
+
+    body {
+      background-image: radial-gradient(circle at 18% 7%, rgba(241, 188, 45, 0.07), transparent 36%), radial-gradient(circle at 80% 24%, rgba(76, 98, 146, 0.14), transparent 45%);
+    }
+
+    .page { position: relative; isolation: isolate; }
+
+    .page::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: -2;
+      background-image: linear-gradient(rgba(235, 240, 252, 0.035) 1px, transparent 1px), linear-gradient(90deg, rgba(235, 240, 252, 0.035) 1px, transparent 1px);
+      background-size: 44px 44px;
+      mask-image: linear-gradient(180deg, rgba(0,0,0,0.72), transparent 88%);
+    }
+
+    .page::after {
+      content: "";
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: -1;
+      opacity: .075;
+      background-image: radial-gradient(rgba(255,255,255,.45) .4px, transparent .6px);
+      background-size: 3px 3px;
+    }
+
+    .container {
+      width: min(1320px, 94vw);
+      margin: 0 auto;
+    }
+
+    .topbar {
+      height: 72px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid var(--line-0);
+      position: sticky;
+      top: 0;
+      z-index: 20;
+      backdrop-filter: blur(8px);
+      background: rgba(12, 15, 22, .78);
+    }
+
+    .brand {
+      text-decoration: none;
+      color: var(--text-0);
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 700;
+      font-size: 15px;
+      letter-spacing: .2px;
+    }
+
+    .mark {
+      width: 20px;
+      height: 20px;
+      border-radius: var(--radius-sm);
+      display: grid;
+      place-items: center;
+      background: var(--accent);
+      color: #17130a;
+      font-family: var(--mono);
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .top-nav {
+      margin-left: auto;
+      margin-right: 18px;
+      display: flex;
+      align-items: center;
+      gap: 26px;
+    }
+
+    .top-nav a {
+      text-decoration: none;
+      color: var(--text-2);
+      font-size: 14px;
+      font-weight: 500;
+    }
+
+    .top-nav a.active,
+    .top-nav a:hover { color: var(--text-0); }
+
+    .btn {
+      border: 1px solid transparent;
+      border-radius: var(--radius-sm);
+      padding: 11px 16px;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+      line-height: 1;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+
+    .btn.primary {
+      background: var(--accent);
+      color: #18140a;
+      border-color: #daaa1f;
+    }
+
+    .btn.ghost {
+      background: rgba(23, 30, 43, .72);
+      border-color: var(--line-1);
+      color: var(--text-1);
+    }
+
+    .hero {
+      padding: 58px 0 34px;
+      border-bottom: 1px solid var(--line-0);
+    }
+
+    .kicker {
+      font-family: var(--mono);
+      text-transform: uppercase;
+      letter-spacing: 1.6px;
+      font-size: 12px;
+      color: #9aa5b9;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .kicker::before {
+      content: "";
+      width: 15px;
+      height: 1px;
+      background: var(--accent);
+    }
+
+    h1 {
+      margin: 14px 0 0;
+      font-size: clamp(38px, 7vw, 74px);
+      line-height: .96;
+      letter-spacing: -1.3px;
+      max-width: 1050px;
+    }
+
+    .muted { color: #8b95a8; display: block; }
+
+    .hero p {
+      margin: 22px 0 0;
+      max-width: 820px;
+      color: var(--text-1);
+      font-size: 18px;
+      line-height: 1.58;
+    }
+
+    .hero-cta {
+      margin-top: 26px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    .highlights {
+      margin-top: 24px;
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .highlight {
+      border: 1px solid var(--line-1);
+      background: linear-gradient(180deg, rgba(26, 34, 48, .76), rgba(21, 27, 38, .76));
+      padding: 14px;
+      border-radius: var(--radius-sm);
+    }
+
+    .highlight code {
+      display: block;
+      font-family: var(--mono);
+      color: #748198;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-bottom: 8px;
+    }
+
+    .highlight strong {
+      color: #f4c95d;
+      font-size: 24px;
+      letter-spacing: -0.4px;
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: 290px 1fr;
+      gap: 16px;
+      padding: 26px 0 70px;
+    }
+
+    .sidebar {
+      position: sticky;
+      top: 88px;
+      align-self: start;
+      border: 1px solid var(--line-1);
+      background: rgba(22, 28, 39, .8);
+      box-shadow: var(--shadow);
+      border-radius: var(--radius-md);
+      overflow: hidden;
+    }
+
+    .sidebar-head {
+      padding: 14px 14px 10px;
+      border-bottom: 1px solid var(--line-0);
+    }
+
+    .sidebar-title {
+      margin: 0;
+      font-family: var(--mono);
+      font-size: 12px;
+      color: #9ca7bc;
+      text-transform: uppercase;
+      letter-spacing: 1.2px;
+    }
+
+    .sidebar-search {
+      margin-top: 10px;
+      height: 32px;
+      border: 1px solid var(--line-1);
+      background: #1f2736;
+      border-radius: var(--radius-sm);
+      color: #7c879d;
+      padding: 0 10px;
+      font-size: 13px;
+      display: flex;
+      align-items: center;
+    }
+
+    .menu-group {
+      padding: 11px 10px;
+      border-bottom: 1px solid var(--line-0);
+    }
+
+    .menu-group:last-child { border-bottom: 0; }
+
+    .menu-group h4 {
+      margin: 0 0 8px;
+      font-family: var(--mono);
+      font-size: 11px;
+      letter-spacing: 1.2px;
+      text-transform: uppercase;
+      color: #697589;
+    }
+
+    .menu-link {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      text-decoration: none;
+      color: #a9b2c4;
+      font-size: 13px;
+      border: 1px solid transparent;
+      padding: 7px 8px;
+      border-radius: var(--radius-sm);
+      margin-bottom: 3px;
+    }
+
+    .menu-link.active {
+      border-color: rgba(241, 188, 45, .5);
+      background: var(--accent-soft);
+      color: #f1c35d;
+    }
+
+    .menu-link code {
+      font-family: var(--mono);
+      font-size: 10px;
+      color: #6d778b;
+    }
+
+    .content {
+      display: grid;
+      gap: 14px;
+    }
+
+    .doc-card {
+      border: 1px solid var(--line-1);
+      background: rgba(21, 27, 38, .85);
+      border-radius: var(--radius-md);
+      overflow: hidden;
+      box-shadow: var(--shadow);
+    }
+
+    .doc-head {
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--line-0);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      background: rgba(25, 32, 45, .72);
+    }
+
+    .doc-head h3 {
+      margin: 0;
+      font-size: 20px;
+      letter-spacing: -0.3px;
+    }
+
+    .badge {
+      border: 1px solid var(--line-1);
+      background: #252f42;
+      color: #94a0b6;
+      font-family: var(--mono);
+      font-size: 11px;
+      padding: 4px 7px;
+      border-radius: var(--radius-sm);
+      text-transform: uppercase;
+      letter-spacing: .6px;
+    }
+
+    .badge.amber {
+      border-color: rgba(241,188,45,.5);
+      color: #f2c453;
+      background: var(--accent-soft);
+    }
+
+    .doc-body {
+      padding: 16px;
+    }
+
+    .doc-body p {
+      margin: 0;
+      color: var(--text-1);
+      line-height: 1.58;
+      font-size: 15px;
+    }
+
+    .options-grid {
+      margin-top: 14px;
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .option {
+      border: 1px solid var(--line-1);
+      background: rgba(25, 33, 47, .82);
+      padding: 12px;
+      border-radius: var(--radius-sm);
+      min-height: 108px;
+    }
+
+    .option strong {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 15px;
+      color: #ebf0fa;
+    }
+
+    .led {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: #68768f;
+    }
+
+    .led.on { background: var(--accent); box-shadow: 0 0 0 3px rgba(241,188,45,.16); }
+
+    .option code {
+      display: block;
+      margin-top: 9px;
+      font-family: var(--mono);
+      font-size: 12px;
+      color: #8d99b0;
+    }
+
+    .option p {
+      margin-top: 7px;
+      font-size: 13px;
+      color: #a8b1c3;
+      line-height: 1.48;
+    }
+
+    .api-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 14px;
+      font-family: var(--mono);
+      font-size: 12px;
+      color: #b8c2d5;
+      border: 1px solid var(--line-1);
+      overflow: hidden;
+    }
+
+    .api-table th,
+    .api-table td {
+      text-align: left;
+      border-bottom: 1px solid var(--line-0);
+      border-right: 1px solid var(--line-0);
+      padding: 10px 12px;
+      vertical-align: top;
+    }
+
+    .api-table th {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: #eef2fa;
+      background: rgba(30, 38, 54, .7);
+    }
+
+    .api-table td code { color: #f2c45c; }
+
+    .api-table tr:last-child td { border-bottom: 0; }
+
+    .code-block {
+      margin-top: 14px;
+      border: 1px solid var(--line-1);
+      background: linear-gradient(180deg, #0e131d, #0b1018);
+      border-radius: var(--radius-sm);
+      overflow: hidden;
+    }
+
+    .code-head {
+      padding: 9px 12px;
+      border-bottom: 1px solid var(--line-0);
+      color: #8591a7;
+      font-family: var(--mono);
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: rgba(23, 30, 43, .8);
+    }
+
+    pre {
+      margin: 0;
+      padding: 14px;
+      overflow: auto;
+      font-family: var(--mono);
+      font-size: 13px;
+      line-height: 1.6;
+      color: #bcc6d8;
+    }
+
+    .y-key { color: #f4c65c; }
+    .y-str { color: #d3dbee; }
+    .y-dim { color: #6f7b93; }
+    .y-accent { color: #7dc09b; }
+
+    .vars-grid {
+      margin-top: 14px;
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .var-card {
+      border: 1px solid var(--line-1);
+      background: rgba(25, 33, 46, .83);
+      padding: 12px;
+      border-radius: var(--radius-sm);
+    }
+
+    .var-card h4 {
+      margin: 0;
+      font-family: var(--mono);
+      font-size: 14px;
+      color: #f0f4fc;
+    }
+
+    .var-card p {
+      margin: 7px 0 0;
+      color: #aab4c6;
+      font-size: 13px;
+      line-height: 1.5;
+    }
+
+    .state-rail {
+      margin-top: 12px;
+      border: 1px solid var(--line-1);
+      background: rgba(23, 31, 43, .76);
+      border-radius: var(--radius-sm);
+      overflow: hidden;
+    }
+
+    .state {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 9px 10px;
+      border-bottom: 1px solid var(--line-0);
+      font-family: var(--mono);
+      font-size: 12px;
+      color: #adb7ca;
+    }
+
+    .state:last-child { border-bottom: 0; }
+
+    .state .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      display: inline-block;
+    }
+
+    .state.ok .dot { background: var(--ok); }
+    .state.warn .dot { background: var(--warn); }
+    .state.danger .dot { background: var(--danger); }
+
+    .cta {
+      margin-top: 14px;
+      border: 1px solid var(--line-1);
+      border-radius: var(--radius-md);
+      background: linear-gradient(180deg, rgba(27, 35, 49, .87), rgba(20, 27, 38, .88));
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 14px;
+      padding: 22px;
+    }
+
+    .cta h3 {
+      margin: 0;
+      font-size: clamp(24px, 3.2vw, 34px);
+      letter-spacing: -.6px;
+    }
+
+    .cta p {
+      margin: 7px 0 0;
+      color: #b0b9ca;
+      font-size: 15px;
+      max-width: 620px;
+    }
+
+    .footer {
+      border-top: 1px solid var(--line-0);
+      margin-top: 56px;
+      padding: 26px 0 52px;
+      color: #6d778b;
+      font-family: var(--mono);
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 1.1px;
+    }
+
+    @media (max-width: 1160px) {
+      .layout { grid-template-columns: 1fr; }
+      .sidebar { position: static; }
+      .highlights { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+
+    @media (max-width: 860px) {
+      .top-nav { display: none; }
+      .options-grid,
+      .vars-grid { grid-template-columns: 1fr; }
+      .highlights { grid-template-columns: 1fr; }
+      .hero { padding-top: 42px; }
+      .cta { flex-direction: column; align-items: flex-start; }
+    }
+
+    @media (max-width: 620px) {
+      .hero-cta .btn { width: 100%; justify-content: center; }
+      .api-table { display: block; overflow-x: auto; }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <header class="topbar">
+      <div class="container" style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
+        <a class="brand" href="../index.html" aria-label="Back to main">
+          <span class="mark">S</span>
+          <span>Steply Docs</span>
+        </a>
+
+        <nav class="top-nav">
+          <a href="#overview" class="active">Overview</a>
+          <a href="#api">API</a>
+          <a href="#variables">Variables</a>
+          <a href="#examples">Examples</a>
+        </nav>
+
+        <div style="display:flex;gap:8px;">
+          <a href="../index.html" class="btn ghost">Main Site</a>
+          <a href="#api" class="btn primary">Open API ↗</a>
+        </div>
+      </div>
+    </header>
+
+    <section class="hero container" id="overview">
+      <span class="kicker">Engineering docs</span>
+      <h1>
+        API reference for runtime flows.
+        <span class="muted">Variables, conditions and deterministic preview contract.</span>
+      </h1>
+      <p>
+        Dokumentacja Steply jest zaprojektowana pod codzienną pracę inżynierską: szybkie skanowanie opcji,
+        jasne typy danych, pełne przykłady YAML i czytelna mapa zmiennych wejściowych oraz runtime output.
+      </p>
+      <div class="hero-cta">
+        <a href="#examples" class="btn primary">Jump to examples</a>
+        <a href="#variables" class="btn ghost">Variables map</a>
+      </div>
+
+      <div class="highlights">
+        <article class="highlight">
+          <code>CLI</code>
+          <strong>steply run</strong>
+        </article>
+        <article class="highlight">
+          <code>Runtime API</code>
+          <strong>12 endpoints</strong>
+        </article>
+        <article class="highlight">
+          <code>Widget schema</code>
+          <strong>13 types</strong>
+        </article>
+        <article class="highlight">
+          <code>Preview parity</code>
+          <strong>98%</strong>
+        </article>
+      </div>
+    </section>
+
+    <div class="container layout">
+      <aside class="sidebar">
+        <div class="sidebar-head">
+          <h2 class="sidebar-title">Docs Index</h2>
+          <div class="sidebar-search">Search docs...</div>
+        </div>
+
+        <div class="menu-group">
+          <h4>Getting started</h4>
+          <a href="#overview" class="menu-link active"><span>Overview</span><code>01</code></a>
+          <a href="#examples" class="menu-link"><span>Quick start YAML</span><code>02</code></a>
+        </div>
+
+        <div class="menu-group">
+          <h4>Authoring</h4>
+          <a href="#api" class="menu-link"><span>Flow schema API</span><code>03</code></a>
+          <a href="#options" class="menu-link"><span>Widget options</span><code>04</code></a>
+        </div>
+
+        <div class="menu-group">
+          <h4>Runtime</h4>
+          <a href="#variables" class="menu-link"><span>Variables map</span><code>05</code></a>
+          <a href="#states" class="menu-link"><span>Status + errors</span><code>06</code></a>
+        </div>
+      </aside>
+
+      <section class="content">
+        <article class="doc-card" id="options">
+          <header class="doc-head">
+            <h3>Highlighted options</h3>
+            <span class="badge amber">core options</span>
+          </header>
+          <div class="doc-body">
+            <p>Najczęściej używane opcje konfiguracji flow. Zaznaczone tak, żeby od razu było jasne co kontroluje przebieg runtime.</p>
+            <div class="options-grid">
+              <div class="option">
+                <strong><span class="led on"></span><code>strictSchema</code></strong>
+                <code>type: boolean | default: true</code>
+                <p>Wymusza walidację wszystkich kroków względem schema przed uruchomieniem flow.</p>
+              </div>
+              <div class="option">
+                <strong><span class="led on"></span><code>previewParity</code></strong>
+                <code>type: "strict" | "relaxed"</code>
+                <p>Definiuje próg zgodności między preview a wykonaniem w terminalu.</p>
+              </div>
+              <div class="option">
+                <strong><span class="led"></span><code>runtimeTarget</code></strong>
+                <code>type: "bash" | "zsh" | "pwsh"</code>
+                <p>Wybór środowiska shell, w którym flow renderuje output końcowy.</p>
+              </div>
+              <div class="option">
+                <strong><span class="led"></span><code>trace</code></strong>
+                <code>type: "off" | "errors" | "verbose"</code>
+                <p>Poziom diagnostyki i logowania decyzji warunków podczas wykonania.</p>
+              </div>
+            </div>
+          </div>
+        </article>
+
+        <article class="doc-card" id="api">
+          <header class="doc-head">
+            <h3>Flow runtime API</h3>
+            <span class="badge">reference</span>
+          </header>
+          <div class="doc-body">
+            <p>Minimalny zestaw endpointów i payloadów do uruchamiania flow, synchronizacji preview i odbioru wyników.</p>
+            <table class="api-table">
+              <thead>
+                <tr>
+                  <th>Method</th>
+                  <th>Endpoint</th>
+                  <th>Description</th>
+                  <th>Auth</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>POST</td>
+                  <td><code>/v1/flows/validate</code></td>
+                  <td>Waliduje YAML i zwraca listę błędów z pozycją w schema.</td>
+                  <td>token</td>
+                </tr>
+                <tr>
+                  <td>POST</td>
+                  <td><code>/v1/flows/preview</code></td>
+                  <td>Renderuje snapshot TUI dla aktualnego stanu danych wejściowych.</td>
+                  <td>token</td>
+                </tr>
+                <tr>
+                  <td>POST</td>
+                  <td><code>/v1/flows/run</code></td>
+                  <td>Uruchamia flow runtime i streamuje zdarzenia kroków.</td>
+                  <td>token</td>
+                </tr>
+                <tr>
+                  <td>GET</td>
+                  <td><code>/v1/runs/:id/state</code></td>
+                  <td>Zwraca status i aktualny krok w wykonywanym runie.</td>
+                  <td>token</td>
+                </tr>
+                <tr>
+                  <td>GET</td>
+                  <td><code>/v1/runs/:id/output</code></td>
+                  <td>Pobiera finalny payload output po zakończeniu flow.</td>
+                  <td>token</td>
+                </tr>
+              </tbody>
+            </table>
+
+            <div class="code-block" id="examples">
+              <div class="code-head">
+                <span>Example / YAML flow definition</span>
+                <span class="badge amber">init-project.yaml</span>
+              </div>
+<pre><span class="y-key">flow</span>: <span class="y-str">init-project</span>
+<span class="y-key">version</span>: <span class="y-str">1</span>
+
+<span class="y-key">steps</span>:
+  - <span class="y-key">id</span>: <span class="y-str">project_name</span>
+    <span class="y-key">type</span>: <span class="y-str">input</span>
+    <span class="y-key">label</span>: <span class="y-str">Project Name</span>
+    <span class="y-key">target</span>: <span class="y-str">project.name</span>
+
+  - <span class="y-key">id</span>: <span class="y-str">framework</span>
+    <span class="y-key">type</span>: <span class="y-str">select</span>
+    <span class="y-key">label</span>: <span class="y-str">Select Framework</span>
+    <span class="y-key">when</span>: <span class="y-str">project_name != ''</span>
+    <span class="y-key">options</span>: [<span class="y-str">react</span>, <span class="y-str">vue</span>, <span class="y-str">svelte</span>]
+
+<span class="y-key">output</span>:
+  <span class="y-key">target</span>: <span class="y-str">config.framework</span>
+  <span class="y-key">onSuccess</span>: <span class="y-accent">print('Ready to scaffold')</span>
+
+<span class="y-dim"># preview parity contract: strict</span></pre>
+            </div>
+
+            <div class="code-block" style="margin-top:10px;">
+              <div class="code-head">
+                <span>Example / TypeScript client call</span>
+                <span class="badge">runtime</span>
+              </div>
+<pre>const run = await steply.flows.run({
+  file: "init-project.yaml",
+  mode: "strict",
+  shell: "bash",
+  context: {
+    actor: "cli",
+    workspace: "/repo/project"
+  }
+})
+
+if (run.previewParity &lt; 0.98) {
+  throw new Error("Preview mismatch")
+}</pre>
+            </div>
+          </div>
+        </article>
+
+        <article class="doc-card" id="variables">
+          <header class="doc-head">
+            <h3>Variables and context map</h3>
+            <span class="badge amber">important</span>
+          </header>
+          <div class="doc-body">
+            <p>Każda zmienna ma przewidywalny lifecycle: input, transform, runtime output. Poniżej najważniejsze sloty danych.</p>
+            <div class="vars-grid">
+              <div class="var-card">
+                <h4>$input.*</h4>
+                <p>Wartości bezpośrednio z widgetów (np. <code>$input.project_name</code>), dostępne od razu po zatwierdzeniu kroku.</p>
+              </div>
+              <div class="var-card">
+                <h4>$context.*</h4>
+                <p>Metadane środowiska uruchomienia: shell, workspace, actor, run id, timestamp.</p>
+              </div>
+              <div class="var-card">
+                <h4>$runtime.*</h4>
+                <p>Dane obliczane podczas wykonania: status tasków, trace, warningi i referencje do output map.</p>
+              </div>
+              <div class="var-card">
+                <h4>$output.*</h4>
+                <p>Finalny payload przekazywany dalej do pipeline, CI lub lokalnego skryptu bootstrapującego.</p>
+              </div>
+            </div>
+
+            <table class="api-table" style="margin-top:10px;">
+              <thead>
+                <tr>
+                  <th>Variable</th>
+                  <th>Type</th>
+                  <th>Available</th>
+                  <th>Example</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><code>$input.project_name</code></td>
+                  <td>string</td>
+                  <td>after step 1</td>
+                  <td><code>"my-app"</code></td>
+                </tr>
+                <tr>
+                  <td><code>$input.framework</code></td>
+                  <td>string</td>
+                  <td>after select step</td>
+                  <td><code>"react"</code></td>
+                </tr>
+                <tr>
+                  <td><code>$context.shell</code></td>
+                  <td>enum</td>
+                  <td>always</td>
+                  <td><code>"bash"</code></td>
+                </tr>
+                <tr>
+                  <td><code>$runtime.current_step</code></td>
+                  <td>number</td>
+                  <td>during run</td>
+                  <td><code>2</code></td>
+                </tr>
+                <tr>
+                  <td><code>$output.config.framework</code></td>
+                  <td>string</td>
+                  <td>on success</td>
+                  <td><code>"react"</code></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </article>
+
+        <article class="doc-card" id="states">
+          <header class="doc-head">
+            <h3>State and error model</h3>
+            <span class="badge">runtime states</span>
+          </header>
+          <div class="doc-body">
+            <p>Steply rozdziela problemy walidacji schema od błędów runtime, żeby diagnoza była szybka i jednoznaczna.</p>
+            <div class="state-rail">
+              <div class="state ok"><span class="dot"></span><span><code>READY</code> - flow validated and waiting for input</span></div>
+              <div class="state warn"><span class="dot"></span><span><code>BLOCKED</code> - condition <code>when</code> not satisfied</span></div>
+              <div class="state warn"><span class="dot"></span><span><code>PARTIAL</code> - optional task failed, run continues</span></div>
+              <div class="state danger"><span class="dot"></span><span><code>FAILED</code> - runtime task error, run aborted</span></div>
+            </div>
+
+            <div class="code-block">
+              <div class="code-head">
+                <span>Error payload shape</span>
+                <span class="badge amber">json</span>
+              </div>
+<pre>{
+  "code": "SCHEMA_CONDITION_INVALID",
+  "message": "Unknown variable in 'when' expression",
+  "step": "framework",
+  "line": 28,
+  "hint": "Use $input.project_name"
+}</pre>
+            </div>
+          </div>
+        </article>
+
+        <article class="cta">
+          <div>
+            <h3>Ship terminal flows with confidence.</h3>
+            <p>Jedno źródło prawdy dla authoringu i runtime. Dokumentacja, API i preview w jednym technicznym systemie.</p>
+          </div>
+          <a href="#api" class="btn primary">View full API ↗</a>
+        </article>
+      </section>
+    </div>
+
+    <footer class="footer container">Steply docs / precise reference for engineering teams</footer>
+  </div>
+</body>
+</html>

@@ -1,0 +1,1026 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Steply Creator - Visual Flow Studio</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Sora:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg-0: #090c12;
+      --bg-1: #0f141d;
+      --bg-2: #151c29;
+      --panel-0: #111824;
+      --panel-1: #171f2d;
+      --panel-2: #1c2637;
+      --panel-3: #222d41;
+      --line-0: rgba(238, 243, 255, 0.08);
+      --line-1: rgba(238, 243, 255, 0.12);
+      --line-2: rgba(238, 243, 255, 0.2);
+      --text-0: #eff3fc;
+      --text-1: #c9d1df;
+      --text-2: #8a94aa;
+      --text-3: #687186;
+      --accent: #f1bc2d;
+      --accent-soft: rgba(241, 188, 45, 0.14);
+      --accent-strong: #f7ca4d;
+      --ok: #5fc58d;
+      --warn: #e5b469;
+      --radius-sm: 2px;
+      --radius-md: 4px;
+      --radius-lg: 8px;
+      --shadow-main: 0 24px 70px rgba(0, 0, 0, 0.42);
+      --shadow-panel: 0 14px 30px rgba(0, 0, 0, 0.34);
+      --mono: "IBM Plex Mono", "SFMono-Regular", Menlo, Consolas, monospace;
+      --sans: "Sora", "Avenir Next", "Segoe UI", sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body {
+      margin: 0;
+      padding: 0;
+      background: var(--bg-0);
+      color: var(--text-0);
+      font-family: var(--sans);
+    }
+
+    body {
+      background-image: radial-gradient(circle at 12% 5%, rgba(241, 188, 45, 0.08), transparent 30%), radial-gradient(circle at 83% 23%, rgba(67, 95, 151, 0.18), transparent 43%);
+      min-height: 100vh;
+    }
+
+    .page {
+      position: relative;
+      isolation: isolate;
+      overflow: clip;
+    }
+
+    .page::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: -2;
+      background-image: linear-gradient(rgba(233, 238, 253, 0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(233, 238, 253, 0.03) 1px, transparent 1px);
+      background-size: 42px 42px;
+      mask-image: linear-gradient(180deg, rgba(0,0,0,.8), transparent 88%);
+    }
+
+    .page::after {
+      content: "";
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: -1;
+      opacity: .07;
+      background-image: radial-gradient(rgba(255,255,255,.42) .4px, transparent .6px);
+      background-size: 3px 3px;
+    }
+
+    .container {
+      width: min(1450px, 96vw);
+      margin: 0 auto;
+    }
+
+    .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 40;
+      backdrop-filter: blur(10px);
+      background: rgba(10, 13, 20, .8);
+      border-bottom: 1px solid var(--line-0);
+    }
+
+    .topbar-inner {
+      height: 70px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+    }
+
+    .brand {
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      color: var(--text-0);
+      font-size: 15px;
+      font-weight: 700;
+      letter-spacing: .2px;
+    }
+
+    .mark {
+      width: 20px;
+      height: 20px;
+      border-radius: var(--radius-sm);
+      background: var(--accent);
+      color: #191309;
+      font-family: var(--mono);
+      font-size: 12px;
+      display: grid;
+      place-items: center;
+      font-weight: 700;
+    }
+
+    .nav {
+      margin-left: auto;
+      display: flex;
+      align-items: center;
+      gap: 24px;
+    }
+
+    .nav a {
+      color: var(--text-2);
+      text-decoration: none;
+      font-size: 14px;
+      font-weight: 500;
+    }
+
+    .nav a.active,
+    .nav a:hover { color: var(--text-0); }
+
+    .btn {
+      border: 1px solid transparent;
+      border-radius: var(--radius-sm);
+      padding: 11px 16px;
+      font-size: 13px;
+      line-height: 1;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      white-space: nowrap;
+      font-weight: 600;
+    }
+
+    .btn-primary {
+      background: var(--accent);
+      color: #19140a;
+      border-color: #daaa1f;
+    }
+
+    .btn-dark {
+      background: rgba(24, 32, 46, .75);
+      color: var(--text-1);
+      border-color: var(--line-1);
+    }
+
+    .hero {
+      padding: 54px 0 30px;
+      border-bottom: 1px solid var(--line-0);
+    }
+
+    .kicker {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-family: var(--mono);
+      font-size: 12px;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      color: #99a4b9;
+    }
+
+    .kicker::before {
+      content: "";
+      width: 14px;
+      height: 1px;
+      background: var(--accent);
+    }
+
+    h1 {
+      margin: 16px 0 0;
+      max-width: 980px;
+      font-size: clamp(40px, 7vw, 78px);
+      line-height: .95;
+      letter-spacing: -1.4px;
+      font-weight: 800;
+    }
+
+    .h1-muted { display: block; color: #8a94a9; }
+
+    .hero p {
+      margin: 22px 0 0;
+      max-width: 840px;
+      color: var(--text-1);
+      font-size: 18px;
+      line-height: 1.58;
+    }
+
+    .hero-meta {
+      margin-top: 24px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+      font-family: var(--mono);
+      font-size: 12px;
+      color: #7a8599;
+    }
+
+    .chip {
+      border: 1px solid var(--line-1);
+      border-radius: var(--radius-sm);
+      padding: 5px 8px;
+      background: rgba(31, 40, 56, .7);
+      color: #95a1b8;
+      text-transform: uppercase;
+      letter-spacing: .7px;
+      font-size: 11px;
+      font-family: var(--mono);
+    }
+
+    .chip.accent {
+      border-color: rgba(241, 188, 45, .5);
+      background: var(--accent-soft);
+      color: var(--accent-strong);
+    }
+
+    .studio {
+      padding: 22px 0 18px;
+    }
+
+    .workspace {
+      border: 1px solid var(--line-1);
+      background: linear-gradient(180deg, rgba(23, 31, 45, .82), rgba(16, 23, 33, .88));
+      border-radius: var(--radius-lg);
+      overflow: hidden;
+      box-shadow: var(--shadow-main);
+    }
+
+    .workspace-top {
+      height: 52px;
+      border-bottom: 1px solid var(--line-0);
+      background: rgba(28, 36, 52, .85);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 14px;
+      gap: 14px;
+    }
+
+    .window-dots {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+    }
+
+    .window-dots span {
+      width: 8px;
+      height: 8px;
+      border-radius: 999px;
+      border: 1px solid rgba(132, 143, 163, .22);
+      background: rgba(122, 133, 154, .2);
+    }
+
+    .command {
+      flex: 1;
+      max-width: 640px;
+      height: 34px;
+      border: 1px solid var(--line-1);
+      background: #202a3a;
+      border-radius: var(--radius-sm);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 0 10px;
+      font-family: var(--mono);
+      font-size: 12px;
+      color: #8e99b0;
+    }
+
+    .command kbd {
+      border: 1px solid var(--line-1);
+      background: #2a354a;
+      color: #adb7cb;
+      border-radius: var(--radius-sm);
+      padding: 1px 6px;
+      font-family: var(--mono);
+      font-size: 11px;
+    }
+
+    .top-right {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .workspace-body {
+      min-height: 660px;
+      display: grid;
+      grid-template-columns: 260px 1fr 350px;
+      background: rgba(13, 18, 27, .85);
+    }
+
+    .sidebar {
+      border-right: 1px solid var(--line-0);
+      background: linear-gradient(180deg, rgba(27, 35, 49, .78), rgba(22, 29, 41, .84));
+      display: grid;
+      grid-template-rows: auto auto 1fr;
+    }
+
+    .side-block {
+      border-bottom: 1px solid var(--line-0);
+      padding: 12px;
+    }
+
+    .side-title {
+      margin: 0 0 9px;
+      font-family: var(--mono);
+      font-size: 11px;
+      color: #748097;
+      text-transform: uppercase;
+      letter-spacing: 1.2px;
+    }
+
+    .search {
+      height: 32px;
+      border: 1px solid var(--line-1);
+      background: #20293a;
+      border-radius: var(--radius-sm);
+      color: #8490a7;
+      padding: 0 9px;
+      font-size: 13px;
+      display: flex;
+      align-items: center;
+    }
+
+    .flow-file {
+      border: 1px solid transparent;
+      border-radius: var(--radius-sm);
+      padding: 8px 9px;
+      font-size: 13px;
+      color: #aeb7ca;
+      margin-bottom: 4px;
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+    }
+
+    .flow-file code {
+      color: #727d95;
+      font-family: var(--mono);
+      font-size: 10px;
+    }
+
+    .flow-file.active {
+      border-color: rgba(241, 188, 45, .45);
+      background: var(--accent-soft);
+      color: #f0c45a;
+    }
+
+    .widgets {
+      display: grid;
+      gap: 6px;
+    }
+
+    .widget {
+      border: 1px solid transparent;
+      border-radius: var(--radius-sm);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 8px;
+      color: #a7b1c4;
+      font-size: 13px;
+    }
+
+    .widget code {
+      font-family: var(--mono);
+      font-size: 10px;
+      color: #6f7b93;
+    }
+
+    .widget.active {
+      border-color: rgba(241, 188, 45, .45);
+      background: rgba(241, 188, 45, .08);
+      color: #edc158;
+    }
+
+    .canvas {
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+      min-width: 0;
+      border-right: 1px solid var(--line-0);
+    }
+
+    .canvas-head {
+      height: 48px;
+      border-bottom: 1px solid var(--line-0);
+      padding: 0 14px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-family: var(--mono);
+      font-size: 12px;
+      color: #8e98ad;
+      background: rgba(22, 29, 42, .77);
+    }
+
+    .lanes {
+      padding: 14px;
+      display: grid;
+      gap: 10px;
+      background: linear-gradient(180deg, rgba(17, 23, 34, .8), rgba(14, 19, 28, .86));
+    }
+
+    .lane {
+      border: 1px solid var(--line-0);
+      background: rgba(25, 32, 45, .6);
+      border-radius: var(--radius-md);
+      overflow: hidden;
+    }
+
+    .lane-head {
+      height: 34px;
+      border-bottom: 1px solid var(--line-0);
+      padding: 0 10px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-family: var(--mono);
+      color: #74829a;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      background: rgba(29, 37, 53, .72);
+    }
+
+    .nodes {
+      padding: 10px;
+      display: grid;
+      gap: 8px;
+    }
+
+    .node {
+      border: 1px solid var(--line-1);
+      background: linear-gradient(90deg, rgba(34, 43, 60, .62), rgba(24, 31, 44, .42));
+      border-radius: var(--radius-sm);
+      padding: 10px;
+      display: grid;
+      gap: 7px;
+    }
+
+    .node-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+
+    .node-name {
+      font-size: 15px;
+      color: #d4dbea;
+      font-weight: 500;
+      letter-spacing: -0.2px;
+    }
+
+    .node-id {
+      font-family: var(--mono);
+      font-size: 11px;
+      color: #728097;
+    }
+
+    .node-kind {
+      font-family: var(--mono);
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: .8px;
+      padding: 3px 6px;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--line-1);
+      color: #8793aa;
+      background: #253147;
+    }
+
+    .node-meta {
+      font-family: var(--mono);
+      font-size: 11px;
+      color: #808ca3;
+    }
+
+    .node.active {
+      border-color: rgba(241, 188, 45, .58);
+      background: linear-gradient(90deg, rgba(49, 43, 27, .56), rgba(37, 34, 27, .28));
+      box-shadow: inset 2px 0 0 rgba(241, 188, 45, .9);
+    }
+
+    .node.active .node-name { color: #f2f5fc; }
+
+    .node.active .node-kind {
+      border-color: rgba(241, 188, 45, .5);
+      color: #edc25b;
+      background: rgba(241, 188, 45, .12);
+    }
+
+    .canvas-bottom {
+      border-top: 1px solid var(--line-0);
+      padding: 10px 12px;
+      background: rgba(24, 31, 44, .82);
+      display: grid;
+      gap: 8px;
+    }
+
+    .prop-head {
+      font-family: var(--mono);
+      font-size: 11px;
+      color: #7b879e;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+    }
+
+    .prop-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+    }
+
+    .prop {
+      height: 29px;
+      border: 1px solid var(--line-0);
+      background: #283145;
+      border-radius: var(--radius-sm);
+      color: #9eabc2;
+      font-family: var(--mono);
+      font-size: 11px;
+      display: flex;
+      align-items: center;
+      padding: 0 8px;
+    }
+
+    .prop.accent {
+      border-color: rgba(241, 188, 45, .45);
+      color: #efc560;
+      background: rgba(241, 188, 45, .09);
+    }
+
+    .right-rail {
+      display: grid;
+      grid-template-rows: 1fr 220px;
+      background: linear-gradient(180deg, #0d121a, #0a0e15);
+    }
+
+    .terminal {
+      padding: 12px;
+      border-bottom: 1px solid var(--line-0);
+      font-family: var(--mono);
+      font-size: 13px;
+      color: #bcc5d7;
+      line-height: 1.6;
+      overflow: hidden;
+    }
+
+    .terminal-head {
+      margin-bottom: 9px;
+      color: #6e7a91;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    .line { white-space: pre; }
+    .line.dim { color: #5f6b82; }
+    .line.accent { color: #efc45a; }
+    .line.ok { color: var(--ok); }
+    .line.warn { color: var(--warn); }
+
+    .events {
+      padding: 10px 12px;
+      font-family: var(--mono);
+      font-size: 11px;
+      color: #97a3b9;
+      background: rgba(12, 17, 25, .85);
+    }
+
+    .events-head {
+      color: #6f7c94;
+      margin-bottom: 8px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      font-size: 10px;
+    }
+
+    .event-row {
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+      border: 1px solid var(--line-0);
+      background: rgba(28, 37, 54, .52);
+      padding: 7px 8px;
+      border-radius: var(--radius-sm);
+      margin-bottom: 6px;
+    }
+
+    .event-row b { color: #d3dced; font-weight: 500; }
+
+    .metrics {
+      padding: 22px 0 70px;
+      display: grid;
+      gap: 12px;
+      grid-template-columns: 2fr 1fr;
+    }
+
+    .panel {
+      border: 1px solid var(--line-1);
+      border-radius: var(--radius-md);
+      background: rgba(20, 27, 39, .82);
+      box-shadow: var(--shadow-panel);
+      overflow: hidden;
+    }
+
+    .panel-head {
+      height: 44px;
+      border-bottom: 1px solid var(--line-0);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 12px;
+      background: rgba(28, 36, 50, .76);
+      font-family: var(--mono);
+      color: #8490a8;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: .9px;
+    }
+
+    .cap-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+      padding: 12px;
+    }
+
+    .cap {
+      border: 1px solid var(--line-1);
+      border-radius: var(--radius-sm);
+      background: rgba(28, 35, 49, .72);
+      padding: 12px;
+    }
+
+    .cap h3 {
+      margin: 0;
+      font-size: 15px;
+      letter-spacing: -.2px;
+    }
+
+    .cap p {
+      margin: 8px 0 0;
+      color: #aab4c7;
+      font-size: 13px;
+      line-height: 1.52;
+    }
+
+    .stats {
+      padding: 12px;
+      display: grid;
+      gap: 8px;
+    }
+
+    .stat {
+      border: 1px solid var(--line-1);
+      border-radius: var(--radius-sm);
+      background: rgba(27, 35, 49, .7);
+      padding: 10px;
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 8px;
+    }
+
+    .stat strong {
+      font-size: 22px;
+      letter-spacing: -.4px;
+      color: #edf2fb;
+    }
+
+    .stat code {
+      font-family: var(--mono);
+      color: #7e8aa1;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: .8px;
+    }
+
+    .stat .accent { color: var(--accent-strong); }
+
+    .footer {
+      border-top: 1px solid var(--line-0);
+      padding: 28px 0 48px;
+      color: #6f7b91;
+      font-family: var(--mono);
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    @media (max-width: 1260px) {
+      .workspace-body {
+        grid-template-columns: 220px 1fr;
+      }
+
+      .right-rail {
+        grid-column: 1 / -1;
+        grid-template-columns: 1fr 1fr;
+        grid-template-rows: none;
+      }
+
+      .terminal {
+        border-right: 1px solid var(--line-0);
+        border-bottom: 0;
+      }
+
+      .metrics {
+        grid-template-columns: 1fr;
+      }
+
+      .cap-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+    }
+
+    @media (max-width: 920px) {
+      .nav { display: none; }
+
+      .workspace-body {
+        grid-template-columns: 1fr;
+      }
+
+      .sidebar,
+      .canvas {
+        border-right: 0;
+        border-bottom: 1px solid var(--line-0);
+      }
+
+      .prop-grid,
+      .cap-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .right-rail {
+        grid-template-columns: 1fr;
+      }
+
+      .terminal {
+        border-right: 0;
+        border-bottom: 1px solid var(--line-0);
+      }
+    }
+
+    @media (max-width: 640px) {
+      .topbar-inner { height: 64px; }
+      .hero { padding-top: 40px; }
+      .topbar .btn-primary,
+      .topbar .btn-dark {
+        padding: 9px 11px;
+        font-size: 11px;
+      }
+
+      .hero p { font-size: 16px; }
+      .command { display: none; }
+
+      .workspace-top {
+        justify-content: space-between;
+      }
+
+      .top-right {
+        margin-left: auto;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <header class="topbar">
+      <div class="container topbar-inner">
+        <a class="brand" href="../index.html">
+          <span class="mark">S</span>
+          <span>Steply Creator</span>
+        </a>
+
+        <nav class="nav">
+          <a href="../index.html">Landing</a>
+          <a href="../docs/index.html">Docs</a>
+          <a href="#studio" class="active">Studio</a>
+        </nav>
+
+        <a href="#" class="btn btn-dark">Publish Flow</a>
+        <a href="#" class="btn btn-primary">Run Preview ↗</a>
+      </div>
+    </header>
+
+    <section class="hero container">
+      <div class="kicker">Creator shell</div>
+      <h1>
+        Build YAML flows in a visual studio.
+        <span class="h1-muted">Ship exactly what terminal runtime executes.</span>
+      </h1>
+      <p>
+        Ten widok jest zaprojektowany jak realny produkt operatorski: precyzyjne panele, gęstość informacji,
+        aktywne stany kroków i żywy mirror terminala. Bez marketingowej mgły, tylko narzędzie do pracy inżynierskiej.
+      </p>
+      <div class="hero-meta">
+        <span class="chip accent">preview parity / strict</span>
+        <span class="chip">project: init-project.yaml</span>
+        <span class="chip">runtime: bash</span>
+        <span class="chip">mode: deterministic</span>
+      </div>
+    </section>
+
+    <section class="studio container" id="studio">
+      <div class="workspace">
+        <div class="workspace-top">
+          <div class="window-dots" aria-hidden="true"><span></span><span></span><span></span></div>
+          <div class="command"><kbd>⌘K</kbd> Jump to file, widget, action or variable path...</div>
+          <div class="top-right">
+            <span class="chip">autosave on</span>
+            <span class="chip accent">preview live</span>
+          </div>
+        </div>
+
+        <div class="workspace-body">
+          <aside class="sidebar">
+            <div class="side-block">
+              <h2 class="side-title">Find</h2>
+              <div class="search">Search flow, widget or variable...</div>
+            </div>
+
+            <div class="side-block">
+              <h2 class="side-title">Flows</h2>
+              <div class="flow-file active"><span>init-project.yaml</span><code>4 steps</code></div>
+              <div class="flow-file"><span>release-task.yaml</span><code>7 steps</code></div>
+              <div class="flow-file"><span>bootstrap-env.yaml</span><code>6 steps</code></div>
+            </div>
+
+            <div class="side-block" style="border-bottom:0;">
+              <h2 class="side-title">Widget palette</h2>
+              <div class="widgets">
+                <div class="widget"><span>Text Input</span><code>input</code></div>
+                <div class="widget active"><span>Select</span><code>select</code></div>
+                <div class="widget"><span>Confirm</span><code>confirm</code></div>
+                <div class="widget"><span>Table</span><code>table</code></div>
+                <div class="widget"><span>Tree</span><code>tree</code></div>
+                <div class="widget"><span>File Browser</span><code>file</code></div>
+                <div class="widget"><span>Output</span><code>output</code></div>
+              </div>
+            </div>
+          </aside>
+
+          <main class="canvas">
+            <div class="canvas-head">
+              <span>FLOW / init-project.yaml</span>
+              <span><span style="color:var(--accent);">●</span> synced, last edit 14:42:11</span>
+            </div>
+
+            <div class="lanes">
+              <section class="lane">
+                <div class="lane-head"><span>Input lane</span><span>2 nodes</span></div>
+                <div class="nodes">
+                  <article class="node">
+                    <div class="node-top">
+                      <div>
+                        <div class="node-id">01 / project_name</div>
+                        <div class="node-name">Project Name</div>
+                      </div>
+                      <span class="node-kind">input</span>
+                    </div>
+                    <div class="node-meta">target: project.name</div>
+                  </article>
+
+                  <article class="node active">
+                    <div class="node-top">
+                      <div>
+                        <div class="node-id">02 / framework</div>
+                        <div class="node-name">Select Framework</div>
+                      </div>
+                      <span class="node-kind">select</span>
+                    </div>
+                    <div class="node-meta">when: project_name != '' | options: react, vue, svelte, angular</div>
+                  </article>
+                </div>
+              </section>
+
+              <section class="lane">
+                <div class="lane-head"><span>Components lane</span><span>1 node</span></div>
+                <div class="nodes">
+                  <article class="node">
+                    <div class="node-top">
+                      <div>
+                        <div class="node-id">03 / features</div>
+                        <div class="node-name">Feature Table</div>
+                      </div>
+                      <span class="node-kind">table</span>
+                    </div>
+                    <div class="node-meta">columns: feature, enabled, version</div>
+                  </article>
+                </div>
+              </section>
+
+              <section class="lane">
+                <div class="lane-head"><span>Output lane</span><span>1 node</span></div>
+                <div class="nodes">
+                  <article class="node">
+                    <div class="node-top">
+                      <div>
+                        <div class="node-id">04 / confirm</div>
+                        <div class="node-name">Confirm Setup</div>
+                      </div>
+                      <span class="node-kind">confirm</span>
+                    </div>
+                    <div class="node-meta">output.target: config.framework</div>
+                  </article>
+                </div>
+              </section>
+            </div>
+
+            <div class="canvas-bottom">
+              <div class="prop-head">Properties / framework</div>
+              <div class="prop-grid">
+                <div class="prop">id: framework</div>
+                <div class="prop">label: Select Framework</div>
+                <div class="prop">placeholder: Choose one...</div>
+                <div class="prop accent">when: $input.project_name != ''</div>
+                <div class="prop">target: config.framework</div>
+                <div class="prop">hints: true</div>
+              </div>
+            </div>
+          </main>
+
+          <aside class="right-rail">
+            <div class="terminal">
+              <div class="terminal-head">Terminal preview / bash</div>
+              <div class="line accent">$ steply run init-project.yaml --preview</div>
+              <div class="line">steply | init-project</div>
+              <div class="line dim">├──────────────────────────────────</div>
+              <div class="line">◇ Project Name <span style="color:#eef2fa;">my-app</span></div>
+              <div class="line">│</div>
+              <div class="line accent">◇ Select Framework</div>
+              <div class="line">│  ◉ React</div>
+              <div class="line">│  ○ Vue</div>
+              <div class="line">│  ○ Svelte</div>
+              <div class="line">│  ○ Angular</div>
+              <div class="line">│</div>
+              <div class="line dim">├ Features (pending)</div>
+              <div class="line dim">└ Confirm Setup (pending)</div>
+              <div class="line"> </div>
+              <div class="line">↵ submit   ↑↓ navigate</div>
+              <div class="line ok">preview parity: 98.7%</div>
+              <div class="line warn">trace: condition resolved in 2ms</div>
+            </div>
+
+            <div class="events">
+              <div class="events-head">Run events timeline</div>
+              <div class="event-row"><b>14:42:09</b><span>flow validated</span></div>
+              <div class="event-row"><b>14:42:10</b><span>step 01 resolved</span></div>
+              <div class="event-row"><b>14:42:10</b><span>step 02 active</span></div>
+              <div class="event-row"><b>14:42:11</b><span>preview synced</span></div>
+              <div class="event-row"><b>14:42:11</b><span>parity score updated</span></div>
+            </div>
+          </aside>
+        </div>
+      </div>
+    </section>
+
+    <section class="metrics container">
+      <article class="panel">
+        <header class="panel-head">
+          <span>Creator capabilities</span>
+          <span class="chip accent">design system</span>
+        </header>
+        <div class="cap-grid">
+          <div class="cap">
+            <h3>Schema-aware cards</h3>
+            <p>Każdy node pokazuje kontekst typu, reguł i mapowania danych w tej samej strukturze co runtime parser.</p>
+          </div>
+          <div class="cap">
+            <h3>Runtime mirror panel</h3>
+            <p>Terminal nie jest dekoracją: zawiera realną hierarchię kroków, symbole TUI i sygnały stanu warunków.</p>
+          </div>
+          <div class="cap">
+            <h3>Deterministic properties</h3>
+            <p>Pole `when`, `target`, `hints` i `output` utrzymane w spójnym modelu, bez “ukrytej magii” frameworka.</p>
+          </div>
+        </div>
+      </article>
+
+      <aside class="panel">
+        <header class="panel-head">
+          <span>Studio stats</span>
+          <span class="chip">today</span>
+        </header>
+        <div class="stats">
+          <div class="stat"><code>flows built</code><strong>2,312</strong></div>
+          <div class="stat"><code>preview latency</code><strong>43ms</strong></div>
+          <div class="stat"><code class="accent">parity score</code><strong class="accent">98.7%</strong></div>
+          <div class="stat"><code>warnings / run</code><strong>0.6</strong></div>
+        </div>
+      </aside>
+    </section>
+
+    <footer class="footer container">Steply Creator / precision tooling for terminal flow engineering</footer>
+  </div>
+</body>
+</html>

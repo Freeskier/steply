@@ -3,8 +3,8 @@ use crate::core::value::Value;
 use crate::state::app::AppState;
 use crate::state::step::StepNavigation;
 use crate::task::engine::{
-    trigger_flow_end_tasks, trigger_step_enter_tasks, trigger_step_exit_tasks,
-    trigger_submit_after_tasks, trigger_submit_before_tasks,
+    refresh_active_step_interval_tasks, trigger_flow_end_tasks, trigger_step_enter_tasks,
+    trigger_step_exit_tasks, trigger_submit_after_tasks, trigger_submit_before_tasks,
 };
 use crate::widgets::node::{NodeWalkScope, walk_nodes};
 use crate::widgets::traits::ValidationMode;
@@ -125,6 +125,7 @@ impl AppState {
             .map(ToString::to_string);
         self.rebuild_focus_with_target(restore_focus.as_deref(), true);
         trigger_step_enter_tasks(self, current_step_id.as_str());
+        refresh_active_step_interval_tasks(self);
     }
 
     fn finish_flow_after_last_submit(&mut self) {

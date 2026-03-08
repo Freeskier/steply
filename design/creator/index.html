@@ -3,738 +3,1381 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Steply Creator - Visual Flow Studio</title>
+  <title>Steply Creator - Visual Config Builder</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Sora:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Space+Grotesk:wght@400;500;700&display=swap" rel="stylesheet" />
   <style>
     :root {
-      --bg-0: #090c12;
-      --bg-1: #0f141d;
-      --bg-2: #151c29;
-      --panel-0: #111824;
-      --panel-1: #171f2d;
-      --panel-2: #1c2637;
-      --panel-3: #222d41;
-      --line-0: rgba(238, 243, 255, 0.08);
-      --line-1: rgba(238, 243, 255, 0.12);
-      --line-2: rgba(238, 243, 255, 0.2);
-      --text-0: #eff3fc;
-      --text-1: #c9d1df;
-      --text-2: #8a94aa;
-      --text-3: #687186;
-      --accent: #f1bc2d;
-      --accent-soft: rgba(241, 188, 45, 0.14);
-      --accent-strong: #f7ca4d;
-      --ok: #5fc58d;
-      --warn: #e5b469;
-      --radius-sm: 2px;
-      --radius-md: 4px;
-      --radius-lg: 8px;
-      --shadow-main: 0 24px 70px rgba(0, 0, 0, 0.42);
-      --shadow-panel: 0 14px 30px rgba(0, 0, 0, 0.34);
+      --bg-0: #07111a;
+      --bg-1: #0d1924;
+      --bg-2: #112232;
+      --bg-3: #173049;
+      --panel-0: rgba(10, 18, 28, 0.9);
+      --panel-1: rgba(15, 27, 40, 0.92);
+      --panel-2: rgba(22, 37, 54, 0.96);
+      --panel-3: rgba(28, 46, 67, 0.98);
+      --line-0: rgba(210, 226, 244, 0.08);
+      --line-1: rgba(210, 226, 244, 0.14);
+      --line-2: rgba(210, 226, 244, 0.22);
+      --text-0: #f4f7fb;
+      --text-1: #cad5e2;
+      --text-2: #93a4b7;
+      --text-3: #66788f;
+      --accent: #ffbf3c;
+      --accent-strong: #ffd978;
+      --accent-soft: rgba(255, 191, 60, 0.14);
+      --accent-ink: #2d1d00;
+      --teal: #56d6c2;
+      --teal-soft: rgba(86, 214, 194, 0.14);
+      --red: #ff7a6b;
+      --radius-sm: 8px;
+      --radius-md: 14px;
+      --radius-lg: 22px;
+      --radius-xl: 30px;
+      --shadow-page: 0 40px 120px rgba(0, 0, 0, 0.45);
+      --shadow-panel: 0 18px 60px rgba(0, 0, 0, 0.28);
       --mono: "IBM Plex Mono", "SFMono-Regular", Menlo, Consolas, monospace;
-      --sans: "Sora", "Avenir Next", "Segoe UI", sans-serif;
+      --sans: "Space Grotesk", "Segoe UI", sans-serif;
     }
 
-    * { box-sizing: border-box; }
+    * {
+      box-sizing: border-box;
+    }
 
-    html, body {
+    html,
+    body {
       margin: 0;
       padding: 0;
-      background: var(--bg-0);
+      min-height: 100%;
+      background:
+        radial-gradient(circle at top left, rgba(255, 191, 60, 0.13), transparent 26%),
+        radial-gradient(circle at 85% 18%, rgba(86, 214, 194, 0.14), transparent 28%),
+        linear-gradient(180deg, #07111a 0%, #09131d 32%, #071019 100%);
       color: var(--text-0);
       font-family: var(--sans);
     }
 
-    body {
-      background-image: radial-gradient(circle at 12% 5%, rgba(241, 188, 45, 0.08), transparent 30%), radial-gradient(circle at 83% 23%, rgba(67, 95, 151, 0.18), transparent 43%);
-      min-height: 100vh;
+    body::before,
+    body::after {
+      content: "";
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    body::before {
+      background-image:
+        linear-gradient(rgba(201, 221, 243, 0.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(201, 221, 243, 0.03) 1px, transparent 1px);
+      background-size: 46px 46px;
+      mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.8), transparent 90%);
+    }
+
+    body::after {
+      opacity: 0.07;
+      background-image: radial-gradient(rgba(255, 255, 255, 0.48) 0.45px, transparent 0.7px);
+      background-size: 4px 4px;
     }
 
     .page {
       position: relative;
-      isolation: isolate;
+      z-index: 1;
       overflow: clip;
     }
 
-    .page::before {
-      content: "";
-      position: fixed;
-      inset: 0;
-      pointer-events: none;
-      z-index: -2;
-      background-image: linear-gradient(rgba(233, 238, 253, 0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(233, 238, 253, 0.03) 1px, transparent 1px);
-      background-size: 42px 42px;
-      mask-image: linear-gradient(180deg, rgba(0,0,0,.8), transparent 88%);
-    }
-
-    .page::after {
-      content: "";
-      position: fixed;
-      inset: 0;
-      pointer-events: none;
-      z-index: -1;
-      opacity: .07;
-      background-image: radial-gradient(rgba(255,255,255,.42) .4px, transparent .6px);
-      background-size: 3px 3px;
-    }
-
     .container {
-      width: min(1450px, 96vw);
+      width: min(1540px, calc(100vw - 40px));
       margin: 0 auto;
     }
 
     .topbar {
       position: sticky;
       top: 0;
-      z-index: 40;
-      backdrop-filter: blur(10px);
-      background: rgba(10, 13, 20, .8);
+      z-index: 50;
+      backdrop-filter: blur(18px);
+      background: rgba(7, 14, 23, 0.76);
       border-bottom: 1px solid var(--line-0);
     }
 
     .topbar-inner {
-      height: 70px;
-      display: flex;
+      min-height: 76px;
+      display: grid;
+      grid-template-columns: auto 1fr auto;
       align-items: center;
-      justify-content: space-between;
-      gap: 16px;
+      gap: 18px;
     }
 
     .brand {
       text-decoration: none;
+      color: var(--text-0);
       display: inline-flex;
       align-items: center;
-      gap: 10px;
-      color: var(--text-0);
-      font-size: 15px;
-      font-weight: 700;
-      letter-spacing: .2px;
+      gap: 12px;
     }
 
     .mark {
-      width: 20px;
-      height: 20px;
-      border-radius: var(--radius-sm);
-      background: var(--accent);
-      color: #191309;
-      font-family: var(--mono);
-      font-size: 12px;
+      width: 30px;
+      height: 30px;
+      border-radius: 10px;
       display: grid;
       place-items: center;
+      background: linear-gradient(135deg, var(--accent), #ff8a3d);
+      color: #1f1200;
+      font-family: var(--mono);
+      font-size: 13px;
       font-weight: 700;
+      box-shadow: 0 12px 30px rgba(255, 191, 60, 0.26);
+    }
+
+    .brand-copy strong,
+    .brand-copy span {
+      display: block;
+    }
+
+    .brand-copy strong {
+      font-size: 15px;
+      letter-spacing: -0.02em;
+    }
+
+    .brand-copy span {
+      color: var(--text-3);
+      font-size: 11px;
+      font-family: var(--mono);
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
     }
 
     .nav {
-      margin-left: auto;
-      display: flex;
+      display: inline-flex;
+      justify-self: center;
       align-items: center;
-      gap: 24px;
+      gap: 8px;
+      padding: 6px;
+      border: 1px solid var(--line-1);
+      background: rgba(17, 29, 43, 0.74);
+      border-radius: 999px;
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
     }
 
     .nav a {
-      color: var(--text-2);
       text-decoration: none;
-      font-size: 14px;
-      font-weight: 500;
+      color: var(--text-2);
+      font-size: 13px;
+      padding: 10px 14px;
+      border-radius: 999px;
+      transition: 160ms ease;
     }
 
-    .nav a.active,
-    .nav a:hover { color: var(--text-0); }
+    .nav a:hover,
+    .nav a.active {
+      color: var(--text-0);
+      background: rgba(255, 255, 255, 0.05);
+    }
+
+    .top-actions {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+    }
 
     .btn {
       border: 1px solid transparent;
-      border-radius: var(--radius-sm);
-      padding: 11px 16px;
-      font-size: 13px;
-      line-height: 1;
+      border-radius: 999px;
+      padding: 12px 16px;
       text-decoration: none;
       display: inline-flex;
       align-items: center;
+      justify-content: center;
       gap: 8px;
-      white-space: nowrap;
-      font-weight: 600;
+      font-size: 13px;
+      line-height: 1;
+      font-weight: 700;
+      transition: transform 180ms ease, border-color 180ms ease, background 180ms ease;
+    }
+
+    .btn:hover {
+      transform: translateY(-1px);
+    }
+
+    .btn-ghost {
+      color: var(--text-1);
+      border-color: var(--line-1);
+      background: rgba(19, 31, 45, 0.8);
     }
 
     .btn-primary {
-      background: var(--accent);
-      color: #19140a;
-      border-color: #daaa1f;
-    }
-
-    .btn-dark {
-      background: rgba(24, 32, 46, .75);
-      color: var(--text-1);
-      border-color: var(--line-1);
+      color: var(--accent-ink);
+      border-color: rgba(255, 191, 60, 0.8);
+      background: linear-gradient(180deg, #ffd261, #ffbf3c);
+      box-shadow: 0 14px 34px rgba(255, 191, 60, 0.22);
     }
 
     .hero {
-      padding: 54px 0 30px;
-      border-bottom: 1px solid var(--line-0);
+      padding: 48px 0 24px;
     }
 
-    .kicker {
+    .hero-shell {
+      display: grid;
+      grid-template-columns: 1.2fr 0.8fr;
+      gap: 22px;
+      align-items: stretch;
+    }
+
+    .hero-main,
+    .hero-side {
+      border: 1px solid var(--line-1);
+      border-radius: var(--radius-xl);
+      background:
+        linear-gradient(180deg, rgba(18, 31, 47, 0.84), rgba(11, 20, 31, 0.94));
+      box-shadow: var(--shadow-panel);
+      overflow: hidden;
+      position: relative;
+    }
+
+    .hero-main::before,
+    .hero-side::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      background:
+        radial-gradient(circle at top right, rgba(255, 191, 60, 0.12), transparent 34%),
+        linear-gradient(180deg, rgba(255, 255, 255, 0.03), transparent 25%);
+    }
+
+    .hero-main-inner,
+    .hero-side-inner {
+      position: relative;
+      padding: 28px 30px;
+    }
+
+    .eyebrow {
       display: inline-flex;
       align-items: center;
-      gap: 8px;
+      gap: 10px;
+      padding: 8px 12px;
+      border: 1px solid rgba(255, 191, 60, 0.26);
+      border-radius: 999px;
+      background: rgba(255, 191, 60, 0.08);
+      color: var(--accent-strong);
       font-family: var(--mono);
-      font-size: 12px;
-      letter-spacing: 1.5px;
+      font-size: 11px;
+      letter-spacing: 0.16em;
       text-transform: uppercase;
-      color: #99a4b9;
     }
 
-    .kicker::before {
+    .eyebrow::before {
       content: "";
-      width: 14px;
-      height: 1px;
+      width: 8px;
+      height: 8px;
+      border-radius: 999px;
       background: var(--accent);
+      box-shadow: 0 0 0 6px rgba(255, 191, 60, 0.12);
     }
 
     h1 {
-      margin: 16px 0 0;
-      max-width: 980px;
-      font-size: clamp(40px, 7vw, 78px);
-      line-height: .95;
-      letter-spacing: -1.4px;
-      font-weight: 800;
+      margin: 18px 0 0;
+      max-width: 920px;
+      font-size: clamp(42px, 6vw, 84px);
+      line-height: 0.94;
+      letter-spacing: -0.06em;
     }
 
-    .h1-muted { display: block; color: #8a94a9; }
+    .h1-muted {
+      display: block;
+      color: #9cb0c5;
+    }
 
-    .hero p {
-      margin: 22px 0 0;
+    .hero-copy {
+      margin: 20px 0 0;
       max-width: 840px;
       color: var(--text-1);
       font-size: 18px;
-      line-height: 1.58;
+      line-height: 1.7;
     }
 
-    .hero-meta {
-      margin-top: 24px;
+    .hero-actions {
+      margin-top: 26px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+
+    .meta-row {
+      margin-top: 22px;
       display: flex;
       flex-wrap: wrap;
       gap: 10px;
-      align-items: center;
-      font-family: var(--mono);
-      font-size: 12px;
-      color: #7a8599;
     }
 
     .chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
       border: 1px solid var(--line-1);
-      border-radius: var(--radius-sm);
-      padding: 5px 8px;
-      background: rgba(31, 40, 56, .7);
-      color: #95a1b8;
-      text-transform: uppercase;
-      letter-spacing: .7px;
-      font-size: 11px;
+      border-radius: 999px;
+      padding: 8px 12px;
+      background: rgba(255, 255, 255, 0.03);
+      color: var(--text-2);
       font-family: var(--mono);
+      font-size: 11px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
+
+    .chip strong {
+      color: var(--text-0);
+      font-weight: 600;
     }
 
     .chip.accent {
-      border-color: rgba(241, 188, 45, .5);
+      border-color: rgba(255, 191, 60, 0.28);
       background: var(--accent-soft);
       color: var(--accent-strong);
     }
 
-    .studio {
-      padding: 22px 0 18px;
+    .chip.teal {
+      border-color: rgba(86, 214, 194, 0.28);
+      background: var(--teal-soft);
+      color: #a7f2e7;
+    }
+
+    .hero-side-grid {
+      display: grid;
+      gap: 14px;
+    }
+
+    .spotlight {
+      border: 1px solid var(--line-1);
+      border-radius: 18px;
+      background: rgba(9, 18, 28, 0.66);
+      padding: 16px;
+    }
+
+    .spotlight-top {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 10px;
+    }
+
+    .spotlight-top h2,
+    .spotlight-top strong {
+      margin: 0;
+      font-size: 16px;
+      letter-spacing: -0.03em;
+    }
+
+    .spotlight-top span {
+      color: var(--text-3);
+      font-family: var(--mono);
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+    }
+
+    .score {
+      display: grid;
+      grid-template-columns: auto 1fr;
+      gap: 14px;
+      align-items: center;
+    }
+
+    .score-badge {
+      width: 88px;
+      height: 88px;
+      border-radius: 22px;
+      display: grid;
+      place-items: center;
+      border: 1px solid rgba(255, 191, 60, 0.22);
+      background: linear-gradient(180deg, rgba(255, 191, 60, 0.12), rgba(255, 191, 60, 0.04));
+      color: var(--accent-strong);
+      font-size: 28px;
+      font-weight: 700;
+      letter-spacing: -0.04em;
+    }
+
+    .score-copy p,
+    .spotlight p {
+      margin: 0;
+      color: var(--text-1);
+      font-size: 14px;
+      line-height: 1.6;
+    }
+
+    .score-bars {
+      margin-top: 12px;
+      display: grid;
+      gap: 8px;
+    }
+
+    .bar-row {
+      display: grid;
+      grid-template-columns: 74px 1fr 42px;
+      gap: 10px;
+      align-items: center;
+      color: var(--text-2);
+      font-family: var(--mono);
+      font-size: 11px;
+    }
+
+    .bar {
+      height: 8px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.08);
+      overflow: hidden;
+    }
+
+    .bar > span {
+      display: block;
+      height: 100%;
+      border-radius: inherit;
+      background: linear-gradient(90deg, var(--teal), #97ffe9);
     }
 
     .workspace {
+      margin-top: 18px;
       border: 1px solid var(--line-1);
-      background: linear-gradient(180deg, rgba(23, 31, 45, .82), rgba(16, 23, 33, .88));
-      border-radius: var(--radius-lg);
+      border-radius: 30px;
       overflow: hidden;
-      box-shadow: var(--shadow-main);
+      box-shadow: var(--shadow-page);
+      background: linear-gradient(180deg, rgba(14, 24, 36, 0.98), rgba(9, 16, 24, 0.98));
     }
 
     .workspace-top {
-      height: 52px;
-      border-bottom: 1px solid var(--line-0);
-      background: rgba(28, 36, 52, .85);
-      display: flex;
+      display: grid;
+      grid-template-columns: auto 1fr auto;
       align-items: center;
-      justify-content: space-between;
-      padding: 0 14px;
       gap: 14px;
+      min-height: 68px;
+      padding: 14px 18px;
+      border-bottom: 1px solid var(--line-0);
+      background: linear-gradient(180deg, rgba(19, 31, 46, 0.95), rgba(16, 26, 39, 0.84));
     }
 
     .window-dots {
       display: inline-flex;
       align-items: center;
-      gap: 7px;
+      gap: 8px;
     }
 
     .window-dots span {
-      width: 8px;
-      height: 8px;
+      width: 10px;
+      height: 10px;
       border-radius: 999px;
-      border: 1px solid rgba(132, 143, 163, .22);
-      background: rgba(122, 133, 154, .2);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      background: rgba(255, 255, 255, 0.2);
     }
 
     .command {
-      flex: 1;
-      max-width: 640px;
-      height: 34px;
+      min-height: 42px;
       border: 1px solid var(--line-1);
-      background: #202a3a;
-      border-radius: var(--radius-sm);
+      background: rgba(9, 19, 30, 0.78);
+      border-radius: 16px;
       display: flex;
       align-items: center;
       gap: 10px;
-      padding: 0 10px;
-      font-family: var(--mono);
-      font-size: 12px;
-      color: #8e99b0;
+      padding: 0 12px;
+      color: var(--text-2);
+      font-size: 13px;
     }
 
-    .command kbd {
-      border: 1px solid var(--line-1);
-      background: #2a354a;
-      color: #adb7cb;
-      border-radius: var(--radius-sm);
-      padding: 1px 6px;
+    .command kbd,
+    .mini-kbd {
       font-family: var(--mono);
       font-size: 11px;
+      border: 1px solid var(--line-1);
+      background: rgba(255, 255, 255, 0.04);
+      border-radius: 8px;
+      padding: 3px 7px;
+      color: var(--text-1);
     }
 
-    .top-right {
+    .top-status {
       display: flex;
       align-items: center;
       gap: 8px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
     }
 
     .workspace-body {
-      min-height: 660px;
       display: grid;
-      grid-template-columns: 260px 1fr 350px;
-      background: rgba(13, 18, 27, .85);
+      grid-template-columns: 280px minmax(0, 1fr) 390px;
+      min-height: 880px;
+      background: linear-gradient(180deg, rgba(8, 15, 23, 0.98), rgba(6, 12, 19, 0.98));
     }
 
-    .sidebar {
+    .left-rail,
+    .main-stage,
+    .right-rail {
+      min-width: 0;
+    }
+
+    .left-rail {
       border-right: 1px solid var(--line-0);
-      background: linear-gradient(180deg, rgba(27, 35, 49, .78), rgba(22, 29, 41, .84));
       display: grid;
       grid-template-rows: auto auto 1fr;
+      background: linear-gradient(180deg, rgba(16, 26, 39, 0.9), rgba(11, 20, 31, 0.96));
     }
 
-    .side-block {
+    .rail-block {
+      padding: 18px;
       border-bottom: 1px solid var(--line-0);
-      padding: 12px;
     }
 
-    .side-title {
-      margin: 0 0 9px;
+    .block-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+
+    .block-head h2 {
+      margin: 0;
       font-family: var(--mono);
       font-size: 11px;
-      color: #748097;
+      letter-spacing: 0.14em;
       text-transform: uppercase;
-      letter-spacing: 1.2px;
+      color: var(--text-3);
     }
 
     .search {
-      height: 32px;
+      min-height: 38px;
+      border-radius: 12px;
       border: 1px solid var(--line-1);
-      background: #20293a;
-      border-radius: var(--radius-sm);
-      color: #8490a7;
-      padding: 0 9px;
-      font-size: 13px;
+      background: rgba(6, 13, 21, 0.7);
       display: flex;
       align-items: center;
-    }
-
-    .flow-file {
-      border: 1px solid transparent;
-      border-radius: var(--radius-sm);
-      padding: 8px 9px;
-      font-size: 13px;
-      color: #aeb7ca;
-      margin-bottom: 4px;
-      display: flex;
-      justify-content: space-between;
-      gap: 8px;
-    }
-
-    .flow-file code {
-      color: #727d95;
-      font-family: var(--mono);
-      font-size: 10px;
-    }
-
-    .flow-file.active {
-      border-color: rgba(241, 188, 45, .45);
-      background: var(--accent-soft);
-      color: #f0c45a;
-    }
-
-    .widgets {
-      display: grid;
-      gap: 6px;
-    }
-
-    .widget {
-      border: 1px solid transparent;
-      border-radius: var(--radius-sm);
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      padding: 8px;
-      color: #a7b1c4;
+      padding: 0 12px;
+      color: var(--text-3);
       font-size: 13px;
     }
 
-    .widget code {
-      font-family: var(--mono);
-      font-size: 10px;
-      color: #6f7b93;
-    }
-
-    .widget.active {
-      border-color: rgba(241, 188, 45, .45);
-      background: rgba(241, 188, 45, .08);
-      color: #edc158;
-    }
-
-    .canvas {
-      display: grid;
-      grid-template-rows: auto 1fr auto;
-      min-width: 0;
-      border-right: 1px solid var(--line-0);
-    }
-
-    .canvas-head {
-      height: 48px;
-      border-bottom: 1px solid var(--line-0);
-      padding: 0 14px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      font-family: var(--mono);
-      font-size: 12px;
-      color: #8e98ad;
-      background: rgba(22, 29, 42, .77);
-    }
-
-    .lanes {
+    .project-card {
+      border: 1px solid var(--line-1);
+      border-radius: 18px;
+      background: rgba(7, 15, 24, 0.72);
       padding: 14px;
       display: grid;
       gap: 10px;
-      background: linear-gradient(180deg, rgba(17, 23, 34, .8), rgba(14, 19, 28, .86));
     }
 
-    .lane {
-      border: 1px solid var(--line-0);
-      background: rgba(25, 32, 45, .6);
-      border-radius: var(--radius-md);
-      overflow: hidden;
+    .project-card strong {
+      font-size: 16px;
+      letter-spacing: -0.03em;
     }
 
-    .lane-head {
-      height: 34px;
-      border-bottom: 1px solid var(--line-0);
-      padding: 0 10px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      font-family: var(--mono);
-      color: #74829a;
-      font-size: 11px;
-      text-transform: uppercase;
-      letter-spacing: 1px;
-      background: rgba(29, 37, 53, .72);
+    .project-card p {
+      margin: 0;
+      color: var(--text-2);
+      font-size: 13px;
+      line-height: 1.6;
     }
 
-    .nodes {
-      padding: 10px;
+    .flow-list,
+    .step-list,
+    .widget-list,
+    .insights {
       display: grid;
       gap: 8px;
     }
 
-    .node {
+    .flow-item,
+    .step-item,
+    .widget-item,
+    .insight,
+    .schema-row,
+    .event-row,
+    .signal {
       border: 1px solid var(--line-1);
-      background: linear-gradient(90deg, rgba(34, 43, 60, .62), rgba(24, 31, 44, .42));
-      border-radius: var(--radius-sm);
-      padding: 10px;
+      background: rgba(255, 255, 255, 0.03);
+      border-radius: 14px;
+      transition: 180ms ease;
+    }
+
+    .flow-item,
+    .step-item,
+    .widget-item {
+      padding: 12px 13px;
+    }
+
+    .flow-item:hover,
+    .step-item:hover,
+    .widget-item:hover,
+    .schema-row:hover,
+    .event-row:hover {
+      transform: translateY(-1px);
+      border-color: var(--line-2);
+      background: rgba(255, 255, 255, 0.05);
+    }
+
+    .flow-item.active,
+    .step-item.active,
+    .widget-item.active {
+      border-color: rgba(255, 191, 60, 0.36);
+      background: linear-gradient(180deg, rgba(255, 191, 60, 0.12), rgba(255, 191, 60, 0.05));
+      box-shadow: inset 2px 0 0 var(--accent);
+    }
+
+    .item-line {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .item-line strong {
+      font-size: 14px;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
+
+    .item-line span,
+    .step-meta,
+    .widget-item code {
+      color: var(--text-3);
+      font-family: var(--mono);
+      font-size: 10px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .step-item small,
+    .widget-item small {
+      display: block;
+      margin-top: 8px;
+      color: var(--text-2);
+      font-size: 12px;
+      line-height: 1.55;
+    }
+
+    .main-stage {
+      border-right: 1px solid var(--line-0);
       display: grid;
-      gap: 7px;
+      grid-template-rows: auto auto minmax(0, 1fr) auto;
+      background:
+        radial-gradient(circle at top center, rgba(255, 191, 60, 0.06), transparent 24%),
+        linear-gradient(180deg, rgba(10, 19, 28, 0.92), rgba(7, 14, 21, 0.98));
+    }
+
+    .stage-summary {
+      display: grid;
+      grid-template-columns: 1.35fr 0.65fr;
+      gap: 16px;
+      padding: 18px;
+      border-bottom: 1px solid var(--line-0);
+    }
+
+    .summary-card,
+    .score-card {
+      border: 1px solid var(--line-1);
+      border-radius: 20px;
+      background: rgba(255, 255, 255, 0.03);
+      padding: 18px;
+    }
+
+    .summary-card h2,
+    .score-card h2 {
+      margin: 0 0 8px;
+      font-size: 18px;
+      letter-spacing: -0.03em;
+    }
+
+    .summary-card p,
+    .score-card p {
+      margin: 0;
+      color: var(--text-2);
+      font-size: 14px;
+      line-height: 1.65;
+    }
+
+    .summary-meta {
+      margin-top: 14px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .score-stat {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-top: 14px;
+      padding-top: 14px;
+      border-top: 1px solid var(--line-0);
+      font-family: var(--mono);
+    }
+
+    .score-stat strong {
+      font-size: 34px;
+      letter-spacing: -0.06em;
+      color: var(--accent-strong);
+    }
+
+    .stage-tabs {
+      padding: 0 18px 18px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      border-bottom: 1px solid var(--line-0);
+    }
+
+    .tab {
+      border: 1px solid var(--line-1);
+      border-radius: 999px;
+      padding: 10px 14px;
+      color: var(--text-2);
+      font-size: 12px;
+      font-family: var(--mono);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      background: rgba(255, 255, 255, 0.03);
+    }
+
+    .tab.active {
+      color: var(--accent-strong);
+      border-color: rgba(255, 191, 60, 0.28);
+      background: rgba(255, 191, 60, 0.08);
+    }
+
+    .builder {
+      display: grid;
+      grid-template-columns: minmax(0, 1.05fr) minmax(320px, 0.95fr);
+      gap: 18px;
+      padding: 18px;
+      min-height: 0;
+    }
+
+    .surface {
+      border: 1px solid var(--line-1);
+      border-radius: 24px;
+      background:
+        linear-gradient(180deg, rgba(14, 22, 33, 0.9), rgba(10, 17, 26, 0.96));
+      overflow: hidden;
+    }
+
+    .surface-head {
+      min-height: 52px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 0 16px;
+      border-bottom: 1px solid var(--line-0);
+      font-family: var(--mono);
+      font-size: 11px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--text-3);
+      background: rgba(255, 255, 255, 0.02);
+    }
+
+    .flow-map {
+      padding: 16px;
+      display: grid;
+      gap: 14px;
+      position: relative;
+    }
+
+    .flow-map::before {
+      content: "";
+      position: absolute;
+      top: 26px;
+      bottom: 26px;
+      left: 35px;
+      width: 2px;
+      background: linear-gradient(180deg, rgba(255, 191, 60, 0.26), rgba(86, 214, 194, 0.1));
+    }
+
+    .node-card {
+      position: relative;
+      margin-left: 24px;
+      border: 1px solid var(--line-1);
+      border-radius: 22px;
+      padding: 16px;
+      background:
+        linear-gradient(180deg, rgba(26, 40, 58, 0.58), rgba(14, 21, 31, 0.82));
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+    }
+
+    .node-card::before {
+      content: "";
+      position: absolute;
+      top: 24px;
+      left: -28px;
+      width: 16px;
+      height: 16px;
+      border-radius: 999px;
+      border: 2px solid rgba(255, 191, 60, 0.28);
+      background: #0d1924;
+    }
+
+    .node-card.active {
+      border-color: rgba(255, 191, 60, 0.38);
+      background:
+        linear-gradient(180deg, rgba(52, 42, 19, 0.52), rgba(18, 21, 27, 0.84));
+      box-shadow:
+        inset 3px 0 0 rgba(255, 191, 60, 0.95),
+        0 18px 40px rgba(0, 0, 0, 0.22);
+    }
+
+    .node-card.active::before {
+      background: var(--accent);
+      box-shadow: 0 0 0 8px rgba(255, 191, 60, 0.1);
     }
 
     .node-top {
       display: flex;
-      align-items: center;
+      align-items: flex-start;
       justify-content: space-between;
-      gap: 8px;
-    }
-
-    .node-name {
-      font-size: 15px;
-      color: #d4dbea;
-      font-weight: 500;
-      letter-spacing: -0.2px;
+      gap: 12px;
     }
 
     .node-id {
+      margin-bottom: 6px;
+      color: var(--text-3);
       font-family: var(--mono);
       font-size: 11px;
-      color: #728097;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
     }
 
-    .node-kind {
+    .node-name {
+      font-size: 19px;
+      letter-spacing: -0.04em;
+      font-weight: 700;
+    }
+
+    .node-desc {
+      margin-top: 10px;
+      color: var(--text-1);
+      font-size: 14px;
+      line-height: 1.65;
+    }
+
+    .pill {
+      border: 1px solid var(--line-1);
+      border-radius: 999px;
+      padding: 7px 10px;
+      background: rgba(255, 255, 255, 0.04);
+      color: var(--text-2);
       font-family: var(--mono);
       font-size: 10px;
+      letter-spacing: 0.08em;
       text-transform: uppercase;
-      letter-spacing: .8px;
-      padding: 3px 6px;
-      border-radius: var(--radius-sm);
-      border: 1px solid var(--line-1);
-      color: #8793aa;
-      background: #253147;
+      white-space: nowrap;
     }
 
-    .node-meta {
-      font-family: var(--mono);
-      font-size: 11px;
-      color: #808ca3;
+    .pill.accent {
+      border-color: rgba(255, 191, 60, 0.32);
+      background: rgba(255, 191, 60, 0.08);
+      color: var(--accent-strong);
     }
 
-    .node.active {
-      border-color: rgba(241, 188, 45, .58);
-      background: linear-gradient(90deg, rgba(49, 43, 27, .56), rgba(37, 34, 27, .28));
-      box-shadow: inset 2px 0 0 rgba(241, 188, 45, .9);
-    }
-
-    .node.active .node-name { color: #f2f5fc; }
-
-    .node.active .node-kind {
-      border-color: rgba(241, 188, 45, .5);
-      color: #edc25b;
-      background: rgba(241, 188, 45, .12);
-    }
-
-    .canvas-bottom {
-      border-top: 1px solid var(--line-0);
-      padding: 10px 12px;
-      background: rgba(24, 31, 44, .82);
-      display: grid;
-      gap: 8px;
-    }
-
-    .prop-head {
-      font-family: var(--mono);
-      font-size: 11px;
-      color: #7b879e;
-      letter-spacing: 1px;
-      text-transform: uppercase;
-    }
-
-    .prop-grid {
+    .node-grid {
+      margin-top: 12px;
       display: grid;
       grid-template-columns: repeat(2, minmax(0, 1fr));
       gap: 8px;
     }
 
-    .prop {
-      height: 29px;
-      border: 1px solid var(--line-0);
-      background: #283145;
-      border-radius: var(--radius-sm);
-      color: #9eabc2;
-      font-family: var(--mono);
-      font-size: 11px;
-      display: flex;
-      align-items: center;
-      padding: 0 8px;
+    .signal {
+      padding: 10px 11px;
     }
 
-    .prop.accent {
-      border-color: rgba(241, 188, 45, .45);
-      color: #efc560;
-      background: rgba(241, 188, 45, .09);
+    .signal strong {
+      display: block;
+      margin-bottom: 6px;
+      font-size: 12px;
+      font-family: var(--mono);
+      color: var(--text-3);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+
+    .signal span {
+      color: var(--text-1);
+      font-size: 13px;
+      line-height: 1.45;
+    }
+
+    .editor {
+      display: grid;
+      grid-template-rows: auto auto 1fr;
+      min-height: 0;
+    }
+
+    .inspector-tabs {
+      padding: 14px 16px 0;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .inspector-tab {
+      border: 1px solid var(--line-1);
+      border-radius: 999px;
+      padding: 8px 12px;
+      background: rgba(255, 255, 255, 0.03);
+      color: var(--text-2);
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .inspector-tab.active {
+      color: var(--text-0);
+      background: rgba(255, 255, 255, 0.08);
+    }
+
+    .editor-body {
+      padding: 16px;
+      display: grid;
+      gap: 12px;
+    }
+
+    .schema-row {
+      padding: 14px;
+    }
+
+    .schema-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 10px;
+    }
+
+    .schema-head strong {
+      font-size: 14px;
+      letter-spacing: -0.02em;
+    }
+
+    .schema-head code {
+      color: var(--text-3);
+      font-size: 11px;
+      font-family: var(--mono);
+    }
+
+    .schema-body {
+      display: grid;
+      gap: 8px;
+      color: var(--text-2);
+      font-size: 13px;
+      line-height: 1.6;
+    }
+
+    .field-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+    }
+
+    .field {
+      min-height: 46px;
+      border: 1px solid var(--line-1);
+      border-radius: 14px;
+      background: rgba(6, 13, 21, 0.62);
+      display: grid;
+      align-content: center;
+      padding: 8px 10px;
+    }
+
+    .field label {
+      color: var(--text-3);
+      font-family: var(--mono);
+      font-size: 10px;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+    }
+
+    .field span {
+      margin-top: 4px;
+      color: var(--text-0);
+      font-size: 13px;
+    }
+
+    .canvas-bottom {
+      padding: 18px;
+      border-top: 1px solid var(--line-0);
+      background: rgba(7, 14, 21, 0.84);
+    }
+
+    .bottom-grid {
+      display: grid;
+      grid-template-columns: 1.2fr 0.8fr;
+      gap: 14px;
+    }
+
+    .bottom-card {
+      border: 1px solid var(--line-1);
+      border-radius: 18px;
+      background: rgba(255, 255, 255, 0.03);
+      padding: 16px;
+    }
+
+    .bottom-card h3 {
+      margin: 0 0 8px;
+      font-size: 15px;
+      letter-spacing: -0.03em;
+    }
+
+    .bottom-card p {
+      margin: 0;
+      color: var(--text-2);
+      font-size: 13px;
+      line-height: 1.6;
     }
 
     .right-rail {
       display: grid;
-      grid-template-rows: 1fr 220px;
-      background: linear-gradient(180deg, #0d121a, #0a0e15);
+      grid-template-rows: auto minmax(0, 1fr) auto;
+      background: linear-gradient(180deg, rgba(10, 17, 25, 0.98), rgba(7, 13, 19, 0.98));
+    }
+
+    .preview-head {
+      padding: 18px;
+      border-bottom: 1px solid var(--line-0);
+      display: grid;
+      gap: 12px;
+    }
+
+    .preview-head-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .preview-head h2 {
+      margin: 0;
+      font-size: 18px;
+      letter-spacing: -0.03em;
+    }
+
+    .preview-head p {
+      margin: 0;
+      color: var(--text-2);
+      font-size: 13px;
+      line-height: 1.6;
+    }
+
+    .preview-metrics {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 8px;
+    }
+
+    .metric {
+      border: 1px solid var(--line-1);
+      border-radius: 14px;
+      background: rgba(255, 255, 255, 0.03);
+      padding: 10px;
+    }
+
+    .metric label {
+      display: block;
+      color: var(--text-3);
+      font-family: var(--mono);
+      font-size: 10px;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+    }
+
+    .metric strong {
+      display: block;
+      margin-top: 6px;
+      font-size: 21px;
+      letter-spacing: -0.04em;
     }
 
     .terminal {
-      padding: 12px;
+      padding: 18px;
       border-bottom: 1px solid var(--line-0);
       font-family: var(--mono);
       font-size: 13px;
-      color: #bcc5d7;
-      line-height: 1.6;
+      line-height: 1.7;
+      color: #c2cfdd;
       overflow: hidden;
     }
 
-    .terminal-head {
-      margin-bottom: 9px;
-      color: #6e7a91;
-      font-size: 11px;
-      text-transform: uppercase;
-      letter-spacing: 1px;
+    .terminal-shell {
+      border: 1px solid var(--line-1);
+      border-radius: 22px;
+      background:
+        radial-gradient(circle at top right, rgba(86, 214, 194, 0.08), transparent 25%),
+        linear-gradient(180deg, rgba(14, 22, 33, 0.9), rgba(8, 14, 20, 0.98));
+      overflow: hidden;
     }
 
-    .line { white-space: pre; }
-    .line.dim { color: #5f6b82; }
-    .line.accent { color: #efc45a; }
-    .line.ok { color: var(--ok); }
-    .line.warn { color: var(--warn); }
+    .terminal-top {
+      min-height: 48px;
+      border-bottom: 1px solid var(--line-0);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 0 14px;
+      color: var(--text-3);
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+    }
 
-    .events {
-      padding: 10px 12px;
+    .terminal-body {
+      padding: 14px;
+    }
+
+    .line {
+      white-space: pre-wrap;
+    }
+
+    .line.dim {
+      color: #627388;
+    }
+
+    .line.accent {
+      color: var(--accent-strong);
+    }
+
+    .line.ok {
+      color: #8cf2da;
+    }
+
+    .line.warn {
+      color: #ffc47d;
+    }
+
+    .timeline {
+      padding: 18px;
+      display: grid;
+      gap: 10px;
+      min-height: 0;
+    }
+
+    .timeline-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      color: var(--text-3);
       font-family: var(--mono);
       font-size: 11px;
-      color: #97a3b9;
-      background: rgba(12, 17, 25, .85);
-    }
-
-    .events-head {
-      color: #6f7c94;
-      margin-bottom: 8px;
       text-transform: uppercase;
-      letter-spacing: 1px;
-      font-size: 10px;
+      letter-spacing: 0.12em;
     }
 
     .event-row {
-      display: flex;
-      justify-content: space-between;
-      gap: 8px;
-      border: 1px solid var(--line-0);
-      background: rgba(28, 37, 54, .52);
-      padding: 7px 8px;
-      border-radius: var(--radius-sm);
-      margin-bottom: 6px;
+      padding: 12px;
+      display: grid;
+      gap: 6px;
     }
 
-    .event-row b { color: #d3dced; font-weight: 500; }
+    .event-row strong {
+      font-size: 13px;
+      letter-spacing: -0.02em;
+    }
+
+    .event-row span {
+      color: var(--text-2);
+      font-size: 12px;
+      line-height: 1.55;
+    }
+
+    .event-row code {
+      color: var(--text-3);
+      font-size: 10px;
+      font-family: var(--mono);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+
+    .insights {
+      padding: 0 18px 18px;
+    }
+
+    .insight {
+      padding: 14px;
+    }
+
+    .insight strong {
+      display: block;
+      margin-bottom: 8px;
+      font-size: 14px;
+      letter-spacing: -0.02em;
+    }
+
+    .insight p {
+      margin: 0;
+      color: var(--text-2);
+      font-size: 13px;
+      line-height: 1.6;
+    }
 
     .metrics {
-      padding: 22px 0 70px;
+      padding: 22px 0 74px;
       display: grid;
-      gap: 12px;
-      grid-template-columns: 2fr 1fr;
+      grid-template-columns: 1.2fr 0.8fr;
+      gap: 16px;
     }
 
     .panel {
       border: 1px solid var(--line-1);
-      border-radius: var(--radius-md);
-      background: rgba(20, 27, 39, .82);
+      border-radius: 26px;
+      background: linear-gradient(180deg, rgba(15, 26, 38, 0.9), rgba(10, 18, 28, 0.96));
       box-shadow: var(--shadow-panel);
       overflow: hidden;
     }
 
     .panel-head {
-      height: 44px;
+      min-height: 56px;
+      padding: 0 18px;
       border-bottom: 1px solid var(--line-0);
       display: flex;
       align-items: center;
       justify-content: space-between;
-      padding: 0 12px;
-      background: rgba(28, 36, 50, .76);
-      font-family: var(--mono);
-      color: #8490a8;
-      font-size: 11px;
-      text-transform: uppercase;
-      letter-spacing: .9px;
+      gap: 12px;
+    }
+
+    .panel-head h2 {
+      margin: 0;
+      font-size: 17px;
+      letter-spacing: -0.03em;
     }
 
     .cap-grid {
       display: grid;
       grid-template-columns: repeat(3, minmax(0, 1fr));
-      gap: 10px;
-      padding: 12px;
+      gap: 12px;
+      padding: 18px;
     }
 
     .cap {
       border: 1px solid var(--line-1);
-      border-radius: var(--radius-sm);
-      background: rgba(28, 35, 49, .72);
-      padding: 12px;
+      border-radius: 18px;
+      background: rgba(255, 255, 255, 0.03);
+      padding: 16px;
     }
 
     .cap h3 {
       margin: 0;
-      font-size: 15px;
-      letter-spacing: -.2px;
+      font-size: 16px;
+      letter-spacing: -0.03em;
     }
 
     .cap p {
-      margin: 8px 0 0;
-      color: #aab4c7;
-      font-size: 13px;
-      line-height: 1.52;
+      margin: 10px 0 0;
+      color: var(--text-2);
+      font-size: 14px;
+      line-height: 1.65;
     }
 
     .stats {
-      padding: 12px;
+      padding: 18px;
       display: grid;
-      gap: 8px;
+      gap: 10px;
     }
 
     .stat {
       border: 1px solid var(--line-1);
-      border-radius: var(--radius-sm);
-      background: rgba(27, 35, 49, .7);
-      padding: 10px;
+      border-radius: 16px;
+      background: rgba(255, 255, 255, 0.03);
+      padding: 14px;
       display: flex;
       justify-content: space-between;
+      gap: 12px;
       align-items: baseline;
-      gap: 8px;
-    }
-
-    .stat strong {
-      font-size: 22px;
-      letter-spacing: -.4px;
-      color: #edf2fb;
     }
 
     .stat code {
+      color: var(--text-3);
       font-family: var(--mono);
-      color: #7e8aa1;
       font-size: 11px;
+      letter-spacing: 0.08em;
       text-transform: uppercase;
-      letter-spacing: .8px;
     }
 
-    .stat .accent { color: var(--accent-strong); }
+    .stat strong {
+      font-size: 28px;
+      letter-spacing: -0.05em;
+    }
+
+    .stat strong.accent {
+      color: var(--accent-strong);
+    }
 
     .footer {
+      padding: 30px 0 44px;
       border-top: 1px solid var(--line-0);
-      padding: 28px 0 48px;
-      color: #6f7b91;
+      color: var(--text-3);
       font-family: var(--mono);
       font-size: 11px;
       text-transform: uppercase;
-      letter-spacing: 1px;
+      letter-spacing: 0.12em;
     }
 
-    @media (max-width: 1260px) {
+    @media (max-width: 1380px) {
       .workspace-body {
-        grid-template-columns: 220px 1fr;
+        grid-template-columns: 260px minmax(0, 1fr);
       }
 
       .right-rail {
         grid-column: 1 / -1;
+        border-top: 1px solid var(--line-0);
         grid-template-columns: 1fr 1fr;
-        grid-template-rows: none;
+        grid-template-rows: auto;
       }
 
-      .terminal {
-        border-right: 1px solid var(--line-0);
-        border-bottom: 0;
+      .preview-head,
+      .terminal,
+      .timeline,
+      .insights {
+        grid-column: auto;
       }
 
-      .metrics {
+      .timeline {
+        border-left: 1px solid var(--line-0);
+      }
+
+      .insights {
+        grid-column: 1 / -1;
+        border-top: 1px solid var(--line-0);
+        padding-top: 18px;
+      }
+    }
+
+    @media (max-width: 1100px) {
+      .hero-shell,
+      .builder,
+      .bottom-grid,
+      .metrics,
+      .stage-summary {
         grid-template-columns: 1fr;
+      }
+
+      .workspace-body {
+        grid-template-columns: 1fr;
+      }
+
+      .left-rail,
+      .main-stage {
+        border-right: 0;
+        border-bottom: 1px solid var(--line-0);
+      }
+
+      .right-rail {
+        grid-template-columns: 1fr;
+      }
+
+      .timeline {
+        border-left: 0;
+        border-top: 1px solid var(--line-0);
       }
 
       .cap-grid {
@@ -742,52 +1385,62 @@
       }
     }
 
-    @media (max-width: 920px) {
-      .nav { display: none; }
+    @media (max-width: 840px) {
+      .container {
+        width: min(100vw - 24px, 1540px);
+      }
 
-      .workspace-body {
+      .topbar-inner {
+        grid-template-columns: 1fr;
+        padding: 12px 0;
+      }
+
+      .nav {
+        justify-self: start;
+      }
+
+      .top-actions {
+        justify-self: start;
+        flex-wrap: wrap;
+      }
+
+      .workspace-top {
         grid-template-columns: 1fr;
       }
 
-      .sidebar,
-      .canvas {
-        border-right: 0;
-        border-bottom: 1px solid var(--line-0);
+      .top-status {
+        justify-content: flex-start;
       }
 
-      .prop-grid,
+      .preview-metrics,
+      .field-grid,
+      .node-grid,
       .cap-grid {
         grid-template-columns: 1fr;
-      }
-
-      .right-rail {
-        grid-template-columns: 1fr;
-      }
-
-      .terminal {
-        border-right: 0;
-        border-bottom: 1px solid var(--line-0);
       }
     }
 
     @media (max-width: 640px) {
-      .topbar-inner { height: 64px; }
-      .hero { padding-top: 40px; }
-      .topbar .btn-primary,
-      .topbar .btn-dark {
-        padding: 9px 11px;
-        font-size: 11px;
+      h1 {
+        font-size: 42px;
       }
 
-      .hero p { font-size: 16px; }
-      .command { display: none; }
-
-      .workspace-top {
-        justify-content: space-between;
+      .hero-main-inner,
+      .hero-side-inner,
+      .rail-block,
+      .preview-head,
+      .terminal,
+      .timeline,
+      .insights,
+      .panel-head,
+      .cap-grid,
+      .stats {
+        padding-left: 16px;
+        padding-right: 16px;
       }
 
-      .top-right {
-        margin-left: auto;
+      .command {
+        display: none;
       }
     }
   </style>
@@ -798,223 +1451,518 @@
       <div class="container topbar-inner">
         <a class="brand" href="../index.html">
           <span class="mark">S</span>
-          <span>Steply Creator</span>
+          <span class="brand-copy">
+            <strong>Steply Creator</strong>
+            <span>visual config builder</span>
+          </span>
         </a>
 
         <nav class="nav">
           <a href="../index.html">Landing</a>
           <a href="../docs/index.html">Docs</a>
-          <a href="#studio" class="active">Studio</a>
+          <a href="#studio" class="active">Creator</a>
+          <a href="#capabilities">Capabilities</a>
         </nav>
 
-        <a href="#" class="btn btn-dark">Publish Flow</a>
-        <a href="#" class="btn btn-primary">Run Preview ↗</a>
+        <div class="top-actions">
+          <a href="#" class="btn btn-ghost">Share Preview</a>
+          <a href="#" class="btn btn-primary">Run Live Preview</a>
+        </div>
       </div>
     </header>
 
     <section class="hero container">
-      <div class="kicker">Creator shell</div>
-      <h1>
-        Build YAML flows in a visual studio.
-        <span class="h1-muted">Ship exactly what terminal runtime executes.</span>
-      </h1>
-      <p>
-        Ten widok jest zaprojektowany jak realny produkt operatorski: precyzyjne panele, gęstość informacji,
-        aktywne stany kroków i żywy mirror terminala. Bez marketingowej mgły, tylko narzędzie do pracy inżynierskiej.
-      </p>
-      <div class="hero-meta">
-        <span class="chip accent">preview parity / strict</span>
-        <span class="chip">project: init-project.yaml</span>
-        <span class="chip">runtime: bash</span>
-        <span class="chip">mode: deterministic</span>
-      </div>
-    </section>
+      <div class="hero-shell">
+        <article class="hero-main">
+          <div class="hero-main-inner">
+            <div class="eyebrow">creator shell / production-grade</div>
+            <h1>
+              Design the config visually.
+              <span class="h1-muted">Ship exactly what the runtime executes.</span>
+            </h1>
+            <p class="hero-copy">
+              Ten creator ma wyglądać jak narzędzie operatorskie klasy premium: szybki do skanowania, precyzyjny,
+              gęsty informacyjnie i bez chaosu. Flow map, schema-aware inspector, live terminal mirror i sygnały
+              jakości mają prowadzić użytkownika od draftu do gotowego YAML bez zgadywania.
+            </p>
 
-    <section class="studio container" id="studio">
-      <div class="workspace">
+            <div class="hero-actions">
+              <a href="#studio" class="btn btn-primary">Open Creator Surface</a>
+              <a href="#" class="btn btn-ghost">Inspect Example Flow</a>
+            </div>
+
+            <div class="meta-row">
+              <span class="chip accent">schema aware</span>
+              <span class="chip teal">preview parity <strong>98.7%</strong></span>
+              <span class="chip">project <strong>init-project.yaml</strong></span>
+              <span class="chip">mode <strong>strict deterministic</strong></span>
+            </div>
+          </div>
+        </article>
+
+        <aside class="hero-side">
+          <div class="hero-side-inner">
+            <div class="hero-side-grid">
+              <section class="spotlight">
+                <div class="spotlight-top">
+                  <h2>Creator health</h2>
+                  <span>live diagnostics</span>
+                </div>
+                <div class="score">
+                  <div class="score-badge">A+</div>
+                  <div class="score-copy">
+                    <p>Selected flow is valid, readable and close to runtime-perfect. The UI highlights state, conditions and mapping pressure before the user hits publish.</p>
+                  </div>
+                </div>
+                <div class="score-bars">
+                  <div class="bar-row"><span>clarity</span><div class="bar"><span style="width:96%"></span></div><strong>96</strong></div>
+                  <div class="bar-row"><span>parity</span><div class="bar"><span style="width:99%"></span></div><strong>99</strong></div>
+                  <div class="bar-row"><span>speed</span><div class="bar"><span style="width:92%"></span></div><strong>92</strong></div>
+                </div>
+              </section>
+
+              <section class="spotlight">
+                <div class="spotlight-top">
+                  <strong>Operator path</strong>
+                  <span>recommended workflow</span>
+                </div>
+                <p>1. Pick a step. 2. Place a widget. 3. Bind target path. 4. Check conditions. 5. Verify terminal preview. 6. Publish only when diagnostics stay green.</p>
+              </section>
+            </div>
+          </div>
+        </aside>
+      </div>
+
+      <div class="workspace" id="studio">
         <div class="workspace-top">
-          <div class="window-dots" aria-hidden="true"><span></span><span></span><span></span></div>
-          <div class="command"><kbd>⌘K</kbd> Jump to file, widget, action or variable path...</div>
-          <div class="top-right">
+          <div class="window-dots" aria-hidden="true">
+            <span></span>
+            <span></span>
+            <span></span>
+          </div>
+          <div class="command"><kbd>⌘K</kbd> Jump to flow, step, widget, condition, target path or action...</div>
+          <div class="top-status">
             <span class="chip">autosave on</span>
+            <span class="chip teal">runtime synced</span>
             <span class="chip accent">preview live</span>
           </div>
         </div>
 
         <div class="workspace-body">
-          <aside class="sidebar">
-            <div class="side-block">
-              <h2 class="side-title">Find</h2>
-              <div class="search">Search flow, widget or variable...</div>
-            </div>
-
-            <div class="side-block">
-              <h2 class="side-title">Flows</h2>
-              <div class="flow-file active"><span>init-project.yaml</span><code>4 steps</code></div>
-              <div class="flow-file"><span>release-task.yaml</span><code>7 steps</code></div>
-              <div class="flow-file"><span>bootstrap-env.yaml</span><code>6 steps</code></div>
-            </div>
-
-            <div class="side-block" style="border-bottom:0;">
-              <h2 class="side-title">Widget palette</h2>
-              <div class="widgets">
-                <div class="widget"><span>Text Input</span><code>input</code></div>
-                <div class="widget active"><span>Select</span><code>select</code></div>
-                <div class="widget"><span>Confirm</span><code>confirm</code></div>
-                <div class="widget"><span>Table</span><code>table</code></div>
-                <div class="widget"><span>Tree</span><code>tree</code></div>
-                <div class="widget"><span>File Browser</span><code>file</code></div>
-                <div class="widget"><span>Output</span><code>output</code></div>
+          <aside class="left-rail">
+            <section class="rail-block">
+              <div class="block-head">
+                <h2>Project</h2>
+                <span class="mini-kbd">⌘1</span>
               </div>
-            </div>
+              <div class="project-card">
+                <strong>Workspace / onboarding-kit</strong>
+                <p>Visual builder for a deterministic setup flow. Every edit updates schema intent, node graph and terminal preview in the same surface.</p>
+                <div class="meta-row" style="margin-top:0;">
+                  <span class="chip">4 steps</span>
+                  <span class="chip">12 nodes</span>
+                  <span class="chip accent">0 schema errors</span>
+                </div>
+              </div>
+            </section>
+
+            <section class="rail-block">
+              <div class="block-head">
+                <h2>Find</h2>
+                <span class="mini-kbd">/</span>
+              </div>
+              <div class="search">Search flow, widget, variable, path...</div>
+              <div class="flow-list" style="margin-top:12px;">
+                <div class="flow-item active">
+                  <div class="item-line">
+                    <strong>init-project.yaml</strong>
+                    <span>active</span>
+                  </div>
+                  <div class="step-meta">4 steps / preview parity 98.7%</div>
+                </div>
+                <div class="flow-item">
+                  <div class="item-line">
+                    <strong>release-task.yaml</strong>
+                    <span>draft</span>
+                  </div>
+                  <div class="step-meta">7 steps / 2 warnings</div>
+                </div>
+                <div class="flow-item">
+                  <div class="item-line">
+                    <strong>bootstrap-env.yaml</strong>
+                    <span>ready</span>
+                  </div>
+                  <div class="step-meta">6 steps / 0 warnings</div>
+                </div>
+              </div>
+            </section>
+
+            <section class="rail-block" style="border-bottom:0;">
+              <div class="block-head">
+                <h2>Flow outline</h2>
+                <span class="mini-kbd">⌘2</span>
+              </div>
+
+              <div class="step-list">
+                <div class="step-item">
+                  <div class="item-line">
+                    <strong>intro</strong>
+                    <span>00</span>
+                  </div>
+                  <small>Intro copy, docs link and contextual hints for the runtime session.</small>
+                </div>
+
+                <div class="step-item active">
+                  <div class="item-line">
+                    <strong>inputs</strong>
+                    <span>01</span>
+                  </div>
+                  <small>Main setup step. User enters project name, chooses framework and toggles advanced path.</small>
+                </div>
+
+                <div class="step-item">
+                  <div class="item-line">
+                    <strong>components</strong>
+                    <span>02</span>
+                  </div>
+                  <small>Conditional step that reveals richer widgets only when the flow has enough context.</small>
+                </div>
+
+                <div class="step-item">
+                  <div class="item-line">
+                    <strong>outputs</strong>
+                    <span>03</span>
+                  </div>
+                  <small>Preview and confirmation zone with runtime-facing output widgets.</small>
+                </div>
+              </div>
+
+              <div class="block-head" style="margin-top:18px;">
+                <h2>Palette</h2>
+                <span class="mini-kbd">⌘3</span>
+              </div>
+
+              <div class="widget-list">
+                <div class="widget-item">
+                  <div class="item-line"><strong>Text Input</strong><code>input</code></div>
+                  <small>Single-line text, placeholder, completion, change targets.</small>
+                </div>
+                <div class="widget-item active">
+                  <div class="item-line"><strong>Select</strong><code>select</code></div>
+                  <small>Best for finite options and clean terminal navigation.</small>
+                </div>
+                <div class="widget-item">
+                  <div class="item-line"><strong>File Browser</strong><code>component</code></div>
+                  <small>Rich path picking with tree/list mode and filtering.</small>
+                </div>
+                <div class="widget-item">
+                  <div class="item-line"><strong>Table</strong><code>component</code></div>
+                  <small>Multi-row structured editing with row actions and filtering.</small>
+                </div>
+              </div>
+            </section>
           </aside>
 
-          <main class="canvas">
-            <div class="canvas-head">
-              <span>FLOW / init-project.yaml</span>
-              <span><span style="color:var(--accent);">●</span> synced, last edit 14:42:11</span>
+          <main class="main-stage">
+            <section class="stage-summary">
+              <article class="summary-card">
+                <h2>Editing flow / init-project.yaml</h2>
+                <p>The current canvas shows the active step as a real authoring surface, not a decorative mockup. Relationships, targets and conditions are visible without opening extra drawers.</p>
+                <div class="summary-meta">
+                  <span class="chip">last edit <strong>14:42:11</strong></span>
+                  <span class="chip">runtime <strong>bash</strong></span>
+                  <span class="chip teal">condition latency <strong>2ms</strong></span>
+                </div>
+              </article>
+
+              <aside class="score-card">
+                <h2>Selected node quality</h2>
+                <p>Framework selector reads well, has sensible defaults and stays visible only when upstream input is present.</p>
+                <div class="score-stat">
+                  <span>node score</span>
+                  <strong>96</strong>
+                </div>
+              </aside>
+            </section>
+
+            <div class="stage-tabs">
+              <span class="tab active">Flow graph</span>
+              <span class="tab">Property editor</span>
+              <span class="tab">Condition builder</span>
+              <span class="tab">Target mapping</span>
+              <span class="tab">Generated YAML</span>
             </div>
 
-            <div class="lanes">
-              <section class="lane">
-                <div class="lane-head"><span>Input lane</span><span>2 nodes</span></div>
-                <div class="nodes">
-                  <article class="node">
+            <section class="builder">
+              <article class="surface">
+                <div class="surface-head">
+                  <span>Active step / inputs</span>
+                  <span>4 nodes visible</span>
+                </div>
+                <div class="flow-map">
+                  <article class="node-card">
                     <div class="node-top">
                       <div>
                         <div class="node-id">01 / project_name</div>
                         <div class="node-name">Project Name</div>
                       </div>
-                      <span class="node-kind">input</span>
+                      <span class="pill">text_input</span>
                     </div>
-                    <div class="node-meta">target: project.name</div>
+                    <div class="node-desc">Collects the user-facing app name and seeds downstream target paths used by later steps.</div>
+                    <div class="node-grid">
+                      <div class="signal"><strong>target</strong><span>project.name</span></div>
+                      <div class="signal"><strong>validation</strong><span>required + min_length(2)</span></div>
+                    </div>
                   </article>
 
-                  <article class="node active">
+                  <article class="node-card active">
                     <div class="node-top">
                       <div>
                         <div class="node-id">02 / framework</div>
                         <div class="node-name">Select Framework</div>
                       </div>
-                      <span class="node-kind">select</span>
+                      <span class="pill accent">select</span>
                     </div>
-                    <div class="node-meta">when: project_name != '' | options: react, vue, svelte, angular</div>
+                    <div class="node-desc">Primary decision point for template generation. Visibility is gated by a simple condition, which keeps the flow focused and prevents empty branching.</div>
+                    <div class="node-grid">
+                      <div class="signal"><strong>options</strong><span>React, Vue, Svelte, Angular</span></div>
+                      <div class="signal"><strong>when</strong><span>$input.project_name != ""</span></div>
+                      <div class="signal"><strong>target</strong><span>config.framework</span></div>
+                      <div class="signal"><strong>preview impact</strong><span>changes step 03 and output copy</span></div>
+                    </div>
                   </article>
-                </div>
-              </section>
 
-              <section class="lane">
-                <div class="lane-head"><span>Components lane</span><span>1 node</span></div>
-                <div class="nodes">
-                  <article class="node">
+                  <article class="node-card">
                     <div class="node-top">
                       <div>
                         <div class="node-id">03 / features</div>
                         <div class="node-name">Feature Table</div>
                       </div>
-                      <span class="node-kind">table</span>
+                      <span class="pill">table</span>
                     </div>
-                    <div class="node-meta">columns: feature, enabled, version</div>
+                    <div class="node-desc">Structured component for package flags and per-feature settings. Appears after framework selection stabilizes.</div>
+                    <div class="node-grid">
+                      <div class="signal"><strong>columns</strong><span>feature, enabled, version</span></div>
+                      <div class="signal"><strong>mode</strong><span>editable rows</span></div>
+                    </div>
                   </article>
-                </div>
-              </section>
 
-              <section class="lane">
-                <div class="lane-head"><span>Output lane</span><span>1 node</span></div>
-                <div class="nodes">
-                  <article class="node">
+                  <article class="node-card">
                     <div class="node-top">
                       <div>
                         <div class="node-id">04 / confirm</div>
                         <div class="node-name">Confirm Setup</div>
                       </div>
-                      <span class="node-kind">confirm</span>
+                      <span class="pill">confirm</span>
                     </div>
-                    <div class="node-meta">output.target: config.framework</div>
+                    <div class="node-desc">Final confirmation step with summary output and runtime handoff once configuration is complete.</div>
+                    <div class="node-grid">
+                      <div class="signal"><strong>output</strong><span>config.framework</span></div>
+                      <div class="signal"><strong>transition</strong><span>advance on submit</span></div>
+                    </div>
                   </article>
                 </div>
-              </section>
-            </div>
+              </article>
+
+              <aside class="surface editor">
+                <div class="surface-head">
+                  <span>Inspector / framework</span>
+                  <span>schema-aware</span>
+                </div>
+                <div class="inspector-tabs">
+                  <span class="inspector-tab active">Overview</span>
+                  <span class="inspector-tab">Rules</span>
+                  <span class="inspector-tab">Bindings</span>
+                  <span class="inspector-tab">Hints</span>
+                </div>
+                <div class="editor-body">
+                  <section class="schema-row">
+                    <div class="schema-head">
+                      <strong>Widget identity</strong>
+                      <code>type: select</code>
+                    </div>
+                    <div class="field-grid">
+                      <div class="field"><label>id</label><span>framework</span></div>
+                      <div class="field"><label>label</label><span>Select Framework</span></div>
+                      <div class="field"><label>step</label><span>inputs</span></div>
+                      <div class="field"><label>default</label><span>react</span></div>
+                    </div>
+                  </section>
+
+                  <section class="schema-row">
+                    <div class="schema-head">
+                      <strong>Visibility logic</strong>
+                      <code>when</code>
+                    </div>
+                    <div class="schema-body">
+                      <div class="field-grid">
+                        <div class="field"><label>left side</label><span>$input.project_name</span></div>
+                        <div class="field"><label>operator</label><span>not empty</span></div>
+                      </div>
+                      <span>The condition is simple and legible, which is ideal for a visual builder. Good UX: show the rule inline, not hidden in a modal.</span>
+                    </div>
+                  </section>
+
+                  <section class="schema-row">
+                    <div class="schema-head">
+                      <strong>Binding map</strong>
+                      <code>target path</code>
+                    </div>
+                    <div class="schema-body">
+                      <div class="field-grid">
+                        <div class="field"><label>submit target</label><span>config.framework</span></div>
+                        <div class="field"><label>preview scope</label><span>flow</span></div>
+                      </div>
+                      <span>Changes to this node immediately affect feature templates and terminal copy in later steps.</span>
+                    </div>
+                  </section>
+                </div>
+              </aside>
+            </section>
 
             <div class="canvas-bottom">
-              <div class="prop-head">Properties / framework</div>
-              <div class="prop-grid">
-                <div class="prop">id: framework</div>
-                <div class="prop">label: Select Framework</div>
-                <div class="prop">placeholder: Choose one...</div>
-                <div class="prop accent">when: $input.project_name != ''</div>
-                <div class="prop">target: config.framework</div>
-                <div class="prop">hints: true</div>
+              <div class="bottom-grid">
+                <article class="bottom-card">
+                  <h3>UX callout</h3>
+                  <p>Najmocniejszy kierunek dla tego creatora to pokazywanie zależności bez przeładowania: użytkownik ma widzieć aktywny krok, logikę warunku, target map i rezultat w preview praktycznie jednocześnie.</p>
+                </article>
+                <article class="bottom-card">
+                  <h3>Authoring principle</h3>
+                  <p>Use fewer hidden states. Keep important flow constraints visible directly in the canvas so the product feels fast, controlled and professional.</p>
+                </article>
               </div>
             </div>
           </main>
 
           <aside class="right-rail">
-            <div class="terminal">
-              <div class="terminal-head">Terminal preview / bash</div>
-              <div class="line accent">$ steply run init-project.yaml --preview</div>
-              <div class="line">steply | init-project</div>
-              <div class="line dim">├──────────────────────────────────</div>
-              <div class="line">◇ Project Name <span style="color:#eef2fa;">my-app</span></div>
-              <div class="line">│</div>
-              <div class="line accent">◇ Select Framework</div>
-              <div class="line">│  ◉ React</div>
-              <div class="line">│  ○ Vue</div>
-              <div class="line">│  ○ Svelte</div>
-              <div class="line">│  ○ Angular</div>
-              <div class="line">│</div>
-              <div class="line dim">├ Features (pending)</div>
-              <div class="line dim">└ Confirm Setup (pending)</div>
-              <div class="line"> </div>
-              <div class="line">↵ submit   ↑↓ navigate</div>
-              <div class="line ok">preview parity: 98.7%</div>
-              <div class="line warn">trace: condition resolved in 2ms</div>
-            </div>
+            <section class="preview-head">
+              <div class="preview-head-top">
+                <h2>Runtime mirror</h2>
+                <span class="chip teal">live session</span>
+              </div>
+              <p>Preview is treated as first-class product surface. The creator should let users trust that what they design is what the terminal user will actually experience.</p>
 
-            <div class="events">
-              <div class="events-head">Run events timeline</div>
-              <div class="event-row"><b>14:42:09</b><span>flow validated</span></div>
-              <div class="event-row"><b>14:42:10</b><span>step 01 resolved</span></div>
-              <div class="event-row"><b>14:42:10</b><span>step 02 active</span></div>
-              <div class="event-row"><b>14:42:11</b><span>preview synced</span></div>
-              <div class="event-row"><b>14:42:11</b><span>parity score updated</span></div>
-            </div>
+              <div class="preview-metrics">
+                <div class="metric">
+                  <label>latency</label>
+                  <strong>43ms</strong>
+                </div>
+                <div class="metric">
+                  <label>parity</label>
+                  <strong>98.7%</strong>
+                </div>
+                <div class="metric">
+                  <label>warnings</label>
+                  <strong>0</strong>
+                </div>
+              </div>
+            </section>
+
+            <section class="terminal">
+              <div class="terminal-shell">
+                <div class="terminal-top">
+                  <span>terminal preview / bash</span>
+                  <span>active node: framework</span>
+                </div>
+                <div class="terminal-body">
+                  <div class="line accent">$ steply run init-project.yaml --preview</div>
+                  <div class="line">steply | init-project</div>
+                  <div class="line dim">├─────────────────────────────────────────────</div>
+                  <div class="line">◇ Project Name  <span style="color:#f4f7fb;">my-app</span></div>
+                  <div class="line">│</div>
+                  <div class="line accent">◇ Select Framework</div>
+                  <div class="line">│  ◉ React</div>
+                  <div class="line">│  ○ Vue</div>
+                  <div class="line">│  ○ Svelte</div>
+                  <div class="line">│  ○ Angular</div>
+                  <div class="line">│</div>
+                  <div class="line dim">├ Feature Table (waiting for selection)</div>
+                  <div class="line dim">└ Confirm Setup (pending)</div>
+                  <div class="line"> </div>
+                  <div class="line">↵ submit   ↑↓ navigate   tab jump</div>
+                  <div class="line ok">preview parity: 98.7% / rendering stable</div>
+                  <div class="line warn">trace: condition resolved in 2ms</div>
+                </div>
+              </div>
+            </section>
+
+            <section class="timeline">
+              <div class="timeline-head">
+                <span>Run timeline</span>
+                <span>strict mode</span>
+              </div>
+
+              <div class="event-row">
+                <code>14:42:09</code>
+                <strong>Flow validated</strong>
+                <span>Schema, target paths and widget relationships passed without drift.</span>
+              </div>
+
+              <div class="event-row">
+                <code>14:42:10</code>
+                <strong>Step 01 resolved</strong>
+                <span>Project name populated downstream references for the active path.</span>
+              </div>
+
+              <div class="event-row">
+                <code>14:42:10</code>
+                <strong>Framework node focused</strong>
+                <span>Interactive state mirrored back into the creator inspector and flow graph.</span>
+              </div>
+
+              <div class="event-row">
+                <code>14:42:11</code>
+                <strong>Preview synced</strong>
+                <span>Terminal render and node metadata match current authoring state.</span>
+              </div>
+            </section>
+
+            <section class="insights">
+              <article class="insight">
+                <strong>What feels premium here</strong>
+                <p>Large confident surfaces, strong spacing rhythm, visible logic, and fewer tiny decorations. The interface should feel authored, not assembled from generic dashboard parts.</p>
+              </article>
+              <article class="insight">
+                <strong>What improves UX</strong>
+                <p>Keep the active node, its condition, target path and runtime result on screen at once. That removes context switching and makes config authoring feel much safer.</p>
+              </article>
+            </section>
           </aside>
         </div>
       </div>
     </section>
 
-    <section class="metrics container">
+    <section class="metrics container" id="capabilities">
       <article class="panel">
         <header class="panel-head">
-          <span>Creator capabilities</span>
-          <span class="chip accent">design system</span>
+          <h2>Creator capabilities</h2>
+          <span class="chip accent">designed for pro workflows</span>
         </header>
         <div class="cap-grid">
           <div class="cap">
-            <h3>Schema-aware cards</h3>
-            <p>Każdy node pokazuje kontekst typu, reguł i mapowania danych w tej samej strukturze co runtime parser.</p>
+            <h3>Flow graph with meaning</h3>
+            <p>Canvas cards expose targets, conditions and effect zones directly, so the graph is not just pretty boxes but an actual authoring tool.</p>
           </div>
           <div class="cap">
-            <h3>Runtime mirror panel</h3>
-            <p>Terminal nie jest dekoracją: zawiera realną hierarchię kroków, symbole TUI i sygnały stanu warunków.</p>
+            <h3>Inspector that explains</h3>
+            <p>Selected widgets reveal schema, defaults, conditions and bindings in the same visual language, which reduces hidden complexity.</p>
           </div>
           <div class="cap">
-            <h3>Deterministic properties</h3>
-            <p>Pole `when`, `target`, `hints` i `output` utrzymane w spójnym modelu, bez “ukrytej magii” frameworka.</p>
+            <h3>Runtime mirror as truth</h3>
+            <p>Live terminal output is integrated as a first-class panel, helping users trust the parity between builder and execution.</p>
           </div>
         </div>
       </article>
 
       <aside class="panel">
         <header class="panel-head">
-          <span>Studio stats</span>
+          <h2>Studio stats</h2>
           <span class="chip">today</span>
         </header>
         <div class="stats">
           <div class="stat"><code>flows built</code><strong>2,312</strong></div>
-          <div class="stat"><code>preview latency</code><strong>43ms</strong></div>
-          <div class="stat"><code class="accent">parity score</code><strong class="accent">98.7%</strong></div>
+          <div class="stat"><code>avg publish time</code><strong>6m 14s</strong></div>
+          <div class="stat"><code class="accent">preview parity</code><strong class="accent">98.7%</strong></div>
           <div class="stat"><code>warnings / run</code><strong>0.6</strong></div>
         </div>
       </aside>

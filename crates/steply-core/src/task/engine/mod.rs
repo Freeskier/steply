@@ -10,9 +10,10 @@ use crate::time::Instant;
 pub use keys::{fingerprint_value, interval_key, node_change_debounce_key, value_to_task_arg};
 pub use lifecycle::{complete_task_run, request_task_run};
 pub use triggering::{
-    bootstrap_interval_tasks, cancel_interval_tasks, trigger_flow_end_tasks,
-    trigger_flow_start_tasks, trigger_node_value_changed_tasks, trigger_step_enter_tasks,
-    trigger_step_exit_tasks, trigger_submit_after_tasks, trigger_submit_before_tasks,
+    bootstrap_interval_tasks, cancel_interval_tasks, refresh_active_step_interval_tasks,
+    trigger_flow_end_tasks, trigger_flow_start_tasks, trigger_node_value_changed_tasks,
+    trigger_step_enter_tasks, trigger_step_exit_tasks, trigger_submit_after_tasks,
+    trigger_submit_before_tasks,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]

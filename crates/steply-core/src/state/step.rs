@@ -51,9 +51,13 @@ pub enum StepCondition {
 impl StepCondition {
     pub fn evaluate(&self, store: &ValueStore) -> bool {
         match self {
-            Self::Equal { field, value } => store.get(field.as_str()).is_some_and(|v| v == value),
-            Self::NotEqual { field, value } => store.get(field.as_str()) != Some(value),
-            Self::NotEmpty { field } => store.get(field.as_str()).is_some_and(|v| !v.is_empty()),
+            Self::Equal { field, value } => store
+                .get_selector(field.as_str())
+                .is_some_and(|v| v == value),
+            Self::NotEqual { field, value } => store.get_selector(field.as_str()) != Some(value),
+            Self::NotEmpty { field } => store
+                .get_selector(field.as_str())
+                .is_some_and(|v| !v.is_empty()),
             Self::All(conditions) => conditions.iter().all(|condition| condition.evaluate(store)),
             Self::Any(conditions) => conditions.iter().any(|condition| condition.evaluate(store)),
             Self::Not(condition) => !condition.evaluate(store),

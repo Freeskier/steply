@@ -2,7 +2,7 @@ use crate::core::NodeId;
 use crate::core::value::Value;
 use crate::core::value_path::{ValuePath, ValueTarget};
 use crate::runtime::event::{ValueChange, WidgetAction};
-use crate::terminal::{CursorPos, KeyCode, KeyEvent};
+use crate::terminal::{CursorPos, KeyEvent};
 use crate::ui::span::Span;
 use crate::ui::style::{Color, Style};
 use crate::widgets::base::WidgetBase;
@@ -191,16 +191,6 @@ impl Interactive for TextInput {
     }
 
     fn on_key(&mut self, key: KeyEvent) -> InteractionResult {
-        if self.mode == TextMode::Secret {
-            return match key.code {
-                KeyCode::Enter => InteractionResult::submit_or_produce(
-                    self.submit_target.as_ref(),
-                    Value::Text(self.value.clone()),
-                ),
-                _ => InteractionResult::ignored(),
-            };
-        }
-
         match text_edit::apply_single_line_key(&mut self.value, &mut self.cursor, key) {
             text_edit::TextKeyOutcome::Ignored => InteractionResult::ignored(),
             text_edit::TextKeyOutcome::Changed => self.edited_result(),

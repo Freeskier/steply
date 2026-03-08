@@ -51,6 +51,34 @@ pub fn cancel_interval_tasks(host: &mut impl TaskEngineHost) {
     }
 }
 
+pub fn refresh_active_step_interval_tasks(host: &mut impl TaskEngineHost) {
+    let intervals = host
+        .task_subscriptions()
+        .iter()
+        .enumerate()
+        .filter(|(_, sub)| sub.enabled)
+        .filter_map(|(index, sub)| match &sub.trigger {
+            TaskTrigger::OnInterval {
+                every_ms,
+                only_when_step_active: true,
+            } => Some((
+                sub.task_id.to_string(),
+                interval_key(sub.task_id.as_str(), index),
+                (*every_ms).max(1),
+            )),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+
+    for (_, key, _) in &intervals {
+        host.cancel_interval_request(key.clone());
+    }
+
+    for (task_id, key, every_ms) in intervals {
+        host.schedule_interval_request(task_id.as_str(), key, every_ms, true, true);
+    }
+}
+
 pub fn trigger_flow_start_tasks(host: &mut impl TaskEngineHost) {
     trigger_for(host, |t| matches!(t, TaskTrigger::OnFlowStart), None);
 }

@@ -170,10 +170,9 @@ impl CommandRunner {
         }
         self.last_error = None;
         if let Some(request) = self.log.start_request() {
-            let mut result =
-                InteractionResult::with_action(WidgetAction::TaskRequested { request });
-            result.actions.push(WidgetAction::ValidateCurrentStepSubmit);
-            return result;
+            return InteractionResult::with_action(
+                WidgetAction::ValidateCurrentStepSubmitAndTaskRequest { request },
+            );
         }
         InteractionResult::handled()
     }

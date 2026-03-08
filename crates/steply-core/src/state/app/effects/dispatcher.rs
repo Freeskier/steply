@@ -43,6 +43,12 @@ impl<'a> EffectDispatcher<'a> {
                 self.state.validate_current_step(ValidationMode::Submit);
                 InteractionResult::handled()
             }
+            WidgetAction::ValidateCurrentStepSubmitAndTaskRequest { request } => {
+                if self.state.validate_current_step(ValidationMode::Submit) {
+                    request_task_run(self.state, request);
+                }
+                InteractionResult::handled()
+            }
             WidgetAction::RequestFocus { target } => {
                 if !self.state.ui.active_node_index.has_visible(target.as_str())
                     && find_node(self.state.active_nodes(), target.as_str()).is_none()

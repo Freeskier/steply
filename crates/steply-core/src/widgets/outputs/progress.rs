@@ -1,8 +1,8 @@
 use crate::core::value::Value;
+use crate::time::{Duration, Instant};
 use crate::ui::span::Span;
 use crate::ui::style::{Color, Style};
 use crate::widgets::traits::{DrawOutput, Drawable, InteractionResult, OutputNode, RenderContext};
-use crate::time::{Duration, Instant};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Easing {

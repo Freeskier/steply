@@ -45,6 +45,7 @@ pub enum WidgetAction {
     InputDone,
     ValidateFocusedSubmit,
     ValidateCurrentStepSubmit,
+    ValidateCurrentStepSubmitAndTaskRequest { request: TaskRequest },
     RequestFocus { target: NodeId },
     TaskRequested { request: TaskRequest },
 }

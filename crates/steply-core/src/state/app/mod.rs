@@ -101,8 +101,7 @@ impl AppState {
         if !self.flow.set_current(index) {
             return false;
         }
-        self.reconcile_current_step_visibility();
-        self.rebuild_focus();
+        self.prepare_current_step_for_preview();
         true
     }
 
@@ -428,6 +427,13 @@ impl AppState {
 
     pub fn current_step_warnings(&self) -> &[String] {
         self.runtime.validation.step_warnings()
+    }
+
+    fn prepare_current_step_for_preview(&mut self) {
+        self.reconcile_current_step_visibility();
+        self.ui.overlays.clear();
+        self.hydrate_current_step_from_store();
+        self.rebuild_focus();
     }
 }
 

@@ -1,12 +1,12 @@
 use crate::core::value::Value;
 use crate::runtime::event::{SystemEvent, WidgetAction};
 use crate::task::{TaskId, TaskRequest};
+use crate::time::Instant;
 use crate::ui::span::Span;
 use crate::ui::spinner::SpinnerStyle;
 use crate::ui::style::{Color, Style};
 use crate::widgets::shared::task_watcher::{TaskWatcherState, TaskWatcherStatus};
 use crate::widgets::traits::{DrawOutput, Drawable, InteractionResult, OutputNode, RenderContext};
-use crate::time::Instant;
 
 pub struct TaskLogStep {
     pub label: String,

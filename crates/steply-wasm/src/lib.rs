@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use steply_core::preview::{RenderJsonRequest, RenderJsonScope};
+use steply_core::preview::RenderJsonRequest;
 use steply_core::terminal::{KeyCode, KeyEvent, KeyModifiers};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -16,43 +16,14 @@ impl TryFrom<WasmPreviewRequest> for RenderJsonRequest {
     type Error = String;
 
     fn try_from(value: WasmPreviewRequest) -> Result<Self, Self::Error> {
-        let scope = match value.scope.as_str() {
-            "current" => RenderJsonScope::Current,
-            "flow" => RenderJsonScope::Flow,
-            "step" => RenderJsonScope::Step {
-                step_id: value
-                    .step_id
-                    .ok_or_else(|| "step scope requires step_id".to_string())?,
-            },
-            "widget" => RenderJsonScope::Widget {
-                step_id: value
-                    .step_id
-                    .ok_or_else(|| "widget scope requires step_id".to_string())?,
-                widget_id: value
-                    .widget_id
-                    .ok_or_else(|| "widget scope requires widget_id".to_string())?,
-            },
-            other => {
-                return Err(format!(
-                    "unsupported scope: {} (expected current|flow|step|widget)",
-                    other
-                ));
-            }
-        };
-
-        let terminal_size = match (value.width, value.height) {
-            (Some(width), Some(height)) => {
-                Some(steply_core::terminal::TerminalSize { width, height })
-            }
-            (None, None) => None,
-            _ => return Err("width and height must be provided together".to_string()),
-        };
-
-        Ok(RenderJsonRequest {
-            scope,
-            active_step_id: value.active_step_id,
-            terminal_size,
-        })
+        RenderJsonRequest::from_named_parts(
+            Some(value.scope),
+            value.step_id,
+            value.widget_id,
+            value.active_step_id,
+            value.width,
+            value.height,
+        )
     }
 }
 
@@ -125,12 +96,11 @@ mod wasm_exports {
     use steply_core::runtime::intent::Intent;
     use steply_core::runtime::key_bindings::KeyBindings;
     use steply_core::runtime::reducer::Reducer;
-    use steply_core::state::app::AppState;
     use steply_core::ui::renderer::{Renderer, RendererConfig};
     use wasm_bindgen::prelude::*;
 
     struct PreviewSession {
-        state: AppState,
+        state: steply_core::state::app::AppState,
         renderer: Renderer,
         key_bindings: KeyBindings,
     }
@@ -238,7 +208,7 @@ mod wasm_exports {
         let loaded = steply_core::config::load_from_yaml_str(yaml)
             .map_err(|e| JsValue::from_str(e.as_str()))?;
         let session = PreviewSession {
-            state: AppState::with_tasks(loaded.flow, loaded.task_specs, loaded.task_subscriptions),
+            state: loaded.into_app_state(),
             renderer: Renderer::new(RendererConfig {
                 chrome_enabled: true,
             }),

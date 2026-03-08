@@ -4,11 +4,8 @@ use crate::task::{TaskSpec, TaskSubscription};
 use crate::terminal::{CursorPos, KeyEvent, PointerEvent};
 use crate::widgets::traits::{
     CompletionState, DrawOutput, FocusMode, HintContext, HintItem, InteractionResult,
-    InteractiveCursorCapability, InteractiveFocusCapability, InteractiveInputCapability,
-    InteractiveNode, InteractiveOverlayCapability, InteractiveRuntimeCapability,
-    InteractiveTaskCapability, InteractiveValidationCapability, InteractiveValueCapability,
-    OutputNode, OverlayMode, OverlayPlacement, PointerRowMap, RenderContext, TextAction,
-    ValidationMode,
+    InteractiveNode, OutputNode, OverlayMode, OverlayPlacement, PointerRowMap, RenderContext,
+    TextAction, ValidationMode,
 };
 
 pub trait Component: InteractiveNode {
@@ -175,7 +172,7 @@ impl Node {
 
     pub fn focus_mode(&self) -> FocusMode {
         self.interactive_ref()
-            .map(InteractiveFocusCapability::focus_mode_cap)
+            .map(|widget| widget.focus_mode())
             .unwrap_or(FocusMode::None)
     }
 
@@ -185,13 +182,13 @@ impl Node {
 
     pub fn on_key(&mut self, key: KeyEvent) -> InteractionResult {
         self.interactive_mut()
-            .map(|widget| widget.on_key_cap(key))
+            .map(|widget| widget.on_key(key))
             .unwrap_or_else(InteractionResult::ignored)
     }
 
     pub fn on_pointer(&mut self, event: PointerEvent) -> InteractionResult {
         if let Some(widget) = self.interactive_mut() {
-            widget.on_pointer_cap(event)
+            widget.on_pointer(event)
         } else if let Some(widget) = self.output_mut() {
             widget.on_pointer(event)
         } else {
@@ -201,19 +198,19 @@ impl Node {
 
     pub fn on_text_action(&mut self, action: TextAction) -> InteractionResult {
         self.interactive_mut()
-            .map(|widget| widget.on_text_action_cap(action))
+            .map(|widget| widget.on_text_action(action))
             .unwrap_or_else(InteractionResult::ignored)
     }
 
     pub fn on_text_edited(&mut self) {
         if let Some(widget) = self.interactive_mut() {
-            widget.on_text_edited_cap();
+            widget.on_text_edited();
         }
     }
 
     pub fn on_system_event(&mut self, event: &SystemEvent) -> InteractionResult {
         if let Some(widget) = self.interactive_mut() {
-            widget.on_system_event_cap(event)
+            widget.on_system_event(event)
         } else if let Some(widget) = self.output_mut() {
             widget.on_system_event(event)
         } else {
@@ -223,12 +220,12 @@ impl Node {
 
     pub fn completion(&mut self) -> Option<CompletionState<'_>> {
         self.interactive_mut()
-            .and_then(InteractiveInputCapability::completion_cap)
+            .and_then(|widget| widget.completion())
     }
 
     pub fn on_tick(&mut self) -> InteractionResult {
         if let Some(widget) = self.interactive_mut() {
-            widget.on_tick_cap()
+            widget.on_tick()
         } else if let Some(widget) = self.output_mut() {
             widget.on_tick()
         } else {
@@ -238,18 +235,18 @@ impl Node {
 
     pub fn cursor_pos(&self) -> Option<CursorPos> {
         self.interactive_ref()
-            .and_then(InteractiveCursorCapability::cursor_pos_cap)
+            .and_then(|widget| widget.cursor_pos())
     }
 
     pub fn cursor_visible(&self) -> bool {
         self.interactive_ref()
-            .map(InteractiveCursorCapability::cursor_visible_cap)
+            .map(|widget| widget.cursor_visible())
             .unwrap_or(false)
     }
 
     pub fn value(&self) -> Option<Value> {
         if let Some(widget) = self.interactive_ref() {
-            widget.value_cap()
+            widget.value()
         } else if let Some(widget) = self.output_ref() {
             widget.value()
         } else {
@@ -259,7 +256,7 @@ impl Node {
 
     pub fn set_value(&mut self, value: Value) {
         if let Some(widget) = self.interactive_mut() {
-            widget.set_value_cap(value);
+            widget.set_value(value);
         } else if let Some(widget) = self.output_mut() {
             widget.set_value(value);
         }
@@ -267,7 +264,7 @@ impl Node {
 
     pub fn validate(&self, mode: ValidationMode) -> Result<(), String> {
         if let Some(widget) = self.interactive_ref() {
-            widget.validate_cap(mode)
+            widget.validate(mode)
         } else if let Some(widget) = self.output_ref() {
             widget.validate()
         } else {
@@ -277,28 +274,28 @@ impl Node {
 
     pub fn overlay_placement(&self) -> Option<OverlayPlacement> {
         self.interactive_ref()
-            .and_then(InteractiveOverlayCapability::overlay_placement_cap)
+            .and_then(|widget| widget.overlay_placement())
     }
 
     pub fn overlay_open(&mut self, saved_focus_id: Option<String>) -> bool {
         self.interactive_mut()
-            .is_some_and(|widget| widget.overlay_open_cap(saved_focus_id))
+            .is_some_and(|widget| widget.overlay_open(saved_focus_id))
     }
 
     pub fn overlay_close(&mut self) -> Option<String> {
         self.interactive_mut()
-            .and_then(InteractiveOverlayCapability::overlay_close_cap)
+            .and_then(|widget| widget.overlay_close())
     }
 
     pub fn overlay_mode(&self) -> OverlayMode {
         self.interactive_ref()
-            .map(InteractiveOverlayCapability::overlay_mode_cap)
+            .map(|widget| widget.overlay_mode())
             .unwrap_or(OverlayMode::Exclusive)
     }
 
     pub fn task_specs(&self) -> Vec<TaskSpec> {
         if let Some(widget) = self.interactive_ref() {
-            widget.task_specs_cap()
+            widget.task_specs()
         } else if let Some(widget) = self.output_ref() {
             widget.task_specs()
         } else {
@@ -308,7 +305,7 @@ impl Node {
 
     pub fn task_subscriptions(&self) -> Vec<TaskSubscription> {
         if let Some(widget) = self.interactive_ref() {
-            widget.task_subscriptions_cap()
+            widget.task_subscriptions()
         } else if let Some(widget) = self.output_ref() {
             widget.task_subscriptions()
         } else {

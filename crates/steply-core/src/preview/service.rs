@@ -1,7 +1,6 @@
 use crate::config::{LoadedConfig, load_from_yaml_str};
 use crate::preview::render::render_json;
 use crate::preview::request::RenderJsonRequest;
-use crate::state::app::AppState;
 use crate::state::flow::Flow;
 use crate::task::{TaskSpec, TaskSubscription};
 use crate::terminal::TerminalSize;
@@ -26,7 +25,7 @@ impl Default for PreviewServiceOptions {
 }
 
 pub struct PreviewService {
-    state: AppState,
+    state: crate::state::app::AppState,
     renderer: Renderer,
     default_terminal_size: TerminalSize,
 }
@@ -40,7 +39,7 @@ impl PreviewService {
         loaded: LoadedConfig,
         options: PreviewServiceOptions,
     ) -> Self {
-        let state = AppState::with_tasks(loaded.flow, loaded.task_specs, loaded.task_subscriptions);
+        let state = loaded.into_app_state();
         Self {
             state,
             renderer: Renderer::new(RendererConfig {

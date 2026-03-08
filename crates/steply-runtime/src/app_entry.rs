@@ -3,13 +3,11 @@ use std::io;
 use std::path::PathBuf;
 
 use crate::terminal::{RenderMode, Terminal};
-use crate::{RenderJsonRequest, RenderJsonScope, Runtime};
+use crate::{RenderJsonRequest, Runtime};
 use steply_core::config::load_from_yaml_file;
-use steply_core::host::{HostContext, set_host_context};
-use steply_core::state::app::AppState;
 use steply_core::state::demo::{build_demo_flow, build_demo_tasks};
-use steply_core::terminal::TerminalSize;
 use steply_core::ui::renderer::RendererConfig;
+use steply_core::{HostContext, set_host_context};
 
 #[derive(Debug, Clone, Default)]
 pub struct StartOptions {
@@ -79,7 +77,7 @@ impl StartOptions {
         }
 
         let render_json = if render_json_requested {
-            Some(build_render_request(
+            Some(RenderJsonRequest::from_named_parts(
                 scope,
                 step_id,
                 widget_id,
@@ -104,17 +102,15 @@ pub fn run_with_options(options: StartOptions) -> io::Result<()> {
         home_dir: std::env::var_os("HOME").map(PathBuf::from),
     });
 
-    let (flow, task_specs, task_subscriptions) = if let Some(config_path) = options.config_path {
+    let state = if let Some(config_path) = options.config_path {
         let loaded = load_from_yaml_file(config_path.as_path())
             .map_err(|err| io::Error::other(format!("yaml config error: {err}")))?;
-        (loaded.flow, loaded.task_specs, loaded.task_subscriptions)
+        loaded.into_app_state()
     } else {
         let flow = build_demo_flow();
         let (task_specs, task_subscriptions) = build_demo_tasks();
-        (flow, task_specs, task_subscriptions)
+        steply_core::state::app::AppState::with_tasks(flow, task_specs, task_subscriptions)
     };
-
-    let state = AppState::with_tasks(flow, task_specs, task_subscriptions);
     let terminal = Terminal::new()?;
     let mut runtime = Runtime::new(state, terminal)
         .with_render_mode(RenderMode::AltScreen)
@@ -127,56 +123,6 @@ pub fn run_with_options(options: StartOptions) -> io::Result<()> {
     }
 
     runtime.run()
-}
-
-fn build_render_request(
-    scope_raw: Option<String>,
-    step_id: Option<String>,
-    widget_id: Option<String>,
-    active_step_id: Option<String>,
-    width: Option<u16>,
-    height: Option<u16>,
-) -> Result<RenderJsonRequest, String> {
-    let scope_name = scope_raw.unwrap_or_else(|| "current".to_string());
-    let scope = match scope_name.as_str() {
-        "current" => RenderJsonScope::Current,
-        "flow" => RenderJsonScope::Flow,
-        "step" => {
-            let Some(step_id) = step_id else {
-                return Err("--render-scope step requires --render-step-id <id>".to_string());
-            };
-            RenderJsonScope::Step { step_id }
-        }
-        "widget" => {
-            let Some(step_id) = step_id else {
-                return Err("--render-scope widget requires --render-step-id <id>".to_string());
-            };
-            let Some(widget_id) = widget_id else {
-                return Err("--render-scope widget requires --render-widget-id <id>".to_string());
-            };
-            RenderJsonScope::Widget { step_id, widget_id }
-        }
-        other => {
-            return Err(format!(
-                "unsupported --render-scope value: {} (expected current|flow|step|widget)",
-                other
-            ));
-        }
-    };
-
-    let terminal_size = match (width, height) {
-        (Some(width), Some(height)) => Some(TerminalSize { width, height }),
-        (Some(_), None) | (None, Some(_)) => {
-            return Err("--render-width and --render-height must be provided together".to_string());
-        }
-        (None, None) => None,
-    };
-
-    Ok(RenderJsonRequest {
-        scope,
-        active_step_id,
-        terminal_size,
-    })
 }
 
 fn parse_u16_arg(raw: &str, arg_name: &str) -> Result<u16, String> {

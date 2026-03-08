@@ -483,19 +483,19 @@ pub(super) enum SelectListOptionDef {
 #[derive(Debug, Deserialize)]
 pub(super) struct TableColumnDef {
     pub(super) header: String,
-    pub(super) widget: CellWidgetDef,
+    pub(super) widget: EmbeddedWidgetDef,
 }
 
 #[derive(Debug, Deserialize)]
 pub(super) struct RepeaterFieldDef {
     pub(super) key: String,
     pub(super) label: String,
-    pub(super) widget: CellWidgetDef,
+    pub(super) widget: EmbeddedWidgetDef,
 }
 
 #[derive(Debug, Deserialize, Clone)]
 #[serde(tag = "type", rename_all = "snake_case")]
-pub(super) enum CellWidgetDef {
+pub(super) enum EmbeddedWidgetDef {
     TextInput {
         #[serde(default)]
         placeholder: Option<String>,

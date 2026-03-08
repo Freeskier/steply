@@ -1,13 +1,14 @@
 use super::overlay_geometry::{
     FloatingOverlayGeometry, InlineOverlayGeometry, OverlayGeometry, resolve_overlay_geometry,
 };
+use super::render_context::render_context_for_nodes;
 use super::step_decoration::{
     decoration_gutter_width, inline_modal_gutter_span, inline_modal_separator_line,
 };
 use super::{
     DrawNodesOptions, DrawNodesState, FocusApplyMode, FocusCursorState, RenderFrame,
     StepVisualStatus, apply_focus_cursor_state, draw_nodes, focused_cursor_in_hit_map,
-    layout_marker_from_focus, render_context_for_nodes, resolve_focus_anchor,
+    layout_marker_from_focus, resolve_focus_anchor,
 };
 use crate::state::validation::ValidationState;
 use crate::terminal::{CursorPos, TerminalSize};

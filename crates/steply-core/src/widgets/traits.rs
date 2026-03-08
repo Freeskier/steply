@@ -6,6 +6,7 @@ use crate::terminal::{CursorPos, KeyEvent, PointerEvent, PointerSemantic, Termin
 use crate::ui::inline::{InlineLine, flatten_lines};
 use crate::ui::span::{Span, SpanLine};
 use crate::widgets::shared::text_edit;
+use serde::Serialize;
 use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -215,7 +216,8 @@ pub struct HintContext {
     pub expanded: bool,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
+#[serde(rename_all = "snake_case")]
 pub enum HintGroup {
     Navigation,
     Completion,
@@ -250,6 +252,42 @@ impl HintItem {
         self.priority = priority;
         self
     }
+
+    pub fn from_static(spec: StaticHintSpec) -> Self {
+        Self::new(spec.key, spec.label, spec.group).with_priority(spec.priority)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub struct StaticHintSpec {
+    pub key: &'static str,
+    pub label: &'static str,
+    pub group: HintGroup,
+    pub priority: u8,
+}
+
+impl StaticHintSpec {
+    pub const fn new(
+        key: &'static str,
+        label: &'static str,
+        group: HintGroup,
+        priority: u8,
+    ) -> Self {
+        Self {
+            key,
+            label,
+            group,
+            priority,
+        }
+    }
+}
+
+pub fn focused_static_hints(ctx: HintContext, specs: &[StaticHintSpec]) -> Vec<HintItem> {
+    if !ctx.focused {
+        return Vec::new();
+    }
+
+    specs.iter().copied().map(HintItem::from_static).collect()
 }
 
 #[derive(Debug, Clone, Default)]

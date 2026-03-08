@@ -5,5 +5,6 @@ pub mod node;
 pub mod node_index;
 pub mod outputs;
 pub mod shared;
+pub mod static_hints;
 pub mod traits;
 pub mod validators;

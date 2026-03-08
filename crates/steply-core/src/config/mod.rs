@@ -1,4 +1,5 @@
 mod assemble;
+mod doc_model;
 mod model;
 mod parse;
 mod spec;
@@ -19,6 +20,10 @@ pub struct LoadedConfig {
     pub task_specs: Vec<TaskSpec>,
     pub task_subscriptions: Vec<TaskSubscription>,
 }
+
+pub use doc_model::{
+    ConfigDocs, FieldDoc, WidgetCategory, WidgetDoc, schema_docs, schema_docs_json,
+};
 
 impl LoadedConfig {
     pub fn into_app_state(self) -> AppState {

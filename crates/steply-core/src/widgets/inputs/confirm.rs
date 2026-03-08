@@ -5,8 +5,8 @@ use crate::ui::style::{Color, Style};
 use crate::widgets::base::WidgetBase;
 use crate::widgets::shared::text_edit;
 use crate::widgets::traits::{
-    DrawOutput, Drawable, FocusMode, HintContext, HintGroup, HintItem, InteractionResult,
-    Interactive, RenderContext, ValidationMode,
+    DrawOutput, Drawable, FocusMode, HintContext, HintItem, InteractionResult, Interactive,
+    RenderContext, ValidationMode,
 };
 
 #[derive(Debug, Clone, Default)]
@@ -144,20 +144,15 @@ impl Drawable for ConfirmInput {
     }
 
     fn hints(&self, ctx: HintContext) -> Vec<HintItem> {
-        if !ctx.focused {
-            return Vec::new();
-        }
         match self.mode {
-            ConfirmMode::Relaxed => vec![
-                HintItem::new("Enter", "confirm", HintGroup::Action).with_priority(10),
-                HintItem::new("Y / N", "choose yes/no", HintGroup::Action).with_priority(11),
-            ],
-            ConfirmMode::Strict { .. } => vec![
-                HintItem::new("Type", "enter confirmation word", HintGroup::Edit).with_priority(10),
-                HintItem::new("← →", "move cursor", HintGroup::Navigation).with_priority(11),
-                HintItem::new("Backspace", "delete", HintGroup::Edit).with_priority(12),
-                HintItem::new("Enter", "confirm", HintGroup::Action).with_priority(20),
-            ],
+            ConfirmMode::Relaxed => crate::widgets::traits::focused_static_hints(
+                ctx,
+                crate::widgets::static_hints::CONFIRM_RELAXED_HINTS,
+            ),
+            ConfirmMode::Strict { .. } => crate::widgets::traits::focused_static_hints(
+                ctx,
+                crate::widgets::static_hints::CONFIRM_STRICT_HINTS,
+            ),
         }
     }
 }

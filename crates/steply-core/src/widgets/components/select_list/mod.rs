@@ -668,22 +668,24 @@ impl Drawable for SelectList {
     }
 
     fn hints(&self, ctx: HintContext) -> Vec<HintItem> {
-        if !ctx.focused {
-            return Vec::new();
+        let mut hints = crate::widgets::traits::focused_static_hints(
+            ctx,
+            crate::widgets::static_hints::SELECT_LIST_DOC_HINTS,
+        );
+        if hints.is_empty() {
+            return hints;
         }
-
-        let mut hints = vec![
-            HintItem::new("↑ ↓", "move", HintGroup::Navigation).with_priority(10),
-            HintItem::new("Enter", "confirm", HintGroup::Action).with_priority(20),
-            HintItem::new("Ctrl+F", "toggle filter", HintGroup::View).with_priority(30),
-        ];
         if self.mode != SelectMode::List {
-            hints.push(
-                HintItem::new("Space", "toggle selection", HintGroup::Action).with_priority(21),
-            );
+            hints.retain(|hint| hint.key != "Space");
+        } else {
+            hints.retain(|hint| hint.key != "Esc");
         }
         if self.filter.is_focused() {
-            hints.push(HintItem::new("Esc", "close filter", HintGroup::View).with_priority(31));
+            if !hints.iter().any(|hint| hint.key == "Esc") {
+                hints.push(HintItem::new("Esc", "close filter", HintGroup::View).with_priority(31));
+            }
+        } else {
+            hints.retain(|hint| hint.key != "Esc");
         }
         hints
     }

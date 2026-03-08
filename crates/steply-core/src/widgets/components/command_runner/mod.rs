@@ -10,8 +10,8 @@ use crate::widgets::outputs::task_log::{TaskLog, TaskLogStep};
 use crate::widgets::shared::keymap;
 use crate::widgets::shared::task_watcher::TaskWatcherStatus;
 use crate::widgets::traits::{
-    DrawOutput, Drawable, FocusMode, HintContext, HintGroup, HintItem, InteractionResult,
-    Interactive, OutputNode, RenderContext, ValidationMode,
+    DrawOutput, Drawable, FocusMode, HintContext, HintItem, InteractionResult, Interactive,
+    OutputNode, RenderContext, ValidationMode,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -279,21 +279,14 @@ impl Drawable for CommandRunner {
     }
 
     fn hints(&self, ctx: HintContext) -> Vec<HintItem> {
-        if !ctx.focused {
-            return Vec::new();
+        let mut hints = crate::widgets::traits::focused_static_hints(
+            ctx,
+            crate::widgets::static_hints::COMMAND_RUNNER_HINTS,
+        );
+        if self.run_mode == RunMode::Auto && !hints.is_empty() {
+            hints[0].label = "rerun command".into();
         }
-        vec![
-            HintItem::new(
-                "Enter",
-                if self.run_mode == RunMode::Auto {
-                    "rerun command"
-                } else {
-                    "run command"
-                },
-                HintGroup::Action,
-            )
-            .with_priority(20),
-        ]
+        hints
     }
 }
 

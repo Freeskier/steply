@@ -36,9 +36,10 @@ pub(super) fn compile_repeater_embedded_factory(
 }
 
 fn validate_embedded_widget_def(def: &EmbeddedWidgetDef) -> Result<(), String> {
-    if let EmbeddedWidgetDef::TextInput {
-        mode: Some(mode), ..
-    } = def
+    if let EmbeddedWidgetDef::TextInput(super::super::model::EmbeddedTextInputDef {
+        mode: Some(mode),
+        ..
+    }) = def
     {
         let _ = parse_text_mode(Some(mode.as_str()))?;
     }
@@ -51,21 +52,28 @@ fn compile_embedded_widget(
     label: String,
 ) -> Result<Box<dyn InteractiveNode>, String> {
     match def {
-        EmbeddedWidgetDef::TextInput { placeholder, mode } => {
+        EmbeddedWidgetDef::TextInput(super::super::model::EmbeddedTextInputDef {
+            placeholder,
+            mode,
+        }) => {
             let mut input = TextInput::new(id, label).with_mode(parse_text_mode(mode.as_deref())?);
             if let Some(placeholder) = placeholder {
                 input = input.with_placeholder(placeholder);
             }
             Ok(Box::new(input))
         }
-        EmbeddedWidgetDef::MaskedInput { mask } => Ok(Box::new(MaskedInput::new(id, label, mask))),
-        EmbeddedWidgetDef::Select { options } => Ok(Box::new(SelectInput::new(id, label, options))),
-        EmbeddedWidgetDef::Slider {
+        EmbeddedWidgetDef::MaskedInput(super::super::model::EmbeddedMaskedInputDef { mask }) => {
+            Ok(Box::new(MaskedInput::new(id, label, mask)))
+        }
+        EmbeddedWidgetDef::Select(super::super::model::EmbeddedSelectDef { options }) => {
+            Ok(Box::new(SelectInput::new(id, label, options)))
+        }
+        EmbeddedWidgetDef::Slider(super::super::model::EmbeddedSliderDef {
             min,
             max,
             step,
             unit,
-        } => {
+        }) => {
             let mut input = SliderInput::new(id, label, min, max);
             if let Some(step) = step {
                 input = input.with_step(step);
@@ -75,14 +83,14 @@ fn compile_embedded_widget(
             }
             Ok(Box::new(input))
         }
-        EmbeddedWidgetDef::Checkbox { checked } => {
+        EmbeddedWidgetDef::Checkbox(super::super::model::EmbeddedCheckboxDef { checked }) => {
             let mut input = CheckboxInput::new(id, label);
             if checked.unwrap_or(false) {
                 input = input.with_checked(true);
             }
             Ok(Box::new(input))
         }
-        EmbeddedWidgetDef::ArrayInput { items } => {
+        EmbeddedWidgetDef::ArrayInput(super::super::model::EmbeddedArrayInputDef { items }) => {
             Ok(Box::new(ArrayInput::new(id, label).with_items(items)))
         }
     }

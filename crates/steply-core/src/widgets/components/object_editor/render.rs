@@ -320,14 +320,15 @@ impl Drawable for ObjectEditor {
             return vec![
                 HintItem::new("Type", "filter tree", HintGroup::Edit).with_priority(10),
                 HintItem::new("Esc / Enter", "leave filter", HintGroup::View).with_priority(11),
-                HintItem::new("Ctrl+F", "toggle filter", HintGroup::View).with_priority(30),
+                HintItem::from_static(crate::widgets::static_hints::OBJECT_EDITOR_DOC_HINTS[0]),
             ];
         }
 
-        let mut hints = vec![
-            HintItem::new("Ctrl+F", "toggle filter", HintGroup::View).with_priority(30),
-            HintItem::new("Enter", "submit step", HintGroup::Action).with_priority(40),
-        ];
+        let mut hints = crate::widgets::traits::focused_static_hints(
+            ctx,
+            crate::widgets::static_hints::OBJECT_EDITOR_DOC_HINTS,
+        );
+        hints.retain(|hint| hint.key == "Ctrl+F" || hint.key == "Enter");
 
         match self.mode {
             Mode::Normal => {

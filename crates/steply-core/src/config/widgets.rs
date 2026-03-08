@@ -9,9 +9,13 @@ use super::model::WidgetDef;
 
 pub(super) fn compile_widget(def: WidgetDef) -> Result<Node, String> {
     match def {
-        WidgetDef::TextOutput { id, text } => Ok(outputs::compile_text_output(id, text)),
-        WidgetDef::UrlOutput { id, url, name } => outputs::compile_url_output(id, url, name),
-        WidgetDef::ThinkingOutput {
+        WidgetDef::TextOutput(super::model::TextOutputDef { id, text }) => {
+            Ok(outputs::compile_text_output(id, text))
+        }
+        WidgetDef::UrlOutput(super::model::UrlOutputDef { id, url, name }) => {
+            outputs::compile_url_output(id, url, name)
+        }
+        WidgetDef::ThinkingOutput(super::model::ThinkingOutputDef {
             id,
             label,
             text,
@@ -20,10 +24,10 @@ pub(super) fn compile_widget(def: WidgetDef) -> Result<Node, String> {
             tick_ms,
             base_rgb,
             peak_rgb,
-        } => outputs::compile_thinking_output(
+        }) => outputs::compile_thinking_output(
             id, label, text, mode, tail_len, tick_ms, base_rgb, peak_rgb,
         ),
-        WidgetDef::ProgressOutput {
+        WidgetDef::ProgressOutput(super::model::ProgressOutputDef {
             id,
             label,
             min,
@@ -32,10 +36,10 @@ pub(super) fn compile_widget(def: WidgetDef) -> Result<Node, String> {
             bar_width,
             style,
             transition,
-        } => outputs::compile_progress_output(
+        }) => outputs::compile_progress_output(
             id, label, min, max, unit, bar_width, style, transition,
         ),
-        WidgetDef::ChartOutput {
+        WidgetDef::ChartOutput(super::model::ChartOutputDef {
             id,
             label,
             mode,
@@ -44,28 +48,28 @@ pub(super) fn compile_widget(def: WidgetDef) -> Result<Node, String> {
             max,
             unit,
             gradient,
-        } => outputs::compile_chart_output(id, label, mode, capacity, min, max, unit, gradient),
-        WidgetDef::TableOutput {
+        }) => outputs::compile_chart_output(id, label, mode, capacity, min, max, unit, gradient),
+        WidgetDef::TableOutput(super::model::TableOutputDef {
             id,
             label,
             style,
             headers,
             rows,
-        } => outputs::compile_table_output(id, label, style, headers, rows),
-        WidgetDef::DiffOutput {
+        }) => outputs::compile_table_output(id, label, style, headers, rows),
+        WidgetDef::DiffOutput(super::model::DiffOutputDef {
             id,
             label,
             old,
             new,
             max_visible,
-        } => outputs::compile_diff_output(id, label, old, new, max_visible),
-        WidgetDef::TaskLogOutput {
+        }) => outputs::compile_diff_output(id, label, old, new, max_visible),
+        WidgetDef::TaskLogOutput(super::model::TaskLogOutputDef {
             id,
             visible_lines,
             spinner_style,
             steps,
-        } => outputs::compile_task_log_output(id, visible_lines, spinner_style, steps),
-        WidgetDef::TextInput {
+        }) => outputs::compile_task_log_output(id, visible_lines, spinner_style, steps),
+        WidgetDef::TextInput(super::model::TextInputDef {
             id,
             label,
             placeholder,
@@ -76,7 +80,7 @@ pub(super) fn compile_widget(def: WidgetDef) -> Result<Node, String> {
             completion_items,
             submit_target,
             change_targets,
-        } => inputs::compile_text_input(
+        }) => inputs::compile_text_input(
             id,
             label,
             placeholder,
@@ -88,20 +92,20 @@ pub(super) fn compile_widget(def: WidgetDef) -> Result<Node, String> {
             submit_target,
             change_targets,
         ),
-        WidgetDef::ArrayInput {
+        WidgetDef::ArrayInput(super::model::ArrayInputDef {
             id,
             label,
             items,
             required,
             validators,
-        } => inputs::compile_array_input(id, label, items, required, validators),
-        WidgetDef::ButtonInput {
+        }) => inputs::compile_array_input(id, label, items, required, validators),
+        WidgetDef::ButtonInput(super::model::ButtonInputDef {
             id,
             label,
             text,
             task_id,
-        } => inputs::compile_button_input(id, label, text, task_id),
-        WidgetDef::Select {
+        }) => inputs::compile_button_input(id, label, text, task_id),
+        WidgetDef::Select(super::model::SelectDef {
             id,
             label,
             options,
@@ -110,7 +114,7 @@ pub(super) fn compile_widget(def: WidgetDef) -> Result<Node, String> {
             required,
             validators,
             submit_target,
-        } => inputs::compile_select_input(
+        }) => inputs::compile_select_input(
             id,
             label,
             options,
@@ -120,7 +124,7 @@ pub(super) fn compile_widget(def: WidgetDef) -> Result<Node, String> {
             validators,
             submit_target,
         ),
-        WidgetDef::ChoiceInput {
+        WidgetDef::ChoiceInput(super::model::ChoiceInputDef {
             id,
             label,
             options,
@@ -129,7 +133,7 @@ pub(super) fn compile_widget(def: WidgetDef) -> Result<Node, String> {
             required,
             validators,
             submit_target,
-        } => inputs::compile_choice_input(
+        }) => inputs::compile_choice_input(
             id,
             label,
             options,
@@ -139,7 +143,7 @@ pub(super) fn compile_widget(def: WidgetDef) -> Result<Node, String> {
             validators,
             submit_target,
         ),
-        WidgetDef::SelectList {
+        WidgetDef::SelectList(super::model::SelectListDef {
             id,
             label,
             options,
@@ -148,7 +152,7 @@ pub(super) fn compile_widget(def: WidgetDef) -> Result<Node, String> {
             selected,
             show_label,
             submit_target,
-        } => components::compile_select_list(
+        }) => components::compile_select_list(
             id,
             label,
             options,
@@ -158,7 +162,7 @@ pub(super) fn compile_widget(def: WidgetDef) -> Result<Node, String> {
             show_label,
             submit_target,
         ),
-        WidgetDef::MaskedInput {
+        WidgetDef::MaskedInput(super::model::MaskedInputDef {
             id,
             label,
             mask,
@@ -166,7 +170,7 @@ pub(super) fn compile_widget(def: WidgetDef) -> Result<Node, String> {
             required,
             validators,
             submit_target,
-        } => inputs::compile_masked_input(
+        }) => inputs::compile_masked_input(
             id,
             label,
             mask,
@@ -175,7 +179,7 @@ pub(super) fn compile_widget(def: WidgetDef) -> Result<Node, String> {
             validators,
             submit_target,
         ),
-        WidgetDef::Slider {
+        WidgetDef::Slider(super::model::SliderDef {
             id,
             label,
             min,
@@ -187,7 +191,7 @@ pub(super) fn compile_widget(def: WidgetDef) -> Result<Node, String> {
             required,
             validators,
             change_targets,
-        } => inputs::compile_slider_input(
+        }) => inputs::compile_slider_input(
             id,
             label,
             min,
@@ -200,48 +204,48 @@ pub(super) fn compile_widget(def: WidgetDef) -> Result<Node, String> {
             validators,
             change_targets,
         ),
-        WidgetDef::ColorInput {
+        WidgetDef::ColorInput(super::model::ColorInputDef {
             id,
             label,
             rgb,
             required,
             validators,
             submit_target,
-        } => inputs::compile_color_input(id, label, rgb, required, validators, submit_target),
-        WidgetDef::ConfirmInput {
+        }) => inputs::compile_color_input(id, label, rgb, required, validators, submit_target),
+        WidgetDef::ConfirmInput(super::model::ConfirmInputDef {
             id,
             label,
             mode,
             yes_label,
             no_label,
             default,
-        } => inputs::compile_confirm_input(id, label, mode, yes_label, no_label, default),
-        WidgetDef::Checkbox {
+        }) => inputs::compile_confirm_input(id, label, mode, yes_label, no_label, default),
+        WidgetDef::Checkbox(super::model::CheckboxDef {
             id,
             label,
             checked,
             required,
             validators,
-        } => inputs::compile_checkbox_input(id, label, checked, required, validators),
-        WidgetDef::Calendar {
+        }) => inputs::compile_checkbox_input(id, label, checked, required, validators),
+        WidgetDef::Calendar(super::model::CalendarDef {
             id,
             label,
             mode,
             required,
             validators,
             submit_target,
-        } => components::compile_calendar(id, label, mode, required, validators, submit_target),
-        WidgetDef::Textarea {
+        }) => components::compile_calendar(id, label, mode, required, validators, submit_target),
+        WidgetDef::Textarea(super::model::TextareaDef {
             id,
             min_height,
             max_height,
             default,
             required,
             validators,
-        } => {
+        }) => {
             components::compile_textarea(id, min_height, max_height, default, required, validators)
         }
-        WidgetDef::CommandRunner {
+        WidgetDef::CommandRunner(super::model::CommandRunnerDef {
             id,
             label,
             run_mode,
@@ -251,7 +255,7 @@ pub(super) fn compile_widget(def: WidgetDef) -> Result<Node, String> {
             spinner_style,
             timeout_ms,
             commands,
-        } => components::compile_command_runner(
+        }) => components::compile_command_runner(
             id,
             label,
             run_mode,
@@ -262,7 +266,7 @@ pub(super) fn compile_widget(def: WidgetDef) -> Result<Node, String> {
             timeout_ms,
             commands,
         ),
-        WidgetDef::FileBrowser {
+        WidgetDef::FileBrowser(super::model::FileBrowserDef {
             id,
             label,
             browser_mode,
@@ -275,7 +279,7 @@ pub(super) fn compile_widget(def: WidgetDef) -> Result<Node, String> {
             submit_target,
             required,
             validators,
-        } => components::compile_file_browser(
+        }) => components::compile_file_browser(
             id,
             label,
             browser_mode,
@@ -289,7 +293,7 @@ pub(super) fn compile_widget(def: WidgetDef) -> Result<Node, String> {
             required,
             validators,
         ),
-        WidgetDef::TreeView {
+        WidgetDef::TreeView(super::model::TreeViewDef {
             id,
             label,
             nodes,
@@ -297,7 +301,7 @@ pub(super) fn compile_widget(def: WidgetDef) -> Result<Node, String> {
             show_label,
             indent_guides,
             submit_target,
-        } => components::compile_tree_view(
+        }) => components::compile_tree_view(
             id,
             label,
             nodes,
@@ -306,29 +310,29 @@ pub(super) fn compile_widget(def: WidgetDef) -> Result<Node, String> {
             indent_guides,
             submit_target,
         ),
-        WidgetDef::ObjectEditor {
+        WidgetDef::ObjectEditor(super::model::ObjectEditorDef {
             id,
             label,
             value,
             max_visible,
             submit_target,
-        } => components::compile_object_editor(id, label, value, max_visible, submit_target),
-        WidgetDef::Snippet {
+        }) => components::compile_object_editor(id, label, value, max_visible, submit_target),
+        WidgetDef::Snippet(super::model::SnippetDef {
             id,
             label,
             template,
             inputs,
             submit_target,
-        } => components::compile_snippet(id, label, template, inputs, submit_target),
-        WidgetDef::Table {
+        }) => components::compile_snippet(id, label, template, inputs, submit_target),
+        WidgetDef::Table(super::model::TableDef {
             id,
             label,
             style,
             row_numbers,
             initial_rows,
             columns,
-        } => components::compile_table(id, label, style, row_numbers, initial_rows, columns),
-        WidgetDef::Repeater {
+        }) => components::compile_table(id, label, style, row_numbers, initial_rows, columns),
+        WidgetDef::Repeater(super::model::RepeaterDef {
             id,
             label,
             layout,
@@ -339,7 +343,7 @@ pub(super) fn compile_widget(def: WidgetDef) -> Result<Node, String> {
             items,
             submit_target,
             fields,
-        } => components::compile_repeater(
+        }) => components::compile_repeater(
             id,
             label,
             layout,

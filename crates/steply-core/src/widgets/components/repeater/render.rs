@@ -169,17 +169,14 @@ impl Drawable for Repeater {
             return vec![HintItem::new("Enter", "submit", HintGroup::Action).with_priority(20)];
         }
 
-        let mut hints = vec![
-            HintItem::new("Enter / Tab", "next field", HintGroup::Navigation).with_priority(10),
-            HintItem::new("Shift+Tab", "previous field", HintGroup::Navigation).with_priority(11),
-        ];
-        if self.submit_target.is_some() {
-            hints.push(
-                HintItem::new("final Enter", "commit rows + submit", HintGroup::Action)
-                    .with_priority(20),
-            );
-        } else {
-            hints.push(HintItem::new("final Enter", "submit", HintGroup::Action).with_priority(20));
+        let mut hints = crate::widgets::traits::focused_static_hints(
+            ctx,
+            crate::widgets::static_hints::REPEATER_HINTS,
+        );
+        if self.submit_target.is_some()
+            && let Some(last) = hints.last_mut()
+        {
+            last.label = "commit rows + submit".into();
         }
         hints
     }

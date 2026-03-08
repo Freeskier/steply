@@ -608,18 +608,16 @@ impl<T: TreeItemLabel> Drawable for TreeView<T> {
     }
 
     fn hints(&self, ctx: HintContext) -> Vec<HintItem> {
-        if !ctx.focused {
-            return Vec::new();
-        }
-        let mut hints = vec![
-            HintItem::new("↑ ↓", "move", HintGroup::Navigation).with_priority(10),
-            HintItem::new("→", "expand", HintGroup::Navigation).with_priority(11),
-            HintItem::new("←", "collapse / parent", HintGroup::Navigation).with_priority(12),
-            HintItem::new("Enter", "select", HintGroup::Action).with_priority(20),
-            HintItem::new("Ctrl+F", "toggle filter", HintGroup::View).with_priority(30),
-        ];
+        let mut hints = crate::widgets::traits::focused_static_hints(
+            ctx,
+            crate::widgets::static_hints::TREE_VIEW_DOC_HINTS,
+        );
         if self.filter.is_focused() {
-            hints.push(HintItem::new("Esc", "leave filter", HintGroup::View).with_priority(31));
+            if !hints.iter().any(|hint| hint.key == "Esc") {
+                hints.push(HintItem::new("Esc", "leave filter", HintGroup::View).with_priority(31));
+            }
+        } else {
+            hints.retain(|hint| hint.key != "Esc");
         }
         hints
     }

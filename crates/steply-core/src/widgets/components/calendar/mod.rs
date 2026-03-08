@@ -343,23 +343,15 @@ impl Drawable for Calendar {
         if !ctx.focused {
             return Vec::new();
         }
-        let mut hints =
-            vec![HintItem::new("Enter", "select / submit", HintGroup::Action).with_priority(20)];
         if self.is_time_section() {
-            hints.push(
-                HintItem::new(
-                    "Tab / Shift+Tab",
-                    "next/prev segment (edge: section)",
-                    HintGroup::Navigation,
-                )
-                .with_priority(10),
+            return crate::widgets::traits::focused_static_hints(
+                ctx,
+                crate::widgets::static_hints::CALENDAR_TIME_HINTS,
             );
-            hints.push(HintItem::new("Type", "edit time", HintGroup::Edit).with_priority(11));
-            return hints;
         }
-        hints.push(
-            HintItem::new("Tab / Shift+Tab", "switch section", HintGroup::Navigation)
-                .with_priority(10),
+        let mut hints = crate::widgets::traits::focused_static_hints(
+            ctx,
+            crate::widgets::static_hints::CALENDAR_COMMON_HINTS,
         );
         match self.section {
             Section::Month | Section::Year => {

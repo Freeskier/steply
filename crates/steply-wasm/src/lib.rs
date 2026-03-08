@@ -204,6 +204,11 @@ mod wasm_exports {
     }
 
     #[wasm_bindgen]
+    pub fn preview_config_docs_json() -> Result<String, JsValue> {
+        steply_core::config::schema_docs_json().map_err(|e| JsValue::from_str(e.as_str()))
+    }
+
+    #[wasm_bindgen]
     pub fn preview_session_create(yaml: &str) -> Result<String, JsValue> {
         let loaded = steply_core::config::load_from_yaml_str(yaml)
             .map_err(|e| JsValue::from_str(e.as_str()))?;

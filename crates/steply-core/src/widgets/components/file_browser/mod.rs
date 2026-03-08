@@ -559,14 +559,16 @@ impl Drawable for FileBrowserComponent {
             return Vec::new();
         }
 
-        let mut hints = vec![
-            HintItem::new("Tab", "completion", HintGroup::Completion).with_priority(10),
-            HintItem::new("Ctrl+Space", "toggle completion", HintGroup::Completion)
-                .with_priority(11),
-            HintItem::new("Shift+Space / Alt+Space", "open browser", HintGroup::View)
-                .with_priority(20),
-            HintItem::new("Enter", "select / submit", HintGroup::Action).with_priority(30),
-        ];
+        let mut hints = crate::widgets::traits::focused_static_hints(
+            ctx,
+            crate::widgets::static_hints::FILE_BROWSER_DOC_HINTS,
+        );
+        hints.retain(|hint| {
+            hint.key == "Tab"
+                || hint.key == "Ctrl+Space"
+                || hint.key == "Shift+Space / Alt+Space"
+                || hint.key == "Enter"
+        });
 
         if self.overlay_open {
             hints.push(HintItem::new("Esc", "close browser", HintGroup::View).with_priority(21));

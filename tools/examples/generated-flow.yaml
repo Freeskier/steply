@@ -1,0 +1,39 @@
+steps:
+- id: basic
+  title: Basic user data
+  widgets:
+  - type: text_input
+    id: text_input_1
+    label: Name
+    placeholder: Ada Lovelace
+    submit_target: user.name
+  - type: text_input
+    id: text_input_2
+    label: Email
+    placeholder: ada@example.com
+    submit_target: user.email
+  - type: select
+    id: select_3
+    label: Role
+    options:
+    - developer
+    - designer
+    - founder
+    submit_target: user.role
+- id: step_2
+  title: Project setup
+  widgets:
+  - type: file_browser
+    browser_mode: tree
+    cwd: /home/freeskier/project/steply/tools/examples
+    id: file_browser_1
+    label: Project directory
+    submit_target: project.directory
+  - type: choice_input
+    id: choice_input_2
+    label: Package manager
+    options:
+    - cargo
+    - npm
+    - bun
+    submit_target: project.package_manager

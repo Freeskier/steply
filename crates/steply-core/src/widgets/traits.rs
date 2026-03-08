@@ -340,9 +340,16 @@ impl InteractionResult {
 
     pub fn submit_or_produce(target: Option<&ValueTarget>, value: Value) -> Self {
         if let Some(target) = target {
-            return Self::with_action(WidgetAction::ValueChanged {
-                change: ValueChange::with_target(target.clone(), value),
-            });
+            return Self {
+                handled: true,
+                request_render: true,
+                actions: vec![
+                    WidgetAction::ValueChanged {
+                        change: ValueChange::with_target(target.clone(), value),
+                    },
+                    WidgetAction::ValidateFocusedSubmitAndInputDone,
+                ],
+            };
         }
         Self::input_done()
     }

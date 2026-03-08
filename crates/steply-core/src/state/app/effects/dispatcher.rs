@@ -23,21 +23,17 @@ impl<'a> EffectDispatcher<'a> {
                 InteractionResult::handled()
             }
             WidgetAction::OpenUrl { .. } => InteractionResult::consumed(),
-            WidgetAction::InputDone => {
-                if self.state.has_blocking_overlay() {
-                    self.state.close_overlay();
-                } else if self.state.pending_back_confirm.is_some() {
-                    self.state.confirm_back();
-                } else if self.state.ui.focus.is_last() {
-                    self.state.handle_step_submit();
-                } else {
-                    self.state.focus_next();
-                }
-                InteractionResult::handled()
-            }
+            WidgetAction::InputDone => self.complete_input_done(),
             WidgetAction::ValidateFocusedSubmit => {
                 self.state.validate_focused_submit();
                 InteractionResult::handled()
+            }
+            WidgetAction::ValidateFocusedSubmitAndInputDone => {
+                if self.state.validate_focused_submit() {
+                    self.complete_input_done()
+                } else {
+                    InteractionResult::handled()
+                }
             }
             WidgetAction::ValidateCurrentStepSubmit => {
                 self.state.validate_current_step(ValidationMode::Submit);
@@ -70,6 +66,19 @@ impl<'a> EffectDispatcher<'a> {
                 InteractionResult::handled()
             }
         }
+    }
+
+    fn complete_input_done(&mut self) -> InteractionResult {
+        if self.state.has_blocking_overlay() {
+            self.state.close_overlay();
+        } else if self.state.pending_back_confirm.is_some() {
+            self.state.confirm_back();
+        } else if self.state.ui.focus.is_last() {
+            self.state.handle_step_submit();
+        } else {
+            self.state.focus_next();
+        }
+        InteractionResult::handled()
     }
 
     pub(super) fn handle_system_event(&mut self, event: SystemEvent) -> InteractionResult {

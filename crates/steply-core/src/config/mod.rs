@@ -10,6 +10,7 @@ use std::fs;
 use std::path::Path;
 
 use model::ConfigDoc;
+use schemars::schema_for;
 
 use crate::state::app::AppState;
 use crate::state::flow::Flow;
@@ -42,4 +43,10 @@ pub fn load_from_yaml_str(raw: &str) -> Result<LoadedConfig, String> {
         serde_yaml::from_str(raw).map_err(|err| format!("failed to parse yaml config: {err}"))?;
     let spec = spec::build_spec(doc)?;
     assemble::assemble(spec)
+}
+
+pub fn config_schema_json() -> Result<String, String> {
+    let schema = schema_for!(ConfigDoc);
+    serde_json::to_string_pretty(&schema)
+        .map_err(|err| format!("failed to serialize config schema: {err}"))
 }

@@ -185,6 +185,14 @@ impl Runtime {
         run_result.and(exit_result)
     }
 
+    pub fn state(&self) -> &AppState {
+        &self.state
+    }
+
+    pub fn into_state(self) -> AppState {
+        self.state
+    }
+
     pub fn print_render_json(&mut self) -> io::Result<()> {
         self.print_render_json_with_request(RenderJsonRequest::default())
     }

@@ -1,5 +1,6 @@
 <script lang="ts">
     import { onMount } from "svelte";
+    import configSchema from "$lib/generated/config.schema.json";
 
     let { data } = $props();
 
@@ -167,13 +168,19 @@
 
         const boot = async () => {
             if (!yamlEditorHostEl) return;
-            const [{ EditorState }, { EditorView }, { yaml }, { oneDark }] =
-                await Promise.all([
-                    import("@codemirror/state"),
-                    import("@codemirror/view"),
-                    import("@codemirror/lang-yaml"),
-                    import("@codemirror/theme-one-dark"),
-                ]);
+            const [
+                { EditorState },
+                { EditorView },
+                { autocompletion },
+                { yamlSchema },
+                { oneDark },
+            ] = await Promise.all([
+                import("@codemirror/state"),
+                import("@codemirror/view"),
+                import("@codemirror/autocomplete"),
+                import("codemirror-json-schema/yaml"),
+                import("@codemirror/theme-one-dark"),
+            ]);
             if (disposed || !yamlEditorHostEl) return;
 
             editorView = new EditorView({
@@ -181,7 +188,8 @@
                     doc: yamlText,
                     extensions: [
                         oneDark,
-                        yaml(),
+                        autocompletion(),
+                        yamlSchema(configSchema),
                         EditorView.lineWrapping,
                         EditorView.updateListener.of((update) => {
                             if (!update.docChanged) return;

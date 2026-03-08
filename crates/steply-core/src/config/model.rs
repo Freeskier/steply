@@ -1,7 +1,7 @@
 use schemars::JsonSchema;
 use serde::Deserialize;
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, JsonSchema)]
 pub(super) struct ConfigDoc {
     #[serde(default)]
     pub(super) version: Option<u32>,
@@ -15,7 +15,7 @@ pub(super) struct ConfigDoc {
     pub(super) subscriptions: Vec<SubscriptionDef>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, JsonSchema)]
 pub(super) struct StepDef {
     pub(super) id: String,
     #[serde(alias = "prompt")]
@@ -30,7 +30,7 @@ pub(super) struct StepDef {
     pub(super) widgets: Vec<WidgetDef>,
 }
 
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Debug, Deserialize, Clone, JsonSchema)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub(super) enum NavigationDef {
     Allowed,
@@ -39,14 +39,14 @@ pub(super) enum NavigationDef {
     Destructive { warning: String },
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, JsonSchema)]
 pub(super) struct FlowItemDef {
     pub(super) step: String,
     #[serde(default)]
     pub(super) when: Option<WhenDef>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, JsonSchema)]
 pub(super) struct TaskDef {
     pub(super) id: String,
     pub(super) kind: String,
@@ -61,7 +61,7 @@ pub(super) struct TaskDef {
     pub(super) enabled: Option<bool>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, JsonSchema)]
 pub(super) struct SubscriptionDef {
     pub(super) task: String,
     pub(super) trigger: TriggerDef,
@@ -71,13 +71,13 @@ pub(super) struct SubscriptionDef {
     pub(super) enabled: Option<bool>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, JsonSchema)]
 pub(super) struct TriggerDef {
     #[serde(default)]
     pub(super) on_input: Option<OnInputTriggerDef>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, JsonSchema)]
 pub(super) struct OnInputTriggerDef {
     #[serde(rename = "ref")]
     pub(super) field_ref: String,

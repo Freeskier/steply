@@ -1,0 +1,2456 @@
+{
+  "version": 1,
+  "widgets": [
+    {
+      "widget_type": "text_output",
+      "category": "output",
+      "short_description": "Static text output.",
+      "long_description": "Renders a fixed text block in the flow.",
+      "example_yaml": "type: text_output\nid: intro\ntext: Welcome to Steply",
+      "static_hints": [],
+      "fields": [
+        {
+          "name": "id",
+          "type_name": "string",
+          "required": true,
+          "short_description": "Unique widget identifier within the step.",
+          "long_description": null,
+          "default": null,
+          "allowed_values": []
+        },
+        {
+          "name": "text",
+          "type_name": "string",
+          "required": true,
+          "short_description": "Rendered text content.",
+          "long_description": null,
+          "default": null,
+          "allowed_values": []
+        }
+      ]
+    },
+    {
+      "widget_type": "url_output",
+      "category": "output",
+      "short_description": "Clickable URL output.",
+      "long_description": "Displays a URL with an optional human-friendly label.",
+      "example_yaml": "type: url_output\nid: docs\nurl: https://example.com\nname: Open docs",
+      "static_hints": [],
+      "fields": [
+        {
+          "name": "id",
+          "type_name": "string",
+          "required": true,
+          "short_description": "Unique widget identifier within the step.",
+          "long_description": null,
+          "default": null,
+          "allowed_values": []
+        },
+        {
+          "name": "name",
+          "type_name": "string",
+          "required": false,
+          "short_description": "Optional display label.",
+          "long_description": null,
+          "default": "null",
+          "allowed_values": []
+        },
+        {
+          "name": "url",
+          "type_name": "string",
+          "required": true,
+          "short_description": "Target URL.",
+          "long_description": null,
+          "default": null,
+          "allowed_values": []
+        }
+      ]
+    },
+    {
+      "widget_type": "thinking_output",
+      "category": "output",
+      "short_description": "Animated thinking output.",
+      "long_description": "Shows animated status text for background work or waiting states.",
+      "example_yaml": "type: thinking_output\nid: thinking\nlabel: Preparing\ntext: Resolving inputs",
+      "static_hints": [],
+      "fields": [
+        {
+          "name": "base_rgb",
+          "type_name": "array",
+          "required": false,
+          "short_description": "Base RGB color for the animation gradient.",
+          "long_description": null,
+          "default": "null",
+          "allowed_values": []
+        },
+        {
+          "name": "id",
+          "type_name": "string",
+          "required": true,
+          "short_description": "Unique widget identifier within the step.",
+          "long_description": null,
+          "default": null,
+          "allowed_values": []
+        },
+        {
+          "name": "label",
+          "type_name": "string",
+          "required": true,
+          "short_description": "Visible widget label.",
+          "long_description": null,
+          "default": null,
+          "allowed_values": []
+        },
+        {
+          "name": "mode",
+          "type_name": "string",
+          "required": false,
+          "short_description": "Animation mode.",
+          "long_description": null,
+          "default": "null",
+          "allowed_values": []
+        },
+        {
+          "name": "peak_rgb",
+          "type_name": "array",
+          "required": false,
+          "short_description": "Peak RGB color for the animation gradient.",
+          "long_description": null,
+          "default": "null",
+          "allowed_values": []
+        },
+        {
+          "name": "tail_len",
+          "type_name": "integer",
+          "required": false,
+          "short_description": "Length of the animation tail.",
+          "long_description": null,
+          "default": "null",
+          "allowed_values": []
+        },
+        {
+          "name": "text",
+          "type_name": "string",
+          "required": true,
+          "short_description": "Base text content.",
+          "long_description": null,
+          "default": null,
+          "allowed_values": []
+        },
+        {
+          "name": "tick_ms",
+          "type_name": "integer",
+          "required": false,
+          "short_description": "Animation update interval in milliseconds.",
+          "long_description": null,
+          "default": "null",
+          "allowed_values": []
+        }
+      ]
+    },
+    {
+      "widget_type": "progress_output",
+      "category": "output",
+      "short_description": "Progress bar output.",
+      "long_description": "Displays progress with optional range, style and transition settings.",
+      "example_yaml": "type: progress_output\nid: build_progress\nlabel: Build\nmin: 0\nmax: 100",
+      "static_hints": [],
+      "fields": [
+        {
+          "name": "bar_width",
+          "type_name": "integer",
+          "required": false,
+          "short_description": "Explicit bar width.",
+          "long_description": null,
+          "default": "null",
+          "allowed_values": []
+        },
+        {
+          "name": "id",
+          "type_name": "string",
+          "required": true,
+          "short_description": "Unique widget identifier within the step.",
+          "long_description": null,
+          "default": null,
+          "allowed_values": []
+        },
+        {
+          "name": "label",
+          "type_name": "string",
+          "required": true,
+          "short_description": "Visible widget label.",
+          "long_description": null,
+          "default": null,
+          "allowed_values": []
+        },
+        {
+          "name": "max",
+          "type_name": "number",
+          "required": false,
+          "short_description": "Maximum progress value.",
+          "long_description": null,
+          "default": "null",
+          "allowed_values": []
+        },
+        {
+          "name": "min",
+          "type_name": "number",
+          "required": false,
+          "short_description": "Minimum progress value.",
+          "long_description": null,
+          "default": "null",
+          "allowed_values": []
+        },
+        {
+          "name": "style",
+          "type_name": "string",
+          "required": false,
+          "short_description": "Progress rendering style.",
+          "long_description": null,
+          "default": "null",
+          "allowed_values": []
+        },
+        {
+          "name": "transition",
+          "type_name": "object | object",
+          "required": false,
+          "short_description": "Transition configuration for value changes.",
+          "long_description": null,
+          "default": null,
+          "allowed_values": []
+        },
+        {
+          "name": "unit",
+          "type_name": "string",
+          "required": false,
+          "short_description": "Optional value suffix.",
+          "long_description": null,
+          "default": "null",
+          "allowed_values": []
+        }
+      ]
+    },
+    {
+      "widget_type": "chart_output",
+      "category": "output",
+      "short_description": "Terminal chart output.",
+      "long_description": "Renders numeric values as a small terminal chart.",
+      "example_yaml": "type: chart_output\nid: cpu\nlabel: CPU load",
+      "static_hints": [],
+      "fields": [
+        {
+          "name": "capacity",
+          "type_name": "integer",
+          "required": false,
+          "short_description": "Maximum number of points retained.",
+          "long_description": null,
+          "default": "null",
+          "allowed_values": []
+        },
+        {
+          "name": "gradient",
+          "type_name": "boolean",
+          "required": false,
+          "short_description": "Enables gradient coloring.",
+          "long_description": null,
+          "default": "null",
+          "allowed_values": []
+        },
+        {
+          "name": "id",
+          "type_name": "string",
+          "required": true,
+          "short_description": "Unique widget identifier within the step.",
+          "long_description": null,
+          "default": null,
+          "allowed_values": []
+        },
+        {
+          "name": "label",
+          "type_name": "string",
+          "required": true,
+          "short_description": "Visible widget label.",
+          "long_description": null,
+          "default": null,
+          "allowed_values": []
+        },
+        {
+          "name": "max",
+          "type_name": "number",
+          "required": false,
+          "short_description": "Maximum chart range.",
+          "long_description": null,
+          "default": "null",
+          "allowed_values": []
+        },
+        {
+          "name": "min",
+          "type_name": "number",
+          "required": false,
+          "short_description": "Minimum chart range.",
+          "long_description": null,
+          "default": "null",
+          "allowed_values": []
+        },
+        {
+          "name": "mode",
+          "type_name": "string",
+          "required": false,
+          "short_description": "Chart render mode.",
+          "long_description": null,
+          "default": "null",
+          "allowed_values": []
+        },
+        {
+          "name": "unit",
+          "type_name": "string",
+          "required": false,
+          "short_description": "Optional value suffix.",
+          "long_description": null,
+          "default": "null",
+          "allowed_values": []
+        }
+      ]
+    },
+    {
+      "widget_type": "table_output",
+      "category": "output",
+      "short_description": "Read-only table output.",
+      "long_description": "Displays tabular data without inline editing.",
+      "example_yaml": "type: table_output\nid: summary\nlabel: Summary\nheaders: [Name, Value]",
+      "static_hints": [],
+      "fields": [
+        {
+          "name": "headers",
+          "type_name": "list<string>",
+          "required": false,
+          "short_description": "Column headers.",
+          "long_description": null,
+          "default": "[]",
+          "allowed_values": []
+        },
+        {
+          "name": "id",
+          "type_name": "string",
+          "required": true,
+          "short_description": "Unique widget identifier within the step.",
+          "long_description": null,
+          "default": null,
+          "allowed_values": []
+        },
+        {
+          "name": "label",
+          "type_name": "string",
+          "required": true,
+          "short_description": "Visible widget label.",
+          "long_description": null,
+          "default": null,
+          "allowed_values": []
+        },
+        {
+          "name": "rows",
+          "type_name": "list<list<string>>",
+          "required": false,
+          "short_description": "Table rows.",
+          "long_description": null,
+          "default": "[]",
+          "allowed_values": []
+        },
+        {
+          "name": "style",
+          "type_name": "string",
+          "required": false,
+          "short_description": "Table rendering style.",
+          "long_description": null,
+          "default": "null",
+          "allowed_values": []
+        }
+      ]
+    },
+    {
+      "widget_type": "diff_output",
+      "category": "output",
+      "short_description": "Text diff output.",
+      "long_description": "Shows the difference between two text values.",
+      "example_yaml": "type: diff_output\nid: diff\nlabel: Planned changes\nold: before\nnew: after",
+      "static_hints": [],
+      "fields": [
+        {
+          "name": "id",
+          "type_name": "string",
+          "required": true,
+          "short_description": "Unique widget identifier within the step.",
+          "long_description": null,
+          "default": null,
+          "allowed_values": []
+        },
+        {
+          "name": "label",
+          "type_name": "string",
+          "required": true,
+          "short_description": "Visible widget label.",
+          "long_description": null,
+          "default": null,
+          "allowed_values": []
+        },
+        {
+          "name": "max_visible",
+          "type_name": "integer",
+          "required": false,
+          "short_description": "Maximum number of visible diff lines.",
+          "long_description": null,
+          "default": "null",
+          "allowed_values": []
+        },
+        {
+          "name": "new",
+          "type_name": "string",
+          "required": true,
+          "short_description": "Updated text.",
+          "long_description": null,
+          "default": null,
+          "allowed_values": []
+        },
+        {
+          "name": "old",
+          "type_name": "string",
+          "required": true,
+          "short_description": "Previous text.",
+          "long_description": null,
+          "default": null,
+          "allowed_values": []
+        }
+      ]
+    },
+    {
+      "widget_type": "task_log_output",
+      "category": "output",
+      "short_description": "Task log output.",
+      "long_description": "Displays task execution progress as a step-by-step log.",
+      "example_yaml": "type: task_log_output\nid: task_log\nsteps:\n  - label: Clone repo\n    task_id: clone",
+      "static_hints": [],
+      "fields": [
+        {
+          "name": "id",
+          "type_name": "string",
+          "required": true,
+          "short_description": "Unique widget identifier within the step.",
+          "long_description": null,
+          "default": null,
+          "allowed_values": []
+        },
+        {
+          "name": "spinner_style",
+          "type_name": "string",
+          "required": false,
+          "short_description": "Spinner style used while tasks are running.",
+          "long_description": null,
+          "default": "null",
+          "allowed_values": []
+        },
+        {
+          "name": "steps",
+          "type_name": "list<object>",
+          "required": true,
+          "short_description": "Task log steps with label and task id.",
+          "long_description": null,
+          "default": null,
+          "allowed_values": []
+        },
+        {
+          "name": "visible_lines",
+          "type_name": "integer",
+          "required": false,
+          "short_description": "Maximum number of rendered log lines.",
+          "long_description": null,
+          "default": "null",
+          "allowed_values": []
+        }
+      ]
+    },
+    {
+      "widget_type": "text_input",
+      "category": "input",
+      "short_description": "Single-line text input.",
+      "long_description": "Collects one line of text with optional validation and completion.",
+      "example_yaml": "type: text_input\nid: project_name\nlabel: Project name",
+      "static_hints": [],
+      "fields": [
+        {
+          "name": "change_targets",
+          "type_name": "list<string>",
+          "required": false,
+          "short_description": "Store selectors updated on each change.",
+          "long_description": null,
+          "default": "[]",
+          "allowed_values": []
+        },
+        {
+          "name": "completion_items",
+          "type_name": "list<string>",
+          "required": false,
+          "short_description": "Static completion candidates.",
+          "long_description": null,
+          "default": "[]",
+          "allowed_values": []
+        },
+        {
+          "name": "default",
+          "type_name": "string",
+          "required": false,
+          "short_description": "Initial field value.",
+          "long_description": null,
+          "default": "null",
+          "allowed_values": []
+        },
+        {
+          "name": "id",
+          "type_name": "string",
+          "required": true,
+          "short_description": "Unique widget identifier within the step.",
+          "long_description": null,
+          "default": null,
+          "allowed_values": []
+        },
+        {
+          "name": "label",
+          "type_name": "string",
+          "required": true,
+          "short_description": "Visible widget label.",
+          "long_description": null,
+          "default": null,
+          "allowed_values": []
+        },
+        {
+          "name": "mode",
+          "type_name": "string",
+          "required": false,
+          "short_description": "Text display mode.",
+          "long_description": null,
+          "default": "null",
+          "allowed_values": []
+        },
+        {
+          "name": "placeholder",
+          "type_name": "string",
+          "required": false,
+          "short_description": "Placeholder text shown when the field is empty.",
+          "long_description": null,
+          "default": "null",
+          "allowed_values": []
+        },
+        {
+          "name": "required",
+          "type_name": "boolean",
+          "required": false,
+          "short_description": "Whether the field is required.",
+          "long_description": null,
+          "default": "null",
+          "allowed_values": []
+        },
+        {
+          "name": "submit_target",
+          "type_name": "string",
+          "required": false,
+          "short_description": "Store selector updated on submit.",
+          "long_description": null,
+          "default": "null",
+          "allowed_values": []
+        },
+        {
+          "name": "validators",
+          "type_name": "list<object | object | object | object | object | object | object | object>",
+          "required": false,
+          "short_description": "Validation rules applied to the value.",
+          "long_description": null,
+          "default": null,
+          "allowed_values": []
+        }
+      ]
+    },
+    {
+      "widget_type": "array_input",
+      "category": "input",
+      "short_description": "Array input.",
+      "long_description": "Collects multiple string values as a list.",
+      "example_yaml": "type: array_input\nid: tags\nlabel: Tags",
+      "static_hints": [],
+      "fields": [
+        {
+          "name": "id",
+          "type_name": "string",
+          "required": true,
+          "short_description": "Unique widget identifier within the step.",
+          "long_description": null,
+          "default": null,
+          "allowed_values": []
+        },
+        {
+          "name": "items",
+          "type_name": "list<string>",
+          "required": false,
+          "short_description": "Initial string items.",
+          "long_description": null,
+          "default": "[]",
+          "allowed_values": []
+        },
+        {
+          "name": "label",
+          "type_name": "string",
+          "required": true,
+          "short_description": "Visible widget label.",
+          "long_description": null,
+          "default": null,
+          "allowed_values": []
+        },
+        {
+          "name": "required",
+          "type_name": "boolean",
+          "required": false,
+          "short_description": "Whether the field is required.",
+          "long_description": null,
+          "default": "null",
+          "allowed_values": []
+        },
+        {
+          "name": "validators",
+          "type_name": "list<object | object | object | object | object | object | object | object>",
+          "required": false,
+          "short_description": "Validation rules applied to the value.",
+          "long_description": null,
+          "default": null,
+          "allowed_values": []
+        }
+      ]
+    },
+    {
+      "widget_type": "button_input",
+      "category": "input",
+      "short_description": "Button input.",
+      "long_description": "Focusable button that may trigger a task when activated.",
+      "example_yaml": "type: button_input\nid: refresh\nlabel: Refresh",
+      "static_hints": [],
+      "fields": [
+        {
+          "name": "id",
+          "type_name": "string",
+          "required": true,
+          "short_description": "Unique widget identifier within the step.",
+          "long_description": null,
+          "default": null,
+          "allowed_values": []
+        },
+        {
+          "name": "label",
+          "type_name": "string",
+          "required": true,
+          "short_description": "Visible widget label.",
+          "long_description": null,
+          "default": null,
+          "allowed_values": []
+        },
+        {
+          "name": "task_id",
+          "type_name": "string",
+          "required": false,
+          "short_description": "Optional task executed when activated.",
+          "long_description": null,
+          "default": "null",
+          "allowed_values": []
+        },
+        {
+          "name": "text",
+          "type_name": "string",
+          "required": false,
+          "short_description": "Optional button text override.",
+          "long_description": null,
+          "default": "null",
+          "allowed_values": []
+        }
+      ]
+    },
+    {
+      "widget_type": "select",
+      "category": "input",
+      "short_description": "Single-select input.",
+      "long_description": "Lets the user choose one option from a list.",
+      "example_yaml": "type: select\nid: region\nlabel: Region\noptions: [eu, us]",
+      "static_hints": [],
+      "fields": [
+        {
+          "name": "default",
+          "type_name": "string",
+          "required": false,
+          "short_description": "Default option value.",
+          "long_description": null,
+          "default": "null",
+          "allowed_values": []
+        },
+        {
+          "name": "id",
+          "type_name": "string",
+          "required": true,
+          "short_description": "Unique widget identifier within the step.",
+          "long_description": null,
+          "default": null,
+          "allowed_values": []
+        },
+        {
+          "name": "label",
+          "type_name": "string",
+          "required": true,
+          "short_description": "Visible widget label.",
+          "long_description": null,
+          "default": null,
+          "allowed_values": []
+        },
+        {
+          "name": "options",
+          "type_name": "list<string>",
+          "required": true,
+          "short_description": "Available option values.",
+          "long_description": null,
+          "default": null,
+          "allowed_values": []
+        },
+        {
+          "name": "required",
+          "type_name": "boolean",
+          "required": false,
+          "short_description": "Whether the field is required.",
+          "long_description": null,
+          "default": "null",
+          "allowed_values": []
+        },
+        {
+          "name": "selected",
+          "type_name": "integer",
+          "required": false,
+          "short_description": "Initially selected option index.",
+          "long_description": null,
+          "default": "null",
+          "allowed_values": []
+        },
+        {
+          "name": "submit_target",
+          "type_name": "string",
+          "required": false,
+          "short_description": "Store selector updated on submit.",
+          "long_description": null,
+          "default": "null",
+          "allowed_values": []
+        },
+        {
+          "name": "validators",
+          "type_name": "list<object | object | object | object | object | object | object | object>",
+          "required": false,
+          "short_description": "Validation rules applied to the value.",
+          "long_description": null,
+          "default": null,
+          "allowed_values": []
+        }
+      ]
+    },
+    {
+      "widget_type": "choice_input",
+      "category": "input",
+      "short_description": "Choice input.",
+      "long_description": "Choice selector rendered as navigable options.",
+      "example_yaml": "type: choice_input\nid: package_manager\nlabel: Package manager\noptions: [cargo, npm]",
+      "static_hints": [
+        {
+          "key": "↑ ↓ / ← →",
+          "label": "change option",
+          "group": "navigation",
+          "priority": 10
+        },
+        {
+          "key": "A-Z",
+          "label": "jump by first letter",
+          "group": "navigation",
+          "priority": 11
+        },
+        {
+          "key": "Enter",
+          "label": "confirm",
+          "group": "action",
+          "priority": 20
+        }
+      ],
+      "fields": [
+        {
+          "name": "bullets",
+          "type_name": "boolean",
+          "required": false,
+          "short_description": "Whether to show bullet markers.",
+          "long_description": null,
+          "default": "null",
+          "allowed_values": []
+        },
+        {
+          "name": "default",
+          "type_name": "string",
+          "required": false,
+          "short_description": "Default option value.",
+          "long_description": null,
+          "default": "null",
+          "allowed_values": []
+        },
+        {
+          "name": "id",
+          "type_name": "string",
+          "required": true,
+          "short_description": "Unique widget identifier within the step.",
+          "long_description": null,
+          "default": null,
+          "allowed_values": []
+        },
+        {
+          "name": "label",
+          "type_name": "string",
+          "required": true,
+          "short_description": "Visible widget label.",
+          "long_description": null,
+          "default": null,
+          "allowed_values": []
+        },
+        {
+          "name": "options",
+          "type_name": "list<string>",
+          "required": true,
+          "short_description": "Available option values.",
+          "long_description": null,
+          "default": null,
+          "allowed_values": []
+        },
+        {
+          "name": "required",
+          "type_name": "boolean",
+          "required": false,
+          "short_description": "Whether the field is required.",
+          "long_description": null,
+          "default": "null",
+          "allowed_values": []
+        },
+        {
+          "name": "submit_target",
+          "type_name": "string",
+          "required": false,
+          "short_description": "Store selector updated on submit.",
+          "long_description": null,
+          "default": "null",
+          "allowed_values": []
+        },
+        {
+          "name": "validators",
+          "type_name": "list<object | object | object | object | object | object | object | object>",
+          "required": false,
+          "short_description": "Validation rules applied to the value.",
+          "long_description": null,
+          "default": null,
+          "allowed_values": []
+        }
+      ]
+    },
+    {
+      "widget_type": "select_list",
+      "category": "component",
+      "short_description": "Selectable list component.",
+      "long_description": "Interactive list component supporting single or multi selection.",
+      "example_yaml": "type: select_list\nid: features\nlabel: Features\noptions: [auth, api]",
+      "static_hints": [
+        {
+          "key": "↑ ↓",
+          "label": "move",
+          "group": "navigation",
+          "priority": 10
+        },
+        {
+          "key": "Enter",
+          "label": "confirm",
+          "group": "action",
+          "priority": 20
+        },
+        {
+          "key": "Space",
+          "label": "toggle selection",
+          "group": "action",
+          "priority": 21
+        },
+        {
+          "key": "Ctrl+F",
+          "label": "toggle filter",
+          "group": "view",
+          "priority": 30
+        },
+        {
+          "key": "Esc",
+          "label": "close filter",
+          "group": "view",
+          "priority": 31
+        }
+      ],
+      "fields": [
+        {
+          "name": "id",
+          "type_name": "string",
+          "required": true,
+          "short_description": "Unique widget identifier within the step.",
+          "long_description": null,
+          "default": null,
+          "allowed_values": []
+        },
+        {
+          "name": "label",
+          "type_name": "string",
+          "required": true,
+          "short_description": "Visible widget label.",
+          "long_description": null,
+          "default": null,
+          "allowed_values": []
+        },
+        {
+          "name": "max_visible",
+          "type_name": "integer",
+          "required": false,
+          "short_description": "Maximum number of visible rows.",
+          "long_description": null,
+          "default": "null",
+          "allowed_values": []
+        },
+        {
+          "name": "mode",
+          "type_name": "string",
+          "required": false,
+          "short_description": "Selection mode.",
+          "long_description": null,
+          "default": "null",
+          "allowed_values": []
+        },
+        {
+          "name": "options",
+          "type_name": "list<string | object>",
+          "required": false,
+          "short_description": "List items, plain or detailed.",
+          "long_description": null,
+          "default": null,
+          "allowed_values": []
+        },
+        {
+          "name": "selected",
+          "type_name": "list<number>",
+          "required": false,
+          "short_description": "Initially selected indices.",
+          "long_description": null,
+          "default": "[]",
+          "allowed_values": []
+        },
+        {
+          "name": "show_label",
+          "type_name": "boolean",
+          "required": false,
+          "short_description": "Whether to render the label.",
+          "long_description": null,
+          "default": "null",
+          "allowed_values": []
+        },
+        {
+          "name": "submit_target",
+          "type_name": "string",
+          "required": false,
+          "short_description": "Store selector updated on submit.",
+          "long_description": null,
+          "default": "null",
+          "allowed_values": []
+        }
+      ]
+    },
+    {
+      "widget_type": "masked_input",
+      "category": "input",
+      "short_description": "Masked input.",
+      "long_description": "Text input constrained by a mask pattern.",
+      "example_yaml": "type: masked_input\nid: phone\nlabel: Phone\nmask: \\\"(999) 999-9999\\\"",
+      "static_hints": [],
+      "fields": [
+        {
+          "name": "default",
+          "type_name": "string",
+          "required": false,
+          "short_description": "Initial field value.",
+          "long_description": null,
+          "default": "null",
+          "allowed_values": []
+        },
+        {
+          "name": "id",
+          "type_name": "string",
+          "required": true,
+          "short_description": "Unique widget identifier within the step.",
+          "long_description": null,
+          "default": null,
+          "allowed_values": []
+        },
+        {
+          "name": "label",
+          "type_name": "string",
+          "required": true,
+          "short_description": "Visible widget label.",
+          "long_description": null,
+          "default": null,
+          "allowed_values": []
+        },
+        {
+          "name": "mask",
+          "type_name": "string",
+          "required": true,
+          "short_description": "Mask pattern.",
+          "long_description": null,
+          "default": null,
+          "allowed_values": []
+        },
+        {
+          "name": "required",
+          "type_name": "boolean",
+          "required": false,
+          "short_description": "Whether the field is required.",
+          "long_description": null,
+          "default": "null",
+          "allowed_values": []
+        },
+        {
+          "name": "submit_target",
+          "type_name": "string",
+          "required": false,
+          "short_description": "Store selector updated on submit.",
+          "long_description": null,
+          "default": "null",
+          "allowed_values": []
+        },
+        {
+          "name": "validators",
+          "type_name": "list<object | object | object | object | object | object | object | object>",
+          "required": false,
+          "short_description": "Validation rules applied to the value.",
+          "long_description": null,
+          "default": null,
+          "allowed_values": []
+        }
+      ]
+    },
+    {
+      "widget_type": "slider",
+      "category": "input",
+      "short_description": "Slider input.",
+      "long_description": "Numeric slider with configurable range and step.",
+      "example_yaml": "type: slider\nid: retries\nlabel: Retries\nmin: 0\nmax: 10",
+      "static_hints": [],
+      "fields": [
+        {
+          "name": "change_targets",
+          "type_name": "list<string>",
+          "required": false,
+          "short_description": "Store selectors updated on each change.",
+          "long_description": null,
+          "default": "[]",
+          "allowed_values": []
+        },
+        {
+          "name": "default",
+          "type_name": "number",
+          "required": false,
+          "short_description": "Initial numeric value.",
+          "long_description": null,
+          "default": "null",
+          "allowed_values": []
+        },
+        {
+          "name": "id",
+          "type_name": "string",
+          "required": true,
+          "short_description": "Unique widget identifier within the step.",
+          "long_description": null,
+          "default": null,
+          "allowed_values": []
+        },
+        {
+          "name": "label",
+          "type_name": "string",
+          "required": true,
+          "short_description": "Visible widget label.",
+          "long_description": null,
+          "default": null,
+          "allowed_values": []
+        },
+        {
+          "name": "max",
+          "type_name": "number",
+          "required": true,
+          "short_description": "Maximum value.",
+          "long_description": null,
+          "default": null,
+          "allowed_values": []
+        },
+        {
+          "name": "min",
+          "type_name": "number",
+          "required": true,
+          "short_description": "Minimum value.",
+          "long_description": null,
+          "default": null,
+          "allowed_values": []
+        },
+        {
+          "name": "required",
+          "type_name": "boolean",
+          "required": false,
+          "short_description": "Whether the field is required.",
+          "long_description": null,
+          "default": "null",
+          "allowed_values": []
+        },
+        {
+          "name": "step",
+          "type_name": "integer",
+          "required": false,
+          "short_description": "Increment step.",
+          "long_description": null,
+          "default": "null",
+          "allowed_values": []
+        },
+        {
+          "name": "track_len",
+          "type_name": "integer",
+          "required": false,
+          "short_description": "Rendered track length.",
+          "long_description": null,
+          "default": "null",
+          "allowed_values": []
+        },
+        {
+          "name": "unit",
+          "type_name": "string",
+          "required": false,
+          "short_description": "Optional display unit.",
+          "long_description": null,
+          "default": "null",
+          "allowed_values": []
+        },
+        {
+          "name": "validators",
+          "type_name": "list<object | object | object | object | object | object | object | object>",
+          "required": false,
+          "short_description": "Validation rules applied to the value.",
+          "long_description": null,
+          "default": null,
+          "allowed_values": []
+        }
+      ]
+    },
+    {
+      "widget_type": "color_input",
+      "category": "input",
+      "short_description": "Color input.",
+      "long_description": "Picks a color represented as RGB values.",
+      "example_yaml": "type: color_input\nid: accent\nlabel: Accent color",
+      "static_hints": [],
+      "fields": [
+        {
+          "name": "id",
+          "type_name": "string",
+          "required": true,
+          "short_description": "Unique widget identifier within the step.",
+          "long_description": null,
+          "default": null,
+          "allowed_values": []
+        },
+        {
+          "name": "label",
+          "type_name": "string",
+          "required": true,
+          "short_description": "Visible widget label.",
+          "long_description": null,
+          "default": null,
+          "allowed_values": []
+        },
+        {
+          "name": "required",
+          "type_name": "boolean",
+          "required": false,
+          "short_description": "Whether the field is required.",
+          "long_description": null,
+          "default": "null",
+          "allowed_values": []
+        },
+        {
+          "name": "rgb",
+          "type_name": "array",
+          "required": false,
+          "short_description": "Initial RGB value.",
+          "long_description": null,
+          "default": "null",
+          "allowed_values": []
+        },
+        {
+          "name": "submit_target",
+          "type_name": "string",
+          "required": false,
+          "short_description": "Store selector updated on submit.",
+          "long_description": null,
+          "default": "null",
+          "allowed_values": []
+        },
+        {
+          "name": "validators",
+          "type_name": "list<object | object | object | object | object | object | object | object>",
+          "required": false,
+          "short_description": "Validation rules applied to the value.",
+          "long_description": null,
+          "default": null,
+          "allowed_values": []
+        }
+      ]
+    },
+    {
+      "widget_type": "confirm_input",
+      "category": "input",
+      "short_description": "Confirmation input.",
+      "long_description": "Confirms a yes/no choice in relaxed or strict mode.",
+      "example_yaml": "type: confirm_input\nid: proceed\nlabel: Continue?",
+      "static_hints": [
+        {
+          "key": "Type",
+          "label": "enter confirmation word",
+          "group": "edit",
+          "priority": 10
+        },
+        {
+          "key": "← →",
+          "label": "move cursor",
+          "group": "navigation",
+          "priority": 11
+        },
+        {
+          "key": "Backspace",
+          "label": "delete",
+          "group": "edit",
+          "priority": 12
+        },
+        {
+          "key": "Enter",
+          "label": "confirm",
+          "group": "action",
+          "priority": 20
+        }
+      ],
+      "fields": [
+        {
+          "name": "default",
+          "type_name": "boolean",
+          "required": false,
+          "short_description": "Initial boolean value.",
+          "long_description": null,
+          "default": "null",
+          "allowed_values": []
+        },
+        {
+          "name": "id",
+          "type_name": "string",
+          "required": true,
+          "short_description": "Unique widget identifier within the step.",
+          "long_description": null,
+          "default": null,
+          "allowed_values": []
+        },
+        {
+          "name": "label",
+          "type_name": "string",
+          "required": true,
+          "short_description": "Visible widget label.",
+          "long_description": null,
+          "default": null,
+          "allowed_values": []
+        },
+        {
+          "name": "mode",
+          "type_name": "object | object",
+          "required": false,
+          "short_description": "Confirmation mode.",
+          "long_description": null,
+          "default": null,
+          "allowed_values": []
+        },
+        {
+          "name": "no_label",
+          "type_name": "string",
+          "required": false,
+          "short_description": "Custom no label.",
+          "long_description": null,
+          "default": "null",
+          "allowed_values": []
+        },
+        {
+          "name": "yes_label",
+          "type_name": "string",
+          "required": false,
+          "short_description": "Custom yes label.",
+          "long_description": null,
+          "default": "null",
+          "allowed_values": []
+        }
+      ]
+    },
+    {
+      "widget_type": "checkbox",
+      "category": "input",
+      "short_description": "Checkbox input.",
+      "long_description": "Single boolean checkbox control.",
+      "example_yaml": "type: checkbox\nid: accept\nlabel: Accept terms",
+      "static_hints": [],
+      "fields": [
+        {
+          "name": "checked",
+          "type_name": "boolean",
+          "required": false,
+          "short_description": "Initial checked state.",
+          "long_description": null,
+          "default": "null",
+          "allowed_values": []
+        },
+        {
+          "name": "id",
+          "type_name": "string",
+          "required": true,
+          "short_description": "Unique widget identifier within the step.",
+          "long_description": null,
+          "default": null,
+          "allowed_values": []
+        },
+        {
+          "name": "label",
+          "type_name": "string",
+          "required": true,
+          "short_description": "Visible widget label.",
+          "long_description": null,
+          "default": null,
+          "allowed_values": []
+        },
+        {
+          "name": "required",
+          "type_name": "boolean",
+          "required": false,
+          "short_description": "Whether the field is required.",
+          "long_description": null,
+          "default": "null",
+          "allowed_values": []
+        },
+        {
+          "name": "validators",
+          "type_name": "list<object | object | object | object | object | object | object | object>",
+          "required": false,
+          "short_description": "Validation rules applied to the value.",
+          "long_description": null,
+          "default": null,
+          "allowed_values": []
+        }
+      ]
+    },
+    {
+      "widget_type": "calendar",
+      "category": "component",
+      "short_description": "Calendar component.",
+      "long_description": "Interactive date, time or date-time picker.",
+      "example_yaml": "type: calendar\nid: deploy_at\nlabel: Deploy at",
+      "static_hints": [
+        {
+          "key": "Enter",
+          "label": "select / submit",
+          "group": "action",
+          "priority": 20
+        },
+        {
+          "key": "Tab / Shift+Tab",
+          "label": "switch section",
+          "group": "navigation",
+          "priority": 10
+        }
+      ],
+      "fields": [
+        {
+          "name": "id",
+          "type_name": "string",
+          "required": true,
+          "short_description": "Unique widget identifier within the step.",
+          "long_description": null,
+          "default": null,
+          "allowed_values": []
+        },
+        {
+          "name": "label",
+          "type_name": "string",
+          "required": true,
+          "short_description": "Visible widget label.",
+          "long_description": null,
+          "default": null,
+          "allowed_values": []
+        },
+        {
+          "name": "mode",
+          "type_name": "string",
+          "required": false,
+          "short_description": "Calendar mode.",
+          "long_description": null,
+          "default": "null",
+          "allowed_values": []
+        },
+        {
+          "name": "required",
+          "type_name": "boolean",
+          "required": false,
+          "short_description": "Whether the field is required.",
+          "long_description": null,
+          "default": "null",
+          "allowed_values": []
+        },
+        {
+          "name": "submit_target",
+          "type_name": "string",
+          "required": false,
+          "short_description": "Store selector updated on submit.",
+          "long_description": null,
+          "default": "null",
+          "allowed_values": []
+        },
+        {
+          "name": "validators",
+          "type_name": "list<object | object | object | object | object | object | object | object>",
+          "required": false,
+          "short_description": "Validation rules applied to the value.",
+          "long_description": null,
+          "default": null,
+          "allowed_values": []
+        }
+      ]
+    },
+    {
+      "widget_type": "textarea",
+      "category": "component",
+      "short_description": "Textarea component.",
+      "long_description": "Multi-line text editor widget.",
+      "example_yaml": "type: textarea\nid: notes\nmin_height: 4",
+      "static_hints": [
+        {
+          "key": "Shift+Enter / Alt+Enter",
+          "label": "new line",
+          "group": "edit",
+          "priority": 10
+        },
+        {
+          "key": "Enter / Esc",
+          "label": "finish",
+          "group": "action",
+          "priority": 20
+        },
+        {
+          "key": "← → ↑ ↓",
+          "label": "move cursor",
+          "group": "navigation",
+          "priority": 11
+        },
+        {
+          "key": "Home / End",
+          "label": "line start/end",
+          "group": "navigation",
+          "priority": 12
+        }
+      ],
+      "fields": [
+        {
+          "name": "default",
+          "type_name": "string",
+          "required": false,
+          "short_description": "Initial text value.",
+          "long_description": null,
+          "default": "null",
+          "allowed_values": []
+        },
+        {
+          "name": "id",
+          "type_name": "string",
+          "required": true,
+          "short_description": "Unique widget identifier within the step.",
+          "long_description": null,
+          "default": null,
+          "allowed_values": []
+        },
+        {
+          "name": "max_height",
+          "type_name": "integer",
+          "required": false,
+          "short_description": "Maximum visible height.",
+          "long_description": null,
+          "default": "null",
+          "allowed_values": []
+        },
+        {
+          "name": "min_height",
+          "type_name": "integer",
+          "required": false,
+          "short_description": "Minimum visible height.",
+          "long_description": null,
+          "default": "null",
+          "allowed_values": []
+        },
+        {
+          "name": "required",
+          "type_name": "boolean",
+          "required": false,
+          "short_description": "Whether the field is required.",
+          "long_description": null,
+          "default": "null",
+          "allowed_values": []
+        },
+        {
+          "name": "validators",
+          "type_name": "list<object | object | object | object | object | object | object | object>",
+          "required": false,
+          "short_description": "Validation rules applied to the value.",
+          "long_description": null,
+          "default": null,
+          "allowed_values": []
+        }
+      ]
+    },
+    {
+      "widget_type": "command_runner",
+      "category": "component",
+      "short_description": "Command runner.",
+      "long_description": "Runs one or more shell commands inside the flow.",
+      "example_yaml": "type: command_runner\nid: install\nlabel: Install dependencies\ncommands:\n  - label: Cargo fetch\n    program: cargo\n    args: [fetch]",
+      "static_hints": [
+        {
+          "key": "Enter",
+          "label": "run command",
+          "group": "action",
+          "priority": 20
+        }
+      ],
+      "fields": [
+        {
+          "name": "advance_on_success",
+          "type_name": "boolean",
+          "required": false,
+          "short_description": "Whether to advance the step on success.",
+          "long_description": null,
+          "default": "null",
+          "allowed_values": []
+        },
+        {
+          "name": "commands",
+          "type_name": "list<object>",
+          "required": true,
+          "short_description": "Commands executed by the runner.",
+          "long_description": null,
+          "default": null,
+          "allowed_values": []
+        },
+        {
+          "name": "id",
+          "type_name": "string",
+          "required": true,
+          "short_description": "Unique widget identifier within the step.",
+          "long_description": null,
+          "default": null,
+          "allowed_values": []
+        },
+        {
+          "name": "label",
+          "type_name": "string",
+          "required": true,
+          "short_description": "Visible widget label.",
+          "long_description": null,
+          "default": null,
+          "allowed_values": []
+        },
+        {
+          "name": "on_error",
+          "type_name": "string",
+          "required": false,
+          "short_description": "Behavior when a command fails.",
+          "long_description": null,
+          "default": "null",
+          "allowed_values": []
+        },
+        {
+          "name": "run_mode",
+          "type_name": "string",
+          "required": false,
+          "short_description": "Execution mode.",
+          "long_description": null,
+          "default": "null",
+          "allowed_values": []
+        },
+        {
+          "name": "spinner_style",
+          "type_name": "string",
+          "required": false,
+          "short_description": "Spinner style used during execution.",
+          "long_description": null,
+          "default": "null",
+          "allowed_values": []
+        },
+        {
+          "name": "timeout_ms",
+          "type_name": "integer",
+          "required": false,
+          "short_description": "Command timeout in milliseconds.",
+          "long_description": null,
+          "default": "null",
+          "allowed_values": []
+        },
+        {
+          "name": "visible_lines",
+          "type_name": "integer",
+          "required": false,
+          "short_description": "Maximum number of rendered log lines.",
+          "long_description": null,
+          "default": "null",
+          "allowed_values": []
+        }
+      ]
+    },
+    {
+      "widget_type": "file_browser",
+      "category": "component",
+      "short_description": "File browser component.",
+      "long_description": "Interactive file or directory browser with optional completion.",
+      "example_yaml": "type: file_browser\nid: project_dir\nlabel: Select project directory",
+      "static_hints": [
+        {
+          "key": "Tab",
+          "label": "completion",
+          "group": "completion",
+          "priority": 10
+        },
+        {
+          "key": "Ctrl+Space",
+          "label": "toggle completion",
+          "group": "completion",
+          "priority": 11
+        },
+        {
+          "key": "Shift+Space / Alt+Space",
+          "label": "open browser",
+          "group": "view",
+          "priority": 20
+        },
+        {
+          "key": "Enter",
+          "label": "select / submit",
+          "group": "action",
+          "priority": 30
+        },
+        {
+          "key": "Esc",
+          "label": "close browser",
+          "group": "view",
+          "priority": 21
+        },
+        {
+          "key": "← →",
+          "label": "navigate dirs",
+          "group": "navigation",
+          "priority": 12
+        },
+        {
+          "key": "↑ ↓",
+          "label": "move entries",
+          "group": "navigation",
+          "priority": 13
+        },
+        {
+          "key": "Space",
+          "label": "expand/collapse",
+          "group": "navigation",
+          "priority": 14
+        },
+        {
+          "key": "Ctrl+T",
+          "label": "switch tree/list",
+          "group": "view",
+          "priority": 22
+        }
+      ],
+      "fields": [
+        {
+          "name": "browser_mode",
+          "type_name": "string",
+          "required": false,
+          "short_description": "Browser mode.",
+          "long_description": null,
+          "default": "null",
+          "allowed_values": []
+        },
+        {
+          "name": "cwd",
+          "type_name": "string",
+          "required": false,
+          "short_description": "Starting directory.",
+          "long_description": null,
+          "default": "null",
+          "allowed_values": []
+        },
+        {
+          "name": "display_mode",
+          "type_name": "string",
+          "required": false,
+          "short_description": "Path display mode.",
+          "long_description": null,
+          "default": "null",
+          "allowed_values": []
+        },
+        {
+          "name": "ext_filter",
+          "type_name": "list<string>",
+          "required": false,
+          "short_description": "Allowed file extensions.",
+          "long_description": null,
+          "default": "[]",
+          "allowed_values": []
+        },
+        {
+          "name": "hide_hidden",
+          "type_name": "boolean",
+          "required": false,
+          "short_description": "Whether to hide hidden entries.",
+          "long_description": null,
+          "default": "null",
+          "allowed_values": []
+        },
+        {
+          "name": "id",
+          "type_name": "string",
+          "required": true,
+          "short_description": "Unique widget identifier within the step.",
+          "long_description": null,
+          "default": null,
+          "allowed_values": []
+        },
+        {
+          "name": "label",
+          "type_name": "string",
+          "required": true,
+          "short_description": "Visible widget label.",
+          "long_description": null,
+          "default": null,
+          "allowed_values": []
+        },
+        {
+          "name": "max_visible",
+          "type_name": "integer",
+          "required": false,
+          "short_description": "Maximum number of visible rows.",
+          "long_description": null,
+          "default": "null",
+          "allowed_values": []
+        },
+        {
+          "name": "recursive",
+          "type_name": "boolean",
+          "required": false,
+          "short_description": "Whether to recurse into subdirectories.",
+          "long_description": null,
+          "default": "null",
+          "allowed_values": []
+        },
+        {
+          "name": "required",
+          "type_name": "boolean",
+          "required": false,
+          "short_description": "Whether the field is required.",
+          "long_description": null,
+          "default": "null",
+          "allowed_values": []
+        },
+        {
+          "name": "submit_target",
+          "type_name": "string",
+          "required": false,
+          "short_description": "Store selector updated on submit.",
+          "long_description": null,
+          "default": "null",
+          "allowed_values": []
+        },
+        {
+          "name": "validators",
+          "type_name": "list<object | object | object | object | object | object | object | object>",
+          "required": false,
+          "short_description": "Validation rules applied to the value.",
+          "long_description": null,
+          "default": null,
+          "allowed_values": []
+        }
+      ]
+    },
+    {
+      "widget_type": "tree_view",
+      "category": "component",
+      "short_description": "Tree view component.",
+      "long_description": "Interactive hierarchical tree selector.",
+      "example_yaml": "type: tree_view\nid: modules\nlabel: Modules\nnodes:\n  - item: core\n    depth: 0\n    has_children: true",
+      "static_hints": [
+        {
+          "key": "↑ ↓",
+          "label": "move",
+          "group": "navigation",
+          "priority": 10
+        },
+        {
+          "key": "→",
+          "label": "expand",
+          "group": "navigation",
+          "priority": 11
+        },
+        {
+          "key": "←",
+          "label": "collapse / parent",
+          "group": "navigation",
+          "priority": 12
+        },
+        {
+          "key": "Enter",
+          "label": "select",
+          "group": "action",
+          "priority": 20
+        },
+        {
+          "key": "Ctrl+F",
+          "label": "toggle filter",
+          "group": "view",
+          "priority": 30
+        },
+        {
+          "key": "Esc",
+          "label": "leave filter",
+          "group": "view",
+          "priority": 31
+        }
+      ],
+      "fields": [
+        {
+          "name": "id",
+          "type_name": "string",
+          "required": true,
+          "short_description": "Unique widget identifier within the step.",
+          "long_description": null,
+          "default": null,
+          "allowed_values": []
+        },
+        {
+          "name": "indent_guides",
+          "type_name": "boolean",
+          "required": false,
+          "short_description": "Whether to render indentation guides.",
+          "long_description": null,
+          "default": "null",
+          "allowed_values": []
+        },
+        {
+          "name": "label",
+          "type_name": "string",
+          "required": true,
+          "short_description": "Visible widget label.",
+          "long_description": null,
+          "default": null,
+          "allowed_values": []
+        },
+        {
+          "name": "max_visible",
+          "type_name": "integer",
+          "required": false,
+          "short_description": "Maximum number of visible rows.",
+          "long_description": null,
+          "default": "null",
+          "allowed_values": []
+        },
+        {
+          "name": "nodes",
+          "type_name": "list<object>",
+          "required": true,
+          "short_description": "Tree nodes with item and depth metadata.",
+          "long_description": null,
+          "default": null,
+          "allowed_values": []
+        },
+        {
+          "name": "show_label",
+          "type_name": "boolean",
+          "required": false,
+          "short_description": "Whether to render the label.",
+          "long_description": null,
+          "default": "null",
+          "allowed_values": []
+        },
+        {
+          "name": "submit_target",
+          "type_name": "string",
+          "required": false,
+          "short_description": "Store selector updated on submit.",
+          "long_description": null,
+          "default": "null",
+          "allowed_values": []
+        }
+      ]
+    },
+    {
+      "widget_type": "object_editor",
+      "category": "component",
+      "short_description": "Object editor.",
+      "long_description": "Structured editor for object-like values.",
+      "example_yaml": "type: object_editor\nid: payload\nlabel: Payload",
+      "static_hints": [
+        {
+          "key": "Ctrl+F",
+          "label": "toggle filter",
+          "group": "view",
+          "priority": 30
+        },
+        {
+          "key": "↑ ↓",
+          "label": "move",
+          "group": "navigation",
+          "priority": 10
+        },
+        {
+          "key": "Space / ← →",
+          "label": "expand/collapse",
+          "group": "navigation",
+          "priority": 11
+        },
+        {
+          "key": "e / r",
+          "label": "edit value/key",
+          "group": "action",
+          "priority": 20
+        },
+        {
+          "key": "i / d / m",
+          "label": "insert/delete/move",
+          "group": "action",
+          "priority": 21
+        },
+        {
+          "key": "Enter",
+          "label": "confirm",
+          "group": "action",
+          "priority": 20
+        },
+        {
+          "key": "Esc",
+          "label": "cancel",
+          "group": "action",
+          "priority": 21
+        }
+      ],
+      "fields": [
+        {
+          "name": "id",
+          "type_name": "string",
+          "required": true,
+          "short_description": "Unique widget identifier within the step.",
+          "long_description": null,
+          "default": null,
+          "allowed_values": []
+        },
+        {
+          "name": "label",
+          "type_name": "string",
+          "required": true,
+          "short_description": "Visible widget label.",
+          "long_description": null,
+          "default": null,
+          "allowed_values": []
+        },
+        {
+          "name": "max_visible",
+          "type_name": "integer",
+          "required": false,
+          "short_description": "Maximum number of visible rows.",
+          "long_description": null,
+          "default": "null",
+          "allowed_values": []
+        },
+        {
+          "name": "submit_target",
+          "type_name": "string",
+          "required": false,
+          "short_description": "Store selector updated on submit.",
+          "long_description": null,
+          "default": "null",
+          "allowed_values": []
+        },
+        {
+          "name": "value",
+          "type_name": "unknown",
+          "required": false,
+          "short_description": "Initial object value.",
+          "long_description": null,
+          "default": "null",
+          "allowed_values": []
+        }
+      ]
+    },
+    {
+      "widget_type": "snippet",
+      "category": "component",
+      "short_description": "Snippet component.",
+      "long_description": "Builds a snippet from nested interactive inputs.",
+      "example_yaml": "type: snippet\nid: export_cmd\nlabel: Export command\ntemplate: \\\"export NAME={{name}}\\\"",
+      "static_hints": [
+        {
+          "key": "Tab / Shift+Tab",
+          "label": "switch slot",
+          "group": "navigation",
+          "priority": 10
+        },
+        {
+          "key": "Enter",
+          "label": "next slot / submit",
+          "group": "action",
+          "priority": 20
+        }
+      ],
+      "fields": [
+        {
+          "name": "id",
+          "type_name": "string",
+          "required": true,
+          "short_description": "Unique widget identifier within the step.",
+          "long_description": null,
+          "default": null,
+          "allowed_values": []
+        },
+        {
+          "name": "inputs",
+          "type_name": "list<object | object | object | object | object | object | object | object | object | object | object | object | object | object | object | object | object | object | object | object | object | object | object | object | object | object | object | object>",
+          "required": false,
+          "short_description": "Nested interactive widget definitions.",
+          "long_description": null,
+          "default": null,
+          "allowed_values": []
+        },
+        {
+          "name": "label",
+          "type_name": "string",
+          "required": true,
+          "short_description": "Visible widget label.",
+          "long_description": null,
+          "default": null,
+          "allowed_values": []
+        },
+        {
+          "name": "submit_target",
+          "type_name": "string",
+          "required": false,
+          "short_description": "Store selector updated on submit.",
+          "long_description": null,
+          "default": "null",
+          "allowed_values": []
+        },
+        {
+          "name": "template",
+          "type_name": "string",
+          "required": true,
+          "short_description": "Snippet template string.",
+          "long_description": null,
+          "default": null,
+          "allowed_values": []
+        }
+      ]
+    },
+    {
+      "widget_type": "table",
+      "category": "component",
+      "short_description": "Editable table component.",
+      "long_description": "Edits repeated rows using embedded widgets per column.",
+      "example_yaml": "type: table\nid: envs\nlabel: Environments\ncolumns:\n  - header: Name\n    widget:\n      type: text_input",
+      "static_hints": [
+        {
+          "key": "Ctrl+F",
+          "label": "toggle filter",
+          "group": "view",
+          "priority": 30
+        },
+        {
+          "key": "Enter",
+          "label": "submit step",
+          "group": "action",
+          "priority": 40
+        },
+        {
+          "key": "↑ ↓",
+          "label": "move rows",
+          "group": "navigation",
+          "priority": 10
+        },
+        {
+          "key": "Tab / Shift+Tab",
+          "label": "switch column",
+          "group": "navigation",
+          "priority": 11
+        },
+        {
+          "key": "e",
+          "label": "edit cell",
+          "group": "action",
+          "priority": 20
+        },
+        {
+          "key": "i / d",
+          "label": "insert/delete row",
+          "group": "action",
+          "priority": 21
+        },
+        {
+          "key": "m",
+          "label": "move row",
+          "group": "action",
+          "priority": 22
+        },
+        {
+          "key": "Space",
+          "label": "sort column",
+          "group": "action",
+          "priority": 20
+        }
+      ],
+      "fields": [
+        {
+          "name": "columns",
+          "type_name": "list<object>",
+          "required": true,
+          "short_description": "Column definitions with embedded widgets.",
+          "long_description": null,
+          "default": null,
+          "allowed_values": []
+        },
+        {
+          "name": "id",
+          "type_name": "string",
+          "required": true,
+          "short_description": "Unique widget identifier within the step.",
+          "long_description": null,
+          "default": null,
+          "allowed_values": []
+        },
+        {
+          "name": "initial_rows",
+          "type_name": "integer",
+          "required": false,
+          "short_description": "Initial number of rows.",
+          "long_description": null,
+          "default": "null",
+          "allowed_values": []
+        },
+        {
+          "name": "label",
+          "type_name": "string",
+          "required": true,
+          "short_description": "Visible widget label.",
+          "long_description": null,
+          "default": null,
+          "allowed_values": []
+        },
+        {
+          "name": "row_numbers",
+          "type_name": "boolean",
+          "required": false,
+          "short_description": "Whether to show row numbers.",
+          "long_description": null,
+          "default": "null",
+          "allowed_values": []
+        },
+        {
+          "name": "style",
+          "type_name": "string",
+          "required": false,
+          "short_description": "Table rendering style.",
+          "long_description": null,
+          "default": "null",
+          "allowed_values": []
+        }
+      ]
+    },
+    {
+      "widget_type": "repeater",
+      "category": "component",
+      "short_description": "Repeater component.",
+      "long_description": "Edits repeated items using embedded widget fields.",
+      "example_yaml": "type: repeater\nid: services\nlabel: Services\nfields:\n  - key: name\n    label: Name\n    widget:\n      type: text_input",
+      "static_hints": [
+        {
+          "key": "Enter / Tab",
+          "label": "next field",
+          "group": "navigation",
+          "priority": 10
+        },
+        {
+          "key": "Shift+Tab",
+          "label": "previous field",
+          "group": "navigation",
+          "priority": 11
+        },
+        {
+          "key": "final Enter",
+          "label": "submit",
+          "group": "action",
+          "priority": 20
+        }
+      ],
+      "fields": [
+        {
+          "name": "fields",
+          "type_name": "list<object>",
+          "required": true,
+          "short_description": "Repeater field definitions with embedded widgets.",
+          "long_description": null,
+          "default": null,
+          "allowed_values": []
+        },
+        {
+          "name": "header_template",
+          "type_name": "string",
+          "required": false,
+          "short_description": "Optional header template for each item.",
+          "long_description": null,
+          "default": "null",
+          "allowed_values": []
+        },
+        {
+          "name": "id",
+          "type_name": "string",
+          "required": true,
+          "short_description": "Unique widget identifier within the step.",
+          "long_description": null,
+          "default": null,
+          "allowed_values": []
+        },
+        {
+          "name": "item_label_path",
+          "type_name": "string",
+          "required": false,
+          "short_description": "Relative path used as item label.",
+          "long_description": null,
+          "default": "null",
+          "allowed_values": []
+        },
+        {
+          "name": "items",
+          "type_name": "unknown",
+          "required": false,
+          "short_description": "Initial item values.",
+          "long_description": null,
+          "default": "[]",
+          "allowed_values": []
+        },
+        {
+          "name": "label",
+          "type_name": "string",
+          "required": true,
+          "short_description": "Visible widget label.",
+          "long_description": null,
+          "default": null,
+          "allowed_values": []
+        },
+        {
+          "name": "layout",
+          "type_name": "string",
+          "required": false,
+          "short_description": "Repeater layout mode.",
+          "long_description": null,
+          "default": "null",
+          "allowed_values": []
+        },
+        {
+          "name": "show_label",
+          "type_name": "boolean",
+          "required": false,
+          "short_description": "Whether to render the label.",
+          "long_description": null,
+          "default": "null",
+          "allowed_values": []
+        },
+        {
+          "name": "show_progress",
+          "type_name": "boolean",
+          "required": false,
+          "short_description": "Whether to show progress for items.",
+          "long_description": null,
+          "default": "null",
+          "allowed_values": []
+        },
+        {
+          "name": "submit_target",
+          "type_name": "string",
+          "required": false,
+          "short_description": "Store selector updated on submit.",
+          "long_description": null,
+          "default": "null",
+          "allowed_values": []
+        }
+      ]
+    }
+  ],
+  "embedded_widgets": [
+    {
+      "widget_type": "text_input",
+      "category": "embedded",
+      "short_description": "Embedded text input.",
+      "long_description": "Single-line text input usable inside tables and repeaters.",
+      "example_yaml": "type: text_input\nplaceholder: service-name",
+      "static_hints": [],
+      "fields": [
+        {
+          "name": "mode",
+          "type_name": "string",
+          "required": false,
+          "short_description": "Text display mode.",
+          "long_description": null,
+          "default": "null",
+          "allowed_values": []
+        },
+        {
+          "name": "placeholder",
+          "type_name": "string",
+          "required": false,
+          "short_description": "Placeholder text shown when the field is empty.",
+          "long_description": null,
+          "default": "null",
+          "allowed_values": []
+        }
+      ]
+    },
+    {
+      "widget_type": "masked_input",
+      "category": "embedded",
+      "short_description": "Embedded masked input.",
+      "long_description": "Masked text input usable inside tables and repeaters.",
+      "example_yaml": "type: masked_input\nmask: \\\"999-AAA\\\"",
+      "static_hints": [],
+      "fields": [
+        {
+          "name": "mask",
+          "type_name": "string",
+          "required": true,
+          "short_description": "Mask pattern.",
+          "long_description": null,
+          "default": null,
+          "allowed_values": []
+        }
+      ]
+    },
+    {
+      "widget_type": "select",
+      "category": "embedded",
+      "short_description": "Embedded select input.",
+      "long_description": "Embedded single-choice select field.",
+      "example_yaml": "type: select\noptions: [small, medium, large]",
+      "static_hints": [],
+      "fields": [
+        {
+          "name": "options",
+          "type_name": "list<string>",
+          "required": true,
+          "short_description": "Available option values.",
+          "long_description": null,
+          "default": null,
+          "allowed_values": []
+        }
+      ]
+    },
+    {
+      "widget_type": "slider",
+      "category": "embedded",
+      "short_description": "Embedded slider input.",
+      "long_description": "Embedded numeric slider field.",
+      "example_yaml": "type: slider\nmin: 0\nmax: 100",
+      "static_hints": [],
+      "fields": [
+        {
+          "name": "max",
+          "type_name": "number",
+          "required": true,
+          "short_description": "Maximum value.",
+          "long_description": null,
+          "default": null,
+          "allowed_values": []
+        },
+        {
+          "name": "min",
+          "type_name": "number",
+          "required": true,
+          "short_description": "Minimum value.",
+          "long_description": null,
+          "default": null,
+          "allowed_values": []
+        },
+        {
+          "name": "step",
+          "type_name": "integer",
+          "required": false,
+          "short_description": "Increment step.",
+          "long_description": null,
+          "default": "null",
+          "allowed_values": []
+        },
+        {
+          "name": "unit",
+          "type_name": "string",
+          "required": false,
+          "short_description": "Optional display unit.",
+          "long_description": null,
+          "default": "null",
+          "allowed_values": []
+        }
+      ]
+    },
+    {
+      "widget_type": "checkbox",
+      "category": "embedded",
+      "short_description": "Embedded checkbox input.",
+      "long_description": "Embedded boolean checkbox field.",
+      "example_yaml": "type: checkbox\nchecked: true",
+      "static_hints": [],
+      "fields": [
+        {
+          "name": "checked",
+          "type_name": "boolean",
+          "required": false,
+          "short_description": "Initial checked state.",
+          "long_description": null,
+          "default": "null",
+          "allowed_values": []
+        }
+      ]
+    },
+    {
+      "widget_type": "array_input",
+      "category": "embedded",
+      "short_description": "Embedded array input.",
+      "long_description": "Embedded list input field.",
+      "example_yaml": "type: array_input\nitems: [a, b]",
+      "static_hints": [],
+      "fields": [
+        {
+          "name": "items",
+          "type_name": "list<string>",
+          "required": false,
+          "short_description": "Initial string items.",
+          "long_description": null,
+          "default": "[]",
+          "allowed_values": []
+        }
+      ]
+    }
+  ]
+}

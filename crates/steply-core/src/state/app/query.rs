@@ -1,6 +1,6 @@
-use crate::state::step::Step;
-
 use super::AppState;
+use crate::core::value::Value;
+use crate::state::step::{Step, StepStatus};
 
 impl AppState {
     pub fn current_step_id(&self) -> &str {
@@ -49,6 +49,10 @@ impl AppState {
         self.flow.status_at(index)
     }
 
+    pub fn current_step_status(&self) -> StepStatus {
+        self.flow.current_status()
+    }
+
     pub fn step_visible_at(&self, index: usize) -> bool {
         self.flow
             .steps()
@@ -89,5 +93,9 @@ impl AppState {
 
     pub fn focused_id(&self) -> Option<&str> {
         self.ui.focus.current_id()
+    }
+
+    pub fn store_value(&self, selector: &str) -> Option<&Value> {
+        self.data.store.get_selector(selector)
     }
 }

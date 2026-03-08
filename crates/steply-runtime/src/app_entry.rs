@@ -1,10 +1,11 @@
 use std::env;
 use std::io;
+use std::io::Read;
 use std::path::PathBuf;
 
 use crate::terminal::{RenderMode, Terminal};
 use crate::{RenderJsonRequest, Runtime};
-use steply_core::config::load_from_yaml_file;
+use steply_core::config::{load_from_yaml_file, load_from_yaml_str};
 use steply_core::state::demo::{build_demo_flow, build_demo_tasks};
 use steply_core::ui::renderer::RendererConfig;
 use steply_core::{HostContext, set_host_context};
@@ -103,8 +104,14 @@ pub fn run_with_options(options: StartOptions) -> io::Result<()> {
     });
 
     let state = if let Some(config_path) = options.config_path {
-        let loaded = load_from_yaml_file(config_path.as_path())
-            .map_err(|err| io::Error::other(format!("yaml config error: {err}")))?;
+        let loaded = if config_path.as_os_str() == "-" {
+            let mut raw = String::new();
+            io::stdin().read_to_string(&mut raw)?;
+            load_from_yaml_str(raw.as_str())
+        } else {
+            load_from_yaml_file(config_path.as_path())
+        }
+        .map_err(|err| io::Error::other(format!("yaml config error: {err}")))?;
         loaded.into_app_state()
     } else {
         let flow = build_demo_flow();

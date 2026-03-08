@@ -43,11 +43,13 @@ pub(super) fn render_step_content(
     let mut content = StepContentRender::default();
     let mut row_offset: u16 = 0;
 
-    content.lines.push(vec![Span::styled(
-        format!("{} [{}]", step.prompt, step.id),
-        step_title_style(status),
-    )]);
-    row_offset = row_offset.saturating_add(1);
+    if !step.prompt.trim().is_empty() {
+        content.lines.push(vec![Span::styled(
+            format!("{} [{}]", step.prompt, step.id),
+            step_title_style(status),
+        )]);
+        row_offset = row_offset.saturating_add(1);
+    }
 
     if let Some(description) = step.description.as_deref() {
         content.lines.push(vec![Span::styled(

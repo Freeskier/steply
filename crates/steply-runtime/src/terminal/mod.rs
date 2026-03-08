@@ -13,7 +13,7 @@ use crossterm::terminal::{
     EndSynchronizedUpdate, EnterAlternateScreen, LeaveAlternateScreen, ScrollUp,
 };
 use crossterm::{execute, queue};
-use std::io::{self, Stdout, Write};
+use std::io::{self, Stderr, Stdout, Write};
 use std::time::Duration;
 use steply_core::terminal::{
     CursorPos, KeyCode, KeyEvent, KeyModifiers, PointerButton, PointerEvent, PointerKind,
@@ -154,8 +154,29 @@ impl InlineState {
     }
 }
 
+enum TerminalWriter {
+    Stdout(Stdout),
+    Stderr(Stderr),
+}
+
+impl Write for TerminalWriter {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        match self {
+            Self::Stdout(writer) => writer.write(buf),
+            Self::Stderr(writer) => writer.write(buf),
+        }
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        match self {
+            Self::Stdout(writer) => writer.flush(),
+            Self::Stderr(writer) => writer.flush(),
+        }
+    }
+}
+
 pub struct Terminal {
-    stdout: Stdout,
+    stdout: TerminalWriter,
     state: TerminalState,
     mode: RenderMode,
     alt_screen: Option<AltScreenState>,
@@ -164,9 +185,17 @@ pub struct Terminal {
 
 impl Terminal {
     pub fn new() -> io::Result<Self> {
+        Self::with_writer(TerminalWriter::Stdout(io::stdout()))
+    }
+
+    pub fn new_stderr() -> io::Result<Self> {
+        Self::with_writer(TerminalWriter::Stderr(io::stderr()))
+    }
+
+    fn with_writer(stdout: TerminalWriter) -> io::Result<Self> {
         let (width, height) = terminal::size()?;
         Ok(Self {
-            stdout: io::stdout(),
+            stdout,
             state: TerminalState {
                 size: TerminalSize { width, height },
                 cursor: None,

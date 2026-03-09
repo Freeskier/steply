@@ -482,17 +482,8 @@ impl FileBrowserComponent {
     }
 
     fn child_ctx(&self, ctx: &RenderContext, focused_id: Option<String>) -> RenderContext {
-        let mut completion_menus = (*ctx.completion_menus).clone();
-        if let Some(menu) = completion_menus.remove(self.base.id()) {
-            completion_menus.insert(self.text.id().to_string(), menu);
-        }
-        RenderContext {
-            focused_id,
-            terminal_size: ctx.terminal_size,
-            visible_errors: ctx.visible_errors.clone(),
-            invalid_hidden: ctx.invalid_hidden.clone(),
-            completion_menus: Arc::new(completion_menus),
-        }
+        ctx.with_focus(focused_id)
+            .with_completion_owner(self.base.id(), Some(self.text.id()))
     }
 }
 

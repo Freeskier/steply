@@ -111,12 +111,18 @@ pub(super) fn build_base_frame(
             frame.lines.push(vec![Span::new("")]);
         }
 
+        let hint_line_count = hints.panel_lines.len().min(u16::MAX as usize) as u16;
         append_step_hints_lines(
             &mut frame.lines,
             hints.panel_lines,
             config.chrome_enabled,
             idx < render_up_to,
         );
+        if status == StepVisualStatus::Active
+            && let Some(range) = frame.active_step_range.as_mut()
+        {
+            range.end_exclusive = range.end_exclusive.saturating_add(hint_line_count);
+        }
     }
     frame
 }

@@ -12,14 +12,12 @@ use super::super::model::{self, EmbeddedWidgetDef};
 use super::super::parse::parse_text_mode;
 use crate::widgets::components::repeater::RepeaterFieldFactory;
 
-type EmbeddedCompileFn =
-    fn(EmbeddedWidgetDef, String, String) -> Result<Box<dyn InteractiveNode>, String>;
+type EmbeddedNodeFactory = Arc<dyn Fn(String, String) -> Box<dyn InteractiveNode> + Send + Sync>;
 
 pub(in crate::config) struct EmbeddedWidgetRegistryEntry {
     pub(in crate::config) doc: WidgetDocDescriptor,
     pub(in crate::config) build_doc: fn(WidgetDocDescriptor) -> Result<WidgetDoc, String>,
     pub(in crate::config) validate: fn(&EmbeddedWidgetDef) -> Result<(), String>,
-    pub(in crate::config) compile: EmbeddedCompileFn,
 }
 
 const fn embedded_doc(
@@ -49,7 +47,6 @@ placeholder: service-name"#,
         ),
         build_doc: build_widget_doc::<model::EmbeddedTextInputDef>,
         validate: validate_embedded_text_input,
-        compile: compile_embedded_text_input,
     },
     EmbeddedWidgetRegistryEntry {
         doc: embedded_doc(
@@ -61,7 +58,6 @@ mask: \"999-AAA\""#,
         ),
         build_doc: build_widget_doc::<model::EmbeddedMaskedInputDef>,
         validate: validate_embedded_noop,
-        compile: compile_embedded_masked_input,
     },
     EmbeddedWidgetRegistryEntry {
         doc: embedded_doc(
@@ -73,7 +69,6 @@ options: [small, medium, large]"#,
         ),
         build_doc: build_widget_doc::<model::EmbeddedSelectDef>,
         validate: validate_embedded_noop,
-        compile: compile_embedded_select,
     },
     EmbeddedWidgetRegistryEntry {
         doc: embedded_doc(
@@ -86,7 +81,6 @@ max: 100"#,
         ),
         build_doc: build_widget_doc::<model::EmbeddedSliderDef>,
         validate: validate_embedded_noop,
-        compile: compile_embedded_slider,
     },
     EmbeddedWidgetRegistryEntry {
         doc: embedded_doc(
@@ -98,7 +92,6 @@ checked: true"#,
         ),
         build_doc: build_widget_doc::<model::EmbeddedCheckboxDef>,
         validate: validate_embedded_noop,
-        compile: compile_embedded_checkbox,
     },
     EmbeddedWidgetRegistryEntry {
         doc: embedded_doc(
@@ -110,7 +103,6 @@ items: [a, b]"#,
         ),
         build_doc: build_widget_doc::<model::EmbeddedArrayInputDef>,
         validate: validate_embedded_noop,
-        compile: compile_embedded_array_input,
     },
 ];
 
@@ -121,46 +113,101 @@ pub(super) fn embedded_widget_registry() -> &'static [EmbeddedWidgetRegistryEntr
 pub(super) fn compile_table_embedded_factory(
     def: EmbeddedWidgetDef,
 ) -> Result<CellFactory, String> {
-    let template = def.clone();
-    validate_embedded_widget_def(&template)?;
-    Ok(Arc::new(move |id, label| {
-        compile_embedded_widget(template.clone(), id, label)
-            .expect("embedded widget template validated")
-    }))
+    compile_embedded_factory(def)
 }
 
 pub(super) fn compile_repeater_embedded_factory(
     def: EmbeddedWidgetDef,
 ) -> Result<RepeaterFieldFactory, String> {
-    let template = def.clone();
-    validate_embedded_widget_def(&template)?;
-    Ok(Arc::new(move |id, label| {
-        compile_embedded_widget(template.clone(), id, label)
-            .expect("embedded widget template validated")
-    }))
+    compile_embedded_factory(def)
 }
 
 fn validate_embedded_widget_def(def: &EmbeddedWidgetDef) -> Result<(), String> {
-    (embedded_widget_entry(def).validate)(def)
+    let widget_type = embedded_widget_type(def);
+    let Some(entry) = embedded_widget_entry(widget_type) else {
+        return Err(format!(
+            "internal embedded widget registry is missing entry for '{widget_type}'"
+        ));
+    };
+    (entry.validate)(def)
 }
 
-fn compile_embedded_widget(
-    def: EmbeddedWidgetDef,
-    id: String,
-    label: String,
-) -> Result<Box<dyn InteractiveNode>, String> {
-    (embedded_widget_entry(&def).compile)(def, id, label)
-}
-
-fn embedded_widget_entry(def: &EmbeddedWidgetDef) -> &'static EmbeddedWidgetRegistryEntry {
+fn compile_embedded_factory(def: EmbeddedWidgetDef) -> Result<EmbeddedNodeFactory, String> {
+    validate_embedded_widget_def(&def)?;
     match def {
-        EmbeddedWidgetDef::TextInput(_) => &EMBEDDED_WIDGET_REGISTRY[0],
-        EmbeddedWidgetDef::MaskedInput(_) => &EMBEDDED_WIDGET_REGISTRY[1],
-        EmbeddedWidgetDef::Select(_) => &EMBEDDED_WIDGET_REGISTRY[2],
-        EmbeddedWidgetDef::Slider(_) => &EMBEDDED_WIDGET_REGISTRY[3],
-        EmbeddedWidgetDef::Checkbox(_) => &EMBEDDED_WIDGET_REGISTRY[4],
-        EmbeddedWidgetDef::ArrayInput(_) => &EMBEDDED_WIDGET_REGISTRY[5],
+        EmbeddedWidgetDef::TextInput(model::EmbeddedTextInputDef { placeholder, mode }) => {
+            let mode = parse_text_mode(mode.as_deref())?;
+            Ok(Arc::new(move |id, label| {
+                let mut input = TextInput::new(id, label).with_mode(mode);
+                if let Some(placeholder) = &placeholder {
+                    input = input.with_placeholder(placeholder.clone());
+                }
+                Box::new(input)
+            }))
+        }
+        EmbeddedWidgetDef::MaskedInput(model::EmbeddedMaskedInputDef { mask }) => {
+            Ok(Arc::new(move |id, label| {
+                Box::new(MaskedInput::new(id, label, mask.clone()))
+            }))
+        }
+        EmbeddedWidgetDef::Select(model::EmbeddedSelectDef { options }) => {
+            Ok(Arc::new(move |id, label| {
+                Box::new(SelectInput::new(id, label, options.clone()))
+            }))
+        }
+        EmbeddedWidgetDef::Slider(model::EmbeddedSliderDef {
+            min,
+            max,
+            step,
+            unit,
+        }) => Ok(Arc::new(move |id, label| {
+            let mut input = SliderInput::new(id, label, min, max);
+            if let Some(step) = step {
+                input = input.with_step(step);
+            }
+            if let Some(unit) = &unit {
+                input = input.with_unit(unit.clone());
+            }
+            Box::new(input)
+        })),
+        EmbeddedWidgetDef::Checkbox(model::EmbeddedCheckboxDef { checked }) => {
+            Ok(Arc::new(move |id, label| {
+                let mut input = CheckboxInput::new(id, label);
+                if checked.unwrap_or(false) {
+                    input = input.with_checked(true);
+                }
+                Box::new(input)
+            }))
+        }
+        EmbeddedWidgetDef::ArrayInput(model::EmbeddedArrayInputDef { items }) => {
+            Ok(Arc::new(move |id, label| {
+                Box::new(ArrayInput::new(id, label).with_items(items.clone()))
+            }))
+        }
     }
+}
+
+fn embedded_widget_entry(widget_type: &str) -> Option<&'static EmbeddedWidgetRegistryEntry> {
+    embedded_widget_registry()
+        .iter()
+        .find(|entry| entry.doc.widget_type == widget_type)
+}
+
+fn embedded_widget_type(def: &EmbeddedWidgetDef) -> &'static str {
+    match def {
+        EmbeddedWidgetDef::TextInput(_) => "text_input",
+        EmbeddedWidgetDef::MaskedInput(_) => "masked_input",
+        EmbeddedWidgetDef::Select(_) => "select",
+        EmbeddedWidgetDef::Slider(_) => "slider",
+        EmbeddedWidgetDef::Checkbox(_) => "checkbox",
+        EmbeddedWidgetDef::ArrayInput(_) => "array_input",
+    }
+}
+
+fn embedded_registry_dispatch_mismatch<T>(widget_type: &str) -> Result<T, String> {
+    Err(format!(
+        "internal embedded widget registry dispatch mismatch for '{widget_type}'"
+    ))
 }
 
 fn validate_embedded_noop(_def: &EmbeddedWidgetDef) -> Result<(), String> {
@@ -176,104 +223,6 @@ fn validate_embedded_text_input(def: &EmbeddedWidgetDef) -> Result<(), String> {
             Ok(())
         }
         EmbeddedWidgetDef::TextInput(_) => Ok(()),
-        _ => unreachable!("embedded widget registry dispatch mismatch: text_input"),
-    }
-}
-
-fn compile_embedded_text_input(
-    def: EmbeddedWidgetDef,
-    id: String,
-    label: String,
-) -> Result<Box<dyn InteractiveNode>, String> {
-    match def {
-        EmbeddedWidgetDef::TextInput(model::EmbeddedTextInputDef { placeholder, mode }) => {
-            let mut input = TextInput::new(id, label).with_mode(parse_text_mode(mode.as_deref())?);
-            if let Some(placeholder) = placeholder {
-                input = input.with_placeholder(placeholder);
-            }
-            Ok(Box::new(input))
-        }
-        _ => unreachable!("embedded widget registry dispatch mismatch: text_input"),
-    }
-}
-
-fn compile_embedded_masked_input(
-    def: EmbeddedWidgetDef,
-    id: String,
-    label: String,
-) -> Result<Box<dyn InteractiveNode>, String> {
-    match def {
-        EmbeddedWidgetDef::MaskedInput(model::EmbeddedMaskedInputDef { mask }) => {
-            Ok(Box::new(MaskedInput::new(id, label, mask)))
-        }
-        _ => unreachable!("embedded widget registry dispatch mismatch: masked_input"),
-    }
-}
-
-fn compile_embedded_select(
-    def: EmbeddedWidgetDef,
-    id: String,
-    label: String,
-) -> Result<Box<dyn InteractiveNode>, String> {
-    match def {
-        EmbeddedWidgetDef::Select(model::EmbeddedSelectDef { options }) => {
-            Ok(Box::new(SelectInput::new(id, label, options)))
-        }
-        _ => unreachable!("embedded widget registry dispatch mismatch: select"),
-    }
-}
-
-fn compile_embedded_slider(
-    def: EmbeddedWidgetDef,
-    id: String,
-    label: String,
-) -> Result<Box<dyn InteractiveNode>, String> {
-    match def {
-        EmbeddedWidgetDef::Slider(model::EmbeddedSliderDef {
-            min,
-            max,
-            step,
-            unit,
-        }) => {
-            let mut input = SliderInput::new(id, label, min, max);
-            if let Some(step) = step {
-                input = input.with_step(step);
-            }
-            if let Some(unit) = unit {
-                input = input.with_unit(unit);
-            }
-            Ok(Box::new(input))
-        }
-        _ => unreachable!("embedded widget registry dispatch mismatch: slider"),
-    }
-}
-
-fn compile_embedded_checkbox(
-    def: EmbeddedWidgetDef,
-    id: String,
-    label: String,
-) -> Result<Box<dyn InteractiveNode>, String> {
-    match def {
-        EmbeddedWidgetDef::Checkbox(model::EmbeddedCheckboxDef { checked }) => {
-            let mut input = CheckboxInput::new(id, label);
-            if checked.unwrap_or(false) {
-                input = input.with_checked(true);
-            }
-            Ok(Box::new(input))
-        }
-        _ => unreachable!("embedded widget registry dispatch mismatch: checkbox"),
-    }
-}
-
-fn compile_embedded_array_input(
-    def: EmbeddedWidgetDef,
-    id: String,
-    label: String,
-) -> Result<Box<dyn InteractiveNode>, String> {
-    match def {
-        EmbeddedWidgetDef::ArrayInput(model::EmbeddedArrayInputDef { items }) => {
-            Ok(Box::new(ArrayInput::new(id, label).with_items(items)))
-        }
-        _ => unreachable!("embedded widget registry dispatch mismatch: array_input"),
+        _ => embedded_registry_dispatch_mismatch("text_input"),
     }
 }

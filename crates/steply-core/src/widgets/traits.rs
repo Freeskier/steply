@@ -105,6 +105,31 @@ impl RenderContext {
             completion_menus: self.completion_menus.clone(),
         }
     }
+
+    pub fn with_completion_owner(
+        &self,
+        source_owner_id: &str,
+        target_owner_id: Option<&str>,
+    ) -> Self {
+        let mut completion_menus = (*self.completion_menus).clone();
+        let moved = completion_menus.remove(source_owner_id);
+        if let (Some(target_owner_id), Some(menu)) = (target_owner_id, moved) {
+            completion_menus.insert(target_owner_id.to_string(), menu);
+        }
+
+        Self {
+            focused_id: self.focused_id.clone(),
+            terminal_size: self.terminal_size,
+            visible_errors: self.visible_errors.clone(),
+            invalid_hidden: self.invalid_hidden.clone(),
+            completion_menus: Arc::new(completion_menus),
+        }
+    }
+
+    pub fn for_child(&self, parent_id: &str, focused_child_id: Option<String>) -> Self {
+        self.with_focus(focused_child_id.clone())
+            .with_completion_owner(parent_id, focused_child_id.as_deref())
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

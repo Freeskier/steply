@@ -571,40 +571,58 @@ pub(super) fn visit_widget_task_references(
 }
 
 pub(super) fn compile_widget(def: WidgetDef) -> Result<Node, String> {
-    (widget_entry(&def).compile)(def)
+    let widget_type = widget_type(&def);
+    let Some(entry) = widget_entry(widget_type) else {
+        return Err(format!(
+            "internal widget registry is missing entry for '{widget_type}'"
+        ));
+    };
+    (entry.compile)(def)
 }
 
-fn widget_entry(def: &WidgetDef) -> &'static WidgetRegistryEntry {
-    match def {
-        WidgetDef::TextOutput(_) => &WIDGET_REGISTRY[0],
-        WidgetDef::UrlOutput(_) => &WIDGET_REGISTRY[1],
-        WidgetDef::ThinkingOutput(_) => &WIDGET_REGISTRY[2],
-        WidgetDef::ProgressOutput(_) => &WIDGET_REGISTRY[3],
-        WidgetDef::ChartOutput(_) => &WIDGET_REGISTRY[4],
-        WidgetDef::TableOutput(_) => &WIDGET_REGISTRY[5],
-        WidgetDef::DiffOutput(_) => &WIDGET_REGISTRY[6],
-        WidgetDef::TaskLogOutput(_) => &WIDGET_REGISTRY[7],
-        WidgetDef::TextInput(_) => &WIDGET_REGISTRY[8],
-        WidgetDef::ArrayInput(_) => &WIDGET_REGISTRY[9],
-        WidgetDef::ButtonInput(_) => &WIDGET_REGISTRY[10],
-        WidgetDef::Select(_) => &WIDGET_REGISTRY[11],
-        WidgetDef::ChoiceInput(_) => &WIDGET_REGISTRY[12],
-        WidgetDef::SelectList(_) => &WIDGET_REGISTRY[13],
-        WidgetDef::MaskedInput(_) => &WIDGET_REGISTRY[14],
-        WidgetDef::Slider(_) => &WIDGET_REGISTRY[15],
-        WidgetDef::ColorInput(_) => &WIDGET_REGISTRY[16],
-        WidgetDef::ConfirmInput(_) => &WIDGET_REGISTRY[17],
-        WidgetDef::Checkbox(_) => &WIDGET_REGISTRY[18],
-        WidgetDef::Calendar(_) => &WIDGET_REGISTRY[19],
-        WidgetDef::Textarea(_) => &WIDGET_REGISTRY[20],
-        WidgetDef::CommandRunner(_) => &WIDGET_REGISTRY[21],
-        WidgetDef::FileBrowser(_) => &WIDGET_REGISTRY[22],
-        WidgetDef::TreeView(_) => &WIDGET_REGISTRY[23],
-        WidgetDef::ObjectEditor(_) => &WIDGET_REGISTRY[24],
-        WidgetDef::Snippet(_) => &WIDGET_REGISTRY[25],
-        WidgetDef::Table(_) => &WIDGET_REGISTRY[26],
-        WidgetDef::Repeater(_) => &WIDGET_REGISTRY[27],
+fn widget_entry(widget_type: &str) -> Option<&'static WidgetRegistryEntry> {
+    widget_registry()
+        .iter()
+        .find(|entry| entry.doc.widget_type == widget_type)
+}
+
+fn widget_type(widget: &WidgetDef) -> &'static str {
+    match widget {
+        WidgetDef::TextOutput(_) => "text_output",
+        WidgetDef::UrlOutput(_) => "url_output",
+        WidgetDef::ThinkingOutput(_) => "thinking_output",
+        WidgetDef::ProgressOutput(_) => "progress_output",
+        WidgetDef::ChartOutput(_) => "chart_output",
+        WidgetDef::TableOutput(_) => "table_output",
+        WidgetDef::DiffOutput(_) => "diff_output",
+        WidgetDef::TaskLogOutput(_) => "task_log_output",
+        WidgetDef::TextInput(_) => "text_input",
+        WidgetDef::ArrayInput(_) => "array_input",
+        WidgetDef::ButtonInput(_) => "button_input",
+        WidgetDef::Select(_) => "select",
+        WidgetDef::ChoiceInput(_) => "choice_input",
+        WidgetDef::SelectList(_) => "select_list",
+        WidgetDef::MaskedInput(_) => "masked_input",
+        WidgetDef::Slider(_) => "slider",
+        WidgetDef::ColorInput(_) => "color_input",
+        WidgetDef::ConfirmInput(_) => "confirm_input",
+        WidgetDef::Checkbox(_) => "checkbox",
+        WidgetDef::Calendar(_) => "calendar",
+        WidgetDef::Textarea(_) => "textarea",
+        WidgetDef::CommandRunner(_) => "command_runner",
+        WidgetDef::FileBrowser(_) => "file_browser",
+        WidgetDef::TreeView(_) => "tree_view",
+        WidgetDef::ObjectEditor(_) => "object_editor",
+        WidgetDef::Snippet(_) => "snippet",
+        WidgetDef::Table(_) => "table",
+        WidgetDef::Repeater(_) => "repeater",
     }
+}
+
+fn registry_dispatch_mismatch<T>(widget_type: &str) -> Result<T, String> {
+    Err(format!(
+        "internal widget registry dispatch mismatch for '{widget_type}'"
+    ))
 }
 
 fn widget_children(widget: &WidgetDef) -> Option<&[WidgetDef]> {
@@ -645,7 +663,7 @@ fn compile_text_output_widget(def: WidgetDef) -> Result<Node, String> {
         WidgetDef::TextOutput(model::TextOutputDef { id, text }) => {
             Ok(outputs::compile_text_output(id, text))
         }
-        _ => unreachable!("widget registry dispatch mismatch: text_output"),
+        _ => registry_dispatch_mismatch("text_output"),
     }
 }
 
@@ -654,7 +672,7 @@ fn compile_url_output_widget(def: WidgetDef) -> Result<Node, String> {
         WidgetDef::UrlOutput(model::UrlOutputDef { id, url, name }) => {
             outputs::compile_url_output(id, url, name)
         }
-        _ => unreachable!("widget registry dispatch mismatch: url_output"),
+        _ => registry_dispatch_mismatch("url_output"),
     }
 }
 
@@ -672,7 +690,7 @@ fn compile_thinking_output_widget(def: WidgetDef) -> Result<Node, String> {
         }) => outputs::compile_thinking_output(
             id, label, text, mode, tail_len, tick_ms, base_rgb, peak_rgb,
         ),
-        _ => unreachable!("widget registry dispatch mismatch: thinking_output"),
+        _ => registry_dispatch_mismatch("thinking_output"),
     }
 }
 
@@ -690,7 +708,7 @@ fn compile_progress_output_widget(def: WidgetDef) -> Result<Node, String> {
         }) => outputs::compile_progress_output(
             id, label, min, max, unit, bar_width, style, transition,
         ),
-        _ => unreachable!("widget registry dispatch mismatch: progress_output"),
+        _ => registry_dispatch_mismatch("progress_output"),
     }
 }
 
@@ -706,7 +724,7 @@ fn compile_chart_output_widget(def: WidgetDef) -> Result<Node, String> {
             unit,
             gradient,
         }) => outputs::compile_chart_output(id, label, mode, capacity, min, max, unit, gradient),
-        _ => unreachable!("widget registry dispatch mismatch: chart_output"),
+        _ => registry_dispatch_mismatch("chart_output"),
     }
 }
 
@@ -719,7 +737,7 @@ fn compile_table_output_widget(def: WidgetDef) -> Result<Node, String> {
             headers,
             rows,
         }) => outputs::compile_table_output(id, label, style, headers, rows),
-        _ => unreachable!("widget registry dispatch mismatch: table_output"),
+        _ => registry_dispatch_mismatch("table_output"),
     }
 }
 
@@ -732,7 +750,7 @@ fn compile_diff_output_widget(def: WidgetDef) -> Result<Node, String> {
             new,
             max_visible,
         }) => outputs::compile_diff_output(id, label, old, new, max_visible),
-        _ => unreachable!("widget registry dispatch mismatch: diff_output"),
+        _ => registry_dispatch_mismatch("diff_output"),
     }
 }
 
@@ -744,7 +762,7 @@ fn compile_task_log_output_widget(def: WidgetDef) -> Result<Node, String> {
             spinner_style,
             steps,
         }) => outputs::compile_task_log_output(id, visible_lines, spinner_style, steps),
-        _ => unreachable!("widget registry dispatch mismatch: task_log_output"),
+        _ => registry_dispatch_mismatch("task_log_output"),
     }
 }
 
@@ -773,7 +791,7 @@ fn compile_text_input_widget(def: WidgetDef) -> Result<Node, String> {
             submit_target,
             change_targets,
         ),
-        _ => unreachable!("widget registry dispatch mismatch: text_input"),
+        _ => registry_dispatch_mismatch("text_input"),
     }
 }
 
@@ -786,7 +804,7 @@ fn compile_array_input_widget(def: WidgetDef) -> Result<Node, String> {
             required,
             validators,
         }) => inputs::compile_array_input(id, label, items, required, validators),
-        _ => unreachable!("widget registry dispatch mismatch: array_input"),
+        _ => registry_dispatch_mismatch("array_input"),
     }
 }
 
@@ -798,7 +816,7 @@ fn compile_button_input_widget(def: WidgetDef) -> Result<Node, String> {
             text,
             task_id,
         }) => inputs::compile_button_input(id, label, text, task_id),
-        _ => unreachable!("widget registry dispatch mismatch: button_input"),
+        _ => registry_dispatch_mismatch("button_input"),
     }
 }
 
@@ -823,7 +841,7 @@ fn compile_select_widget(def: WidgetDef) -> Result<Node, String> {
             validators,
             submit_target,
         ),
-        _ => unreachable!("widget registry dispatch mismatch: select"),
+        _ => registry_dispatch_mismatch("select"),
     }
 }
 
@@ -848,7 +866,7 @@ fn compile_choice_input_widget(def: WidgetDef) -> Result<Node, String> {
             validators,
             submit_target,
         ),
-        _ => unreachable!("widget registry dispatch mismatch: choice_input"),
+        _ => registry_dispatch_mismatch("choice_input"),
     }
 }
 
@@ -873,7 +891,7 @@ fn compile_select_list_widget(def: WidgetDef) -> Result<Node, String> {
             show_label,
             submit_target,
         ),
-        _ => unreachable!("widget registry dispatch mismatch: select_list"),
+        _ => registry_dispatch_mismatch("select_list"),
     }
 }
 
@@ -896,7 +914,7 @@ fn compile_masked_input_widget(def: WidgetDef) -> Result<Node, String> {
             validators,
             submit_target,
         ),
-        _ => unreachable!("widget registry dispatch mismatch: masked_input"),
+        _ => registry_dispatch_mismatch("masked_input"),
     }
 }
 
@@ -927,7 +945,7 @@ fn compile_slider_widget(def: WidgetDef) -> Result<Node, String> {
             validators,
             change_targets,
         ),
-        _ => unreachable!("widget registry dispatch mismatch: slider"),
+        _ => registry_dispatch_mismatch("slider"),
     }
 }
 
@@ -941,7 +959,7 @@ fn compile_color_input_widget(def: WidgetDef) -> Result<Node, String> {
             validators,
             submit_target,
         }) => inputs::compile_color_input(id, label, rgb, required, validators, submit_target),
-        _ => unreachable!("widget registry dispatch mismatch: color_input"),
+        _ => registry_dispatch_mismatch("color_input"),
     }
 }
 
@@ -955,7 +973,7 @@ fn compile_confirm_input_widget(def: WidgetDef) -> Result<Node, String> {
             no_label,
             default,
         }) => inputs::compile_confirm_input(id, label, mode, yes_label, no_label, default),
-        _ => unreachable!("widget registry dispatch mismatch: confirm_input"),
+        _ => registry_dispatch_mismatch("confirm_input"),
     }
 }
 
@@ -968,7 +986,7 @@ fn compile_checkbox_widget(def: WidgetDef) -> Result<Node, String> {
             required,
             validators,
         }) => inputs::compile_checkbox_input(id, label, checked, required, validators),
-        _ => unreachable!("widget registry dispatch mismatch: checkbox"),
+        _ => registry_dispatch_mismatch("checkbox"),
     }
 }
 
@@ -982,7 +1000,7 @@ fn compile_calendar_widget(def: WidgetDef) -> Result<Node, String> {
             validators,
             submit_target,
         }) => components::compile_calendar(id, label, mode, required, validators, submit_target),
-        _ => unreachable!("widget registry dispatch mismatch: calendar"),
+        _ => registry_dispatch_mismatch("calendar"),
     }
 }
 
@@ -998,7 +1016,7 @@ fn compile_textarea_widget(def: WidgetDef) -> Result<Node, String> {
         }) => {
             components::compile_textarea(id, min_height, max_height, default, required, validators)
         }
-        _ => unreachable!("widget registry dispatch mismatch: textarea"),
+        _ => registry_dispatch_mismatch("textarea"),
     }
 }
 
@@ -1025,7 +1043,7 @@ fn compile_command_runner_widget(def: WidgetDef) -> Result<Node, String> {
             timeout_ms,
             commands,
         ),
-        _ => unreachable!("widget registry dispatch mismatch: command_runner"),
+        _ => registry_dispatch_mismatch("command_runner"),
     }
 }
 
@@ -1058,7 +1076,7 @@ fn compile_file_browser_widget(def: WidgetDef) -> Result<Node, String> {
             required,
             validators,
         ),
-        _ => unreachable!("widget registry dispatch mismatch: file_browser"),
+        _ => registry_dispatch_mismatch("file_browser"),
     }
 }
 
@@ -1081,7 +1099,7 @@ fn compile_tree_view_widget(def: WidgetDef) -> Result<Node, String> {
             indent_guides,
             submit_target,
         ),
-        _ => unreachable!("widget registry dispatch mismatch: tree_view"),
+        _ => registry_dispatch_mismatch("tree_view"),
     }
 }
 
@@ -1094,7 +1112,7 @@ fn compile_object_editor_widget(def: WidgetDef) -> Result<Node, String> {
             max_visible,
             submit_target,
         }) => components::compile_object_editor(id, label, value, max_visible, submit_target),
-        _ => unreachable!("widget registry dispatch mismatch: object_editor"),
+        _ => registry_dispatch_mismatch("object_editor"),
     }
 }
 
@@ -1107,7 +1125,7 @@ fn compile_snippet_widget(def: WidgetDef) -> Result<Node, String> {
             inputs,
             submit_target,
         }) => components::compile_snippet(id, label, template, inputs, submit_target),
-        _ => unreachable!("widget registry dispatch mismatch: snippet"),
+        _ => registry_dispatch_mismatch("snippet"),
     }
 }
 
@@ -1121,7 +1139,7 @@ fn compile_table_widget(def: WidgetDef) -> Result<Node, String> {
             initial_rows,
             columns,
         }) => components::compile_table(id, label, style, row_numbers, initial_rows, columns),
-        _ => unreachable!("widget registry dispatch mismatch: table"),
+        _ => registry_dispatch_mismatch("table"),
     }
 }
 
@@ -1150,6 +1168,6 @@ fn compile_repeater_widget(def: WidgetDef) -> Result<Node, String> {
             submit_target,
             fields,
         ),
-        _ => unreachable!("widget registry dispatch mismatch: repeater"),
+        _ => registry_dispatch_mismatch("repeater"),
     }
 }

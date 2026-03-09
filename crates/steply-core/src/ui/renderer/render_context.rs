@@ -26,7 +26,7 @@ pub(super) fn render_context_for_nodes(
     let mut visible_errors = HashMap::<String, String>::new();
     let mut invalid_hidden = HashSet::<String>::new();
     let mut completion_menus = HashMap::<String, CompletionMenu>::new();
-    walk_nodes(nodes, NodeWalkScope::TopLevel, &mut |node| {
+    walk_nodes(nodes, NodeWalkScope::Recursive, &mut |node| {
         if let Some(error) = validation.visible_error(node.id()) {
             visible_errors.insert(node.id().to_string(), error.to_string());
         } else if validation.is_hidden_invalid(node.id()) {

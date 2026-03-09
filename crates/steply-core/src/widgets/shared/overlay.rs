@@ -100,7 +100,7 @@ impl Interactive for Overlay {
             if self
                 .group_focus_id
                 .as_deref()
-                .is_none_or(|id| !focusable.iter().any(|c| c == id))
+                .is_none_or(|id| !focusable.iter().any(|candidate| candidate == id))
             {
                 self.group_focus_id = Some(focusable[0].clone());
             }
@@ -108,7 +108,7 @@ impl Interactive for Overlay {
             let current_idx = self
                 .group_focus_id
                 .as_deref()
-                .and_then(|id| focusable.iter().position(|c| c == id))
+                .and_then(|id| focusable.iter().position(|candidate| candidate == id))
                 .unwrap_or(0);
 
             match key.code {
@@ -147,6 +147,7 @@ impl Interactive for Overlay {
 
         InteractionResult::ignored()
     }
+
     fn on_system_event(&mut self, event: &SystemEvent) -> InteractionResult {
         let targeted_lifecycle = matches!(
             event,
@@ -170,7 +171,10 @@ impl Interactive for Overlay {
             let focusable = focusable_ids(&self.nodes);
             match target {
                 Some(target) => {
-                    if focusable.iter().any(|c| c == target.as_str()) {
+                    if focusable
+                        .iter()
+                        .any(|candidate| candidate == target.as_str())
+                    {
                         self.group_focus_id = Some(target.to_string());
                         return InteractionResult::handled();
                     }

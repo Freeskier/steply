@@ -5,9 +5,9 @@ use crate::ui::layout::{Layout, LineContinuation, RenderBlock};
 use crate::ui::span::Span;
 use crate::ui::style::{Color, Style};
 use crate::widgets::base::WidgetBase;
-use crate::widgets::components::scroll::CursorNav;
 use crate::widgets::node::LeafComponent;
 use crate::widgets::shared::keymap;
+use crate::widgets::shared::scroll::CursorNav;
 use crate::widgets::traits::{
     DrawOutput, Drawable, FocusMode, InteractionResult, Interactive, RenderContext, ValidationMode,
 };

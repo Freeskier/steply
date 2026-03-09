@@ -15,11 +15,11 @@ use crate::ui::layout::Layout;
 use crate::ui::span::Span;
 use crate::ui::style::{Color, Style};
 use crate::widgets::base::WidgetBase;
-use crate::widgets::components::scroll::ScrollState;
 use crate::widgets::node::LeafComponent;
 use crate::widgets::shared::filter;
 use crate::widgets::shared::keymap;
 use crate::widgets::shared::list_policy;
+use crate::widgets::shared::scroll::ScrollState;
 use crate::widgets::traits::{
     CompletionState, DrawOutput, Drawable, FocusMode, HintContext, HintGroup, HintItem,
     InteractionResult, Interactive, PointerRowMap, RenderContext, TextAction,

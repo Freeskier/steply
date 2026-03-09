@@ -1,6 +1,7 @@
 use schemars::{JsonSchema, schema_for};
 use serde::Serialize;
 use serde_json::{Map, Value};
+use std::collections::HashSet;
 
 use crate::widgets::traits::StaticHintSpec;
 
@@ -46,6 +47,7 @@ pub enum WidgetCategory {
 #[derive(Debug, Clone, Serialize)]
 pub struct FieldDoc {
     pub name: String,
+    #[serde(rename = "type")]
     pub type_name: String,
     pub required: bool,
     pub short_description: String,
@@ -131,7 +133,7 @@ fn extract_field_docs<T: JsonSchema>() -> Result<Vec<FieldDoc>, String> {
         .iter()
         .map(|(name, property)| FieldDoc {
             name: name.clone(),
-            type_name: schema_type_name(property, &defs),
+            type_name: schema_type_repr(property, &defs),
             required: required.contains(name.as_str()),
             short_description: split_description(
                 property
@@ -159,16 +161,48 @@ fn extract_field_docs<T: JsonSchema>() -> Result<Vec<FieldDoc>, String> {
     Ok(fields)
 }
 
-fn schema_type_name(schema: &Value, defs: &Map<String, Value>) -> String {
+fn schema_type_repr(schema: &Value, defs: &Map<String, Value>) -> String {
+    let mut ref_stack = Vec::<String>::new();
+    schema_type_repr_inner(schema, defs, &mut ref_stack, 0)
+}
+
+fn schema_type_repr_inner(
+    schema: &Value,
+    defs: &Map<String, Value>,
+    ref_stack: &mut Vec<String>,
+    depth: usize,
+) -> String {
+    const MAX_SCHEMA_RENDER_DEPTH: usize = 8;
+    if depth >= MAX_SCHEMA_RENDER_DEPTH {
+        return "unknown".to_string();
+    }
+
     if let Some(reference) = schema.get("$ref").and_then(Value::as_str)
         && let Some(name) = reference
             .strip_prefix("#/definitions/")
             .or_else(|| reference.strip_prefix("#/$defs/"))
     {
+        if ref_stack.iter().any(|item| item == name) {
+            return name.to_string();
+        }
         if let Some(target) = defs.get(name) {
-            return schema_type_name(target, defs);
+            ref_stack.push(name.to_string());
+            let rendered = schema_type_repr_inner(target, defs, ref_stack, depth + 1);
+            ref_stack.pop();
+            return rendered;
         }
         return name.to_string();
+    }
+
+    if let Some(enum_values) = schema.get("enum").and_then(Value::as_array) {
+        let literals = enum_values.iter().map(ts_literal_repr).collect::<Vec<_>>();
+        if !literals.is_empty() {
+            return literals.join(" | ");
+        }
+    }
+
+    if let Some(const_value) = schema.get("const") {
+        return ts_literal_repr(const_value);
     }
 
     if let Some(type_name) = schema.get("type").and_then(Value::as_str) {
@@ -176,11 +210,13 @@ fn schema_type_name(schema: &Value, defs: &Map<String, Value>) -> String {
             "array" => {
                 let inner = schema
                     .get("items")
-                    .map(|items| schema_type_name(items, defs))
+                    .map(|items| schema_type_repr_inner(items, defs, ref_stack, depth + 1))
                     .unwrap_or_else(|| "unknown".to_string());
-                format!("list<{inner}>")
+                format_array_type(inner)
             }
             "integer" => "number".to_string(),
+            "boolean" => "boolean".to_string(),
+            "object" => render_object_type(schema, defs, ref_stack, depth + 1),
             other => other.to_string(),
         };
     }
@@ -189,11 +225,10 @@ fn schema_type_name(schema: &Value, defs: &Map<String, Value>) -> String {
         let names = type_names
             .iter()
             .filter_map(Value::as_str)
-            .filter(|name| *name != "null")
-            .map(ToOwned::to_owned)
+            .map(ts_primitive_name)
             .collect::<Vec<_>>();
         if !names.is_empty() {
-            return names.join(" | ");
+            return join_union(names);
         }
     }
 
@@ -201,20 +236,121 @@ fn schema_type_name(schema: &Value, defs: &Map<String, Value>) -> String {
         if let Some(items) = schema.get(key).and_then(Value::as_array) {
             let names = items
                 .iter()
-                .map(|item| schema_type_name(item, defs))
-                .filter(|name| name != "null")
+                .map(|item| schema_type_repr_inner(item, defs, ref_stack, depth + 1))
                 .collect::<Vec<_>>();
             if !names.is_empty() {
-                return names.join(" | ");
+                return join_union(names);
             }
         }
     }
 
     if schema.get("properties").is_some() {
-        return "object".to_string();
+        return render_object_type(schema, defs, ref_stack, depth + 1);
     }
 
     "unknown".to_string()
+}
+
+fn format_array_type(inner: String) -> String {
+    if inner.contains(" | ") {
+        format!("({inner})[]")
+    } else {
+        format!("{inner}[]")
+    }
+}
+
+fn ts_literal_repr(value: &Value) -> String {
+    match value {
+        Value::String(_) => value.to_string(),
+        Value::Bool(boolean) => boolean.to_string(),
+        Value::Number(number) => number.to_string(),
+        Value::Null => "null".to_string(),
+        _ => "unknown".to_string(),
+    }
+}
+
+fn ts_primitive_name(type_name: &str) -> String {
+    match type_name {
+        "integer" => "number".to_string(),
+        "boolean" => "boolean".to_string(),
+        other => other.to_string(),
+    }
+}
+
+fn join_union(parts: Vec<String>) -> String {
+    let mut seen = HashSet::<String>::new();
+    let mut out = Vec::<String>::new();
+    for part in parts {
+        let trimmed = part.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        if seen.insert(trimmed.to_string()) {
+            out.push(trimmed.to_string());
+        }
+    }
+    if out.is_empty() {
+        "unknown".to_string()
+    } else {
+        out.join(" | ")
+    }
+}
+
+fn render_object_type(
+    schema: &Value,
+    defs: &Map<String, Value>,
+    ref_stack: &mut Vec<String>,
+    depth: usize,
+) -> String {
+    const MAX_OBJECT_FIELD_COUNT: usize = 8;
+    if depth >= 8 {
+        return "Record<string, unknown>".to_string();
+    }
+
+    if let Some(additional) = schema.get("additionalProperties") {
+        if additional.is_boolean() {
+            return "Record<string, unknown>".to_string();
+        }
+        let value_type = schema_type_repr_inner(additional, defs, ref_stack, depth + 1);
+        return format!("Record<string, {value_type}>");
+    }
+
+    let Some(properties) = schema.get("properties").and_then(Value::as_object) else {
+        return "Record<string, unknown>".to_string();
+    };
+    if properties.is_empty() {
+        return "Record<string, unknown>".to_string();
+    }
+
+    let required = schema
+        .get("required")
+        .and_then(Value::as_array)
+        .map(|values| {
+            values
+                .iter()
+                .filter_map(Value::as_str)
+                .collect::<HashSet<_>>()
+        })
+        .unwrap_or_default();
+
+    let mut fields = properties
+        .iter()
+        .take(MAX_OBJECT_FIELD_COUNT)
+        .map(|(name, property)| {
+            let optional = if required.contains(name.as_str()) {
+                ""
+            } else {
+                "?"
+            };
+            let type_repr = schema_type_repr_inner(property, defs, ref_stack, depth + 1);
+            format!("{name}{optional}: {type_repr}")
+        })
+        .collect::<Vec<_>>();
+    fields.sort();
+    if properties.len() > MAX_OBJECT_FIELD_COUNT {
+        fields.push("...".to_string());
+    }
+    format!("{{ {} }}", fields.join("; "))
 }
 
 fn split_description(description: &str) -> (String, Option<String>) {

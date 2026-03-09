@@ -135,7 +135,9 @@ fn parse_scalar_like(type_name: &str, raw: &str) -> Result<YamlValue, String> {
         "string" => Ok(str_value(raw)),
         "bool" => parse_bool_value(raw),
         "number" => parse_number_value(raw),
-        other if other == "object" || other.contains(" | ") => parse_yaml_fragment(raw),
+        other if other.contains('{') || other.contains("Record<") || other.contains(" | ") => {
+            parse_yaml_fragment(raw)
+        }
         _ => Ok(str_value(raw)),
     }
 }
@@ -164,14 +166,15 @@ fn parse_yaml_fragment(raw: &str) -> Result<YamlValue, String> {
 }
 
 fn list_inner_type(type_name: &str) -> &str {
-    type_name
-        .strip_prefix("list<")
-        .and_then(|inner| inner.strip_suffix('>'))
-        .unwrap_or("string")
+    let inner = type_name.strip_suffix("[]").unwrap_or("string").trim();
+    inner
+        .strip_prefix('(')
+        .and_then(|value| value.strip_suffix(')'))
+        .unwrap_or(inner)
 }
 
 fn is_list_type(type_name: &str) -> bool {
-    type_name.starts_with("list<")
+    type_name.trim_end().ends_with("[]")
 }
 
 fn normalize_type_name(type_name: &str) -> &str {

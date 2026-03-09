@@ -496,9 +496,12 @@ fn is_auto_default_field(field_name: &str) -> bool {
 }
 
 fn is_list_type(type_name: &str) -> bool {
-    type_name.starts_with("list<")
+    type_name.trim_end().ends_with("[]")
 }
 
 fn needs_yaml_fragment(type_name: &str) -> bool {
-    type_name == "object" || type_name.contains(" | ") || is_list_type(type_name)
+    type_name.contains('{')
+        || type_name.contains("Record<")
+        || type_name.contains(" | ")
+        || is_list_type(type_name)
 }

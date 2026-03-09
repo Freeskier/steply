@@ -1,7 +1,9 @@
+use crate::clipboard;
+use crate::selection::{
+    SelectionState, apply_selection_highlight, extract_selected_text, handle_selection_pointer,
+};
 use crate::task_executor::{LogLine, TaskExecutor};
 use std::io;
-use std::io::Write;
-use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 use steply_core::preview::render::render_json as render_preview_json;
 use steply_core::preview::request::RenderJsonRequest;
@@ -12,97 +14,13 @@ use steply_core::runtime::key_bindings::KeyBindings;
 use steply_core::runtime::reducer::Reducer;
 use steply_core::runtime::scheduler::Scheduler;
 use steply_core::state::app::AppState;
-use steply_core::terminal::{
-    KeyModifiers, PointerButton, PointerEvent, PointerKind, TerminalEvent,
-};
+use steply_core::terminal::TerminalEvent;
 use steply_core::ui::hit_test::FrameHitMap;
 use steply_core::ui::render_view::RenderView;
 use steply_core::ui::renderer::{Renderer, RendererConfig};
-use steply_core::ui::span::{Span, SpanLine};
-use steply_core::ui::style::{Color, Style};
-use steply_core::ui::text::{split_prefix_at_display_width, text_display_width};
+use steply_core::ui::span::SpanLine;
 
 use crate::terminal::{RenderMode, Terminal};
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct SelectionPoint {
-    row: u16,
-    col: u16,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct SelectionRange {
-    start: SelectionPoint,
-    end: SelectionPoint,
-}
-
-#[derive(Debug, Clone, Copy, Default)]
-struct SelectionState {
-    anchor: Option<SelectionPoint>,
-    head: Option<SelectionPoint>,
-    pending_anchor: Option<SelectionPoint>,
-    dragging: bool,
-}
-
-impl SelectionState {
-    fn begin(&mut self, at: SelectionPoint) -> bool {
-        let changed = self.anchor != Some(at) || self.head != Some(at) || !self.dragging;
-        self.anchor = Some(at);
-        self.head = Some(at);
-        self.pending_anchor = None;
-        self.dragging = true;
-        changed
-    }
-
-    fn update(&mut self, at: SelectionPoint) -> bool {
-        if !self.dragging {
-            return false;
-        }
-        let changed = self.head != Some(at);
-        self.head = Some(at);
-        changed
-    }
-
-    fn end(&mut self, at: SelectionPoint) -> bool {
-        if !self.dragging {
-            return false;
-        }
-        let changed = self.head != Some(at) || self.dragging;
-        self.head = Some(at);
-        self.dragging = false;
-        self.pending_anchor = None;
-        changed
-    }
-
-    fn set_pending_anchor(&mut self, at: SelectionPoint) -> bool {
-        let had_selection = self.anchor.is_some() || self.head.is_some() || self.dragging;
-        self.anchor = None;
-        self.head = None;
-        self.dragging = false;
-        self.pending_anchor = Some(at);
-        had_selection
-    }
-
-    fn begin_from_pending_or(&mut self, at: SelectionPoint) -> bool {
-        let anchor = self.pending_anchor.unwrap_or(at);
-        self.begin(anchor)
-    }
-
-    fn range(&self) -> Option<SelectionRange> {
-        let (Some(anchor), Some(head)) = (self.anchor, self.head) else {
-            return None;
-        };
-        if anchor == head {
-            return None;
-        }
-        let (start, end) = if (anchor.row, anchor.col) <= (head.row, head.col) {
-            (anchor, head)
-        } else {
-            (head, anchor)
-        };
-        Some(SelectionRange { start, end })
-    }
-}
 
 pub struct Runtime {
     state: AppState,
@@ -259,7 +177,7 @@ impl Runtime {
                 frame_event.row = self.terminal.map_screen_row_to_frame_row(event.row);
 
                 let (selection_consumed, selection_changed) =
-                    self.handle_selection_pointer(frame_event);
+                    handle_selection_pointer(&mut self.selection, frame_event);
                 if selection_changed {
                     self.render()?;
                 }
@@ -389,7 +307,7 @@ impl Runtime {
     fn apply_action(&mut self, action: WidgetAction) -> bool {
         match action {
             WidgetAction::OpenUrl { url } => {
-                if let Err(err) = Self::open_external_url(url.as_str()) {
+                if let Err(err) = clipboard::open_external_url(url.as_str()) {
                     eprintln!("failed to open URL '{}': {err}", url);
                 }
                 false
@@ -427,172 +345,15 @@ impl Runtime {
         let mut frame = self.renderer.render(&view, self.terminal.size());
         self.last_frame_lines = frame.lines.clone();
         if let Some(range) = self.selection.range() {
-            self.apply_selection_highlight(&mut frame.lines, range);
+            apply_selection_highlight(&self.last_hit_map, &mut frame.lines, range);
         }
         self.last_hit_map = frame.hit_map.clone();
         self.terminal.render_frame(&frame)
     }
 
-    fn handle_selection_pointer(&mut self, event: PointerEvent) -> (bool, bool) {
-        let point = SelectionPoint {
-            row: event.row,
-            col: event.col,
-        };
-        match event.kind {
-            PointerKind::Down(PointerButton::Left) => {
-                if event.modifiers.contains(KeyModifiers::SHIFT) {
-                    return (true, self.selection.begin(point));
-                }
-                let changed = self.selection.set_pending_anchor(point);
-                (false, changed)
-            }
-            PointerKind::Drag(PointerButton::Left) => {
-                if self.selection.dragging {
-                    return (true, self.selection.update(point));
-                }
-                if self.selection.pending_anchor.is_some()
-                    || event.modifiers.contains(KeyModifiers::SHIFT)
-                {
-                    let mut changed = self.selection.begin_from_pending_or(point);
-                    changed |= self.selection.update(point);
-                    return (true, changed);
-                }
-                (false, false)
-            }
-            PointerKind::Up(PointerButton::Left) => {
-                if self.selection.dragging {
-                    return (true, self.selection.end(point));
-                }
-                let changed = self.selection.pending_anchor.take().is_some();
-                (false, changed)
-            }
-            _ => (false, false),
-        }
-    }
-
-    fn apply_selection_highlight(&self, lines: &mut [SpanLine], range: SelectionRange) {
-        if lines.is_empty() {
-            return;
-        }
-
-        let mut start_row = range.start.row as usize;
-        let mut end_row = range.end.row as usize;
-        if start_row >= lines.len() {
-            return;
-        }
-        if end_row >= lines.len() {
-            end_row = lines.len().saturating_sub(1);
-        }
-        if start_row > end_row {
-            std::mem::swap(&mut start_row, &mut end_row);
-        }
-
-        for (row_idx, line) in lines
-            .iter_mut()
-            .enumerate()
-            .take(end_row + 1)
-            .skip(start_row)
-        {
-            let line_width = display_width_for_line(line.as_slice()) as u16;
-            let row_start = if row_idx == start_row {
-                range.start.col.min(line_width)
-            } else {
-                0
-            };
-            let row_end = if row_idx == end_row {
-                range.end.col.min(line_width)
-            } else {
-                line_width
-            };
-            if row_end <= row_start {
-                continue;
-            }
-            let selectable =
-                selectable_ranges_for_row(&self.last_hit_map, row_idx as u16, line_width);
-            if selectable.is_empty() {
-                continue;
-            }
-            for (sel_start, sel_end) in selectable {
-                let start = row_start.max(sel_start).min(line_width);
-                let end = row_end.min(sel_end).min(line_width);
-                if end > start {
-                    highlight_line_range(line, start as usize, end as usize);
-                }
-            }
-        }
-    }
-
     fn selected_text(&self) -> Option<String> {
         let range = self.selection.range()?;
-        self.selected_text_with_mode(range, true)
-            .or_else(|| self.selected_text_with_mode(range, false))
-    }
-
-    fn selected_text_with_mode(
-        &self,
-        range: SelectionRange,
-        strict_hit_map: bool,
-    ) -> Option<String> {
-        if self.last_frame_lines.is_empty() {
-            return None;
-        }
-        let start_row = range.start.row as usize;
-        if start_row >= self.last_frame_lines.len() {
-            return None;
-        }
-        let end_row = (range.end.row as usize).min(self.last_frame_lines.len() - 1);
-        if end_row < start_row {
-            return None;
-        }
-
-        let mut rows = Vec::<String>::new();
-        for row_idx in start_row..=end_row {
-            let line = &self.last_frame_lines[row_idx];
-            let line_width = display_width_for_line(line.as_slice()) as u16;
-            let row_start = if row_idx == start_row {
-                range.start.col.min(line_width)
-            } else {
-                0
-            };
-            let row_end = if row_idx == end_row {
-                range.end.col.min(line_width)
-            } else {
-                line_width
-            };
-            if row_end <= row_start {
-                continue;
-            }
-
-            let selectable = selectable_ranges_for_row_mode(
-                &self.last_hit_map,
-                row_idx as u16,
-                line_width,
-                strict_hit_map,
-            );
-            if selectable.is_empty() {
-                continue;
-            }
-            let mut row_text = String::new();
-            for (sel_start, sel_end) in selectable {
-                let start = row_start.max(sel_start).min(line_width);
-                let end = row_end.min(sel_end).min(line_width);
-                if end > start {
-                    row_text.push_str(&extract_line_text_range(
-                        line.as_slice(),
-                        start as usize,
-                        end as usize,
-                    ));
-                }
-            }
-            if !row_text.is_empty() {
-                rows.push(row_text);
-            }
-        }
-        if rows.is_empty() {
-            None
-        } else {
-            Some(rows.join("\n"))
-        }
+        extract_selected_text(&self.last_hit_map, &self.last_frame_lines, range)
     }
 
     fn copy_selection_to_clipboard(&self) -> io::Result<()> {
@@ -602,264 +363,6 @@ impl Runtime {
         if text.is_empty() {
             return Ok(());
         }
-        Self::copy_text_to_clipboard(text.as_str())
+        clipboard::copy_text_to_clipboard(text.as_str())
     }
-
-    fn copy_text_to_clipboard(text: &str) -> io::Result<()> {
-        #[cfg(target_os = "windows")]
-        {
-            return run_clipboard_command("cmd", &["/C", "clip"], text)
-                .or_else(|_| copy_via_osc52(text));
-        }
-
-        #[cfg(target_os = "macos")]
-        {
-            return run_clipboard_command("pbcopy", &[], text).or_else(|_| copy_via_osc52(text));
-        }
-
-        #[cfg(all(unix, not(target_os = "macos")))]
-        {
-            let candidates: [(&str, &[&str]); 3] = [
-                ("wl-copy", &[]),
-                ("xclip", &["-selection", "clipboard"]),
-                ("xsel", &["--clipboard", "--input"]),
-            ];
-            let mut last_error: Option<io::Error> = None;
-            for (program, args) in candidates {
-                match run_clipboard_command(program, args, text) {
-                    Ok(()) => return Ok(()),
-                    Err(err) => last_error = Some(err),
-                }
-            }
-            return copy_via_osc52(text).map_err(|_| {
-                last_error.unwrap_or_else(|| io::Error::other("clipboard unavailable"))
-            });
-        }
-
-        #[allow(unreachable_code)]
-        Err(io::Error::other("unsupported platform for clipboard"))
-    }
-
-    fn open_external_url(url: &str) -> io::Result<()> {
-        #[cfg(target_os = "windows")]
-        {
-            std::process::Command::new("cmd")
-                .args(["/C", "start", ""])
-                .arg(url)
-                .spawn()?;
-            return Ok(());
-        }
-
-        #[cfg(target_os = "macos")]
-        {
-            std::process::Command::new("open").arg(url).spawn()?;
-            return Ok(());
-        }
-
-        #[cfg(all(unix, not(target_os = "macos")))]
-        {
-            std::process::Command::new("xdg-open").arg(url).spawn()?;
-            return Ok(());
-        }
-
-        #[allow(unreachable_code)]
-        Err(io::Error::other("unsupported platform for URL opening"))
-    }
-}
-
-fn selection_highlight_style() -> Style {
-    Style::new().background(Color::Blue)
-}
-
-fn display_width_for_line(line: &[Span]) -> usize {
-    line.iter()
-        .map(|span| text_display_width(span.text.as_str()))
-        .sum()
-}
-
-fn selectable_ranges_for_row(hit_map: &FrameHitMap, row: u16, line_width: u16) -> Vec<(u16, u16)> {
-    selectable_ranges_for_row_mode(hit_map, row, line_width, true)
-}
-
-fn selectable_ranges_for_row_mode(
-    hit_map: &FrameHitMap,
-    row: u16,
-    line_width: u16,
-    strict_hit_map: bool,
-) -> Vec<(u16, u16)> {
-    let from_hit_map = hit_map.row_ranges(row);
-    if !from_hit_map.is_empty() {
-        return from_hit_map;
-    }
-    if strict_hit_map && hit_map.has_any_ranges() {
-        return Vec::new();
-    }
-    fallback_selectable_ranges(line_width)
-}
-
-fn fallback_selectable_ranges(line_width: u16) -> Vec<(u16, u16)> {
-    if line_width == 0 {
-        return Vec::new();
-    }
-    vec![(0, line_width)]
-}
-
-fn highlight_line_range(line: &mut SpanLine, start_col: usize, end_col: usize) {
-    if end_col <= start_col || line.is_empty() {
-        return;
-    }
-
-    let mut out = Vec::<Span>::with_capacity(line.len().saturating_mul(2));
-    let mut col = 0usize;
-    for span in line.iter() {
-        let width = text_display_width(span.text.as_str());
-        if width == 0 {
-            out.push(span.clone());
-            continue;
-        }
-
-        let span_start = col;
-        let span_end = col.saturating_add(width);
-        let sel_start = start_col.max(span_start);
-        let sel_end = end_col.min(span_end);
-        if sel_end <= sel_start {
-            out.push(span.clone());
-            col = span_end;
-            continue;
-        }
-
-        let left_width = sel_start.saturating_sub(span_start);
-        let mid_width = sel_end.saturating_sub(sel_start);
-        let (left, tail) = split_prefix_at_display_width(span.text.as_str(), left_width);
-        let (mid, right) = split_prefix_at_display_width(tail, mid_width);
-
-        if !left.is_empty() {
-            let mut piece = span.clone();
-            piece.text = left.to_string();
-            out.push(piece);
-        }
-        if !mid.is_empty() {
-            let mut piece = span.clone();
-            piece.text = mid.to_string();
-            piece.style = span.style.merge(selection_highlight_style());
-            out.push(piece);
-        }
-        if !right.is_empty() {
-            let mut piece = span.clone();
-            piece.text = right.to_string();
-            out.push(piece);
-        }
-
-        col = span_end;
-    }
-
-    *line = out;
-}
-
-fn extract_line_text_range(line: &[Span], start_col: usize, end_col: usize) -> String {
-    if end_col <= start_col || line.is_empty() {
-        return String::new();
-    }
-
-    let mut out = String::new();
-    let mut col = 0usize;
-    for span in line {
-        let width = text_display_width(span.text.as_str());
-        if width == 0 {
-            continue;
-        }
-
-        let span_start = col;
-        let span_end = col.saturating_add(width);
-        let sel_start = start_col.max(span_start);
-        let sel_end = end_col.min(span_end);
-        if sel_end <= sel_start {
-            col = span_end;
-            continue;
-        }
-
-        let left_width = sel_start.saturating_sub(span_start);
-        let mid_width = sel_end.saturating_sub(sel_start);
-        let (_, tail) = split_prefix_at_display_width(span.text.as_str(), left_width);
-        let (mid, _) = split_prefix_at_display_width(tail, mid_width);
-        out.push_str(mid);
-
-        col = span_end;
-    }
-
-    out
-}
-
-fn run_clipboard_command(program: &str, args: &[&str], text: &str) -> io::Result<()> {
-    let mut child = Command::new(program)
-        .args(args)
-        .stdin(Stdio::piped())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .spawn()?;
-
-    if let Some(stdin) = child.stdin.as_mut() {
-        stdin.write_all(text.as_bytes())?;
-    }
-
-    let status = child.wait()?;
-    if status.success() {
-        Ok(())
-    } else {
-        Err(io::Error::other(format!(
-            "{program} exited with status {status}"
-        )))
-    }
-}
-
-fn copy_via_osc52(text: &str) -> io::Result<()> {
-    // OSC 52: set clipboard from terminal host (works in modern terminal emulators/SSH chains).
-    let payload = base64_encode(text.as_bytes());
-    let sequence = format!("\x1b]52;c;{payload}\x07");
-    let mut out = io::stdout();
-    out.write_all(sequence.as_bytes())?;
-    out.flush()?;
-    Ok(())
-}
-
-fn base64_encode(input: &[u8]) -> String {
-    const TABLE: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    if input.is_empty() {
-        return String::new();
-    }
-
-    let mut out = String::with_capacity(input.len().div_ceil(3) * 4);
-    let mut i = 0usize;
-    while i + 3 <= input.len() {
-        let b0 = input[i] as u32;
-        let b1 = input[i + 1] as u32;
-        let b2 = input[i + 2] as u32;
-        i += 3;
-
-        let n = (b0 << 16) | (b1 << 8) | b2;
-        out.push(TABLE[((n >> 18) & 0x3f) as usize] as char);
-        out.push(TABLE[((n >> 12) & 0x3f) as usize] as char);
-        out.push(TABLE[((n >> 6) & 0x3f) as usize] as char);
-        out.push(TABLE[(n & 0x3f) as usize] as char);
-    }
-
-    let rem = input.len() - i;
-    if rem == 1 {
-        let b0 = input[i] as u32;
-        let n = b0 << 16;
-        out.push(TABLE[((n >> 18) & 0x3f) as usize] as char);
-        out.push(TABLE[((n >> 12) & 0x3f) as usize] as char);
-        out.push('=');
-        out.push('=');
-    } else if rem == 2 {
-        let b0 = input[i] as u32;
-        let b1 = input[i + 1] as u32;
-        let n = (b0 << 16) | (b1 << 8);
-        out.push(TABLE[((n >> 18) & 0x3f) as usize] as char);
-        out.push(TABLE[((n >> 12) & 0x3f) as usize] as char);
-        out.push(TABLE[((n >> 6) & 0x3f) as usize] as char);
-        out.push('=');
-    }
-
-    out
 }

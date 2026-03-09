@@ -11,3 +11,4 @@ steply-core = { path = "../steply-core" }
 serde_json = "1.0"
 regex = "1"
 crossterm = "0.29"
+base64 = "0.22"

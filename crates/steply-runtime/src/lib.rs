@@ -1,5 +1,7 @@
 pub mod app_entry;
+mod clipboard;
 pub mod runner;
+pub mod selection;
 mod task_execution;
 mod task_executor;
 pub mod terminal;

@@ -190,6 +190,10 @@ impl Interactive for TextInput {
         FocusMode::Leaf
     }
 
+    fn submit_target(&self) -> Option<&ValueTarget> {
+        self.submit_target.as_ref()
+    }
+
     fn on_key(&mut self, key: KeyEvent) -> InteractionResult {
         match text_edit::apply_single_line_key(&mut self.value, &mut self.cursor, key) {
             text_edit::TextKeyOutcome::Ignored => InteractionResult::ignored(),

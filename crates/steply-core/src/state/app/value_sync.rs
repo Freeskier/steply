@@ -6,20 +6,24 @@ use std::collections::HashMap;
 impl AppState {
     pub(super) fn sync_current_step_values_to_store(&mut self) {
         let values = {
-            let mut out = Vec::<(String, Value)>::new();
+            let mut out = Vec::<(String, Option<ValueTarget>, Value)>::new();
             walk_nodes(
                 self.flow.current_step().nodes.as_slice(),
                 NodeWalkScope::Recursive,
                 &mut |node| {
                     if let Some(value) = node.value() {
-                        out.push((node.id().to_string(), value));
+                        out.push((node.id().to_string(), node.submit_target().cloned(), value));
                     }
                 },
             );
             out
         };
-        for (id, value) in values {
-            self.apply_value_change(id, value);
+        for (id, target, value) in values {
+            if let Some(target) = target {
+                self.apply_value_change_target(target, value);
+            } else {
+                self.apply_value_change(id, value);
+            }
         }
     }
 

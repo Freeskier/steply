@@ -6,6 +6,10 @@ impl Interactive for ObjectEditor {
         FocusMode::Leaf
     }
 
+    fn submit_target(&self) -> Option<&ValueTarget> {
+        self.submit_target.as_ref()
+    }
+
     fn on_key(&mut self, key: KeyEvent) -> InteractionResult {
         if let Some(outcome) = self.filter.handle_toggle_shortcut(key) {
             if outcome.hidden {

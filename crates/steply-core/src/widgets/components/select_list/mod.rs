@@ -696,6 +696,10 @@ impl Interactive for SelectList {
         FocusMode::Group
     }
 
+    fn submit_target(&self) -> Option<&ValueTarget> {
+        self.submit_target.as_ref()
+    }
+
     fn on_key(&mut self, key: KeyEvent) -> InteractionResult {
         if let Some(outcome) = self.filter.handle_toggle_shortcut(key) {
             return self.apply_filter_on_change(outcome);

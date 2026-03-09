@@ -238,6 +238,7 @@ fn save_flow(draft: &FlowDraft) -> Result<(), String> {
 }
 
 fn flow_path(flow_id: &str) -> Result<PathBuf, String> {
+    let flow_id = validate_flow_id(flow_id)?;
     Ok(flow_storage_dir()?.join(format!("{flow_id}.yaml")))
 }
 
@@ -267,6 +268,21 @@ fn serialize_flow_yaml(draft: &FlowDraft) -> Result<String, String> {
     root.insert(str_value("steps"), YamlValue::Sequence(steps));
     serde_yaml::to_string(&YamlValue::Mapping(root))
         .map_err(|err| format!("failed to serialize runnable flow {}: {err}", draft.id))
+}
+
+fn validate_flow_id(flow_id: &str) -> Result<&str, String> {
+    if flow_id.is_empty() {
+        return Err("flow id must not be empty".to_string());
+    }
+    if flow_id
+        .chars()
+        .all(|ch| ch.is_ascii_alphanumeric() || ch == '-' || ch == '_')
+    {
+        return Ok(flow_id);
+    }
+    Err(format!(
+        "invalid flow id `{flow_id}`; expected only ASCII letters, numbers, '-' or '_'"
+    ))
 }
 
 fn str_value(value: impl Into<String>) -> YamlValue {

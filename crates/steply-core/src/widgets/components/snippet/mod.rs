@@ -265,6 +265,10 @@ impl Interactive for Snippet {
         FocusMode::Leaf
     }
 
+    fn submit_target(&self) -> Option<&ValueTarget> {
+        self.submit_target.as_ref()
+    }
+
     fn cursor_pos(&self) -> Option<CursorPos> {
         let key = self.active_key()?;
         let input = self.input_for(key)?;

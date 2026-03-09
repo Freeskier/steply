@@ -376,6 +376,10 @@ impl Interactive for Calendar {
         FocusMode::Leaf
     }
 
+    fn submit_target(&self) -> Option<&ValueTarget> {
+        self.submit_target.as_ref()
+    }
+
     fn cursor_pos(&self) -> Option<crate::terminal::CursorPos> {
         if self.is_time_section() {
             let row_offset = if self.mode == CalendarMode::Time {

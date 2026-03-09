@@ -1,4 +1,5 @@
 use crate::core::value::Value;
+use crate::core::value_path::ValueTarget;
 use crate::runtime::event::SystemEvent;
 use crate::task::{TaskSpec, TaskSubscription};
 use crate::terminal::{CursorPos, KeyEvent, PointerEvent};
@@ -174,6 +175,11 @@ impl Node {
         self.interactive_ref()
             .map(|widget| widget.focus_mode())
             .unwrap_or(FocusMode::None)
+    }
+
+    pub fn submit_target(&self) -> Option<&ValueTarget> {
+        self.interactive_ref()
+            .and_then(|widget| widget.submit_target())
     }
 
     pub fn is_focusable(&self) -> bool {

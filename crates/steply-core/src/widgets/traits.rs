@@ -395,6 +395,9 @@ impl TextAction {
 
 pub trait Interactive: Send {
     fn focus_mode(&self) -> FocusMode;
+    fn submit_target(&self) -> Option<&ValueTarget> {
+        None
+    }
 
     fn overlay_placement(&self) -> Option<OverlayPlacement> {
         None

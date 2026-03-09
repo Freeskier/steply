@@ -415,6 +415,10 @@ impl Interactive for MaskedInput {
         FocusMode::Leaf
     }
 
+    fn submit_target(&self) -> Option<&ValueTarget> {
+        self.submit_target.as_ref()
+    }
+
     fn on_key(&mut self, key: KeyEvent) -> InteractionResult {
         match key.code {
             KeyCode::Tab => {

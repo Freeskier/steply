@@ -4,14 +4,14 @@
   "version": "0.0.1",
   "type": "module",
   "scripts": {
-    "dev": "npm run build:assets && vite dev",
-    "build": "npm run build:assets && vite build",
+    "dev": "node ./scripts/build-assets.mjs && vite dev",
+    "build": "node ./scripts/build-assets.mjs && vite build",
     "build:assets": "node ./scripts/build-assets.mjs",
     "preview": "vite preview",
     "wasm:build": "wasm-pack build ../../crates/steply-wasm --target nodejs --out-dir ./src/lib/steply-wasm/pkg --out-name steply_wasm",
     "prepare": "svelte-kit sync || echo ''",
-    "check": "npm run build:assets && svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
-    "check:watch": "npm run build:assets && svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch"
+    "check": "node ./scripts/build-assets.mjs && svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
+    "check:watch": "node ./scripts/build-assets.mjs && svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch"
   },
   "devDependencies": {
     "@sveltejs/adapter-auto": "^7.0.0",

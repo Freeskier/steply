@@ -113,6 +113,10 @@ impl Interactive for SelectInput {
         FocusMode::Leaf
     }
 
+    fn submit_target(&self) -> Option<&ValueTarget> {
+        self.submit_target.as_ref()
+    }
+
     fn on_key(&mut self, key: KeyEvent) -> InteractionResult {
         match key.code {
             KeyCode::Left => InteractionResult::handled_if(list_nav::apply_cycle_index(

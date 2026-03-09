@@ -150,6 +150,10 @@ impl Interactive for Repeater {
         FocusMode::Group
     }
 
+    fn submit_target(&self) -> Option<&ValueTarget> {
+        self.submit_target.as_ref()
+    }
+
     fn on_key(&mut self, key: KeyEvent) -> InteractionResult {
         self.handle_group_key(key)
     }

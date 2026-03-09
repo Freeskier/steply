@@ -2,7 +2,7 @@ use std::collections::HashSet;
 
 use crate::core::value::Value;
 use crate::core::value_path::ValueTarget;
-use crate::state::step::{Step, StepCondition};
+use crate::state::step::Step;
 use crate::widgets::node::Node;
 
 pub(super) fn sanitize_task_target_id(raw: &str) -> String {
@@ -82,8 +82,10 @@ pub(super) fn validate_selector_root_known(
     known_node_ids: &HashSet<String>,
 ) -> Result<(), String> {
     let root = ValueTarget::parse_selector(selector)
-        .map(|target| target.root().as_str().to_string())
-        .unwrap_or_else(|_| selector.to_string());
+        .map_err(|err| format!("invalid selector '{selector}': {err}"))?
+        .root()
+        .as_str()
+        .to_string();
     if known_node_ids.contains(root.as_str()) {
         Ok(())
     } else {
@@ -91,25 +93,5 @@ pub(super) fn validate_selector_root_known(
             "unknown selector root '{}' in '{}'",
             root, selector
         ))
-    }
-}
-
-pub(super) fn validate_condition_refs(
-    condition: &StepCondition,
-    known_node_ids: &HashSet<String>,
-) -> Result<(), String> {
-    match condition {
-        StepCondition::Equal { field, .. }
-        | StepCondition::NotEqual { field, .. }
-        | StepCondition::NotEmpty { field } => {
-            validate_selector_root_known(field.as_str(), known_node_ids)
-        }
-        StepCondition::All(items) | StepCondition::Any(items) => {
-            for item in items {
-                validate_condition_refs(item, known_node_ids)?;
-            }
-            Ok(())
-        }
-        StepCondition::Not(inner) => validate_condition_refs(inner, known_node_ids),
     }
 }

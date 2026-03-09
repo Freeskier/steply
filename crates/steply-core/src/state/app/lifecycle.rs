@@ -1,14 +1,15 @@
 use std::collections::HashMap;
 
 use crate::state::flow::Flow;
-use crate::task::{TaskId, TaskSpec, TaskSubscription};
-use crate::widgets::node::{NodeWalkScope, walk_nodes};
+use crate::task::{
+    TaskId, TaskSpec, TaskSubscription, collect_inline_tasks_from_flow, validate_task_id_collisions,
+};
 
-use super::AppState;
 use super::state::{DataState, RuntimeState, ViewState};
+use super::{AppState, AppStateInitError};
 
 impl AppState {
-    pub fn new(flow: Flow) -> Self {
+    pub fn new(flow: Flow) -> Result<Self, AppStateInitError> {
         Self::with_tasks(flow, Vec::new(), Vec::new())
     }
 
@@ -16,8 +17,9 @@ impl AppState {
         flow: Flow,
         task_specs: Vec<TaskSpec>,
         task_subscriptions: Vec<TaskSubscription>,
-    ) -> Self {
-        let (inline_specs, inline_subscriptions) = collect_inline_tasks(&flow);
+    ) -> Result<Self, AppStateInitError> {
+        let (inline_specs, inline_subscriptions) = collect_inline_tasks_from_flow(&flow);
+        validate_task_id_collisions(&task_specs, &inline_specs)?;
         let mut spec_map = HashMap::<TaskId, TaskSpec>::new();
         for spec in inline_specs {
             spec_map.insert(spec.id.clone(), spec);
@@ -48,7 +50,7 @@ impl AppState {
             crate::task::engine::trigger_step_enter_tasks(&mut state, current_step_id.as_str());
             crate::task::engine::bootstrap_interval_tasks(&mut state);
         }
-        state
+        Ok(state)
     }
 
     pub(super) fn prepare_current_step_for_preview(&mut self) {
@@ -57,22 +59,4 @@ impl AppState {
         self.hydrate_current_step_from_store();
         self.rebuild_focus();
     }
-}
-
-fn collect_inline_tasks(flow: &Flow) -> (Vec<TaskSpec>, Vec<TaskSubscription>) {
-    let mut specs = Vec::<TaskSpec>::new();
-    let mut subscriptions = Vec::<TaskSubscription>::new();
-
-    for step in flow.steps() {
-        walk_nodes(
-            step.nodes.as_slice(),
-            NodeWalkScope::Recursive,
-            &mut |node| {
-                specs.extend(node.task_specs());
-                subscriptions.extend(node.task_subscriptions());
-            },
-        );
-    }
-
-    (specs, subscriptions)
 }

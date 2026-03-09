@@ -3,6 +3,7 @@ use crate::core::{
     value::Value,
     value_path::{ValuePath, ValueTarget},
 };
+use indexmap::IndexMap;
 use std::collections::HashMap;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -108,6 +109,8 @@ pub type StepValidator = Box<dyn Fn(&StepContext) -> Option<StepIssue> + Send + 
 pub struct ValidationState {
     entries: HashMap<NodeId, ValidationEntry>,
     step_errors: Vec<String>,
+    runtime_step_errors: IndexMap<String, String>,
+    combined_step_errors: Vec<String>,
     step_warnings: Vec<String>,
     warnings_acknowledged: bool,
 }
@@ -134,14 +137,28 @@ impl ValidationState {
 
     pub fn set_step_errors(&mut self, errors: Vec<String>) {
         self.step_errors = errors;
+        self.rebuild_step_errors();
     }
 
     pub fn clear_step_errors(&mut self) {
         self.step_errors.clear();
+        self.runtime_step_errors.clear();
+        self.rebuild_step_errors();
     }
 
     pub fn step_errors(&self) -> &[String] {
-        self.step_errors.as_slice()
+        self.combined_step_errors.as_slice()
+    }
+
+    pub fn set_runtime_step_error(&mut self, key: impl Into<String>, error: impl Into<String>) {
+        self.runtime_step_errors.insert(key.into(), error.into());
+        self.rebuild_step_errors();
+    }
+
+    pub fn clear_runtime_step_error(&mut self, key: &str) {
+        if self.runtime_step_errors.shift_remove(key).is_some() {
+            self.rebuild_step_errors();
+        }
     }
 
     pub fn set_step_warnings(&mut self, warnings: Vec<String>) {
@@ -199,5 +216,11 @@ impl ValidationState {
                 .iter()
                 .any(|allowed| allowed.as_str() == id.as_str())
         });
+    }
+
+    fn rebuild_step_errors(&mut self) {
+        self.combined_step_errors = self.step_errors.clone();
+        self.combined_step_errors
+            .extend(self.runtime_step_errors.values().cloned());
     }
 }

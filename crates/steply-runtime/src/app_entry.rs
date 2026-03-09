@@ -30,11 +30,14 @@ pub fn run_with_options(options: StartOptions) -> io::Result<()> {
             load_from_yaml_file(config_path.as_path())
         }
         .map_err(|err| io::Error::other(format!("yaml config error: {err}")))?;
-        loaded.into_app_state()
+        loaded
+            .into_app_state()
+            .map_err(|err| io::Error::other(format!("app init error: {err}")))?
     } else {
         let flow = build_demo_flow();
         let (task_specs, task_subscriptions) = build_demo_tasks();
         steply_core::state::app::AppState::with_tasks(flow, task_specs, task_subscriptions)
+            .map_err(|err| io::Error::other(format!("app init error: {err}")))?
     };
     let terminal = Terminal::new()?;
     let mut runtime = Runtime::new(state, terminal)

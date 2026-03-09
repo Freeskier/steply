@@ -104,9 +104,7 @@ pub fn handle_selection_pointer(
             if selection.dragging {
                 return (true, selection.update(point));
             }
-            if selection.pending_anchor.is_some()
-                || event.modifiers.contains(KeyModifiers::SHIFT)
-            {
+            if selection.pending_anchor.is_some() || event.modifiers.contains(KeyModifiers::SHIFT) {
                 let mut changed = selection.begin_from_pending_or(point);
                 changed |= selection.update(point);
                 return (true, changed);
@@ -165,8 +163,7 @@ pub fn apply_selection_highlight(
         if row_end <= row_start {
             continue;
         }
-        let selectable =
-            selectable_ranges_for_row(hit_map, row_idx as u16, line_width);
+        let selectable = selectable_ranges_for_row(hit_map, row_idx as u16, line_width);
         if selectable.is_empty() {
             continue;
         }
@@ -208,8 +205,12 @@ fn extract_selected_text_with_mode(
     }
 
     let mut rows = Vec::<String>::new();
-    for row_idx in start_row..=end_row {
-        let line = &frame_lines[row_idx];
+    for (row_idx, line) in frame_lines
+        .iter()
+        .enumerate()
+        .take(end_row + 1)
+        .skip(start_row)
+    {
         let line_width = display_width_for_line(line.as_slice()) as u16;
         let row_start = if row_idx == start_row {
             range.start.col.min(line_width)
@@ -225,12 +226,8 @@ fn extract_selected_text_with_mode(
             continue;
         }
 
-        let selectable = selectable_ranges_for_row_mode(
-            hit_map,
-            row_idx as u16,
-            line_width,
-            strict_hit_map,
-        );
+        let selectable =
+            selectable_ranges_for_row_mode(hit_map, row_idx as u16, line_width, strict_hit_map);
         if selectable.is_empty() {
             continue;
         }

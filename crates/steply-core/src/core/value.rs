@@ -1,4 +1,4 @@
-use crate::core::value_path::{PathSegment, ValuePath, ensure_value_path_mut};
+use crate::core::value_path::{PathSegment, ValuePath};
 use indexmap::IndexMap;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -12,6 +12,17 @@ pub enum Value {
 }
 
 impl Value {
+    pub fn kind_name(&self) -> &'static str {
+        match self {
+            Self::None => "none",
+            Self::Text(_) => "text",
+            Self::Bool(_) => "bool",
+            Self::Number(_) => "number",
+            Self::List(_) => "list",
+            Self::Object(_) => "object",
+        }
+    }
+
     pub fn is_empty(&self) -> bool {
         match self {
             Self::None => true,
@@ -155,8 +166,41 @@ impl Value {
             *self = value;
             return;
         }
-        let target = ensure_value_path_mut(self, path);
-        *target = value;
+        let mut current = self;
+        for (idx, segment) in path.segments().iter().enumerate() {
+            let is_leaf = idx + 1 == path.segments().len();
+            match segment {
+                PathSegment::Key(key) => {
+                    if !matches!(current, Value::Object(_)) {
+                        *current = Value::Object(Default::default());
+                    }
+                    let Value::Object(map) = current else {
+                        continue;
+                    };
+                    if is_leaf {
+                        map.insert(key.clone(), value);
+                        return;
+                    }
+                    current = map.entry(key.clone()).or_insert(Value::None);
+                }
+                PathSegment::Index(index) => {
+                    if !matches!(current, Value::List(_)) {
+                        *current = Value::List(Vec::new());
+                    }
+                    let Value::List(list) = current else {
+                        continue;
+                    };
+                    if list.len() <= *index {
+                        list.resize_with(index + 1, || Value::None);
+                    }
+                    if is_leaf {
+                        list[*index] = value;
+                        return;
+                    }
+                    current = &mut list[*index];
+                }
+            }
+        }
     }
 
     pub fn from_json(s: &str) -> Result<Self, String> {

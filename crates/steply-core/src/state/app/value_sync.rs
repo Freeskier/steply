@@ -38,16 +38,20 @@ impl AppState {
     fn write_value_direct(&mut self, target: ValueTarget, value: Value) {
         let root = target.root().clone();
         let before = self.data.store.get(root.as_str()).cloned();
-        self.data.store.set_target(&target, value);
+        if let Err(err) = self.data.store.set_target(&target, value) {
+            self.runtime
+                .validation
+                .set_runtime_step_error(store_write_error_key(root.as_str()), err.to_string());
+            return;
+        }
+        self.runtime
+            .validation
+            .clear_runtime_step_error(store_write_error_key(root.as_str()).as_str());
         let updated = self.data.store.get(root.as_str()).cloned();
         if let Some(updated) = updated {
             let changed = before.as_ref().is_none_or(|previous| previous != &updated);
             self.apply_value_to_step(root.as_str(), updated.clone());
-            let prev_current = self.current_step_id().to_string();
-            self.reconcile_current_step_visibility();
-            if self.current_step_id() != prev_current {
-                self.rebuild_focus();
-            }
+            let _ = self.reconcile_current_step_after_store_change();
             if changed {
                 crate::task::engine::trigger_node_value_changed_tasks(
                     self,
@@ -88,4 +92,8 @@ impl AppState {
             }
         }
     }
+}
+
+fn store_write_error_key(root: &str) -> String {
+    format!("store:{root}")
 }

@@ -1,4 +1,4 @@
-use crate::core::{NodeId, value::Value};
+use crate::core::NodeId;
 use std::fmt;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -302,57 +302,4 @@ fn is_identifier(input: &str) -> bool {
         return false;
     }
     chars.all(|ch| ch.is_ascii_alphanumeric() || ch == '_')
-}
-
-fn container_for_next(next: Option<&PathSegment>) -> Value {
-    match next {
-        Some(PathSegment::Index(_)) => Value::List(Vec::new()),
-        _ => Value::Object(Default::default()),
-    }
-}
-
-pub fn ensure_value_path_mut<'a>(root: &'a mut Value, path: &ValuePath) -> &'a mut Value {
-    if path.is_empty() {
-        return root;
-    }
-
-    let segments = path.segments();
-    let mut current = root;
-    for (idx, segment) in segments.iter().enumerate() {
-        let next = segments.get(idx + 1);
-        match segment {
-            PathSegment::Key(key) => {
-                if !matches!(current, Value::Object(_)) {
-                    *current = Value::Object(Default::default());
-                }
-                let Value::Object(map) = current else {
-                    continue;
-                };
-                if !map.contains_key(key) {
-                    map.insert(key.clone(), container_for_next(next));
-                }
-                current = map
-                    .get_mut(key.as_str())
-                    .expect("map must contain key after insertion");
-            }
-            PathSegment::Index(index) => {
-                if !matches!(current, Value::List(_)) {
-                    *current = Value::List(Vec::new());
-                }
-                let Value::List(list) = current else {
-                    continue;
-                };
-                if list.len() <= *index {
-                    list.resize_with(index + 1, || Value::None);
-                }
-                if matches!(list[*index], Value::None) {
-                    list[*index] = container_for_next(next);
-                }
-                current = list
-                    .get_mut(*index)
-                    .expect("list must contain index after resize");
-            }
-        }
-    }
-    current
 }

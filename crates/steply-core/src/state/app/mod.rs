@@ -1,8 +1,11 @@
 use crate::core::NodeId;
 use crate::state::flow::Flow;
 use crate::state::validation::ValidationState;
+use crate::task::TaskSetupError;
 use crate::widgets::node::{Node, find_overlay};
 use crate::widgets::traits::FocusMode;
+use std::error::Error;
+use std::fmt;
 
 use self::state::{DataState, RuntimeState, ViewState};
 
@@ -10,6 +13,33 @@ use self::state::{DataState, RuntimeState, ViewState};
 pub enum ExitConfirmChoice {
     Stay,
     Exit,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AppStateInitError {
+    InvalidTaskSetup(TaskSetupError),
+}
+
+impl fmt::Display for AppStateInitError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::InvalidTaskSetup(err) => write!(f, "invalid task setup: {err}"),
+        }
+    }
+}
+
+impl Error for AppStateInitError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            Self::InvalidTaskSetup(err) => Some(err),
+        }
+    }
+}
+
+impl From<TaskSetupError> for AppStateInitError {
+    fn from(value: TaskSetupError) -> Self {
+        Self::InvalidTaskSetup(value)
+    }
 }
 
 pub struct AppState {

@@ -96,8 +96,7 @@ impl AppState {
             Some(Ok(())) | None => {
                 self.runtime.validation.clear_error(id);
                 self.runtime
-                    .pending_scheduler
-                    .push(SchedulerCommand::Cancel {
+                    .push_scheduler_command(SchedulerCommand::Cancel {
                         key: inline_error_key(id),
                     });
                 true
@@ -111,8 +110,7 @@ impl AppState {
                 self.runtime.validation.set_error(id, error, visibility);
                 if mode == ValidationMode::Submit {
                     self.runtime
-                        .pending_scheduler
-                        .push(SchedulerCommand::Debounce {
+                        .push_scheduler_command(SchedulerCommand::Debounce {
                             key: inline_error_key(id),
                             delay: ERROR_INLINE_TTL,
                             event: AppEvent::System(SystemEvent::ClearInlineError {

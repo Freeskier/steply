@@ -30,9 +30,8 @@ pub fn copy_text_to_clipboard(text: &str) -> io::Result<()> {
                 Err(err) => last_error = Some(err),
             }
         }
-        return copy_via_osc52(text).map_err(|_| {
-            last_error.unwrap_or_else(|| io::Error::other("clipboard unavailable"))
-        });
+        return copy_via_osc52(text)
+            .map_err(|_| last_error.unwrap_or_else(|| io::Error::other("clipboard unavailable")));
     }
 
     #[allow(unreachable_code)]

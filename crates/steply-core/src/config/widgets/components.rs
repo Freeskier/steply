@@ -13,7 +13,6 @@ use crate::widgets::{
         tree_view::{TreeNode, TreeView},
     },
     node::Node,
-    validators,
 };
 
 use super::super::model::{
@@ -21,11 +20,12 @@ use super::super::model::{
     ValidatorDef, WidgetDef,
 };
 use super::super::parse::{
-    WithSubmitTargetPathValue, compile_validators, parse_browser_mode, parse_calendar_mode,
-    parse_display_mode, parse_on_error, parse_repeater_layout, parse_run_mode, parse_select_mode,
-    parse_spinner_style, parse_table_style, parse_value_target,
+    parse_browser_mode, parse_calendar_mode, parse_display_mode, parse_on_error,
+    parse_repeater_layout, parse_run_mode, parse_select_mode, parse_spinner_style,
+    parse_table_style,
 };
 use super::super::utils::yaml_value_to_value;
+use super::common::{with_required_and_validators, with_submit_target};
 use super::compile_widget;
 use super::embedded::{compile_repeater_embedded_factory, compile_table_embedded_factory};
 
@@ -61,9 +61,7 @@ pub(super) fn compile_select_list(
     if let Some(show_label) = show_label {
         widget = widget.with_show_label(show_label);
     }
-    if let Some(submit_target) = submit_target {
-        widget = widget.with_submit_target_path_value(parse_value_target(submit_target.as_str())?);
-    }
+    widget = with_submit_target(widget, submit_target)?;
     Ok(Node::Component(Box::new(widget)))
 }
 
@@ -76,15 +74,8 @@ pub(super) fn compile_calendar(
     submit_target: Option<String>,
 ) -> Result<Node, String> {
     let mut widget = Calendar::new(id, label).with_mode(parse_calendar_mode(mode.as_deref())?);
-    if let Some(submit_target) = submit_target {
-        widget = widget.with_submit_target_path_value(parse_value_target(submit_target.as_str())?);
-    }
-    if required.unwrap_or(false) {
-        widget = widget.with_validator(validators::required_msg("Field is required"));
-    }
-    for validator in compile_validators(extra_validators) {
-        widget = widget.with_validator(validator);
-    }
+    widget = with_submit_target(widget, submit_target)?;
+    widget = with_required_and_validators(widget, required, extra_validators);
     Ok(Node::Component(Box::new(widget)))
 }
 
@@ -106,12 +97,7 @@ pub(super) fn compile_textarea(
     if let Some(default) = default {
         widget = widget.with_default(Value::Text(default));
     }
-    if required.unwrap_or(false) {
-        widget = widget.with_validator(validators::required_msg("Field is required"));
-    }
-    for validator in compile_validators(extra_validators) {
-        widget = widget.with_validator(validator);
-    }
+    widget = with_required_and_validators(widget, required, extra_validators);
     Ok(Node::Input(Box::new(widget)))
 }
 
@@ -182,15 +168,8 @@ pub(super) fn compile_file_browser(
     if let Some(max_visible) = max_visible {
         widget = widget.with_max_visible(max_visible);
     }
-    if let Some(submit_target) = submit_target {
-        widget = widget.with_submit_target_path_value(parse_value_target(submit_target.as_str())?);
-    }
-    if required.unwrap_or(false) {
-        widget = widget.with_validator(validators::required_msg("Field is required"));
-    }
-    for validator in compile_validators(extra_validators) {
-        widget = widget.with_validator(validator);
-    }
+    widget = with_submit_target(widget, submit_target)?;
+    widget = with_required_and_validators(widget, required, extra_validators);
     Ok(Node::Component(Box::new(widget)))
 }
 
@@ -222,9 +201,7 @@ pub(super) fn compile_tree_view(
     if let Some(indent_guides) = indent_guides {
         widget = widget.with_indent_guides(indent_guides);
     }
-    if let Some(submit_target) = submit_target {
-        widget = widget.with_submit_target_path_value(parse_value_target(submit_target.as_str())?);
-    }
+    widget = with_submit_target(widget, submit_target)?;
     Ok(Node::Component(Box::new(widget)))
 }
 
@@ -242,9 +219,7 @@ pub(super) fn compile_object_editor(
     if let Some(max_visible) = max_visible {
         widget = widget.with_max_visible(max_visible);
     }
-    if let Some(submit_target) = submit_target {
-        widget = widget.with_submit_target_path_value(parse_value_target(submit_target.as_str())?);
-    }
+    widget = with_submit_target(widget, submit_target)?;
     Ok(Node::Component(Box::new(widget)))
 }
 
@@ -263,9 +238,7 @@ pub(super) fn compile_snippet(
         }
         widget = widget.with_input(node);
     }
-    if let Some(submit_target) = submit_target {
-        widget = widget.with_submit_target_path_value(parse_value_target(submit_target.as_str())?);
-    }
+    widget = with_submit_target(widget, submit_target)?;
     Ok(Node::Component(Box::new(widget)))
 }
 
@@ -331,8 +304,6 @@ pub(super) fn compile_repeater(
         let make_input = compile_repeater_embedded_factory(field.widget)?;
         widget = widget.field_boxed(field.key, field.label, make_input);
     }
-    if let Some(submit_target) = submit_target {
-        widget = widget.with_submit_target_path_value(parse_value_target(submit_target.as_str())?);
-    }
+    widget = with_submit_target(widget, submit_target)?;
     Ok(Node::Component(Box::new(widget)))
 }

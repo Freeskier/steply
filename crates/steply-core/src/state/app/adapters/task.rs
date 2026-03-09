@@ -31,8 +31,7 @@ impl AppState {
     ) {
         if !self.should_schedule_interval_internal(only_when_step_active) {
             self.runtime
-                .pending_scheduler
-                .push(SchedulerCommand::Cancel { key });
+                .push_scheduler_command(SchedulerCommand::Cancel { key });
             return;
         }
 
@@ -44,12 +43,10 @@ impl AppState {
         let event = AppEvent::System(SystemEvent::TaskRequested { request });
         if immediate {
             self.runtime
-                .pending_scheduler
-                .push(SchedulerCommand::EmitNow(event));
+                .push_scheduler_command(SchedulerCommand::EmitNow(event));
         } else {
             self.runtime
-                .pending_scheduler
-                .push(SchedulerCommand::EmitAfter {
+                .push_scheduler_command(SchedulerCommand::EmitAfter {
                     key,
                     delay: Duration::from_millis(every_ms.max(1)),
                     event,
@@ -88,7 +85,7 @@ impl AppState {
             cancel_token.clone(),
             origin_step_id,
         );
-        self.runtime.pending_task_invocations.push(TaskInvocation {
+        self.runtime.push_task_invocation(TaskInvocation {
             spec,
             run_id,
             fingerprint,
@@ -139,13 +136,12 @@ impl AppState {
     }
 
     fn enqueue_task_request_internal(&mut self, task_id: TaskId, request: TaskRequest) {
-        const MAX_QUEUED: usize = 128;
         let queue = self
             .runtime
             .queued_task_requests
             .entry(task_id)
             .or_default();
-        if queue.len() >= MAX_QUEUED {
+        if queue.len() >= self.runtime.limits.max_queued_task_requests_per_task {
             let _ = queue.pop_front();
         }
         queue.push_back(request);
@@ -178,6 +174,22 @@ impl AppState {
                 cancel_token,
                 origin_step_id,
             });
+    }
+
+    pub(in crate::state::app) fn running_task_origin_step_id(
+        &self,
+        task_id: &TaskId,
+        run_id: u64,
+    ) -> Option<String> {
+        self.runtime
+            .running_task_cancellations
+            .get(task_id.as_str())
+            .and_then(|handles| {
+                handles
+                    .iter()
+                    .find(|handle| handle.run_id == run_id)
+                    .and_then(|handle| handle.origin_step_id.clone())
+            })
     }
 
     fn remove_running_cancel_token_internal(&mut self, task_id: &TaskId, run_id: u64) {
@@ -251,8 +263,7 @@ impl AppState {
             },
         };
         self.runtime
-            .pending_scheduler
-            .push(SchedulerCommand::EmitNow(AppEvent::System(event)));
+            .push_scheduler_command(SchedulerCommand::EmitNow(AppEvent::System(event)));
     }
 }
 
@@ -284,8 +295,7 @@ impl TaskEngineHost for AppState {
 
     fn cancel_interval_request(&mut self, key: String) {
         self.runtime
-            .pending_scheduler
-            .push(SchedulerCommand::Cancel { key });
+            .push_scheduler_command(SchedulerCommand::Cancel { key });
     }
 
     fn schedule_debounced_task_request(
@@ -295,8 +305,7 @@ impl TaskEngineHost for AppState {
         delay_ms: u64,
     ) {
         self.runtime
-            .pending_scheduler
-            .push(SchedulerCommand::Debounce {
+            .push_scheduler_command(SchedulerCommand::Debounce {
                 key,
                 delay: Duration::from_millis(delay_ms.max(1)),
                 event: AppEvent::System(SystemEvent::TaskRequested { request }),

@@ -171,7 +171,7 @@ mod wasm_exports {
     #[wasm_bindgen]
     pub fn preview_validate_yaml(yaml: &str) -> Result<String, JsValue> {
         let loaded = steply_core::config::load_from_yaml_str(yaml)
-            .map_err(|e| JsValue::from_str(e.as_str()))?;
+            .map_err(|e| JsValue::from_str(&e.to_string()))?;
         Ok(format!(
             "ok: steps={}, tasks={}, subscriptions={}",
             loaded.flow.steps().len(),
@@ -186,7 +186,7 @@ mod wasm_exports {
 
         let mut service =
             PreviewService::from_yaml_str_with_options(yaml, PreviewServiceOptions::default())
-                .map_err(|e| JsValue::from_str(e.as_str()))?;
+                .map_err(|e| JsValue::from_str(&e.to_string()))?;
         let doc = service
             .render(&request)
             .map_err(|e| JsValue::from_str(e.as_str()))?;
@@ -211,9 +211,11 @@ mod wasm_exports {
     #[wasm_bindgen]
     pub fn preview_session_create(yaml: &str) -> Result<String, JsValue> {
         let loaded = steply_core::config::load_from_yaml_str(yaml)
-            .map_err(|e| JsValue::from_str(e.as_str()))?;
+            .map_err(|e| JsValue::from_str(&e.to_string()))?;
         let session = PreviewSession {
-            state: loaded.into_app_state(),
+            state: loaded
+                .into_app_state()
+                .map_err(|e| JsValue::from_str(e.to_string().as_str()))?,
             renderer: Renderer::new(RendererConfig {
                 chrome_enabled: true,
             }),

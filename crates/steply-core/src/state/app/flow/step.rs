@@ -63,7 +63,7 @@ impl AppState {
         self.transition_back_to_previous();
     }
 
-    fn leave_current_step(&mut self) -> String {
+    pub(in crate::state::app) fn leave_current_step(&mut self) -> String {
         let step_id = self.current_step_id().to_string();
         if let Some(focused_id) = self.ui.focus.current_id() {
             self.ui
@@ -114,7 +114,7 @@ impl AppState {
         }
     }
 
-    fn enter_current_step_after_transition(&mut self) {
+    pub(in crate::state::app) fn enter_current_step_after_transition(&mut self) {
         self.ui.overlays.clear();
         self.hydrate_current_step_from_store();
         let current_step_id = self.current_step_id().to_string();
@@ -126,6 +126,26 @@ impl AppState {
         self.rebuild_focus_with_target(restore_focus.as_deref(), true);
         trigger_step_enter_tasks(self, current_step_id.as_str());
         refresh_active_step_interval_tasks(self);
+    }
+
+    pub(in crate::state::app) fn reconcile_current_step_after_store_change(&mut self) -> bool {
+        if self.flow.is_empty() {
+            return false;
+        }
+
+        let previous_step_id = self.current_step_id().to_string();
+        let current_became_hidden = !self.step_visible_at(self.flow.current_index());
+        if current_became_hidden {
+            let _ = self.leave_current_step();
+        }
+
+        self.reconcile_current_step_visibility();
+        if self.current_step_id() == previous_step_id {
+            return false;
+        }
+
+        self.enter_current_step_after_transition();
+        true
     }
 
     fn finish_flow_after_last_submit(&mut self) {

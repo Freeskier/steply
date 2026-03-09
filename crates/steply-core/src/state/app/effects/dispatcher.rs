@@ -1,8 +1,15 @@
 use crate::runtime::event::{SystemEvent, WidgetAction};
 use crate::state::app::AppState;
+use crate::task::TaskId;
 use crate::task::engine::{complete_task_run, request_task_run};
 use crate::widgets::node::{NodeWalkScope, find_node, walk_nodes_mut};
 use crate::widgets::traits::{InteractionResult, ValidationMode};
+
+enum EventDispatchScope {
+    AllSteps,
+    CurrentStep,
+    Step(String),
+}
 
 pub(super) struct EffectDispatcher<'a> {
     state: &'a mut AppState,
@@ -113,9 +120,10 @@ impl<'a> EffectDispatcher<'a> {
                 InteractionResult::handled()
             }
             SystemEvent::TaskCompleted { ref completion } => {
+                let route = self.task_event_scope(&completion.task_id, completion.run_id);
                 let accepted = complete_task_run(self.state, completion.clone());
                 if accepted {
-                    let result = self.broadcast_system_event(&event);
+                    let result = self.dispatch_system_event_with_scope(&event, route);
                     self.process_broadcast_result(result);
                 }
                 InteractionResult::handled()
@@ -132,15 +140,75 @@ impl<'a> EffectDispatcher<'a> {
     }
 
     pub(super) fn broadcast_system_event(&mut self, event: &SystemEvent) -> InteractionResult {
+        let scope = self.event_dispatch_scope(event);
+        self.dispatch_system_event_with_scope(event, scope)
+    }
+
+    fn dispatch_system_event_with_scope(
+        &mut self,
+        event: &SystemEvent,
+        scope: EventDispatchScope,
+    ) -> InteractionResult {
         let mut merged = InteractionResult::ignored();
-        for step in self.state.flow.steps_mut() {
-            walk_nodes_mut(
-                step.nodes.as_mut_slice(),
-                NodeWalkScope::Recursive,
-                &mut |node| merged.merge(node.on_system_event(event)),
-            );
+        match scope {
+            EventDispatchScope::AllSteps => {
+                for step in self.state.flow.steps_mut() {
+                    walk_nodes_mut(
+                        step.nodes.as_mut_slice(),
+                        NodeWalkScope::Recursive,
+                        &mut |node| merged.merge(node.on_system_event(event)),
+                    );
+                }
+            }
+            EventDispatchScope::CurrentStep => {
+                if !self.state.flow.is_empty() {
+                    let step = self.state.flow.current_step_mut();
+                    walk_nodes_mut(
+                        step.nodes.as_mut_slice(),
+                        NodeWalkScope::Recursive,
+                        &mut |node| merged.merge(node.on_system_event(event)),
+                    );
+                }
+            }
+            EventDispatchScope::Step(step_id) => {
+                if let Some(step) = self
+                    .state
+                    .flow
+                    .steps_mut()
+                    .iter_mut()
+                    .find(|step| step.id == step_id)
+                {
+                    walk_nodes_mut(
+                        step.nodes.as_mut_slice(),
+                        NodeWalkScope::Recursive,
+                        &mut |node| merged.merge(node.on_system_event(event)),
+                    );
+                }
+            }
         }
         merged
+    }
+
+    fn event_dispatch_scope(&self, event: &SystemEvent) -> EventDispatchScope {
+        match event {
+            SystemEvent::RequestFocus { .. } => EventDispatchScope::CurrentStep,
+            SystemEvent::TaskStarted { task_id, run_id }
+            | SystemEvent::TaskLogLine {
+                task_id, run_id, ..
+            } => self.task_event_scope(task_id, *run_id),
+            SystemEvent::TaskStartRejected { .. } => EventDispatchScope::CurrentStep,
+            SystemEvent::TaskCompleted { completion } => {
+                self.task_event_scope(&completion.task_id, completion.run_id)
+            }
+            _ => EventDispatchScope::AllSteps,
+        }
+    }
+
+    fn task_event_scope(&self, task_id: &TaskId, run_id: u64) -> EventDispatchScope {
+        self.state
+            .running_task_origin_step_id(task_id, run_id)
+            .map(EventDispatchScope::Step)
+            .unwrap_or(EventDispatchScope::CurrentStep)
     }
 
     pub(super) fn process_broadcast_result(&mut self, result: InteractionResult) {

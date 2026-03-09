@@ -10,10 +10,8 @@ use crate::widgets::{
 };
 
 use super::super::model::{ConfirmModeDef, ValidatorDef};
-use super::super::parse::{
-    WithChangeTargetPathValue, WithSubmitTargetPathValue, compile_validators, parse_confirm_mode,
-    parse_text_mode, parse_value_target,
-};
+use super::super::parse::{compile_validators, parse_confirm_mode, parse_text_mode};
+use super::common::{with_change_targets, with_required_and_validators, with_submit_target};
 
 #[allow(clippy::too_many_arguments)]
 pub(super) fn compile_text_input(
@@ -37,18 +35,9 @@ pub(super) fn compile_text_input(
     if let Some(default) = default {
         input = input.with_default(Value::Text(default));
     }
-    if let Some(submit_target) = submit_target {
-        input = input.with_submit_target_path_value(parse_value_target(submit_target.as_str())?);
-    }
-    for target in change_targets {
-        input = input.with_change_target_path_value(parse_value_target(target.as_str())?);
-    }
-    if required.unwrap_or(false) {
-        input = input.with_validator(validators::required_msg("Field is required"));
-    }
-    for validator in compile_validators(extra_validators) {
-        input = input.with_validator(validator);
-    }
+    input = with_submit_target(input, submit_target)?;
+    input = with_change_targets(input, change_targets)?;
+    input = with_required_and_validators(input, required, extra_validators);
     Ok(Node::Input(Box::new(input)))
 }
 
@@ -59,13 +48,11 @@ pub(super) fn compile_array_input(
     required: Option<bool>,
     extra_validators: Vec<ValidatorDef>,
 ) -> Result<Node, String> {
-    let mut input = ArrayInput::new(id, label).with_items(items);
-    if required.unwrap_or(false) {
-        input = input.with_validator(validators::required_msg("Field is required"));
-    }
-    for validator in compile_validators(extra_validators) {
-        input = input.with_validator(validator);
-    }
+    let input = with_required_and_validators(
+        ArrayInput::new(id, label).with_items(items),
+        required,
+        extra_validators,
+    );
     Ok(Node::Input(Box::new(input)))
 }
 
@@ -103,15 +90,8 @@ pub(super) fn compile_select_input(
     if let Some(default) = default {
         input = input.with_default(Value::Text(default));
     }
-    if let Some(submit_target) = submit_target {
-        input = input.with_submit_target_path_value(parse_value_target(submit_target.as_str())?);
-    }
-    if required.unwrap_or(false) {
-        input = input.with_validator(validators::required_msg("Field is required"));
-    }
-    for validator in compile_validators(extra_validators) {
-        input = input.with_validator(validator);
-    }
+    input = with_submit_target(input, submit_target)?;
+    input = with_required_and_validators(input, required, extra_validators);
     Ok(Node::Input(Box::new(input)))
 }
 
@@ -130,15 +110,8 @@ pub(super) fn compile_choice_input(
     if let Some(default) = default {
         input = input.with_default(Value::Text(default));
     }
-    if let Some(submit_target) = submit_target {
-        input = input.with_submit_target_path_value(parse_value_target(submit_target.as_str())?);
-    }
-    if required.unwrap_or(false) {
-        input = input.with_validator(validators::required_msg("Field is required"));
-    }
-    for validator in compile_validators(extra_validators) {
-        input = input.with_validator(validator);
-    }
+    input = with_submit_target(input, submit_target)?;
+    input = with_required_and_validators(input, required, extra_validators);
     Ok(Node::Input(Box::new(input)))
 }
 
@@ -156,15 +129,8 @@ pub(super) fn compile_masked_input(
     if let Some(default) = default {
         input = input.with_default(Value::Text(default));
     }
-    if let Some(submit_target) = submit_target {
-        input = input.with_submit_target_path_value(parse_value_target(submit_target.as_str())?);
-    }
-    if required.unwrap_or(false) {
-        input = input.with_validator(validators::required_msg("Field is required"));
-    }
-    for validator in compile_validators(extra_validators) {
-        input = input.with_validator(validator);
-    }
+    input = with_submit_target(input, submit_target)?;
+    input = with_required_and_validators(input, required, extra_validators);
     Ok(Node::Input(Box::new(input)))
 }
 
@@ -195,15 +161,8 @@ pub(super) fn compile_slider_input(
     if let Some(default) = default {
         widget = widget.with_default(Value::Number(default));
     }
-    for target in change_targets {
-        widget = widget.with_change_target_path_value(parse_value_target(target.as_str())?);
-    }
-    if required.unwrap_or(false) {
-        widget = widget.with_validator(validators::required_msg("Field is required"));
-    }
-    for validator in compile_validators(extra_validators) {
-        widget = widget.with_validator(validator);
-    }
+    widget = with_change_targets(widget, change_targets)?;
+    widget = with_required_and_validators(widget, required, extra_validators);
     Ok(Node::Input(Box::new(widget)))
 }
 
@@ -219,15 +178,8 @@ pub(super) fn compile_color_input(
     if let Some([r, g, b]) = rgb {
         widget = widget.with_rgb(r, g, b);
     }
-    if let Some(submit_target) = submit_target {
-        widget = widget.with_submit_target_path_value(parse_value_target(submit_target.as_str())?);
-    }
-    if required.unwrap_or(false) {
-        widget = widget.with_validator(validators::required_msg("Field is required"));
-    }
-    for validator in compile_validators(extra_validators) {
-        widget = widget.with_validator(validator);
-    }
+    widget = with_submit_target(widget, submit_target)?;
+    widget = with_required_and_validators(widget, required, extra_validators);
     Ok(Node::Input(Box::new(widget)))
 }
 

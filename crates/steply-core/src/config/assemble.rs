@@ -14,14 +14,7 @@ pub(super) fn assemble(spec: ConfigSpec) -> Result<LoadedConfig, String> {
     for step in spec.steps {
         steps.push(assemble_step(step)?);
     }
-
     let known_node_ids = utils::collect_node_ids(steps.as_slice());
-    for step in &steps {
-        if let Some(condition) = &step.when {
-            utils::validate_condition_refs(condition, &known_node_ids)?;
-        }
-    }
-
     let (task_specs, task_subscriptions) =
         assemble_tasks_and_subscriptions(spec.tasks, spec.subscriptions, &known_node_ids)?;
 

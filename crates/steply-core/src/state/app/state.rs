@@ -12,6 +12,23 @@ use std::collections::{HashMap, VecDeque};
 
 use super::input::completion::CompletionSession;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RuntimeLimits {
+    pub max_pending_scheduler_commands: usize,
+    pub max_pending_task_invocations: usize,
+    pub max_queued_task_requests_per_task: usize,
+}
+
+impl Default for RuntimeLimits {
+    fn default() -> Self {
+        Self {
+            max_pending_scheduler_commands: 512,
+            max_pending_task_invocations: 128,
+            max_queued_task_requests_per_task: 128,
+        }
+    }
+}
+
 #[derive(Default)]
 pub(super) struct ViewState {
     pub(super) overlays: OverlayState,
@@ -37,6 +54,7 @@ pub(super) struct RunningTaskHandle {
 
 #[derive(Default)]
 pub(super) struct RuntimeState {
+    pub(super) limits: RuntimeLimits,
     pub(super) validation: ValidationState,
     pub(super) pending_scheduler: Vec<SchedulerCommand>,
     pub(super) pending_task_invocations: Vec<TaskInvocation>,
@@ -57,5 +75,19 @@ impl RuntimeState {
             task_subscriptions,
             ..Self::default()
         }
+    }
+
+    pub(super) fn push_scheduler_command(&mut self, command: SchedulerCommand) {
+        if self.pending_scheduler.len() >= self.limits.max_pending_scheduler_commands {
+            let _ = self.pending_scheduler.remove(0);
+        }
+        self.pending_scheduler.push(command);
+    }
+
+    pub(super) fn push_task_invocation(&mut self, invocation: TaskInvocation) {
+        if self.pending_task_invocations.len() >= self.limits.max_pending_task_invocations {
+            let _ = self.pending_task_invocations.remove(0);
+        }
+        self.pending_task_invocations.push(invocation);
     }
 }

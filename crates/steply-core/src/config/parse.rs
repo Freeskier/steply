@@ -244,131 +244,235 @@ pub(super) trait WithChangeTargetPathValue: Sized {
     fn with_change_target_path_value(self, target: ValueTarget) -> Self;
 }
 
-impl WithSubmitTargetPathValue for TextInput {
+trait SupportsSubmitTarget: Sized {
+    fn with_submit_target_node(self, node: crate::core::NodeId) -> Self;
+    fn with_submit_target_parts(
+        self,
+        root: crate::core::NodeId,
+        path: crate::core::value_path::ValuePath,
+    ) -> Self;
+}
+
+trait SupportsChangeTarget: Sized {
+    fn with_change_target_node(self, node: crate::core::NodeId) -> Self;
+    fn with_change_target_parts(
+        self,
+        root: crate::core::NodeId,
+        path: crate::core::value_path::ValuePath,
+    ) -> Self;
+}
+
+impl<T: SupportsSubmitTarget> WithSubmitTargetPathValue for T {
     fn with_submit_target_path_value(self, target: ValueTarget) -> Self {
         match target {
-            ValueTarget::Node(node) => self.with_submit_target(node),
-            ValueTarget::Path { root, path } => self.with_submit_target_path(root, path),
+            ValueTarget::Node(node) => self.with_submit_target_node(node),
+            ValueTarget::Path { root, path } => self.with_submit_target_parts(root, path),
         }
     }
 }
 
-impl WithChangeTargetPathValue for TextInput {
+impl<T: SupportsChangeTarget> WithChangeTargetPathValue for T {
     fn with_change_target_path_value(self, target: ValueTarget) -> Self {
         match target {
-            ValueTarget::Node(node) => self.with_change_target(node),
-            ValueTarget::Path { root, path } => self.with_change_target_path(root, path),
+            ValueTarget::Node(node) => self.with_change_target_node(node),
+            ValueTarget::Path { root, path } => self.with_change_target_parts(root, path),
         }
     }
 }
 
-impl WithSubmitTargetPathValue for SelectInput {
-    fn with_submit_target_path_value(self, target: ValueTarget) -> Self {
-        match target {
-            ValueTarget::Node(node) => self.with_submit_target(node),
-            ValueTarget::Path { root, path } => self.with_submit_target_path(root, path),
-        }
+impl SupportsSubmitTarget for TextInput {
+    fn with_submit_target_node(self, node: crate::core::NodeId) -> Self {
+        self.with_submit_target(node)
+    }
+
+    fn with_submit_target_parts(
+        self,
+        root: crate::core::NodeId,
+        path: crate::core::value_path::ValuePath,
+    ) -> Self {
+        self.with_submit_target_path(root, path)
     }
 }
 
-impl WithSubmitTargetPathValue for ChoiceInput {
-    fn with_submit_target_path_value(self, target: ValueTarget) -> Self {
-        match target {
-            ValueTarget::Node(node) => self.with_submit_target(node),
-            ValueTarget::Path { root, path } => self.with_submit_target_path(root, path),
-        }
+impl SupportsChangeTarget for TextInput {
+    fn with_change_target_node(self, node: crate::core::NodeId) -> Self {
+        self.with_change_target(node)
+    }
+
+    fn with_change_target_parts(
+        self,
+        root: crate::core::NodeId,
+        path: crate::core::value_path::ValuePath,
+    ) -> Self {
+        self.with_change_target_path(root, path)
     }
 }
 
-impl WithSubmitTargetPathValue for SelectList {
-    fn with_submit_target_path_value(self, target: ValueTarget) -> Self {
-        match target {
-            ValueTarget::Node(node) => self.with_submit_target(node),
-            ValueTarget::Path { root, path } => self.with_submit_target_path(root, path),
-        }
+impl SupportsSubmitTarget for SelectInput {
+    fn with_submit_target_node(self, node: crate::core::NodeId) -> Self {
+        self.with_submit_target(node)
+    }
+
+    fn with_submit_target_parts(
+        self,
+        root: crate::core::NodeId,
+        path: crate::core::value_path::ValuePath,
+    ) -> Self {
+        self.with_submit_target_path(root, path)
     }
 }
 
-impl WithSubmitTargetPathValue for MaskedInput {
-    fn with_submit_target_path_value(self, target: ValueTarget) -> Self {
-        match target {
-            ValueTarget::Node(node) => self.with_submit_target(node),
-            ValueTarget::Path { root, path } => self.with_submit_target_path(root, path),
-        }
+impl SupportsSubmitTarget for ChoiceInput {
+    fn with_submit_target_node(self, node: crate::core::NodeId) -> Self {
+        self.with_submit_target(node)
+    }
+
+    fn with_submit_target_parts(
+        self,
+        root: crate::core::NodeId,
+        path: crate::core::value_path::ValuePath,
+    ) -> Self {
+        self.with_submit_target_path(root, path)
     }
 }
 
-impl WithChangeTargetPathValue for SliderInput {
-    fn with_change_target_path_value(self, target: ValueTarget) -> Self {
-        match target {
-            ValueTarget::Node(node) => self.with_change_target(node),
-            ValueTarget::Path { root, path } => self.with_change_target_path(root, path),
-        }
+impl SupportsSubmitTarget for SelectList {
+    fn with_submit_target_node(self, node: crate::core::NodeId) -> Self {
+        self.with_submit_target(node)
+    }
+
+    fn with_submit_target_parts(
+        self,
+        root: crate::core::NodeId,
+        path: crate::core::value_path::ValuePath,
+    ) -> Self {
+        self.with_submit_target_path(root, path)
     }
 }
 
-impl WithSubmitTargetPathValue for ColorInput {
-    fn with_submit_target_path_value(self, target: ValueTarget) -> Self {
-        match target {
-            ValueTarget::Node(node) => self.with_submit_target(node),
-            ValueTarget::Path { root, path } => self.with_submit_target_path(root, path),
-        }
+impl SupportsSubmitTarget for MaskedInput {
+    fn with_submit_target_node(self, node: crate::core::NodeId) -> Self {
+        self.with_submit_target(node)
+    }
+
+    fn with_submit_target_parts(
+        self,
+        root: crate::core::NodeId,
+        path: crate::core::value_path::ValuePath,
+    ) -> Self {
+        self.with_submit_target_path(root, path)
     }
 }
 
-impl WithSubmitTargetPathValue for Calendar {
-    fn with_submit_target_path_value(self, target: ValueTarget) -> Self {
-        match target {
-            ValueTarget::Node(node) => self.with_submit_target(node),
-            ValueTarget::Path { root, path } => self.with_submit_target_path(root, path),
-        }
+impl SupportsChangeTarget for SliderInput {
+    fn with_change_target_node(self, node: crate::core::NodeId) -> Self {
+        self.with_change_target(node)
+    }
+
+    fn with_change_target_parts(
+        self,
+        root: crate::core::NodeId,
+        path: crate::core::value_path::ValuePath,
+    ) -> Self {
+        self.with_change_target_path(root, path)
     }
 }
 
-impl WithSubmitTargetPathValue for FileBrowserInput {
-    fn with_submit_target_path_value(self, target: ValueTarget) -> Self {
-        match target {
-            ValueTarget::Node(node) => self.with_submit_target(node),
-            ValueTarget::Path { root, path } => self.with_submit_target_path(root, path),
-        }
+impl SupportsSubmitTarget for ColorInput {
+    fn with_submit_target_node(self, node: crate::core::NodeId) -> Self {
+        self.with_submit_target(node)
+    }
+
+    fn with_submit_target_parts(
+        self,
+        root: crate::core::NodeId,
+        path: crate::core::value_path::ValuePath,
+    ) -> Self {
+        self.with_submit_target_path(root, path)
     }
 }
 
-impl<T: crate::widgets::components::tree_view::TreeItemLabel> WithSubmitTargetPathValue
-    for TreeView<T>
-{
-    fn with_submit_target_path_value(self, target: ValueTarget) -> Self {
-        match target {
-            ValueTarget::Node(node) => self.with_submit_target(node),
-            ValueTarget::Path { root, path } => self.with_submit_target_path(root, path),
-        }
+impl SupportsSubmitTarget for Calendar {
+    fn with_submit_target_node(self, node: crate::core::NodeId) -> Self {
+        self.with_submit_target(node)
+    }
+
+    fn with_submit_target_parts(
+        self,
+        root: crate::core::NodeId,
+        path: crate::core::value_path::ValuePath,
+    ) -> Self {
+        self.with_submit_target_path(root, path)
     }
 }
 
-impl WithSubmitTargetPathValue for ObjectEditor {
-    fn with_submit_target_path_value(self, target: ValueTarget) -> Self {
-        match target {
-            ValueTarget::Node(node) => self.with_submit_target(node),
-            ValueTarget::Path { root, path } => self.with_submit_target_path(root, path),
-        }
+impl SupportsSubmitTarget for FileBrowserInput {
+    fn with_submit_target_node(self, node: crate::core::NodeId) -> Self {
+        self.with_submit_target(node)
+    }
+
+    fn with_submit_target_parts(
+        self,
+        root: crate::core::NodeId,
+        path: crate::core::value_path::ValuePath,
+    ) -> Self {
+        self.with_submit_target_path(root, path)
     }
 }
 
-impl WithSubmitTargetPathValue for Snippet {
-    fn with_submit_target_path_value(self, target: ValueTarget) -> Self {
-        match target {
-            ValueTarget::Node(node) => self.with_submit_target(node),
-            ValueTarget::Path { root, path } => self.with_submit_target_path(root, path),
-        }
+impl<T: crate::widgets::components::tree_view::TreeItemLabel> SupportsSubmitTarget for TreeView<T> {
+    fn with_submit_target_node(self, node: crate::core::NodeId) -> Self {
+        self.with_submit_target(node)
+    }
+
+    fn with_submit_target_parts(
+        self,
+        root: crate::core::NodeId,
+        path: crate::core::value_path::ValuePath,
+    ) -> Self {
+        self.with_submit_target_path(root, path)
     }
 }
 
-impl WithSubmitTargetPathValue for Repeater {
-    fn with_submit_target_path_value(self, target: ValueTarget) -> Self {
-        match target {
-            ValueTarget::Node(node) => self.with_submit_target(node),
-            ValueTarget::Path { root, path } => self.with_submit_target_path(root, path),
-        }
+impl SupportsSubmitTarget for ObjectEditor {
+    fn with_submit_target_node(self, node: crate::core::NodeId) -> Self {
+        self.with_submit_target(node)
+    }
+
+    fn with_submit_target_parts(
+        self,
+        root: crate::core::NodeId,
+        path: crate::core::value_path::ValuePath,
+    ) -> Self {
+        self.with_submit_target_path(root, path)
+    }
+}
+
+impl SupportsSubmitTarget for Snippet {
+    fn with_submit_target_node(self, node: crate::core::NodeId) -> Self {
+        self.with_submit_target(node)
+    }
+
+    fn with_submit_target_parts(
+        self,
+        root: crate::core::NodeId,
+        path: crate::core::value_path::ValuePath,
+    ) -> Self {
+        self.with_submit_target_path(root, path)
+    }
+}
+
+impl SupportsSubmitTarget for Repeater {
+    fn with_submit_target_node(self, node: crate::core::NodeId) -> Self {
+        self.with_submit_target(node)
+    }
+
+    fn with_submit_target_parts(
+        self,
+        root: crate::core::NodeId,
+        path: crate::core::value_path::ValuePath,
+    ) -> Self {
+        self.with_submit_target_path(root, path)
     }
 }
 

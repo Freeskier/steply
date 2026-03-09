@@ -4,6 +4,23 @@ use std::sync::{Arc, Mutex};
 use steply_core::task::execution::{TaskCompletion, TaskInvocation};
 use steply_core::task::spec::TaskId;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TaskExecutorLimits {
+    pub queue_capacity: usize,
+    pub max_completions_per_drain: usize,
+    pub max_log_lines_per_drain: usize,
+}
+
+impl Default for TaskExecutorLimits {
+    fn default() -> Self {
+        Self {
+            queue_capacity: 256,
+            max_completions_per_drain: 256,
+            max_log_lines_per_drain: 512,
+        }
+    }
+}
+
 pub struct LogLine {
     pub task_id: TaskId,
     pub run_id: u64,
@@ -11,6 +28,7 @@ pub struct LogLine {
 }
 
 pub struct TaskExecutor {
+    limits: TaskExecutorLimits,
     invocation_tx: SyncSender<TaskInvocation>,
     completion_rx: Receiver<TaskCompletion>,
     completion_tx: Sender<TaskCompletion>,
@@ -20,11 +38,17 @@ pub struct TaskExecutor {
 
 impl TaskExecutor {
     pub fn new() -> Self {
-        let (invocation_tx, invocation_rx) = mpsc::sync_channel::<TaskInvocation>(256);
+        Self::with_limits(TaskExecutorLimits::default())
+    }
+
+    pub fn with_limits(limits: TaskExecutorLimits) -> Self {
+        let (invocation_tx, invocation_rx) =
+            mpsc::sync_channel::<TaskInvocation>(limits.queue_capacity.max(1));
         let (completion_tx, completion_rx) = mpsc::channel::<TaskCompletion>();
         let (log_tx, log_rx) = mpsc::channel::<LogLine>();
         spawn_workers(invocation_rx, completion_tx.clone());
         Self {
+            limits,
             invocation_tx,
             completion_rx,
             completion_tx,
@@ -59,7 +83,10 @@ impl TaskExecutor {
 
     pub fn drain_ready(&self) -> Vec<TaskCompletion> {
         let mut out = Vec::new();
-        while let Ok(completion) = self.completion_rx.try_recv() {
+        while out.len() < self.limits.max_completions_per_drain {
+            let Ok(completion) = self.completion_rx.try_recv() else {
+                break;
+            };
             out.push(completion);
         }
         out
@@ -67,7 +94,10 @@ impl TaskExecutor {
 
     pub fn drain_log_lines(&self) -> Vec<LogLine> {
         let mut out = Vec::new();
-        while let Ok(line) = self.log_rx.try_recv() {
+        while out.len() < self.limits.max_log_lines_per_drain {
+            let Ok(line) = self.log_rx.try_recv() else {
+                break;
+            };
             out.push(line);
         }
         out

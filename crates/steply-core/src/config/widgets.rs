@@ -1,21 +1,666 @@
+mod common;
 mod components;
 mod embedded;
 mod inputs;
 mod outputs;
 
 use crate::widgets::node::Node;
+use crate::widgets::static_hints;
 
-use super::model::WidgetDef;
+use super::doc_model::{WidgetCategory, WidgetDoc, WidgetDocDescriptor, build_widget_doc};
+use super::model::{self, WidgetDef};
+
+pub(super) struct WidgetRegistryEntry {
+    pub(super) doc: WidgetDocDescriptor,
+    pub(super) build_doc: fn(WidgetDocDescriptor) -> Result<WidgetDoc, String>,
+    pub(super) compile: fn(WidgetDef) -> Result<Node, String>,
+}
+
+const fn widget_doc(
+    widget_type: &'static str,
+    category: WidgetCategory,
+    short_description: &'static str,
+    long_description: &'static str,
+    example_yaml: &'static str,
+    static_hints: &'static [crate::widgets::traits::StaticHintSpec],
+) -> WidgetDocDescriptor {
+    WidgetDocDescriptor {
+        widget_type,
+        category,
+        short_description,
+        long_description,
+        example_yaml,
+        static_hints,
+    }
+}
+
+const WIDGET_REGISTRY: &[WidgetRegistryEntry] = &[
+    WidgetRegistryEntry {
+        doc: widget_doc(
+            "text_output",
+            WidgetCategory::Output,
+            "Static text output.",
+            "Renders a fixed text block in the flow.",
+            r#"type: text_output
+id: intro
+text: Welcome to Steply"#,
+            &[],
+        ),
+        build_doc: build_widget_doc::<model::TextOutputDef>,
+        compile: compile_text_output_widget,
+    },
+    WidgetRegistryEntry {
+        doc: widget_doc(
+            "url_output",
+            WidgetCategory::Output,
+            "Clickable URL output.",
+            "Displays a URL with an optional human-friendly label.",
+            r#"type: url_output
+id: docs
+url: https://example.com
+name: Open docs"#,
+            &[],
+        ),
+        build_doc: build_widget_doc::<model::UrlOutputDef>,
+        compile: compile_url_output_widget,
+    },
+    WidgetRegistryEntry {
+        doc: widget_doc(
+            "thinking_output",
+            WidgetCategory::Output,
+            "Animated thinking output.",
+            "Shows animated status text for background work or waiting states.",
+            r#"type: thinking_output
+id: thinking
+label: Preparing
+text: Resolving inputs"#,
+            &[],
+        ),
+        build_doc: build_widget_doc::<model::ThinkingOutputDef>,
+        compile: compile_thinking_output_widget,
+    },
+    WidgetRegistryEntry {
+        doc: widget_doc(
+            "progress_output",
+            WidgetCategory::Output,
+            "Progress bar output.",
+            "Displays progress with optional range, style and transition settings.",
+            r#"type: progress_output
+id: build_progress
+label: Build
+min: 0
+max: 100"#,
+            &[],
+        ),
+        build_doc: build_widget_doc::<model::ProgressOutputDef>,
+        compile: compile_progress_output_widget,
+    },
+    WidgetRegistryEntry {
+        doc: widget_doc(
+            "chart_output",
+            WidgetCategory::Output,
+            "Terminal chart output.",
+            "Renders numeric values as a small terminal chart.",
+            r#"type: chart_output
+id: cpu
+label: CPU load"#,
+            &[],
+        ),
+        build_doc: build_widget_doc::<model::ChartOutputDef>,
+        compile: compile_chart_output_widget,
+    },
+    WidgetRegistryEntry {
+        doc: widget_doc(
+            "table_output",
+            WidgetCategory::Output,
+            "Read-only table output.",
+            "Displays tabular data without inline editing.",
+            r#"type: table_output
+id: summary
+label: Summary
+headers: [Name, Value]"#,
+            &[],
+        ),
+        build_doc: build_widget_doc::<model::TableOutputDef>,
+        compile: compile_table_output_widget,
+    },
+    WidgetRegistryEntry {
+        doc: widget_doc(
+            "diff_output",
+            WidgetCategory::Output,
+            "Text diff output.",
+            "Shows the difference between two text values.",
+            r#"type: diff_output
+id: diff
+label: Planned changes
+old: before
+new: after"#,
+            &[],
+        ),
+        build_doc: build_widget_doc::<model::DiffOutputDef>,
+        compile: compile_diff_output_widget,
+    },
+    WidgetRegistryEntry {
+        doc: widget_doc(
+            "task_log_output",
+            WidgetCategory::Output,
+            "Task log output.",
+            "Displays task execution progress as a step-by-step log.",
+            r#"type: task_log_output
+id: task_log
+steps:
+  - label: Clone repo
+    task_id: clone"#,
+            &[],
+        ),
+        build_doc: build_widget_doc::<model::TaskLogOutputDef>,
+        compile: compile_task_log_output_widget,
+    },
+    WidgetRegistryEntry {
+        doc: widget_doc(
+            "text_input",
+            WidgetCategory::Input,
+            "Single-line text input.",
+            "Collects one line of text with optional validation and completion.",
+            r#"type: text_input
+id: project_name
+label: Project name"#,
+            &[],
+        ),
+        build_doc: build_widget_doc::<model::TextInputDef>,
+        compile: compile_text_input_widget,
+    },
+    WidgetRegistryEntry {
+        doc: widget_doc(
+            "array_input",
+            WidgetCategory::Input,
+            "Array input.",
+            "Collects multiple string values as a list.",
+            r#"type: array_input
+id: tags
+label: Tags"#,
+            &[],
+        ),
+        build_doc: build_widget_doc::<model::ArrayInputDef>,
+        compile: compile_array_input_widget,
+    },
+    WidgetRegistryEntry {
+        doc: widget_doc(
+            "button_input",
+            WidgetCategory::Input,
+            "Button input.",
+            "Focusable button that may trigger a task when activated.",
+            r#"type: button_input
+id: refresh
+label: Refresh"#,
+            &[],
+        ),
+        build_doc: build_widget_doc::<model::ButtonInputDef>,
+        compile: compile_button_input_widget,
+    },
+    WidgetRegistryEntry {
+        doc: widget_doc(
+            "select",
+            WidgetCategory::Input,
+            "Single-select input.",
+            "Lets the user choose one option from a list.",
+            r#"type: select
+id: region
+label: Region
+options: [eu, us]"#,
+            &[],
+        ),
+        build_doc: build_widget_doc::<model::SelectDef>,
+        compile: compile_select_widget,
+    },
+    WidgetRegistryEntry {
+        doc: widget_doc(
+            "choice_input",
+            WidgetCategory::Input,
+            "Choice input.",
+            "Choice selector rendered as navigable options.",
+            r#"type: choice_input
+id: package_manager
+label: Package manager
+options: [cargo, npm]"#,
+            static_hints::CHOICE_INPUT_HINTS,
+        ),
+        build_doc: build_widget_doc::<model::ChoiceInputDef>,
+        compile: compile_choice_input_widget,
+    },
+    WidgetRegistryEntry {
+        doc: widget_doc(
+            "select_list",
+            WidgetCategory::Component,
+            "Selectable list component.",
+            "Interactive list component supporting single or multi selection.",
+            r#"type: select_list
+id: features
+label: Features
+options: [auth, api]"#,
+            static_hints::SELECT_LIST_DOC_HINTS,
+        ),
+        build_doc: build_widget_doc::<model::SelectListDef>,
+        compile: compile_select_list_widget,
+    },
+    WidgetRegistryEntry {
+        doc: widget_doc(
+            "masked_input",
+            WidgetCategory::Input,
+            "Masked input.",
+            "Text input constrained by a mask pattern.",
+            r#"type: masked_input
+id: phone
+label: Phone
+mask: \"(999) 999-9999\""#,
+            &[],
+        ),
+        build_doc: build_widget_doc::<model::MaskedInputDef>,
+        compile: compile_masked_input_widget,
+    },
+    WidgetRegistryEntry {
+        doc: widget_doc(
+            "slider",
+            WidgetCategory::Input,
+            "Slider input.",
+            "Numeric slider with configurable range and step.",
+            r#"type: slider
+id: retries
+label: Retries
+min: 0
+max: 10"#,
+            &[],
+        ),
+        build_doc: build_widget_doc::<model::SliderDef>,
+        compile: compile_slider_widget,
+    },
+    WidgetRegistryEntry {
+        doc: widget_doc(
+            "color_input",
+            WidgetCategory::Input,
+            "Color input.",
+            "Picks a color represented as RGB values.",
+            r#"type: color_input
+id: accent
+label: Accent color"#,
+            &[],
+        ),
+        build_doc: build_widget_doc::<model::ColorInputDef>,
+        compile: compile_color_input_widget,
+    },
+    WidgetRegistryEntry {
+        doc: widget_doc(
+            "confirm_input",
+            WidgetCategory::Input,
+            "Confirmation input.",
+            "Confirms a yes/no choice in relaxed or strict mode.",
+            r#"type: confirm_input
+id: proceed
+label: Continue?"#,
+            static_hints::CONFIRM_STRICT_HINTS,
+        ),
+        build_doc: build_widget_doc::<model::ConfirmInputDef>,
+        compile: compile_confirm_input_widget,
+    },
+    WidgetRegistryEntry {
+        doc: widget_doc(
+            "checkbox",
+            WidgetCategory::Input,
+            "Checkbox input.",
+            "Single boolean checkbox control.",
+            r#"type: checkbox
+id: accept
+label: Accept terms"#,
+            &[],
+        ),
+        build_doc: build_widget_doc::<model::CheckboxDef>,
+        compile: compile_checkbox_widget,
+    },
+    WidgetRegistryEntry {
+        doc: widget_doc(
+            "calendar",
+            WidgetCategory::Component,
+            "Calendar component.",
+            "Interactive date, time or date-time picker.",
+            r#"type: calendar
+id: deploy_at
+label: Deploy at"#,
+            static_hints::CALENDAR_COMMON_HINTS,
+        ),
+        build_doc: build_widget_doc::<model::CalendarDef>,
+        compile: compile_calendar_widget,
+    },
+    WidgetRegistryEntry {
+        doc: widget_doc(
+            "textarea",
+            WidgetCategory::Component,
+            "Textarea component.",
+            "Multi-line text editor widget.",
+            r#"type: textarea
+id: notes
+min_height: 4"#,
+            static_hints::TEXTAREA_HINTS,
+        ),
+        build_doc: build_widget_doc::<model::TextareaDef>,
+        compile: compile_textarea_widget,
+    },
+    WidgetRegistryEntry {
+        doc: widget_doc(
+            "command_runner",
+            WidgetCategory::Component,
+            "Command runner.",
+            "Runs one or more shell commands inside the flow.",
+            r#"type: command_runner
+id: install
+label: Install dependencies
+commands:
+  - label: Cargo fetch
+    program: cargo
+    args: [fetch]"#,
+            static_hints::COMMAND_RUNNER_HINTS,
+        ),
+        build_doc: build_widget_doc::<model::CommandRunnerDef>,
+        compile: compile_command_runner_widget,
+    },
+    WidgetRegistryEntry {
+        doc: widget_doc(
+            "file_browser",
+            WidgetCategory::Component,
+            "File browser component.",
+            "Interactive file or directory browser with optional completion.",
+            r#"type: file_browser
+id: project_dir
+label: Select project directory"#,
+            static_hints::FILE_BROWSER_DOC_HINTS,
+        ),
+        build_doc: build_widget_doc::<model::FileBrowserDef>,
+        compile: compile_file_browser_widget,
+    },
+    WidgetRegistryEntry {
+        doc: widget_doc(
+            "tree_view",
+            WidgetCategory::Component,
+            "Tree view component.",
+            "Interactive hierarchical tree selector.",
+            r#"type: tree_view
+id: modules
+label: Modules
+nodes:
+  - item: core
+    depth: 0
+    has_children: true"#,
+            static_hints::TREE_VIEW_DOC_HINTS,
+        ),
+        build_doc: build_widget_doc::<model::TreeViewDef>,
+        compile: compile_tree_view_widget,
+    },
+    WidgetRegistryEntry {
+        doc: widget_doc(
+            "object_editor",
+            WidgetCategory::Component,
+            "Object editor.",
+            "Structured editor for object-like values.",
+            r#"type: object_editor
+id: payload
+label: Payload"#,
+            static_hints::OBJECT_EDITOR_DOC_HINTS,
+        ),
+        build_doc: build_widget_doc::<model::ObjectEditorDef>,
+        compile: compile_object_editor_widget,
+    },
+    WidgetRegistryEntry {
+        doc: widget_doc(
+            "snippet",
+            WidgetCategory::Component,
+            "Snippet component.",
+            "Builds a snippet from nested interactive inputs.",
+            r#"type: snippet
+id: export_cmd
+label: Export command
+template: \"export NAME={{name}}\""#,
+            static_hints::SNIPPET_HINTS,
+        ),
+        build_doc: build_widget_doc::<model::SnippetDef>,
+        compile: compile_snippet_widget,
+    },
+    WidgetRegistryEntry {
+        doc: widget_doc(
+            "table",
+            WidgetCategory::Component,
+            "Editable table component.",
+            "Edits repeated rows using embedded widgets per column.",
+            r#"type: table
+id: envs
+label: Environments
+columns:
+  - header: Name
+    widget:
+      type: text_input"#,
+            static_hints::TABLE_DOC_HINTS,
+        ),
+        build_doc: build_widget_doc::<model::TableDef>,
+        compile: compile_table_widget,
+    },
+    WidgetRegistryEntry {
+        doc: widget_doc(
+            "repeater",
+            WidgetCategory::Component,
+            "Repeater component.",
+            "Edits repeated items using embedded widget fields.",
+            r#"type: repeater
+id: services
+label: Services
+fields:
+  - key: name
+    label: Name
+    widget:
+      type: text_input"#,
+            static_hints::REPEATER_HINTS,
+        ),
+        build_doc: build_widget_doc::<model::RepeaterDef>,
+        compile: compile_repeater_widget,
+    },
+];
+
+pub(super) fn widget_registry() -> &'static [WidgetRegistryEntry] {
+    WIDGET_REGISTRY
+}
+
+pub(super) fn embedded_widget_registry() -> &'static [embedded::EmbeddedWidgetRegistryEntry] {
+    embedded::embedded_widget_registry()
+}
+
+pub(super) fn walk_widgets(
+    widgets: &[WidgetDef],
+    visitor: &mut impl FnMut(&WidgetDef) -> Result<(), String>,
+) -> Result<(), String> {
+    for widget in widgets {
+        visitor(widget)?;
+        if let Some(children) = widget_children(widget) {
+            walk_widgets(children, visitor)?;
+        }
+    }
+    Ok(())
+}
+
+pub(super) fn widget_id(widget: &WidgetDef) -> &str {
+    match widget {
+        WidgetDef::TextOutput(def) => def.id.as_str(),
+        WidgetDef::UrlOutput(def) => def.id.as_str(),
+        WidgetDef::ThinkingOutput(def) => def.id.as_str(),
+        WidgetDef::ProgressOutput(def) => def.id.as_str(),
+        WidgetDef::ChartOutput(def) => def.id.as_str(),
+        WidgetDef::TableOutput(def) => def.id.as_str(),
+        WidgetDef::DiffOutput(def) => def.id.as_str(),
+        WidgetDef::TaskLogOutput(def) => def.id.as_str(),
+        WidgetDef::TextInput(def) => def.id.as_str(),
+        WidgetDef::ArrayInput(def) => def.id.as_str(),
+        WidgetDef::ButtonInput(def) => def.id.as_str(),
+        WidgetDef::Select(def) => def.id.as_str(),
+        WidgetDef::ChoiceInput(def) => def.id.as_str(),
+        WidgetDef::SelectList(def) => def.id.as_str(),
+        WidgetDef::MaskedInput(def) => def.id.as_str(),
+        WidgetDef::Slider(def) => def.id.as_str(),
+        WidgetDef::ColorInput(def) => def.id.as_str(),
+        WidgetDef::ConfirmInput(def) => def.id.as_str(),
+        WidgetDef::Checkbox(def) => def.id.as_str(),
+        WidgetDef::Calendar(def) => def.id.as_str(),
+        WidgetDef::Textarea(def) => def.id.as_str(),
+        WidgetDef::CommandRunner(def) => def.id.as_str(),
+        WidgetDef::FileBrowser(def) => def.id.as_str(),
+        WidgetDef::TreeView(def) => def.id.as_str(),
+        WidgetDef::ObjectEditor(def) => def.id.as_str(),
+        WidgetDef::Snippet(def) => def.id.as_str(),
+        WidgetDef::Table(def) => def.id.as_str(),
+        WidgetDef::Repeater(def) => def.id.as_str(),
+    }
+}
+
+pub(super) fn visit_widget_submit_targets(
+    widget: &WidgetDef,
+    visitor: &mut impl FnMut(&str) -> Result<(), String>,
+) -> Result<(), String> {
+    match widget_submit_target(widget) {
+        Some(target) => visitor(target),
+        None => Ok(()),
+    }
+}
+
+pub(super) fn visit_widget_change_targets(
+    widget: &WidgetDef,
+    visitor: &mut impl FnMut(&str) -> Result<(), String>,
+) -> Result<(), String> {
+    for target in widget_change_targets(widget) {
+        visitor(target.as_str())?;
+    }
+    Ok(())
+}
+
+pub(super) fn visit_widget_inline_task_ids(
+    widget: &WidgetDef,
+    visitor: &mut impl FnMut(String) -> Result<(), String>,
+) -> Result<(), String> {
+    match widget {
+        WidgetDef::CommandRunner(def) => {
+            for (index, _) in def.commands.iter().enumerate() {
+                visitor(format!("{}::command::{index}", def.id))?;
+            }
+            Ok(())
+        }
+        _ => Ok(()),
+    }
+}
+
+pub(super) fn visit_widget_task_references(
+    widget: &WidgetDef,
+    visitor: &mut impl FnMut(&str) -> Result<(), String>,
+) -> Result<(), String> {
+    match widget {
+        WidgetDef::TaskLogOutput(def) => {
+            for step in &def.steps {
+                visitor(step.task_id.as_str())?;
+            }
+            Ok(())
+        }
+        WidgetDef::ButtonInput(def) => match &def.task_id {
+            Some(task_id) => visitor(task_id.as_str()),
+            None => Ok(()),
+        },
+        _ => Ok(()),
+    }
+}
 
 pub(super) fn compile_widget(def: WidgetDef) -> Result<Node, String> {
+    (widget_entry(&def).compile)(def)
+}
+
+fn widget_entry(def: &WidgetDef) -> &'static WidgetRegistryEntry {
     match def {
-        WidgetDef::TextOutput(super::model::TextOutputDef { id, text }) => {
+        WidgetDef::TextOutput(_) => &WIDGET_REGISTRY[0],
+        WidgetDef::UrlOutput(_) => &WIDGET_REGISTRY[1],
+        WidgetDef::ThinkingOutput(_) => &WIDGET_REGISTRY[2],
+        WidgetDef::ProgressOutput(_) => &WIDGET_REGISTRY[3],
+        WidgetDef::ChartOutput(_) => &WIDGET_REGISTRY[4],
+        WidgetDef::TableOutput(_) => &WIDGET_REGISTRY[5],
+        WidgetDef::DiffOutput(_) => &WIDGET_REGISTRY[6],
+        WidgetDef::TaskLogOutput(_) => &WIDGET_REGISTRY[7],
+        WidgetDef::TextInput(_) => &WIDGET_REGISTRY[8],
+        WidgetDef::ArrayInput(_) => &WIDGET_REGISTRY[9],
+        WidgetDef::ButtonInput(_) => &WIDGET_REGISTRY[10],
+        WidgetDef::Select(_) => &WIDGET_REGISTRY[11],
+        WidgetDef::ChoiceInput(_) => &WIDGET_REGISTRY[12],
+        WidgetDef::SelectList(_) => &WIDGET_REGISTRY[13],
+        WidgetDef::MaskedInput(_) => &WIDGET_REGISTRY[14],
+        WidgetDef::Slider(_) => &WIDGET_REGISTRY[15],
+        WidgetDef::ColorInput(_) => &WIDGET_REGISTRY[16],
+        WidgetDef::ConfirmInput(_) => &WIDGET_REGISTRY[17],
+        WidgetDef::Checkbox(_) => &WIDGET_REGISTRY[18],
+        WidgetDef::Calendar(_) => &WIDGET_REGISTRY[19],
+        WidgetDef::Textarea(_) => &WIDGET_REGISTRY[20],
+        WidgetDef::CommandRunner(_) => &WIDGET_REGISTRY[21],
+        WidgetDef::FileBrowser(_) => &WIDGET_REGISTRY[22],
+        WidgetDef::TreeView(_) => &WIDGET_REGISTRY[23],
+        WidgetDef::ObjectEditor(_) => &WIDGET_REGISTRY[24],
+        WidgetDef::Snippet(_) => &WIDGET_REGISTRY[25],
+        WidgetDef::Table(_) => &WIDGET_REGISTRY[26],
+        WidgetDef::Repeater(_) => &WIDGET_REGISTRY[27],
+    }
+}
+
+fn widget_children(widget: &WidgetDef) -> Option<&[WidgetDef]> {
+    match widget {
+        WidgetDef::Snippet(def) => Some(def.inputs.as_slice()),
+        _ => None,
+    }
+}
+
+fn widget_submit_target(widget: &WidgetDef) -> Option<&str> {
+    match widget {
+        WidgetDef::TextInput(def) => def.submit_target.as_deref(),
+        WidgetDef::Select(def) => def.submit_target.as_deref(),
+        WidgetDef::ChoiceInput(def) => def.submit_target.as_deref(),
+        WidgetDef::SelectList(def) => def.submit_target.as_deref(),
+        WidgetDef::MaskedInput(def) => def.submit_target.as_deref(),
+        WidgetDef::ColorInput(def) => def.submit_target.as_deref(),
+        WidgetDef::Calendar(def) => def.submit_target.as_deref(),
+        WidgetDef::FileBrowser(def) => def.submit_target.as_deref(),
+        WidgetDef::TreeView(def) => def.submit_target.as_deref(),
+        WidgetDef::ObjectEditor(def) => def.submit_target.as_deref(),
+        WidgetDef::Snippet(def) => def.submit_target.as_deref(),
+        WidgetDef::Repeater(def) => def.submit_target.as_deref(),
+        _ => None,
+    }
+}
+
+fn widget_change_targets(widget: &WidgetDef) -> &[String] {
+    match widget {
+        WidgetDef::TextInput(def) => def.change_targets.as_slice(),
+        WidgetDef::Slider(def) => def.change_targets.as_slice(),
+        _ => &[],
+    }
+}
+
+fn compile_text_output_widget(def: WidgetDef) -> Result<Node, String> {
+    match def {
+        WidgetDef::TextOutput(model::TextOutputDef { id, text }) => {
             Ok(outputs::compile_text_output(id, text))
         }
-        WidgetDef::UrlOutput(super::model::UrlOutputDef { id, url, name }) => {
+        _ => unreachable!("widget registry dispatch mismatch: text_output"),
+    }
+}
+
+fn compile_url_output_widget(def: WidgetDef) -> Result<Node, String> {
+    match def {
+        WidgetDef::UrlOutput(model::UrlOutputDef { id, url, name }) => {
             outputs::compile_url_output(id, url, name)
         }
-        WidgetDef::ThinkingOutput(super::model::ThinkingOutputDef {
+        _ => unreachable!("widget registry dispatch mismatch: url_output"),
+    }
+}
+
+fn compile_thinking_output_widget(def: WidgetDef) -> Result<Node, String> {
+    match def {
+        WidgetDef::ThinkingOutput(model::ThinkingOutputDef {
             id,
             label,
             text,
@@ -27,7 +672,13 @@ pub(super) fn compile_widget(def: WidgetDef) -> Result<Node, String> {
         }) => outputs::compile_thinking_output(
             id, label, text, mode, tail_len, tick_ms, base_rgb, peak_rgb,
         ),
-        WidgetDef::ProgressOutput(super::model::ProgressOutputDef {
+        _ => unreachable!("widget registry dispatch mismatch: thinking_output"),
+    }
+}
+
+fn compile_progress_output_widget(def: WidgetDef) -> Result<Node, String> {
+    match def {
+        WidgetDef::ProgressOutput(model::ProgressOutputDef {
             id,
             label,
             min,
@@ -39,7 +690,13 @@ pub(super) fn compile_widget(def: WidgetDef) -> Result<Node, String> {
         }) => outputs::compile_progress_output(
             id, label, min, max, unit, bar_width, style, transition,
         ),
-        WidgetDef::ChartOutput(super::model::ChartOutputDef {
+        _ => unreachable!("widget registry dispatch mismatch: progress_output"),
+    }
+}
+
+fn compile_chart_output_widget(def: WidgetDef) -> Result<Node, String> {
+    match def {
+        WidgetDef::ChartOutput(model::ChartOutputDef {
             id,
             label,
             mode,
@@ -49,27 +706,51 @@ pub(super) fn compile_widget(def: WidgetDef) -> Result<Node, String> {
             unit,
             gradient,
         }) => outputs::compile_chart_output(id, label, mode, capacity, min, max, unit, gradient),
-        WidgetDef::TableOutput(super::model::TableOutputDef {
+        _ => unreachable!("widget registry dispatch mismatch: chart_output"),
+    }
+}
+
+fn compile_table_output_widget(def: WidgetDef) -> Result<Node, String> {
+    match def {
+        WidgetDef::TableOutput(model::TableOutputDef {
             id,
             label,
             style,
             headers,
             rows,
         }) => outputs::compile_table_output(id, label, style, headers, rows),
-        WidgetDef::DiffOutput(super::model::DiffOutputDef {
+        _ => unreachable!("widget registry dispatch mismatch: table_output"),
+    }
+}
+
+fn compile_diff_output_widget(def: WidgetDef) -> Result<Node, String> {
+    match def {
+        WidgetDef::DiffOutput(model::DiffOutputDef {
             id,
             label,
             old,
             new,
             max_visible,
         }) => outputs::compile_diff_output(id, label, old, new, max_visible),
-        WidgetDef::TaskLogOutput(super::model::TaskLogOutputDef {
+        _ => unreachable!("widget registry dispatch mismatch: diff_output"),
+    }
+}
+
+fn compile_task_log_output_widget(def: WidgetDef) -> Result<Node, String> {
+    match def {
+        WidgetDef::TaskLogOutput(model::TaskLogOutputDef {
             id,
             visible_lines,
             spinner_style,
             steps,
         }) => outputs::compile_task_log_output(id, visible_lines, spinner_style, steps),
-        WidgetDef::TextInput(super::model::TextInputDef {
+        _ => unreachable!("widget registry dispatch mismatch: task_log_output"),
+    }
+}
+
+fn compile_text_input_widget(def: WidgetDef) -> Result<Node, String> {
+    match def {
+        WidgetDef::TextInput(model::TextInputDef {
             id,
             label,
             placeholder,
@@ -92,20 +773,38 @@ pub(super) fn compile_widget(def: WidgetDef) -> Result<Node, String> {
             submit_target,
             change_targets,
         ),
-        WidgetDef::ArrayInput(super::model::ArrayInputDef {
+        _ => unreachable!("widget registry dispatch mismatch: text_input"),
+    }
+}
+
+fn compile_array_input_widget(def: WidgetDef) -> Result<Node, String> {
+    match def {
+        WidgetDef::ArrayInput(model::ArrayInputDef {
             id,
             label,
             items,
             required,
             validators,
         }) => inputs::compile_array_input(id, label, items, required, validators),
-        WidgetDef::ButtonInput(super::model::ButtonInputDef {
+        _ => unreachable!("widget registry dispatch mismatch: array_input"),
+    }
+}
+
+fn compile_button_input_widget(def: WidgetDef) -> Result<Node, String> {
+    match def {
+        WidgetDef::ButtonInput(model::ButtonInputDef {
             id,
             label,
             text,
             task_id,
         }) => inputs::compile_button_input(id, label, text, task_id),
-        WidgetDef::Select(super::model::SelectDef {
+        _ => unreachable!("widget registry dispatch mismatch: button_input"),
+    }
+}
+
+fn compile_select_widget(def: WidgetDef) -> Result<Node, String> {
+    match def {
+        WidgetDef::Select(model::SelectDef {
             id,
             label,
             options,
@@ -124,7 +823,13 @@ pub(super) fn compile_widget(def: WidgetDef) -> Result<Node, String> {
             validators,
             submit_target,
         ),
-        WidgetDef::ChoiceInput(super::model::ChoiceInputDef {
+        _ => unreachable!("widget registry dispatch mismatch: select"),
+    }
+}
+
+fn compile_choice_input_widget(def: WidgetDef) -> Result<Node, String> {
+    match def {
+        WidgetDef::ChoiceInput(model::ChoiceInputDef {
             id,
             label,
             options,
@@ -143,7 +848,13 @@ pub(super) fn compile_widget(def: WidgetDef) -> Result<Node, String> {
             validators,
             submit_target,
         ),
-        WidgetDef::SelectList(super::model::SelectListDef {
+        _ => unreachable!("widget registry dispatch mismatch: choice_input"),
+    }
+}
+
+fn compile_select_list_widget(def: WidgetDef) -> Result<Node, String> {
+    match def {
+        WidgetDef::SelectList(model::SelectListDef {
             id,
             label,
             options,
@@ -162,7 +873,13 @@ pub(super) fn compile_widget(def: WidgetDef) -> Result<Node, String> {
             show_label,
             submit_target,
         ),
-        WidgetDef::MaskedInput(super::model::MaskedInputDef {
+        _ => unreachable!("widget registry dispatch mismatch: select_list"),
+    }
+}
+
+fn compile_masked_input_widget(def: WidgetDef) -> Result<Node, String> {
+    match def {
+        WidgetDef::MaskedInput(model::MaskedInputDef {
             id,
             label,
             mask,
@@ -179,7 +896,13 @@ pub(super) fn compile_widget(def: WidgetDef) -> Result<Node, String> {
             validators,
             submit_target,
         ),
-        WidgetDef::Slider(super::model::SliderDef {
+        _ => unreachable!("widget registry dispatch mismatch: masked_input"),
+    }
+}
+
+fn compile_slider_widget(def: WidgetDef) -> Result<Node, String> {
+    match def {
+        WidgetDef::Slider(model::SliderDef {
             id,
             label,
             min,
@@ -204,7 +927,13 @@ pub(super) fn compile_widget(def: WidgetDef) -> Result<Node, String> {
             validators,
             change_targets,
         ),
-        WidgetDef::ColorInput(super::model::ColorInputDef {
+        _ => unreachable!("widget registry dispatch mismatch: slider"),
+    }
+}
+
+fn compile_color_input_widget(def: WidgetDef) -> Result<Node, String> {
+    match def {
+        WidgetDef::ColorInput(model::ColorInputDef {
             id,
             label,
             rgb,
@@ -212,7 +941,13 @@ pub(super) fn compile_widget(def: WidgetDef) -> Result<Node, String> {
             validators,
             submit_target,
         }) => inputs::compile_color_input(id, label, rgb, required, validators, submit_target),
-        WidgetDef::ConfirmInput(super::model::ConfirmInputDef {
+        _ => unreachable!("widget registry dispatch mismatch: color_input"),
+    }
+}
+
+fn compile_confirm_input_widget(def: WidgetDef) -> Result<Node, String> {
+    match def {
+        WidgetDef::ConfirmInput(model::ConfirmInputDef {
             id,
             label,
             mode,
@@ -220,14 +955,26 @@ pub(super) fn compile_widget(def: WidgetDef) -> Result<Node, String> {
             no_label,
             default,
         }) => inputs::compile_confirm_input(id, label, mode, yes_label, no_label, default),
-        WidgetDef::Checkbox(super::model::CheckboxDef {
+        _ => unreachable!("widget registry dispatch mismatch: confirm_input"),
+    }
+}
+
+fn compile_checkbox_widget(def: WidgetDef) -> Result<Node, String> {
+    match def {
+        WidgetDef::Checkbox(model::CheckboxDef {
             id,
             label,
             checked,
             required,
             validators,
         }) => inputs::compile_checkbox_input(id, label, checked, required, validators),
-        WidgetDef::Calendar(super::model::CalendarDef {
+        _ => unreachable!("widget registry dispatch mismatch: checkbox"),
+    }
+}
+
+fn compile_calendar_widget(def: WidgetDef) -> Result<Node, String> {
+    match def {
+        WidgetDef::Calendar(model::CalendarDef {
             id,
             label,
             mode,
@@ -235,7 +982,13 @@ pub(super) fn compile_widget(def: WidgetDef) -> Result<Node, String> {
             validators,
             submit_target,
         }) => components::compile_calendar(id, label, mode, required, validators, submit_target),
-        WidgetDef::Textarea(super::model::TextareaDef {
+        _ => unreachable!("widget registry dispatch mismatch: calendar"),
+    }
+}
+
+fn compile_textarea_widget(def: WidgetDef) -> Result<Node, String> {
+    match def {
+        WidgetDef::Textarea(model::TextareaDef {
             id,
             min_height,
             max_height,
@@ -245,7 +998,13 @@ pub(super) fn compile_widget(def: WidgetDef) -> Result<Node, String> {
         }) => {
             components::compile_textarea(id, min_height, max_height, default, required, validators)
         }
-        WidgetDef::CommandRunner(super::model::CommandRunnerDef {
+        _ => unreachable!("widget registry dispatch mismatch: textarea"),
+    }
+}
+
+fn compile_command_runner_widget(def: WidgetDef) -> Result<Node, String> {
+    match def {
+        WidgetDef::CommandRunner(model::CommandRunnerDef {
             id,
             label,
             run_mode,
@@ -266,7 +1025,13 @@ pub(super) fn compile_widget(def: WidgetDef) -> Result<Node, String> {
             timeout_ms,
             commands,
         ),
-        WidgetDef::FileBrowser(super::model::FileBrowserDef {
+        _ => unreachable!("widget registry dispatch mismatch: command_runner"),
+    }
+}
+
+fn compile_file_browser_widget(def: WidgetDef) -> Result<Node, String> {
+    match def {
+        WidgetDef::FileBrowser(model::FileBrowserDef {
             id,
             label,
             browser_mode,
@@ -293,7 +1058,13 @@ pub(super) fn compile_widget(def: WidgetDef) -> Result<Node, String> {
             required,
             validators,
         ),
-        WidgetDef::TreeView(super::model::TreeViewDef {
+        _ => unreachable!("widget registry dispatch mismatch: file_browser"),
+    }
+}
+
+fn compile_tree_view_widget(def: WidgetDef) -> Result<Node, String> {
+    match def {
+        WidgetDef::TreeView(model::TreeViewDef {
             id,
             label,
             nodes,
@@ -310,21 +1081,39 @@ pub(super) fn compile_widget(def: WidgetDef) -> Result<Node, String> {
             indent_guides,
             submit_target,
         ),
-        WidgetDef::ObjectEditor(super::model::ObjectEditorDef {
+        _ => unreachable!("widget registry dispatch mismatch: tree_view"),
+    }
+}
+
+fn compile_object_editor_widget(def: WidgetDef) -> Result<Node, String> {
+    match def {
+        WidgetDef::ObjectEditor(model::ObjectEditorDef {
             id,
             label,
             value,
             max_visible,
             submit_target,
         }) => components::compile_object_editor(id, label, value, max_visible, submit_target),
-        WidgetDef::Snippet(super::model::SnippetDef {
+        _ => unreachable!("widget registry dispatch mismatch: object_editor"),
+    }
+}
+
+fn compile_snippet_widget(def: WidgetDef) -> Result<Node, String> {
+    match def {
+        WidgetDef::Snippet(model::SnippetDef {
             id,
             label,
             template,
             inputs,
             submit_target,
         }) => components::compile_snippet(id, label, template, inputs, submit_target),
-        WidgetDef::Table(super::model::TableDef {
+        _ => unreachable!("widget registry dispatch mismatch: snippet"),
+    }
+}
+
+fn compile_table_widget(def: WidgetDef) -> Result<Node, String> {
+    match def {
+        WidgetDef::Table(model::TableDef {
             id,
             label,
             style,
@@ -332,7 +1121,13 @@ pub(super) fn compile_widget(def: WidgetDef) -> Result<Node, String> {
             initial_rows,
             columns,
         }) => components::compile_table(id, label, style, row_numbers, initial_rows, columns),
-        WidgetDef::Repeater(super::model::RepeaterDef {
+        _ => unreachable!("widget registry dispatch mismatch: table"),
+    }
+}
+
+fn compile_repeater_widget(def: WidgetDef) -> Result<Node, String> {
+    match def {
+        WidgetDef::Repeater(model::RepeaterDef {
             id,
             label,
             layout,
@@ -355,5 +1150,6 @@ pub(super) fn compile_widget(def: WidgetDef) -> Result<Node, String> {
             submit_target,
             fields,
         ),
+        _ => unreachable!("widget registry dispatch mismatch: repeater"),
     }
 }

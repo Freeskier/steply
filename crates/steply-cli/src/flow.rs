@@ -177,14 +177,15 @@ fn run_flow(flow_id: &str) -> Result<(), String> {
     }
 
     let yaml = serialize_flow_yaml(&draft)?;
-    let loaded = load_from_yaml_str(yaml.as_str())?;
+    let loaded = load_from_yaml_str(yaml.as_str()).map_err(|err| err.to_string())?;
+    let state = loaded.into_app_state().map_err(|err| err.to_string())?;
     let terminal = Terminal::new().map_err(|err| err.to_string())?;
     let render_mode = if draft.decorate {
         RenderMode::AltScreen
     } else {
         RenderMode::Inline
     };
-    let mut runtime = Runtime::new(loaded.into_app_state(), terminal)
+    let mut runtime = Runtime::new(state, terminal)
         .with_render_mode(render_mode)
         .with_renderer_config(RendererConfig {
             chrome_enabled: draft.decorate,

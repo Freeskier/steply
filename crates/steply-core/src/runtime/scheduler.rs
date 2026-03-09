@@ -2,6 +2,25 @@ use crate::runtime::event::AppEvent;
 use crate::time::{Duration, Instant};
 use std::collections::{HashMap, VecDeque};
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SchedulerLimits {
+    pub max_ready_events: usize,
+    pub max_delayed_tasks: usize,
+    pub max_versioned_keys: usize,
+    pub max_throttle_keys: usize,
+}
+
+impl Default for SchedulerLimits {
+    fn default() -> Self {
+        Self {
+            max_ready_events: 512,
+            max_delayed_tasks: 1024,
+            max_versioned_keys: 512,
+            max_throttle_keys: 512,
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub enum SchedulerCommand {
     EmitNow(AppEvent),
@@ -38,8 +57,8 @@ struct DelayedTask {
     event: AppEvent,
 }
 
-#[derive(Default)]
 pub struct Scheduler {
+    limits: SchedulerLimits,
     ready: VecDeque<AppEvent>,
     delayed: Vec<DelayedTask>,
     key_versions: HashMap<String, u64>,
@@ -48,25 +67,39 @@ pub struct Scheduler {
 
 impl Scheduler {
     pub fn new() -> Self {
-        Self::default()
+        Self::with_limits(SchedulerLimits::default())
+    }
+
+    pub fn with_limits(limits: SchedulerLimits) -> Self {
+        Self {
+            limits,
+            ready: VecDeque::new(),
+            delayed: Vec::new(),
+            key_versions: HashMap::new(),
+            throttle_until: HashMap::new(),
+        }
     }
 
     pub fn schedule(&mut self, command: SchedulerCommand, now: Instant) {
         match command {
             SchedulerCommand::EmitNow(event) => {
-                self.ready.push_back(event);
+                self.push_ready(event);
             }
             SchedulerCommand::EmitAfter { key, delay, event } => {
-                let version = *self.key_versions.entry(key.clone()).or_insert(0);
-                self.delayed.push(DelayedTask {
+                let Some(version) = self.current_or_insert_version(&key) else {
+                    return;
+                };
+                self.push_delayed(DelayedTask {
                     due_at: now + delay,
                     guard: Some(Guard { key, version }),
                     event,
                 });
             }
             SchedulerCommand::Debounce { key, delay, event } => {
-                let version = self.bump_version(&key);
-                self.delayed.push(DelayedTask {
+                let Some(version) = self.bump_version(&key) else {
+                    return;
+                };
+                self.push_delayed(DelayedTask {
                     due_at: now + delay,
                     guard: Some(Guard { key, version }),
                     event,
@@ -78,11 +111,16 @@ impl Scheduler {
                 {
                     return;
                 }
+                if !self.throttle_until.contains_key(&key)
+                    && self.throttle_until.len() >= self.limits.max_throttle_keys
+                {
+                    return;
+                }
                 self.throttle_until.insert(key, now + window);
-                self.ready.push_back(event);
+                self.push_ready(event);
             }
             SchedulerCommand::Cancel { key } => {
-                self.bump_version(&key);
+                let _ = self.bump_version(&key);
                 self.throttle_until.remove(&key);
             }
         }
@@ -94,7 +132,7 @@ impl Scheduler {
             if self.delayed[idx].due_at <= now {
                 let task = self.delayed.swap_remove(idx);
                 if self.task_is_valid(&task) {
-                    self.ready.push_back(task.event);
+                    self.push_ready(task.event);
                 }
             } else {
                 idx += 1;
@@ -125,9 +163,49 @@ impl Scheduler {
         current == guard.version
     }
 
-    fn bump_version(&mut self, key: &str) -> u64 {
+    fn bump_version(&mut self, key: &str) -> Option<u64> {
+        if !self.key_versions.contains_key(key)
+            && self.key_versions.len() >= self.limits.max_versioned_keys
+        {
+            return None;
+        }
         let entry = self.key_versions.entry(key.to_string()).or_insert(0);
         *entry = entry.saturating_add(1);
-        *entry
+        Some(*entry)
+    }
+
+    fn current_or_insert_version(&mut self, key: &str) -> Option<u64> {
+        if !self.key_versions.contains_key(key)
+            && self.key_versions.len() >= self.limits.max_versioned_keys
+        {
+            return None;
+        }
+        Some(*self.key_versions.entry(key.to_string()).or_insert(0))
+    }
+
+    fn push_ready(&mut self, event: AppEvent) {
+        if self.ready.len() >= self.limits.max_ready_events {
+            let _ = self.ready.pop_front();
+        }
+        self.ready.push_back(event);
+    }
+
+    fn push_delayed(&mut self, task: DelayedTask) {
+        if self.delayed.len() >= self.limits.max_delayed_tasks
+            && let Some((index, _)) = self
+                .delayed
+                .iter()
+                .enumerate()
+                .min_by_key(|(_, task)| task.due_at)
+        {
+            let _ = self.delayed.swap_remove(index);
+        }
+        self.delayed.push(task);
+    }
+}
+
+impl Default for Scheduler {
+    fn default() -> Self {
+        Self::new()
     }
 }

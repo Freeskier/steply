@@ -28,9 +28,10 @@ pub fn run_prompt(invocation: PromptInvocation) -> Result<PromptExit, String> {
     });
 
     let yaml = build_prompt_yaml(&invocation)?;
-    let loaded = load_from_yaml_str(yaml.as_str())?;
+    let loaded = load_from_yaml_str(yaml.as_str()).map_err(|err| err.to_string())?;
+    let state = loaded.into_app_state().map_err(|err| err.to_string())?;
     let terminal = Terminal::new_stderr().map_err(|err| err.to_string())?;
-    let mut runtime = Runtime::new(loaded.into_app_state(), terminal)
+    let mut runtime = Runtime::new(state, terminal)
         .with_render_mode(RenderMode::Inline)
         .with_renderer_config(RendererConfig {
             chrome_enabled: false,

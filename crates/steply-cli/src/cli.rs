@@ -186,8 +186,8 @@ fn add_run_args(command: Command) -> Command {
         .arg(
             Arg::new("config")
                 .long("config")
-                .value_name("PATH")
-                .help("Path to YAML config. Use '-' to read YAML from stdin."),
+                .value_name("PATH_OR_URL")
+                .help("YAML config path, http(s) URL, or '-' to read YAML from stdin."),
         )
         .arg(
             Arg::new("render_json")
@@ -290,7 +290,7 @@ fn build_widget_arg(field: &FieldDoc) -> Arg {
 }
 
 fn parse_run_options(matches: &ArgMatches) -> Result<StartOptions, clap::Error> {
-    let config_path = matches.get_one::<String>("config").map(PathBuf::from);
+    let config_path = matches.get_one::<String>("config").cloned();
     let render_json = if matches.get_flag("render_json") {
         Some(
             RenderJsonRequest::from_named_parts(

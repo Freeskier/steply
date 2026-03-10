@@ -19,16 +19,21 @@ impl Terminal {
 
     fn enter_altscreen(&mut self) -> io::Result<()> {
         terminal::enable_raw_mode()?;
+        execute!(self.stdout, EnterAlternateScreen, EnableMouseCapture, Hide)?;
+        self.keyboard_enhancements_active = false;
         if keyboard_enhancements_enabled() {
-            execute!(
-                self.stdout,
-                EnterAlternateScreen,
-                EnableMouseCapture,
-                PushKeyboardEnhancementFlags(keyboard_enhancement_flags()),
-                Hide
-            )?;
-        } else {
-            execute!(self.stdout, EnterAlternateScreen, EnableMouseCapture, Hide)?;
+            self.keyboard_enhancements_active =
+                self.try_push_keyboard_enhancements().map_err(|err| {
+                    let _ = terminal::disable_raw_mode();
+                    let _ = execute!(
+                        self.stdout,
+                        DisableMouseCapture,
+                        LeaveAlternateScreen,
+                        EnableLineWrap,
+                        Show
+                    );
+                    err
+                })?;
         }
         Ok(())
     }
@@ -44,40 +49,32 @@ impl Terminal {
         inline.last_cursor_row = 0;
         inline.last_skip = 0;
         terminal::enable_raw_mode()?;
-
+        execute!(self.stdout, DisableLineWrap, Hide)?;
+        self.keyboard_enhancements_active = false;
         if keyboard_enhancements_enabled() {
-            execute!(
-                self.stdout,
-                DisableLineWrap,
-                PushKeyboardEnhancementFlags(keyboard_enhancement_flags()),
-                Hide
-            )?;
-        } else {
-            execute!(self.stdout, DisableLineWrap, Hide)?;
+            self.keyboard_enhancements_active =
+                self.try_push_keyboard_enhancements().map_err(|err| {
+                    let _ = terminal::disable_raw_mode();
+                    let _ = execute!(self.stdout, EnableLineWrap, Show);
+                    err
+                })?;
         }
         Ok(())
     }
 
     fn exit_altscreen(&mut self) -> io::Result<()> {
         terminal::disable_raw_mode()?;
-        if keyboard_enhancements_enabled() {
-            execute!(
-                self.stdout,
-                DisableMouseCapture,
-                PopKeyboardEnhancementFlags,
-                LeaveAlternateScreen,
-                EnableLineWrap,
-                Show
-            )?;
-        } else {
-            execute!(
-                self.stdout,
-                DisableMouseCapture,
-                LeaveAlternateScreen,
-                EnableLineWrap,
-                Show
-            )?;
+        if self.keyboard_enhancements_active {
+            self.try_pop_keyboard_enhancements()?;
+            self.keyboard_enhancements_active = false;
         }
+        execute!(
+            self.stdout,
+            DisableMouseCapture,
+            LeaveAlternateScreen,
+            EnableLineWrap,
+            Show
+        )?;
 
         if let Some(alt) = &self.alt_screen {
             let last_frame = alt.last_frame.clone();
@@ -104,19 +101,43 @@ impl Terminal {
         };
 
         queue!(self.stdout, MoveTo(0, last_row))?;
-        if keyboard_enhancements_enabled() {
-            execute!(
-                self.stdout,
-                PopKeyboardEnhancementFlags,
-                EnableLineWrap,
-                Show
-            )?;
-        } else {
-            execute!(self.stdout, EnableLineWrap, Show)?;
+        if self.keyboard_enhancements_active {
+            self.try_pop_keyboard_enhancements()?;
+            self.keyboard_enhancements_active = false;
         }
+        execute!(self.stdout, EnableLineWrap, Show)?;
         terminal::disable_raw_mode()?;
         self.stdout.write_all(b"\r\n")?;
         self.stdout.flush()?;
         Ok(())
     }
+
+    fn try_push_keyboard_enhancements(&mut self) -> io::Result<bool> {
+        match execute!(
+            self.stdout,
+            PushKeyboardEnhancementFlags(keyboard_enhancement_flags())
+        ) {
+            Ok(()) => Ok(true),
+            Err(err) if is_legacy_windows_keyboard_enhancement_error(&err) => Ok(false),
+            Err(err) => Err(err),
+        }
+    }
+
+    fn try_pop_keyboard_enhancements(&mut self) -> io::Result<()> {
+        match execute!(self.stdout, PopKeyboardEnhancementFlags) {
+            Ok(()) => Ok(()),
+            Err(err) if is_legacy_windows_keyboard_enhancement_error(&err) => Ok(()),
+            Err(err) => Err(err),
+        }
+    }
+}
+
+fn is_legacy_windows_keyboard_enhancement_error(err: &io::Error) -> bool {
+    if err.kind() == io::ErrorKind::Unsupported {
+        return true;
+    }
+    let text = err.to_string().to_ascii_lowercase();
+    text.contains("legacy windows api")
+        || text.contains("keyboard progressive enhancement")
+        || text.contains("not implemented")
 }

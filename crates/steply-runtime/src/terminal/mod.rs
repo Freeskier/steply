@@ -179,6 +179,7 @@ pub struct Terminal {
     stdout: TerminalWriter,
     state: TerminalState,
     mode: RenderMode,
+    keyboard_enhancements_active: bool,
     alt_screen: Option<AltScreenState>,
     inline_state: Option<InlineState>,
 }
@@ -202,6 +203,7 @@ impl Terminal {
                 cursor_visible: false,
             },
             mode: RenderMode::default(),
+            keyboard_enhancements_active: false,
             alt_screen: Some(AltScreenState::new()),
             inline_state: None,
         })

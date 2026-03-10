@@ -14,7 +14,7 @@ function Test-IsWindows {
 }
 
 if (-not (Test-IsWindows)) {
-  throw "install.ps1 is intended for Windows. Use install.sh on Unix systems."
+  throw "install.ps1 is intended for Windows. Use /install on Unix systems."
 }
 
 $InstallDir = if ($env:STEPLY_BINDIR) {

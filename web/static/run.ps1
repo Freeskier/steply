@@ -14,7 +14,7 @@ function Test-IsWindows {
 }
 
 if (-not (Test-IsWindows)) {
-  throw "run.ps1 is intended for Windows. Use run.sh on Unix systems."
+  throw "run.ps1 is intended for Windows. Use /run on Unix systems."
 }
 
 $Asset = "steply-x86_64-pc-windows-msvc.zip"

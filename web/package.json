@@ -4,14 +4,15 @@
 	"version": "0.0.1",
 	"type": "module",
 	"scripts": {
-		"dev": "bun ./scripts/build-assets.mjs && vite dev",
-		"build": "bun ./scripts/build-assets.mjs && vite build",
-		"build:assets": "bun ./scripts/build-assets.mjs",
+		"dev": "vite dev",
+		"build": "vite build",
 		"preview": "vite preview",
-		"wasm:build": "bun run build:assets",
+		"wasm:build": "bun -e \"import { spawnSync } from 'node:child_process'; import { resolve } from 'node:path'; import { rmSync } from 'node:fs'; const outDir = resolve('src/lib/steply-wasm/pkg'); const result = spawnSync('wasm-pack', ['build', '../crates/steply-wasm', '--target', 'web', '--out-dir', outDir, '--out-name', 'steply_wasm'], { stdio: 'inherit' }); if ((result.status ?? 1) !== 0) process.exit(result.status ?? 1); rmSync(resolve(outDir, '.gitignore'), { force: true });\"",
+		"dev:full": "bun run wasm:build && bun run dev",
+		"build:full": "bun run wasm:build && bun run build",
 		"prepare": "svelte-kit sync || echo ''",
-		"check": "bun ./scripts/build-assets.mjs && svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
-		"check:watch": "bun ./scripts/build-assets.mjs && svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch"
+		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
+		"check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch"
 	},
 	"devDependencies": {
 		"@sveltejs/adapter-cloudflare": "^7.2.0",

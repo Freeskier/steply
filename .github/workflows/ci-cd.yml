@@ -1,0 +1,168 @@
+name: CI/CD
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+    tags:
+      - "v*"
+
+jobs:
+  build-cli:
+    name: Build CLI (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            binary_name: steply
+            archive_name: steply-x86_64-unknown-linux-gnu.tar.gz
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            binary_name: steply.exe
+            archive_name: steply-x86_64-pc-windows-msvc.zip
+          - os: macos-13
+            target: x86_64-apple-darwin
+            binary_name: steply
+            archive_name: steply-x86_64-apple-darwin.tar.gz
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build steply binary
+        run: cargo build --release -p steply-cli --target ${{ matrix.target }}
+
+      - name: Package binary (unix)
+        if: runner.os != 'Windows'
+        run: |
+          mkdir -p dist
+          cp target/${{ matrix.target }}/release/${{ matrix.binary_name }} dist/steply
+          tar -C dist -czf dist/${{ matrix.archive_name }} steply
+
+      - name: Package binary (windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path dist -Force | Out-Null
+          Copy-Item "target/${{ matrix.target }}/release/${{ matrix.binary_name }}" "dist/steply.exe"
+          Compress-Archive -Path "dist/steply.exe" -DestinationPath "dist/${{ matrix.archive_name }}" -Force
+
+      - name: Upload CLI artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: cli-${{ matrix.target }}
+          path: dist/${{ matrix.archive_name }}
+          if-no-files-found: error
+
+  build-wasm:
+    name: Build WASM package
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install wasm-pack
+        run: cargo install wasm-pack --version 0.13.1 --locked
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.2.15
+
+      - name: Install web dependencies
+        working-directory: web
+        run: bun install --frozen-lockfile
+
+      - name: Build web WASM assets
+        working-directory: web
+        run: bun run wasm:build
+
+      - name: Upload WASM artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-wasm-pkg
+          path: web/src/lib/steply-wasm/pkg
+          if-no-files-found: error
+
+  deploy-cloudflare:
+    name: Deploy Cloudflare Worker
+    runs-on: ubuntu-latest
+    needs: [build-wasm]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    concurrency:
+      group: cloudflare-prod
+      cancel-in-progress: true
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.2.15
+
+      - name: Download WASM artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: web-wasm-pkg
+          path: web/src/lib/steply-wasm/pkg
+
+      - name: Install web dependencies
+        working-directory: web
+        run: bun install --frozen-lockfile
+
+      - name: Build web app (reuse prebuilt WASM)
+        working-directory: web
+        run: bun run build
+
+      - name: Deploy to Cloudflare
+        working-directory: web
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: npx wrangler deploy --config wrangler.toml
+
+  release-cli:
+    name: Publish CLI release assets
+    runs-on: ubuntu-latest
+    needs: [build-cli]
+    if: startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download CLI artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: cli-*
+          path: dist
+          merge-multiple: true
+
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true

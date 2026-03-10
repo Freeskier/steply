@@ -1,0 +1,150 @@
+version: 1
+steps:
+  - id: watch
+    title: Incident radar
+    description: Build shared situational awareness before anyone starts guessing.
+    widgets:
+      - type: text_output
+        id: intro
+        text: "Frame the blast radius, inspect candidate files, and choose what deserves immediate attention."
+      - type: thinking_output
+        id: ambient
+        label: Correlating signals
+        text: Cross-checking alerts, commits, and operator notes...
+        mode: wave
+        tail_len: 8
+        tick_ms: 40
+        base_rgb: [42, 47, 58]
+        peak_rgb: [255, 197, 61]
+      - type: tree_view
+        id: fault_map
+        label: Fault map
+        indent_guides: true
+        max_visible: 8
+        nodes:
+          - item: edge
+            depth: 0
+            has_children: true
+            expanded: true
+          - item: edge/request-router
+            depth: 1
+            has_children: false
+          - item: edge/cache-warmers
+            depth: 1
+            has_children: false
+          - item: control-plane
+            depth: 0
+            has_children: true
+            expanded: true
+          - item: control-plane/release-orchestrator
+            depth: 1
+            has_children: false
+          - item: control-plane/session-provisioner
+            depth: 1
+            has_children: false
+          - item: data
+            depth: 0
+            has_children: true
+          - item: data/event-indexer
+            depth: 1
+            has_children: false
+      - type: file_browser
+        id: suspect_file
+        label: Suspect file
+        cwd: .
+        browser_mode: tree
+        recursive: true
+        hide_hidden: true
+        ext_filter: [rs, ts, svelte, yaml]
+      - type: select_list
+        id: incident_tags
+        label: Incident tags
+        mode: multi
+        max_visible: 6
+        options:
+          - value: rollback
+            title: Rollback candidate
+            description: Recent change likely introduced the regression.
+          - value: saturation
+            title: Capacity saturation
+            description: Latency or errors point to resource exhaustion.
+          - value: config-drift
+            title: Config drift
+            description: Environment mismatch is more likely than code.
+          - value: data-shape
+            title: Data shape mismatch
+            description: Payload or schema divergence is breaking assumptions.
+
+  - id: action
+    title: Action pack
+    description: Turn the diagnosis into a small, reviewable intervention.
+    widgets:
+      - type: command_runner
+        id: triage_pack
+        label: Triage command pack
+        visible_lines: 12
+        commands:
+          - label: Print current blast radius
+            program: bash
+            args:
+              - -lc
+              - |
+                echo "[triage] regions impacted: waw,fra"
+                echo "[triage] error class: 5xx spike on session start"
+                echo "[triage] canary cohort: 14%"
+          - label: Simulate rollback handshake
+            program: bash
+            args:
+              - -lc
+              - |
+                echo "[rollback] freezing new traffic"
+                echo "[rollback] shifting sessions to previous runtime"
+                echo "[rollback] waiting for drain confirmation"
+      - type: diff_output
+        id: release_diff
+        label: Runtime diff
+        old: |
+          image: registry.example/session-runtime:2.8.4
+          feature_flags:
+            streamed_boot: false
+            fast_resume: true
+          replicas: 6
+        new: |
+          image: registry.example/session-runtime:2.9.0
+          feature_flags:
+            streamed_boot: true
+            fast_resume: true
+          replicas: 8
+      - type: table_output
+        id: scoreboard
+        label: Operator scoreboard
+        headers: [Dimension, Current stance]
+        rows:
+          - [Primary move, controlled rollback]
+          - [Traffic policy, freeze new canaries]
+          - [Escalation room, session-runtime-war-room]
+          - [Success metric, p95 session start below 180ms]
+
+  - id: verdict
+    title: Operator verdict
+    description: Capture the decision and move with intent.
+    widgets:
+      - type: textarea
+        id: operator_note
+        min_height: 5
+        max_height: 9
+        default: |
+          Working theory:
+          - streamed boot changed startup sequence
+          - older payloads now trip a timeout path
+          - rollback buys time without widening blast radius
+      - type: confirm_input
+        id: approve_move
+        label: Approve the rollback move?
+        mode:
+          type: strict
+          word: rollback
+      - type: url_output
+        id: dashboard
+        name: Open incident dashboard
+        url: https://example.com/incidents/session-runtime

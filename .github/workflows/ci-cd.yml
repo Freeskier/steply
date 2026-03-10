@@ -103,6 +103,10 @@ jobs:
         working-directory: web
         run: bun install --frozen-lockfile
 
+      - name: Export web docs and schema
+        working-directory: web
+        run: bun run content:build
+
       - name: Build web WASM assets
         working-directory: web
         run: bun run wasm:build
@@ -112,6 +116,15 @@ jobs:
         with:
           name: web-wasm-pkg
           path: web/src/lib/steply-wasm/pkg
+          if-no-files-found: error
+
+      - name: Upload generated web content
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-generated-content
+          path: |
+            web/src/lib/generated/config.docs.json
+            web/static/schema/steply.schema.json
           if-no-files-found: error
 
   deploy-cloudflare:
@@ -137,6 +150,12 @@ jobs:
         with:
           name: web-wasm-pkg
           path: web/src/lib/steply-wasm/pkg
+
+      - name: Download generated web content
+        uses: actions/download-artifact@v4
+        with:
+          name: web-generated-content
+          path: web
 
       - name: Install web dependencies
         working-directory: web

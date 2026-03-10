@@ -36,13 +36,13 @@
 				id: "run-unix",
 				label: "Run",
 				platform: "Unix",
-				value: `curl -fsSL ${siteUrl("/run.sh")} | sh -s -- --config config.yml`,
+				value: `curl -fsSL ${siteUrl("/run")} | sh -s -- --config config.yml`,
 			},
 			{
 				id: "install-unix",
 				label: "Install",
 				platform: "Unix",
-				value: `curl -fsSL ${siteUrl("/install.sh")} | sh`,
+				value: `curl -fsSL ${siteUrl("/install")} | sh`,
 			},
 			{
 				id: "run-windows",

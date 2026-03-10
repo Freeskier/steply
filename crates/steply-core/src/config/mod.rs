@@ -52,7 +52,15 @@ pub fn load_from_yaml_str(raw: &str) -> Result<LoadedConfig, ConfigLoadError> {
 }
 
 pub fn config_schema_json() -> Result<String, String> {
-    let schema = schema_for!(ConfigDoc);
+    let mut schema = serde_json::to_value(schema_for!(ConfigDoc))
+        .map_err(|err| format!("failed to serialize config schema: {err}"))?;
+    let Some(root) = schema.as_object_mut() else {
+        return Err("failed to build config schema object".to_string());
+    };
+    root.insert(
+        "$id".to_string(),
+        serde_json::Value::String("https://steply.sh/schema/steply.schema.json".to_string()),
+    );
     serde_json::to_string_pretty(&schema)
         .map_err(|err| format!("failed to serialize config schema: {err}"))
 }

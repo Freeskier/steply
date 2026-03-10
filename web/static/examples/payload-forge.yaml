@@ -1,0 +1,102 @@
+version: 1
+steps:
+  - id: draft
+    title: Payload forge
+    description: Shape a structured payload and keep the executable command beside it.
+    widgets:
+      - type: object_editor
+        id: payload
+        label: Provisioning payload
+        max_visible: 12
+        value:
+          workspace_id: wk_2026_demo
+          owner:
+            name: Jordan Lee
+            team: platform-ux
+          rollout:
+            mode: staged
+            regions:
+              - waw
+              - fra
+          limits:
+            sessions: 250
+            preview_minutes: 45
+      - type: snippet
+        id: apply_cmd
+        label: Apply command
+        template: "curl -X POST {{base_url}}/v1/workspaces -H 'Authorization: Bearer {{token}}' -H 'X-Env: {{env}}'"
+        inputs:
+          - type: text_input
+            id: base_url
+            label: Base URL
+            default: https://api.example.com
+          - type: text_input
+            id: token
+            label: Token
+            default: $STEPLY_TOKEN
+          - type: select
+            id: env
+            label: Environment
+            options: [sandbox, staging, production]
+            default: staging
+
+  - id: review
+    title: Review
+    description: Compare the previous and proposed shape before it ships.
+    widgets:
+      - type: diff_output
+        id: payload_diff
+        label: Proposed delta
+        max_visible: 18
+        old: |
+          {
+            "rollout": {
+              "mode": "direct",
+              "regions": ["waw"]
+            },
+            "limits": {
+              "sessions": 100
+            }
+          }
+        new: |
+          {
+            "rollout": {
+              "mode": "staged",
+              "regions": ["waw", "fra"]
+            },
+            "limits": {
+              "sessions": 250,
+              "preview_minutes": 45
+            }
+          }
+      - type: table_output
+        id: checklist
+        label: Contract checklist
+        headers: [Question, Current answer]
+        rows:
+          - [Idempotent create, yes]
+          - [Rollback path, recreate previous payload]
+          - [Preview window, 45 minutes]
+          - [Operator visibility, deployment console]
+      - type: choice_input
+        id: decision
+        label: Decision
+        options: [ship_to_staging, hold_for_review, reject]
+
+  - id: export
+    title: Export package
+    description: Finish with links and explicit operator intent.
+    widgets:
+      - type: textarea
+        id: release_note
+        min_height: 5
+        max_height: 8
+      - type: url_output
+        id: api_docs
+        name: Open API handbook
+        url: https://example.com/docs/provisioning
+      - type: confirm_input
+        id: export_it
+        label: Export this payload package?
+        yes_label: Export
+        no_label: Hold

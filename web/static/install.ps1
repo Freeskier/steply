@@ -2,10 +2,27 @@ $ErrorActionPreference = "Stop"
 
 $Repo = "Freeskier/steply"
 $Version = if ($env:STEPLY_VERSION) { $env:STEPLY_VERSION } else { "latest" }
-$InstallDir = if ($env:STEPLY_BINDIR) { $env:STEPLY_BINDIR } else { Join-Path $HOME ".local\bin" }
 
-if (-not $IsWindows) {
+function Test-IsWindows {
+  if ($env:OS -eq "Windows_NT") {
+    return $true
+  }
+
+  return [System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform(
+    [System.Runtime.InteropServices.OSPlatform]::Windows
+  )
+}
+
+if (-not (Test-IsWindows)) {
   throw "install.ps1 is intended for Windows. Use install.sh on Unix systems."
+}
+
+$InstallDir = if ($env:STEPLY_BINDIR) {
+  $env:STEPLY_BINDIR
+} elseif ($env:LOCALAPPDATA) {
+  Join-Path $env:LOCALAPPDATA "Programs\steply\bin"
+} else {
+  Join-Path $HOME ".local\bin"
 }
 
 $Asset = "steply-x86_64-pc-windows-msvc.zip"

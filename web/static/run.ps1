@@ -3,7 +3,17 @@ $ErrorActionPreference = "Stop"
 $Repo = "Freeskier/steply"
 $Version = if ($env:STEPLY_VERSION) { $env:STEPLY_VERSION } else { "latest" }
 
-if (-not $IsWindows) {
+function Test-IsWindows {
+  if ($env:OS -eq "Windows_NT") {
+    return $true
+  }
+
+  return [System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform(
+    [System.Runtime.InteropServices.OSPlatform]::Windows
+  )
+}
+
+if (-not (Test-IsWindows)) {
   throw "run.ps1 is intended for Windows. Use run.sh on Unix systems."
 }
 

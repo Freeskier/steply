@@ -1,0 +1,2665 @@
+{
+  "$id": "https://steply.sh/schema/steply.schema.json",
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "definitions": {
+    "CommandRunnerCommandDef": {
+      "properties": {
+        "args": {
+          "default": [],
+          "description": "Program arguments.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "label": {
+          "description": "Visible command label.",
+          "type": "string"
+        },
+        "program": {
+          "description": "Executed program name.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "label",
+        "program"
+      ],
+      "type": "object"
+    },
+    "ConfirmModeDef": {
+      "oneOf": [
+        {
+          "properties": {
+            "type": {
+              "enum": [
+                "relaxed"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "type": {
+              "enum": [
+                "strict"
+              ],
+              "type": "string"
+            },
+            "word": {
+              "description": "Exact confirmation word required in strict mode.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "word"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "EmbeddedWidgetDef": {
+      "oneOf": [
+        {
+          "properties": {
+            "mode": {
+              "default": null,
+              "description": "Text display mode.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "placeholder": {
+              "default": null,
+              "description": "Placeholder text shown when the field is empty.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "type": {
+              "enum": [
+                "text_input"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "mask": {
+              "description": "Mask pattern.",
+              "type": "string"
+            },
+            "type": {
+              "enum": [
+                "masked_input"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "mask",
+            "type"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "options": {
+              "description": "Available option values.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "type": {
+              "enum": [
+                "select"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "options",
+            "type"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "max": {
+              "description": "Maximum value.",
+              "format": "int64",
+              "type": "integer"
+            },
+            "min": {
+              "description": "Minimum value.",
+              "format": "int64",
+              "type": "integer"
+            },
+            "step": {
+              "default": null,
+              "description": "Increment step.",
+              "format": "int64",
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "type": {
+              "enum": [
+                "slider"
+              ],
+              "type": "string"
+            },
+            "unit": {
+              "default": null,
+              "description": "Optional display unit.",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "max",
+            "min",
+            "type"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "checked": {
+              "default": null,
+              "description": "Initial checked state.",
+              "type": [
+                "boolean",
+                "null"
+              ]
+            },
+            "type": {
+              "enum": [
+                "checkbox"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "items": {
+              "default": [],
+              "description": "Initial string items.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "type": {
+              "enum": [
+                "array_input"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "FlowItemDef": {
+      "properties": {
+        "step": {
+          "type": "string"
+        },
+        "when": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/WhenDef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "step"
+      ],
+      "type": "object"
+    },
+    "NavigationDef": {
+      "oneOf": [
+        {
+          "properties": {
+            "type": {
+              "enum": [
+                "allowed"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "type": {
+              "enum": [
+                "locked"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "type": {
+              "enum": [
+                "reset"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "type": {
+              "enum": [
+                "destructive"
+              ],
+              "type": "string"
+            },
+            "warning": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "warning"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "OnInputTriggerDef": {
+      "properties": {
+        "debounce_ms": {
+          "default": null,
+          "format": "uint64",
+          "minimum": 0.0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "ref": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "ref"
+      ],
+      "type": "object"
+    },
+    "ProgressTransitionDef": {
+      "oneOf": [
+        {
+          "properties": {
+            "type": {
+              "enum": [
+                "immediate"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "duration_ms": {
+              "description": "Duration of the tween in milliseconds.",
+              "format": "uint64",
+              "minimum": 0.0,
+              "type": "integer"
+            },
+            "easing": {
+              "default": null,
+              "description": "Optional easing function name.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "type": {
+              "enum": [
+                "tween"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "duration_ms",
+            "type"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "RepeaterFieldDef": {
+      "properties": {
+        "key": {
+          "description": "Stable field key used in item values.",
+          "type": "string"
+        },
+        "label": {
+          "description": "Visible field label.",
+          "type": "string"
+        },
+        "widget": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/EmbeddedWidgetDef"
+            }
+          ],
+          "description": "Embedded widget used by the field."
+        }
+      },
+      "required": [
+        "key",
+        "label",
+        "widget"
+      ],
+      "type": "object"
+    },
+    "SelectListOptionDef": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "properties": {
+            "description": {
+              "description": "Detailed description shown in the list.",
+              "type": "string"
+            },
+            "title": {
+              "description": "Visible option title.",
+              "type": "string"
+            },
+            "value": {
+              "description": "Stored option value.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "description",
+            "title",
+            "value"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "StepDef": {
+      "properties": {
+        "description": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "id": {
+          "type": "string"
+        },
+        "navigation": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/NavigationDef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "title": {
+          "type": "string"
+        },
+        "when": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/WhenDef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "widgets": {
+          "items": {
+            "$ref": "#/definitions/WidgetDef"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "title"
+      ],
+      "type": "object"
+    },
+    "SubscriptionDef": {
+      "properties": {
+        "enabled": {
+          "default": null,
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "target": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "task": {
+          "type": "string"
+        },
+        "trigger": {
+          "$ref": "#/definitions/TriggerDef"
+        }
+      },
+      "required": [
+        "task",
+        "trigger"
+      ],
+      "type": "object"
+    },
+    "TableColumnDef": {
+      "properties": {
+        "header": {
+          "description": "Visible column header.",
+          "type": "string"
+        },
+        "widget": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/EmbeddedWidgetDef"
+            }
+          ],
+          "description": "Embedded widget used by the column."
+        }
+      },
+      "required": [
+        "header",
+        "widget"
+      ],
+      "type": "object"
+    },
+    "TaskDef": {
+      "properties": {
+        "args": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "enabled": {
+          "default": null,
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "id": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "parse": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "program": {
+          "type": "string"
+        },
+        "timeout_ms": {
+          "default": null,
+          "format": "uint64",
+          "minimum": 0.0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "program"
+      ],
+      "type": "object"
+    },
+    "TaskLogStepDef": {
+      "properties": {
+        "label": {
+          "description": "Visible step label.",
+          "type": "string"
+        },
+        "task_id": {
+          "description": "Referenced task id.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "label",
+        "task_id"
+      ],
+      "type": "object"
+    },
+    "TreeNodeDef": {
+      "properties": {
+        "depth": {
+          "description": "Indentation depth for the node.",
+          "format": "uint",
+          "minimum": 0.0,
+          "type": "integer"
+        },
+        "expanded": {
+          "default": null,
+          "description": "Whether the node starts expanded.",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "has_children": {
+          "description": "Whether the node has children.",
+          "type": "boolean"
+        },
+        "item": {
+          "description": "Rendered item label.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "depth",
+        "has_children",
+        "item"
+      ],
+      "type": "object"
+    },
+    "TriggerDef": {
+      "properties": {
+        "on_input": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/OnInputTriggerDef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "ValidatorDef": {
+      "oneOf": [
+        {
+          "properties": {
+            "message": {
+              "default": null,
+              "description": "Custom validation error message.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "type": {
+              "enum": [
+                "required"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "type": {
+              "enum": [
+                "min_length"
+              ],
+              "type": "string"
+            },
+            "value": {
+              "description": "Minimum text length.",
+              "format": "uint",
+              "minimum": 0.0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "type",
+            "value"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "type": {
+              "enum": [
+                "max_length"
+              ],
+              "type": "string"
+            },
+            "value": {
+              "description": "Maximum text length.",
+              "format": "uint",
+              "minimum": 0.0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "type",
+            "value"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "type": {
+              "enum": [
+                "min_selections"
+              ],
+              "type": "string"
+            },
+            "value": {
+              "description": "Minimum number of selected items.",
+              "format": "uint",
+              "minimum": 0.0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "type",
+            "value"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "type": {
+              "enum": [
+                "max_selections"
+              ],
+              "type": "string"
+            },
+            "value": {
+              "description": "Maximum number of selected items.",
+              "format": "uint",
+              "minimum": 0.0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "type",
+            "value"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "type": {
+              "enum": [
+                "must_be_checked"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "type": {
+              "enum": [
+                "min_value"
+              ],
+              "type": "string"
+            },
+            "value": {
+              "description": "Minimum numeric value.",
+              "format": "double",
+              "type": "number"
+            }
+          },
+          "required": [
+            "type",
+            "value"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "type": {
+              "enum": [
+                "max_value"
+              ],
+              "type": "string"
+            },
+            "value": {
+              "description": "Maximum numeric value.",
+              "format": "double",
+              "type": "number"
+            }
+          },
+          "required": [
+            "type",
+            "value"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "WhenDef": {
+      "properties": {
+        "all": {
+          "description": "All nested conditions that must match.",
+          "items": {
+            "$ref": "#/definitions/WhenDef"
+          },
+          "type": "array"
+        },
+        "any": {
+          "description": "Any nested condition that may match.",
+          "items": {
+            "$ref": "#/definitions/WhenDef"
+          },
+          "type": "array"
+        },
+        "equal": {
+          "default": null,
+          "description": "Value that must be equal to the referenced value."
+        },
+        "not": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/WhenDef"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Nested condition that must not match."
+        },
+        "not_empty": {
+          "default": null,
+          "description": "Whether the referenced value must be non-empty.",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "not_equal": {
+          "default": null,
+          "description": "Value that must differ from the referenced value."
+        },
+        "ref": {
+          "default": null,
+          "description": "Store selector used by the condition.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "WidgetDef": {
+      "oneOf": [
+        {
+          "properties": {
+            "id": {
+              "description": "Unique widget identifier within the step.",
+              "type": "string"
+            },
+            "text": {
+              "description": "Rendered text content.",
+              "type": "string"
+            },
+            "type": {
+              "enum": [
+                "text_output"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "text",
+            "type"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "id": {
+              "description": "Unique widget identifier within the step.",
+              "type": "string"
+            },
+            "name": {
+              "default": null,
+              "description": "Optional display label.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "type": {
+              "enum": [
+                "url_output"
+              ],
+              "type": "string"
+            },
+            "url": {
+              "description": "Target URL.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "type",
+            "url"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "base_rgb": {
+              "default": null,
+              "description": "Base RGB color for the animation gradient.",
+              "items": {
+                "format": "uint8",
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              "maxItems": 3,
+              "minItems": 3,
+              "type": [
+                "array",
+                "null"
+              ]
+            },
+            "id": {
+              "description": "Unique widget identifier within the step.",
+              "type": "string"
+            },
+            "label": {
+              "description": "Visible widget label.",
+              "type": "string"
+            },
+            "mode": {
+              "default": null,
+              "description": "Animation mode.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "peak_rgb": {
+              "default": null,
+              "description": "Peak RGB color for the animation gradient.",
+              "items": {
+                "format": "uint8",
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              "maxItems": 3,
+              "minItems": 3,
+              "type": [
+                "array",
+                "null"
+              ]
+            },
+            "tail_len": {
+              "default": null,
+              "description": "Length of the animation tail.",
+              "format": "uint",
+              "minimum": 0.0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "text": {
+              "description": "Base text content.",
+              "type": "string"
+            },
+            "tick_ms": {
+              "default": null,
+              "description": "Animation update interval in milliseconds.",
+              "format": "uint64",
+              "minimum": 0.0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "type": {
+              "enum": [
+                "thinking_output"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "label",
+            "text",
+            "type"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "bar_width": {
+              "default": null,
+              "description": "Explicit bar width.",
+              "format": "uint",
+              "minimum": 0.0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "id": {
+              "description": "Unique widget identifier within the step.",
+              "type": "string"
+            },
+            "label": {
+              "description": "Visible widget label.",
+              "type": "string"
+            },
+            "max": {
+              "default": null,
+              "description": "Maximum progress value.",
+              "format": "double",
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "min": {
+              "default": null,
+              "description": "Minimum progress value.",
+              "format": "double",
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "style": {
+              "default": null,
+              "description": "Progress rendering style.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "transition": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/ProgressTransitionDef"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Transition configuration for value changes."
+            },
+            "type": {
+              "enum": [
+                "progress_output"
+              ],
+              "type": "string"
+            },
+            "unit": {
+              "default": null,
+              "description": "Optional value suffix.",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "id",
+            "label",
+            "type"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "capacity": {
+              "default": null,
+              "description": "Maximum number of points retained.",
+              "format": "uint",
+              "minimum": 0.0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "gradient": {
+              "default": null,
+              "description": "Enables gradient coloring.",
+              "type": [
+                "boolean",
+                "null"
+              ]
+            },
+            "id": {
+              "description": "Unique widget identifier within the step.",
+              "type": "string"
+            },
+            "label": {
+              "description": "Visible widget label.",
+              "type": "string"
+            },
+            "max": {
+              "default": null,
+              "description": "Maximum chart range.",
+              "format": "double",
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "min": {
+              "default": null,
+              "description": "Minimum chart range.",
+              "format": "double",
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "mode": {
+              "default": null,
+              "description": "Chart render mode.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "type": {
+              "enum": [
+                "chart_output"
+              ],
+              "type": "string"
+            },
+            "unit": {
+              "default": null,
+              "description": "Optional value suffix.",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "id",
+            "label",
+            "type"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "headers": {
+              "default": [],
+              "description": "Column headers.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "id": {
+              "description": "Unique widget identifier within the step.",
+              "type": "string"
+            },
+            "label": {
+              "description": "Visible widget label.",
+              "type": "string"
+            },
+            "rows": {
+              "default": [],
+              "description": "Table rows.",
+              "items": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "type": "array"
+            },
+            "style": {
+              "default": null,
+              "description": "Table rendering style.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "type": {
+              "enum": [
+                "table_output"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "label",
+            "type"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "id": {
+              "description": "Unique widget identifier within the step.",
+              "type": "string"
+            },
+            "label": {
+              "description": "Visible widget label.",
+              "type": "string"
+            },
+            "max_visible": {
+              "default": null,
+              "description": "Maximum number of visible diff lines.",
+              "format": "uint",
+              "minimum": 0.0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "new": {
+              "description": "Updated text.",
+              "type": "string"
+            },
+            "old": {
+              "description": "Previous text.",
+              "type": "string"
+            },
+            "type": {
+              "enum": [
+                "diff_output"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "label",
+            "new",
+            "old",
+            "type"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "id": {
+              "description": "Unique widget identifier within the step.",
+              "type": "string"
+            },
+            "spinner_style": {
+              "default": null,
+              "description": "Spinner style used while tasks are running.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "steps": {
+              "description": "Task log steps with label and task id.",
+              "items": {
+                "$ref": "#/definitions/TaskLogStepDef"
+              },
+              "type": "array"
+            },
+            "type": {
+              "enum": [
+                "task_log_output"
+              ],
+              "type": "string"
+            },
+            "visible_lines": {
+              "default": null,
+              "description": "Maximum number of rendered log lines.",
+              "format": "uint",
+              "minimum": 0.0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "id",
+            "steps",
+            "type"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "change_targets": {
+              "default": [],
+              "description": "Store selectors updated on each change.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "completion_items": {
+              "default": [],
+              "description": "Static completion candidates.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "default": {
+              "default": null,
+              "description": "Initial field value.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "id": {
+              "description": "Unique widget identifier within the step.",
+              "type": "string"
+            },
+            "label": {
+              "description": "Visible widget label.",
+              "type": "string"
+            },
+            "mode": {
+              "default": null,
+              "description": "Text display mode.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "placeholder": {
+              "default": null,
+              "description": "Placeholder text shown when the field is empty.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "required": {
+              "default": null,
+              "description": "Whether the field is required.",
+              "type": [
+                "boolean",
+                "null"
+              ]
+            },
+            "submit_target": {
+              "default": null,
+              "description": "Store selector updated on submit.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "type": {
+              "enum": [
+                "text_input"
+              ],
+              "type": "string"
+            },
+            "validators": {
+              "description": "Validation rules applied to the value.",
+              "items": {
+                "$ref": "#/definitions/ValidatorDef"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "id",
+            "label",
+            "type"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "id": {
+              "description": "Unique widget identifier within the step.",
+              "type": "string"
+            },
+            "items": {
+              "default": [],
+              "description": "Initial string items.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "label": {
+              "description": "Visible widget label.",
+              "type": "string"
+            },
+            "required": {
+              "default": null,
+              "description": "Whether the field is required.",
+              "type": [
+                "boolean",
+                "null"
+              ]
+            },
+            "type": {
+              "enum": [
+                "array_input"
+              ],
+              "type": "string"
+            },
+            "validators": {
+              "description": "Validation rules applied to the value.",
+              "items": {
+                "$ref": "#/definitions/ValidatorDef"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "id",
+            "label",
+            "type"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "id": {
+              "description": "Unique widget identifier within the step.",
+              "type": "string"
+            },
+            "label": {
+              "description": "Visible widget label.",
+              "type": "string"
+            },
+            "task_id": {
+              "default": null,
+              "description": "Optional task executed when activated.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "text": {
+              "default": null,
+              "description": "Optional button text override.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "type": {
+              "enum": [
+                "button_input"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "label",
+            "type"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "default": {
+              "default": null,
+              "description": "Default option value.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "id": {
+              "description": "Unique widget identifier within the step.",
+              "type": "string"
+            },
+            "label": {
+              "description": "Visible widget label.",
+              "type": "string"
+            },
+            "options": {
+              "description": "Available option values.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "required": {
+              "default": null,
+              "description": "Whether the field is required.",
+              "type": [
+                "boolean",
+                "null"
+              ]
+            },
+            "selected": {
+              "default": null,
+              "description": "Initially selected option index.",
+              "format": "uint",
+              "minimum": 0.0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "submit_target": {
+              "default": null,
+              "description": "Store selector updated on submit.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "type": {
+              "enum": [
+                "select"
+              ],
+              "type": "string"
+            },
+            "validators": {
+              "description": "Validation rules applied to the value.",
+              "items": {
+                "$ref": "#/definitions/ValidatorDef"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "id",
+            "label",
+            "options",
+            "type"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "bullets": {
+              "default": null,
+              "description": "Whether to show bullet markers.",
+              "type": [
+                "boolean",
+                "null"
+              ]
+            },
+            "default": {
+              "default": null,
+              "description": "Default option value.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "id": {
+              "description": "Unique widget identifier within the step.",
+              "type": "string"
+            },
+            "label": {
+              "description": "Visible widget label.",
+              "type": "string"
+            },
+            "options": {
+              "description": "Available option values.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "required": {
+              "default": null,
+              "description": "Whether the field is required.",
+              "type": [
+                "boolean",
+                "null"
+              ]
+            },
+            "submit_target": {
+              "default": null,
+              "description": "Store selector updated on submit.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "type": {
+              "enum": [
+                "choice_input"
+              ],
+              "type": "string"
+            },
+            "validators": {
+              "description": "Validation rules applied to the value.",
+              "items": {
+                "$ref": "#/definitions/ValidatorDef"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "id",
+            "label",
+            "options",
+            "type"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "id": {
+              "description": "Unique widget identifier within the step.",
+              "type": "string"
+            },
+            "label": {
+              "description": "Visible widget label.",
+              "type": "string"
+            },
+            "max_visible": {
+              "default": null,
+              "description": "Maximum number of visible rows.",
+              "format": "uint",
+              "minimum": 0.0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "mode": {
+              "default": null,
+              "description": "Selection mode.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "options": {
+              "description": "List items, plain or detailed.",
+              "items": {
+                "$ref": "#/definitions/SelectListOptionDef"
+              },
+              "type": "array"
+            },
+            "selected": {
+              "default": [],
+              "description": "Initially selected indices.",
+              "items": {
+                "format": "uint",
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              "type": "array"
+            },
+            "show_label": {
+              "default": null,
+              "description": "Whether to render the label.",
+              "type": [
+                "boolean",
+                "null"
+              ]
+            },
+            "submit_target": {
+              "default": null,
+              "description": "Store selector updated on submit.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "type": {
+              "enum": [
+                "select_list"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "label",
+            "type"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "default": {
+              "default": null,
+              "description": "Initial field value.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "id": {
+              "description": "Unique widget identifier within the step.",
+              "type": "string"
+            },
+            "label": {
+              "description": "Visible widget label.",
+              "type": "string"
+            },
+            "mask": {
+              "description": "Mask pattern.",
+              "type": "string"
+            },
+            "required": {
+              "default": null,
+              "description": "Whether the field is required.",
+              "type": [
+                "boolean",
+                "null"
+              ]
+            },
+            "submit_target": {
+              "default": null,
+              "description": "Store selector updated on submit.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "type": {
+              "enum": [
+                "masked_input"
+              ],
+              "type": "string"
+            },
+            "validators": {
+              "description": "Validation rules applied to the value.",
+              "items": {
+                "$ref": "#/definitions/ValidatorDef"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "id",
+            "label",
+            "mask",
+            "type"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "change_targets": {
+              "default": [],
+              "description": "Store selectors updated on each change.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "default": {
+              "default": null,
+              "description": "Initial numeric value.",
+              "format": "double",
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "id": {
+              "description": "Unique widget identifier within the step.",
+              "type": "string"
+            },
+            "label": {
+              "description": "Visible widget label.",
+              "type": "string"
+            },
+            "max": {
+              "description": "Maximum value.",
+              "format": "int64",
+              "type": "integer"
+            },
+            "min": {
+              "description": "Minimum value.",
+              "format": "int64",
+              "type": "integer"
+            },
+            "required": {
+              "default": null,
+              "description": "Whether the field is required.",
+              "type": [
+                "boolean",
+                "null"
+              ]
+            },
+            "step": {
+              "default": null,
+              "description": "Increment step.",
+              "format": "int64",
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "track_len": {
+              "default": null,
+              "description": "Rendered track length.",
+              "format": "uint",
+              "minimum": 0.0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "type": {
+              "enum": [
+                "slider"
+              ],
+              "type": "string"
+            },
+            "unit": {
+              "default": null,
+              "description": "Optional display unit.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "validators": {
+              "description": "Validation rules applied to the value.",
+              "items": {
+                "$ref": "#/definitions/ValidatorDef"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "id",
+            "label",
+            "max",
+            "min",
+            "type"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "id": {
+              "description": "Unique widget identifier within the step.",
+              "type": "string"
+            },
+            "label": {
+              "description": "Visible widget label.",
+              "type": "string"
+            },
+            "required": {
+              "default": null,
+              "description": "Whether the field is required.",
+              "type": [
+                "boolean",
+                "null"
+              ]
+            },
+            "rgb": {
+              "default": null,
+              "description": "Initial RGB value.",
+              "items": {
+                "format": "uint8",
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              "maxItems": 3,
+              "minItems": 3,
+              "type": [
+                "array",
+                "null"
+              ]
+            },
+            "submit_target": {
+              "default": null,
+              "description": "Store selector updated on submit.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "type": {
+              "enum": [
+                "color_input"
+              ],
+              "type": "string"
+            },
+            "validators": {
+              "description": "Validation rules applied to the value.",
+              "items": {
+                "$ref": "#/definitions/ValidatorDef"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "id",
+            "label",
+            "type"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "default": {
+              "default": null,
+              "description": "Initial boolean value.",
+              "type": [
+                "boolean",
+                "null"
+              ]
+            },
+            "id": {
+              "description": "Unique widget identifier within the step.",
+              "type": "string"
+            },
+            "label": {
+              "description": "Visible widget label.",
+              "type": "string"
+            },
+            "mode": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/ConfirmModeDef"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Confirmation mode."
+            },
+            "no_label": {
+              "default": null,
+              "description": "Custom no label.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "type": {
+              "enum": [
+                "confirm_input"
+              ],
+              "type": "string"
+            },
+            "yes_label": {
+              "default": null,
+              "description": "Custom yes label.",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "id",
+            "label",
+            "type"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "checked": {
+              "default": null,
+              "description": "Initial checked state.",
+              "type": [
+                "boolean",
+                "null"
+              ]
+            },
+            "id": {
+              "description": "Unique widget identifier within the step.",
+              "type": "string"
+            },
+            "label": {
+              "description": "Visible widget label.",
+              "type": "string"
+            },
+            "required": {
+              "default": null,
+              "description": "Whether the field is required.",
+              "type": [
+                "boolean",
+                "null"
+              ]
+            },
+            "type": {
+              "enum": [
+                "checkbox"
+              ],
+              "type": "string"
+            },
+            "validators": {
+              "description": "Validation rules applied to the value.",
+              "items": {
+                "$ref": "#/definitions/ValidatorDef"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "id",
+            "label",
+            "type"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "id": {
+              "description": "Unique widget identifier within the step.",
+              "type": "string"
+            },
+            "label": {
+              "description": "Visible widget label.",
+              "type": "string"
+            },
+            "mode": {
+              "default": null,
+              "description": "Calendar mode.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "required": {
+              "default": null,
+              "description": "Whether the field is required.",
+              "type": [
+                "boolean",
+                "null"
+              ]
+            },
+            "submit_target": {
+              "default": null,
+              "description": "Store selector updated on submit.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "type": {
+              "enum": [
+                "calendar"
+              ],
+              "type": "string"
+            },
+            "validators": {
+              "description": "Validation rules applied to the value.",
+              "items": {
+                "$ref": "#/definitions/ValidatorDef"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "id",
+            "label",
+            "type"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "default": {
+              "default": null,
+              "description": "Initial text value.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "id": {
+              "description": "Unique widget identifier within the step.",
+              "type": "string"
+            },
+            "max_height": {
+              "default": null,
+              "description": "Maximum visible height.",
+              "format": "uint",
+              "minimum": 0.0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "min_height": {
+              "default": null,
+              "description": "Minimum visible height.",
+              "format": "uint",
+              "minimum": 0.0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "required": {
+              "default": null,
+              "description": "Whether the field is required.",
+              "type": [
+                "boolean",
+                "null"
+              ]
+            },
+            "type": {
+              "enum": [
+                "textarea"
+              ],
+              "type": "string"
+            },
+            "validators": {
+              "description": "Validation rules applied to the value.",
+              "items": {
+                "$ref": "#/definitions/ValidatorDef"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "id",
+            "type"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "advance_on_success": {
+              "default": null,
+              "description": "Whether to advance the step on success.",
+              "type": [
+                "boolean",
+                "null"
+              ]
+            },
+            "commands": {
+              "description": "Commands executed by the runner.",
+              "items": {
+                "$ref": "#/definitions/CommandRunnerCommandDef"
+              },
+              "type": "array"
+            },
+            "id": {
+              "description": "Unique widget identifier within the step.",
+              "type": "string"
+            },
+            "label": {
+              "description": "Visible widget label.",
+              "type": "string"
+            },
+            "on_error": {
+              "default": null,
+              "description": "Behavior when a command fails.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "run_mode": {
+              "default": null,
+              "description": "Execution mode.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "spinner_style": {
+              "default": null,
+              "description": "Spinner style used during execution.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "timeout_ms": {
+              "default": null,
+              "description": "Command timeout in milliseconds.",
+              "format": "uint64",
+              "minimum": 0.0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "type": {
+              "enum": [
+                "command_runner"
+              ],
+              "type": "string"
+            },
+            "visible_lines": {
+              "default": null,
+              "description": "Maximum number of rendered log lines.",
+              "format": "uint",
+              "minimum": 0.0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "commands",
+            "id",
+            "label",
+            "type"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "browser_mode": {
+              "default": null,
+              "description": "Browser mode.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "cwd": {
+              "default": null,
+              "description": "Starting directory.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "display_mode": {
+              "default": null,
+              "description": "Path display mode.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "ext_filter": {
+              "default": [],
+              "description": "Allowed file extensions.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "hide_hidden": {
+              "default": null,
+              "description": "Whether to hide hidden entries.",
+              "type": [
+                "boolean",
+                "null"
+              ]
+            },
+            "id": {
+              "description": "Unique widget identifier within the step.",
+              "type": "string"
+            },
+            "label": {
+              "description": "Visible widget label.",
+              "type": "string"
+            },
+            "max_visible": {
+              "default": null,
+              "description": "Maximum number of visible rows.",
+              "format": "uint",
+              "minimum": 0.0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "recursive": {
+              "default": null,
+              "description": "Whether to recurse into subdirectories.",
+              "type": [
+                "boolean",
+                "null"
+              ]
+            },
+            "required": {
+              "default": null,
+              "description": "Whether the field is required.",
+              "type": [
+                "boolean",
+                "null"
+              ]
+            },
+            "submit_target": {
+              "default": null,
+              "description": "Store selector updated on submit.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "type": {
+              "enum": [
+                "file_browser"
+              ],
+              "type": "string"
+            },
+            "validators": {
+              "description": "Validation rules applied to the value.",
+              "items": {
+                "$ref": "#/definitions/ValidatorDef"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "id",
+            "label",
+            "type"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "id": {
+              "description": "Unique widget identifier within the step.",
+              "type": "string"
+            },
+            "indent_guides": {
+              "default": null,
+              "description": "Whether to render indentation guides.",
+              "type": [
+                "boolean",
+                "null"
+              ]
+            },
+            "label": {
+              "description": "Visible widget label.",
+              "type": "string"
+            },
+            "max_visible": {
+              "default": null,
+              "description": "Maximum number of visible rows.",
+              "format": "uint",
+              "minimum": 0.0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "nodes": {
+              "description": "Tree nodes with item and depth metadata.",
+              "items": {
+                "$ref": "#/definitions/TreeNodeDef"
+              },
+              "type": "array"
+            },
+            "show_label": {
+              "default": null,
+              "description": "Whether to render the label.",
+              "type": [
+                "boolean",
+                "null"
+              ]
+            },
+            "submit_target": {
+              "default": null,
+              "description": "Store selector updated on submit.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "type": {
+              "enum": [
+                "tree_view"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "label",
+            "nodes",
+            "type"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "id": {
+              "description": "Unique widget identifier within the step.",
+              "type": "string"
+            },
+            "label": {
+              "description": "Visible widget label.",
+              "type": "string"
+            },
+            "max_visible": {
+              "default": null,
+              "description": "Maximum number of visible rows.",
+              "format": "uint",
+              "minimum": 0.0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "submit_target": {
+              "default": null,
+              "description": "Store selector updated on submit.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "type": {
+              "enum": [
+                "object_editor"
+              ],
+              "type": "string"
+            },
+            "value": {
+              "default": null,
+              "description": "Initial object value."
+            }
+          },
+          "required": [
+            "id",
+            "label",
+            "type"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "id": {
+              "description": "Unique widget identifier within the step.",
+              "type": "string"
+            },
+            "inputs": {
+              "description": "Nested interactive widget definitions.",
+              "items": {
+                "$ref": "#/definitions/WidgetDef"
+              },
+              "type": "array"
+            },
+            "label": {
+              "description": "Visible widget label.",
+              "type": "string"
+            },
+            "submit_target": {
+              "default": null,
+              "description": "Store selector updated on submit.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "template": {
+              "description": "Snippet template string.",
+              "type": "string"
+            },
+            "type": {
+              "enum": [
+                "snippet"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "label",
+            "template",
+            "type"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "columns": {
+              "description": "Column definitions with embedded widgets.",
+              "items": {
+                "$ref": "#/definitions/TableColumnDef"
+              },
+              "type": "array"
+            },
+            "id": {
+              "description": "Unique widget identifier within the step.",
+              "type": "string"
+            },
+            "initial_rows": {
+              "default": null,
+              "description": "Initial number of rows.",
+              "format": "uint",
+              "minimum": 0.0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "label": {
+              "description": "Visible widget label.",
+              "type": "string"
+            },
+            "row_numbers": {
+              "default": null,
+              "description": "Whether to show row numbers.",
+              "type": [
+                "boolean",
+                "null"
+              ]
+            },
+            "style": {
+              "default": null,
+              "description": "Table rendering style.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "type": {
+              "enum": [
+                "table"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "columns",
+            "id",
+            "label",
+            "type"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "fields": {
+              "description": "Repeater field definitions with embedded widgets.",
+              "items": {
+                "$ref": "#/definitions/RepeaterFieldDef"
+              },
+              "type": "array"
+            },
+            "header_template": {
+              "default": null,
+              "description": "Optional header template for each item.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "id": {
+              "description": "Unique widget identifier within the step.",
+              "type": "string"
+            },
+            "item_label_path": {
+              "default": null,
+              "description": "Relative path used as item label.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "items": {
+              "default": [],
+              "description": "Initial item values."
+            },
+            "label": {
+              "description": "Visible widget label.",
+              "type": "string"
+            },
+            "layout": {
+              "default": null,
+              "description": "Repeater layout mode.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "show_label": {
+              "default": null,
+              "description": "Whether to render the label.",
+              "type": [
+                "boolean",
+                "null"
+              ]
+            },
+            "show_progress": {
+              "default": null,
+              "description": "Whether to show progress for items.",
+              "type": [
+                "boolean",
+                "null"
+              ]
+            },
+            "submit_target": {
+              "default": null,
+              "description": "Store selector updated on submit.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "type": {
+              "enum": [
+                "repeater"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "fields",
+            "id",
+            "label",
+            "type"
+          ],
+          "type": "object"
+        }
+      ]
+    }
+  },
+  "properties": {
+    "flow": {
+      "items": {
+        "$ref": "#/definitions/FlowItemDef"
+      },
+      "type": "array"
+    },
+    "steps": {
+      "items": {
+        "$ref": "#/definitions/StepDef"
+      },
+      "type": "array"
+    },
+    "subscriptions": {
+      "items": {
+        "$ref": "#/definitions/SubscriptionDef"
+      },
+      "type": "array"
+    },
+    "tasks": {
+      "items": {
+        "$ref": "#/definitions/TaskDef"
+      },
+      "type": "array"
+    },
+    "version": {
+      "default": null,
+      "format": "uint32",
+      "minimum": 0.0,
+      "type": [
+        "integer",
+        "null"
+      ]
+    }
+  },
+  "title": "ConfigDoc",
+  "type": "object"
+}

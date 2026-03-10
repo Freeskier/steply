@@ -7,9 +7,10 @@
 		"dev": "vite dev",
 		"build": "vite build",
 		"preview": "vite preview",
-		"wasm:build": "bun -e \"import { spawnSync } from 'node:child_process'; import { resolve } from 'node:path'; import { rmSync } from 'node:fs'; const outDir = resolve('src/lib/steply-wasm/pkg'); const result = spawnSync('wasm-pack', ['build', '../crates/steply-wasm', '--target', 'web', '--out-dir', outDir, '--out-name', 'steply_wasm'], { stdio: 'inherit' }); if ((result.status ?? 1) !== 0) process.exit(result.status ?? 1); rmSync(resolve(outDir, '.gitignore'), { force: true });\"",
-		"dev:full": "bun run wasm:build && bun run dev",
-		"build:full": "bun run wasm:build && bun run build",
+		"content:build": "bun ./scripts/build-content.mjs",
+		"wasm:build": "bun ./scripts/build-wasm.mjs",
+		"dev:full": "bun run content:build && bun run wasm:build && bun run dev",
+		"build:full": "bun run content:build && bun run wasm:build && bun run build",
 		"prepare": "svelte-kit sync || echo ''",
 		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
 		"check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch"

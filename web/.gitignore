@@ -1,5 +1,6 @@
 node_modules
 src/lib/generated
+src/lib/steply-wasm/pkg
 
 # Output
 .output

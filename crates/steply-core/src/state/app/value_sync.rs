@@ -1,28 +1,22 @@
 use super::AppState;
 use crate::core::{NodeId, value::Value, value_path::ValueTarget};
-use crate::widgets::node::{NodeWalkScope, find_node_mut, walk_nodes, walk_nodes_mut};
+use crate::runtime::event::ValueChange;
+use crate::widgets::node::{NodeWalkScope, walk_nodes, walk_nodes_mut};
 use std::collections::HashMap;
+
+const MAX_BINDING_SETTLE_PASSES: usize = 8;
 
 impl AppState {
     pub(super) fn sync_current_step_values_to_store(&mut self) {
-        let values = {
-            let mut out = Vec::<(String, Option<ValueTarget>, Value)>::new();
-            walk_nodes(
-                self.flow.current_step().nodes.as_slice(),
-                NodeWalkScope::Recursive,
-                &mut |node| {
-                    if let Some(value) = node.value() {
-                        out.push((node.id().to_string(), node.submit_target().cloned(), value));
-                    }
-                },
-            );
-            out
-        };
-        for (id, target, value) in values {
-            if let Some(target) = target {
-                self.apply_value_change_target(target, value);
-            } else {
-                self.apply_value_change(id, value);
+        let _ = self.push_current_step_writes_to_store();
+    }
+
+    pub(super) fn settle_current_step_bindings(&mut self) {
+        for _ in 0..MAX_BINDING_SETTLE_PASSES {
+            let hydrated = self.hydrate_current_step_from_store();
+            let store_changed = self.push_current_step_writes_to_store();
+            if !store_changed && !hydrated {
+                break;
             }
         }
     }
@@ -37,59 +31,144 @@ impl AppState {
 
     fn write_value_direct(&mut self, target: ValueTarget, value: Value) {
         let root = target.root().clone();
-        let before = self.data.store.get(root.as_str()).cloned();
-        if let Err(err) = self.data.store.set_target(&target, value) {
-            self.runtime
-                .validation
-                .set_runtime_step_error(store_write_error_key(root.as_str()), err.to_string());
-            return;
+        let changed = match self.write_store_target(target, value) {
+            Ok(changed) => changed,
+            Err(err) => {
+                self.runtime
+                    .validation
+                    .set_runtime_step_error(store_write_error_key(root.as_str()), err.to_string());
+                return;
+            }
+        };
+        self.runtime
+            .validation
+            .clear_runtime_step_error(store_write_error_key(root.as_str()).as_str());
+        if !self.reconcile_current_step_after_store_change() {
+            self.settle_current_step_bindings();
         }
+        if changed && let Some(updated) = self.data.store.get(root.as_str()).cloned() {
+            crate::task::engine::trigger_node_value_changed_tasks(self, root.as_str(), &updated);
+        }
+    }
+
+    pub(super) fn hydrate_current_step_from_store(&mut self) -> bool {
+        let mut changed = false;
+        let store = &self.data.store;
+        walk_nodes_mut(
+            self.flow.current_step_mut().nodes.as_mut_slice(),
+            NodeWalkScope::Recursive,
+            &mut |node| changed |= node.sync_from_store(store),
+        );
+        changed
+    }
+
+    fn push_current_step_writes_to_store(&mut self) -> bool {
+        let focused_id = self.ui.focus.current_id().map(str::to_string);
+        let changes = {
+            let mut out = Vec::new();
+            walk_nodes(
+                self.flow.current_step().nodes.as_slice(),
+                NodeWalkScope::Recursive,
+                &mut |node| {
+                    let is_focused = focused_id
+                        .as_deref()
+                        .is_some_and(|focused_id| node.id() == focused_id);
+                    let has_reads = node
+                        .store_binding()
+                        .and_then(|binding| binding.reads.as_ref())
+                        .is_some();
+                    let base_order = out.len();
+                    for (idx, change) in node.write_changes().into_iter().enumerate() {
+                        out.push(PendingWrite {
+                            change,
+                            is_focused,
+                            has_reads,
+                            order: base_order + idx,
+                        });
+                    }
+                },
+            );
+            out
+        };
+        let mut selected = HashMap::<String, PendingWrite>::new();
+        for pending in changes {
+            let key = pending.change.target.to_selector();
+            match selected.get(key.as_str()) {
+                Some(existing) if !pending.should_replace(existing) => {}
+                _ => {
+                    selected.insert(key, pending);
+                }
+            }
+        }
+        let mut store_changed = false;
+        let mut changes = selected.into_values().collect::<Vec<_>>();
+        changes.sort_by_key(|pending| pending.order);
+        for pending in changes {
+            let change = pending.change;
+            match self.write_store_target(change.target, change.value) {
+                Ok(changed) => {
+                    store_changed |= changed;
+                }
+                Err(err) => {
+                    let root = err_root_key(&err);
+                    self.runtime.validation.set_runtime_step_error(
+                        store_write_error_key(root.as_str()),
+                        err.to_string(),
+                    );
+                }
+            }
+        }
+        store_changed
+    }
+
+    fn write_store_target(
+        &mut self,
+        target: ValueTarget,
+        value: Value,
+    ) -> Result<bool, crate::state::store::StoreWriteError> {
+        let root = target.root().clone();
+        let before = self.data.store.get(root.as_str()).cloned();
+        self.data.store.set_target(&target, value)?;
         self.runtime
             .validation
             .clear_runtime_step_error(store_write_error_key(root.as_str()).as_str());
         let updated = self.data.store.get(root.as_str()).cloned();
-        if let Some(updated) = updated {
-            let changed = before.as_ref().is_none_or(|previous| previous != &updated);
-            self.apply_value_to_step(root.as_str(), updated.clone());
-            let _ = self.reconcile_current_step_after_store_change();
-            if changed {
-                crate::task::engine::trigger_node_value_changed_tasks(
-                    self,
-                    root.as_str(),
-                    &updated,
-                );
-            }
+        Ok(updated
+            .as_ref()
+            .is_some_and(|updated| before.as_ref() != Some(updated)))
+    }
+}
+
+struct PendingWrite {
+    change: ValueChange,
+    is_focused: bool,
+    has_reads: bool,
+    order: usize,
+}
+
+impl PendingWrite {
+    fn priority(&self) -> u8 {
+        if self.is_focused {
+            2
+        } else if self.has_reads {
+            0
+        } else {
+            1
         }
     }
 
-    pub(super) fn hydrate_current_step_from_store(&mut self) {
-        let values: HashMap<String, Value> = self
-            .data
-            .store
-            .iter()
-            .map(|(id, value)| (id.to_string(), value.clone()))
-            .collect();
-
-        walk_nodes_mut(
-            self.flow.current_step_mut().nodes.as_mut_slice(),
-            NodeWalkScope::Recursive,
-            &mut |node| {
-                if let Some(value) = values.get(node.id()) {
-                    node.set_value(value.clone());
-                }
-            },
-        );
+    fn should_replace(&self, other: &Self) -> bool {
+        self.priority() > other.priority()
     }
+}
 
-    fn apply_value_to_step(&mut self, id: &str, value: Value) {
-        if let Some(node) = find_node_mut(self.flow.current_step_mut().nodes.as_mut_slice(), id) {
-            node.set_value(value);
-            if node
-                .validate(crate::widgets::traits::ValidationMode::Live)
-                .is_ok()
-            {
-                self.runtime.validation.clear_error(id);
-            }
+fn err_root_key(err: &crate::state::store::StoreWriteError) -> String {
+    match err {
+        crate::state::store::StoreWriteError::RootTypeConflict { root, .. } => root.clone(),
+        crate::state::store::StoreWriteError::PathTypeConflict { target, .. } => {
+            ValueTarget::parse_selector(target)
+                .map(|target| target.root().to_string())
+                .unwrap_or_else(|_| target.clone())
         }
     }
 }

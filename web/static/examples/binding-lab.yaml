@@ -1,0 +1,40 @@
+version: 1
+steps:
+  - id: binding
+    title: Binding lab
+    description: Experiment with the new reads/writes model and see store-driven widgets stay in sync inside one step.
+    widgets:
+      - type: text_output
+        id: intro
+        text: |
+          Edit the source field and the mirror below will track the same store value.
+          The object editor writes both the raw object and a derived `full` field.
+      - type: text_input
+        id: source_name
+        label: Source name
+        default: Ada Lovelace
+        value: profile.name
+      - type: text_input
+        id: mirror_name
+        label: Mirror name
+        reads: profile.name
+      - type: object_editor
+        id: reviewer
+        label: Reviewer object
+        reads:
+          name: "{{profile.name}}"
+          email: "{{profile.name}}@example.com"
+          team: research
+        writes:
+          review.author: value
+          review.author.full: "{{value.name}} <{{value.email}}>"
+      - type: text_input
+        id: reviewer_full
+        label: Derived full string
+        reads: "Output: {{review.author.team}} {{review.author.full}}"
+  # - id: binding2
+  #   title: cos nowego
+  #   widgets:
+  #     - type: text_output
+  #       text: "Output: {{review.author.team}} {{review.author.full}}"
+  #       id: binding_output

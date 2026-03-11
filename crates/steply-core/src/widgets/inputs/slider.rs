@@ -1,7 +1,4 @@
-use crate::core::NodeId;
 use crate::core::value::Value;
-use crate::core::value_path::{ValuePath, ValueTarget};
-use crate::runtime::event::{ValueChange, WidgetAction};
 use crate::terminal::{KeyCode, KeyEvent};
 use crate::ui::span::Span;
 use crate::ui::style::{Color, Style};
@@ -19,7 +16,6 @@ pub struct SliderInput {
     value: i64,
     track_len: usize,
     unit: Option<String>,
-    change_targets: Vec<ValueTarget>,
     validators: Vec<Validator>,
 }
 
@@ -35,7 +31,6 @@ impl SliderInput {
             value: min_value,
             track_len: 15,
             unit: None,
-            change_targets: Vec::new(),
             validators: Vec::new(),
         }
     }
@@ -52,16 +47,6 @@ impl SliderInput {
 
     pub fn with_unit(mut self, unit: impl Into<String>) -> Self {
         self.unit = Some(unit.into());
-        self
-    }
-
-    pub fn with_change_target(mut self, target: impl Into<NodeId>) -> Self {
-        self.change_targets.push(ValueTarget::node(target));
-        self
-    }
-
-    pub fn with_change_target_path(mut self, root: impl Into<NodeId>, path: ValuePath) -> Self {
-        self.change_targets.push(ValueTarget::path(root, path));
         self
     }
 
@@ -87,27 +72,6 @@ impl SliderInput {
     fn value_changed_result(&self, previous: i64) -> InteractionResult {
         if self.value == previous {
             return InteractionResult::ignored();
-        }
-        if self.change_targets.len() == 1 {
-            let target = &self.change_targets[0];
-            return InteractionResult::with_action(WidgetAction::ValueChanged {
-                change: ValueChange::with_target(target.clone(), Value::Number(self.value as f64)),
-            });
-        }
-        if self.change_targets.len() > 1 {
-            let actions = self
-                .change_targets
-                .iter()
-                .cloned()
-                .map(|target| WidgetAction::ValueChanged {
-                    change: ValueChange::with_target(target, Value::Number(self.value as f64)),
-                })
-                .collect();
-            return InteractionResult {
-                handled: true,
-                request_render: true,
-                actions,
-            };
         }
         InteractionResult::handled()
     }

@@ -1,6 +1,4 @@
-use crate::core::NodeId;
 use crate::core::value::Value;
-use crate::core::value_path::{ValuePath, ValueTarget};
 use crate::terminal::{CursorPos, KeyCode, KeyEvent, KeyModifiers};
 use crate::ui::span::Span;
 use crate::ui::style::{Color, Style};
@@ -53,7 +51,6 @@ pub struct Snippet {
     slot_order: Vec<String>,
 
     active_slot: usize,
-    submit_target: Option<ValueTarget>,
 }
 
 impl Snippet {
@@ -80,22 +77,11 @@ impl Snippet {
             inputs: Vec::new(),
             slot_order,
             active_slot: 0,
-            submit_target: None,
         }
     }
 
     pub fn with_input(mut self, node: Node) -> Self {
         self.inputs.push(node);
-        self
-    }
-
-    pub fn with_submit_target(mut self, target: impl Into<NodeId>) -> Self {
-        self.submit_target = Some(ValueTarget::node(target));
-        self
-    }
-
-    pub fn with_submit_target_path(mut self, root: impl Into<NodeId>, path: ValuePath) -> Self {
-        self.submit_target = Some(ValueTarget::path(root, path));
         self
     }
 
@@ -265,10 +251,6 @@ impl Interactive for Snippet {
         FocusMode::Leaf
     }
 
-    fn submit_target(&self) -> Option<&ValueTarget> {
-        self.submit_target.as_ref()
-    }
-
     fn cursor_pos(&self) -> Option<CursorPos> {
         let key = self.active_key()?;
         let input = self.input_for(key)?;
@@ -326,8 +308,7 @@ impl Interactive for Snippet {
 
             KeyCode::Enter => {
                 if self.active_slot + 1 >= self.slot_count() {
-                    let val = Value::Text(self.formatted_value());
-                    InteractionResult::submit_or_produce(self.submit_target.as_ref(), val)
+                    InteractionResult::input_done()
                 } else {
                     self.active_slot += 1;
                     InteractionResult::handled()

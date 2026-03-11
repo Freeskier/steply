@@ -31,7 +31,9 @@ steps:
         max: 100
         step: 5
         unit: "%"
-        change_targets: [cpu_bar, cpu_chart]
+        writes:
+          cpu_bar: value
+          cpu_chart: value
       - type: progress_output
         id: mem_bar
         label: Memory budget
@@ -47,7 +49,7 @@ steps:
         max: 100
         step: 10
         unit: " MB"
-        change_targets: [mem_bar]
+        writes: mem_bar
       - type: color_input
         id: accent
         label: Accent color

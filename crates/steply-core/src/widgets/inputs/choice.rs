@@ -1,6 +1,4 @@
-use crate::core::NodeId;
 use crate::core::value::Value;
-use crate::core::value_path::{ValuePath, ValueTarget};
 use crate::terminal::{KeyCode, KeyEvent};
 use crate::ui::span::Span;
 use crate::ui::style::{Color, Style};
@@ -17,7 +15,6 @@ pub struct ChoiceInput {
     options: Vec<String>,
     selected: usize,
     show_bullets: bool,
-    submit_target: Option<ValueTarget>,
     validators: Vec<Validator>,
 }
 
@@ -28,23 +25,12 @@ impl ChoiceInput {
             options,
             selected: 0,
             show_bullets: true,
-            submit_target: None,
             validators: Vec::new(),
         }
     }
 
     pub fn with_bullets(mut self, enabled: bool) -> Self {
         self.show_bullets = enabled;
-        self
-    }
-
-    pub fn with_submit_target(mut self, target: impl Into<NodeId>) -> Self {
-        self.submit_target = Some(ValueTarget::node(target));
-        self
-    }
-
-    pub fn with_submit_target_path(mut self, root: impl Into<NodeId>, path: ValuePath) -> Self {
-        self.submit_target = Some(ValueTarget::path(root, path));
         self
     }
 
@@ -143,10 +129,6 @@ impl Interactive for ChoiceInput {
         FocusMode::Leaf
     }
 
-    fn submit_target(&self) -> Option<&ValueTarget> {
-        self.submit_target.as_ref()
-    }
-
     fn on_key(&mut self, key: KeyEvent) -> InteractionResult {
         match key.code {
             KeyCode::Left | KeyCode::Up => InteractionResult::handled_if(
@@ -162,10 +144,7 @@ impl Interactive for ChoiceInput {
                     InteractionResult::ignored()
                 }
             }
-            KeyCode::Enter => InteractionResult::submit_or_produce(
-                self.submit_target.as_ref(),
-                Value::Text(self.selected_text().to_string()),
-            ),
+            KeyCode::Enter => InteractionResult::input_done(),
             _ => InteractionResult::ignored(),
         }
     }

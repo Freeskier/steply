@@ -1,3 +1,4 @@
+pub mod binding;
 pub mod calendar;
 pub mod filter;
 pub mod keymap;

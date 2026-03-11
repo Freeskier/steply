@@ -160,6 +160,7 @@ impl AppState {
     }
 
     pub(super) fn refresh_after_input(&mut self) {
+        self.settle_current_step_bindings();
         self.refresh_validation_after_change();
         self.try_update_ghost_for_focused();
     }

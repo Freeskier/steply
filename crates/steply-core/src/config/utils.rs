@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 
+use crate::core::store_refs::parse_store_selector;
 use crate::core::value::Value;
-use crate::core::value_path::ValueTarget;
 use crate::state::step::Step;
 use crate::widgets::node::Node;
 
@@ -81,7 +81,7 @@ pub(super) fn validate_selector_root_known(
     selector: &str,
     known_node_ids: &HashSet<String>,
 ) -> Result<(), String> {
-    let root = ValueTarget::parse_selector(selector)
+    let root = parse_store_selector(selector)
         .map_err(|err| format!("invalid selector '{selector}': {err}"))?
         .root()
         .as_str()

@@ -1,5 +1,6 @@
 use schemars::JsonSchema;
 use serde::Deserialize;
+use std::collections::BTreeMap;
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub(super) struct ConfigDoc {
@@ -110,6 +111,29 @@ pub(super) struct WhenDef {
     /// Nested condition that must not match.
     #[serde(default)]
     pub(super) not: Option<Box<WhenDef>>,
+}
+
+#[derive(Debug, Clone, Deserialize, JsonSchema, Default)]
+pub(super) struct WidgetBindingDef {
+    #[serde(default)]
+    pub(super) value: Option<String>,
+    #[serde(default)]
+    #[schemars(schema_with = "super::doc_model::yaml_value_schema")]
+    pub(super) reads: Option<serde_yaml::Value>,
+    #[serde(default)]
+    pub(super) writes: Option<WriteBindingDef>,
+}
+
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+pub(super) struct BindingYamlValueDef(
+    #[schemars(schema_with = "super::doc_model::yaml_value_schema")] pub(super) serde_yaml::Value,
+);
+
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+#[serde(untagged)]
+pub(super) enum WriteBindingDef {
+    Selector(String),
+    Map(BTreeMap<String, BindingYamlValueDef>),
 }
 
 #[derive(Debug, Deserialize, Clone, JsonSchema)]
@@ -311,12 +335,8 @@ pub(super) struct TextInputDef {
     /// Static completion candidates.
     #[serde(default)]
     pub(super) completion_items: Vec<String>,
-    /// Store selector updated on submit.
-    #[serde(default)]
-    pub(super) submit_target: Option<String>,
-    /// Store selectors updated on each change.
-    #[serde(default)]
-    pub(super) change_targets: Vec<String>,
+    #[serde(default, flatten)]
+    pub(super) binding: WidgetBindingDef,
 }
 
 #[derive(Debug, Clone, Deserialize, JsonSchema)]
@@ -334,6 +354,8 @@ pub(super) struct ArrayInputDef {
     /// Validation rules applied to the value.
     #[serde(default)]
     pub(super) validators: Vec<ValidatorDef>,
+    #[serde(default, flatten)]
+    pub(super) binding: WidgetBindingDef,
 }
 
 #[derive(Debug, Clone, Deserialize, JsonSchema)]
@@ -370,9 +392,8 @@ pub(super) struct SelectDef {
     /// Validation rules applied to the value.
     #[serde(default)]
     pub(super) validators: Vec<ValidatorDef>,
-    /// Store selector updated on submit.
-    #[serde(default)]
-    pub(super) submit_target: Option<String>,
+    #[serde(default, flatten)]
+    pub(super) binding: WidgetBindingDef,
 }
 
 #[derive(Debug, Clone, Deserialize, JsonSchema)]
@@ -395,9 +416,8 @@ pub(super) struct ChoiceInputDef {
     /// Validation rules applied to the value.
     #[serde(default)]
     pub(super) validators: Vec<ValidatorDef>,
-    /// Store selector updated on submit.
-    #[serde(default)]
-    pub(super) submit_target: Option<String>,
+    #[serde(default, flatten)]
+    pub(super) binding: WidgetBindingDef,
 }
 
 #[derive(Debug, Clone, Deserialize, JsonSchema)]
@@ -421,9 +441,8 @@ pub(super) struct SelectListDef {
     /// Whether to render the label.
     #[serde(default)]
     pub(super) show_label: Option<bool>,
-    /// Store selector updated on submit.
-    #[serde(default)]
-    pub(super) submit_target: Option<String>,
+    #[serde(default, flatten)]
+    pub(super) binding: WidgetBindingDef,
 }
 
 #[derive(Debug, Clone, Deserialize, JsonSchema)]
@@ -443,9 +462,8 @@ pub(super) struct MaskedInputDef {
     /// Validation rules applied to the value.
     #[serde(default)]
     pub(super) validators: Vec<ValidatorDef>,
-    /// Store selector updated on submit.
-    #[serde(default)]
-    pub(super) submit_target: Option<String>,
+    #[serde(default, flatten)]
+    pub(super) binding: WidgetBindingDef,
 }
 
 #[derive(Debug, Clone, Deserialize, JsonSchema)]
@@ -476,9 +494,8 @@ pub(super) struct SliderDef {
     /// Validation rules applied to the value.
     #[serde(default)]
     pub(super) validators: Vec<ValidatorDef>,
-    /// Store selectors updated on each change.
-    #[serde(default)]
-    pub(super) change_targets: Vec<String>,
+    #[serde(default, flatten)]
+    pub(super) binding: WidgetBindingDef,
 }
 
 #[derive(Debug, Clone, Deserialize, JsonSchema)]
@@ -496,9 +513,8 @@ pub(super) struct ColorInputDef {
     /// Validation rules applied to the value.
     #[serde(default)]
     pub(super) validators: Vec<ValidatorDef>,
-    /// Store selector updated on submit.
-    #[serde(default)]
-    pub(super) submit_target: Option<String>,
+    #[serde(default, flatten)]
+    pub(super) binding: WidgetBindingDef,
 }
 
 #[derive(Debug, Clone, Deserialize, JsonSchema)]
@@ -519,6 +535,8 @@ pub(super) struct ConfirmInputDef {
     /// Initial boolean value.
     #[serde(default)]
     pub(super) default: Option<bool>,
+    #[serde(default, flatten)]
+    pub(super) binding: WidgetBindingDef,
 }
 
 #[derive(Debug, Clone, Deserialize, JsonSchema)]
@@ -536,6 +554,8 @@ pub(super) struct CheckboxDef {
     /// Validation rules applied to the value.
     #[serde(default)]
     pub(super) validators: Vec<ValidatorDef>,
+    #[serde(default, flatten)]
+    pub(super) binding: WidgetBindingDef,
 }
 
 #[derive(Debug, Clone, Deserialize, JsonSchema)]
@@ -553,9 +573,8 @@ pub(super) struct CalendarDef {
     /// Validation rules applied to the value.
     #[serde(default)]
     pub(super) validators: Vec<ValidatorDef>,
-    /// Store selector updated on submit.
-    #[serde(default)]
-    pub(super) submit_target: Option<String>,
+    #[serde(default, flatten)]
+    pub(super) binding: WidgetBindingDef,
 }
 
 #[derive(Debug, Clone, Deserialize, JsonSchema)]
@@ -577,6 +596,8 @@ pub(super) struct TextareaDef {
     /// Validation rules applied to the value.
     #[serde(default)]
     pub(super) validators: Vec<ValidatorDef>,
+    #[serde(default, flatten)]
+    pub(super) binding: WidgetBindingDef,
 }
 
 #[derive(Debug, Clone, Deserialize, JsonSchema)]
@@ -634,15 +655,14 @@ pub(super) struct FileBrowserDef {
     /// Maximum number of visible rows.
     #[serde(default)]
     pub(super) max_visible: Option<usize>,
-    /// Store selector updated on submit.
-    #[serde(default)]
-    pub(super) submit_target: Option<String>,
     /// Whether the field is required.
     #[serde(default)]
     pub(super) required: Option<bool>,
     /// Validation rules applied to the value.
     #[serde(default)]
     pub(super) validators: Vec<ValidatorDef>,
+    #[serde(default, flatten)]
+    pub(super) binding: WidgetBindingDef,
 }
 
 #[derive(Debug, Clone, Deserialize, JsonSchema)]
@@ -662,9 +682,8 @@ pub(super) struct TreeViewDef {
     /// Whether to render indentation guides.
     #[serde(default)]
     pub(super) indent_guides: Option<bool>,
-    /// Store selector updated on submit.
-    #[serde(default)]
-    pub(super) submit_target: Option<String>,
+    #[serde(default, flatten)]
+    pub(super) binding: WidgetBindingDef,
 }
 
 #[derive(Debug, Clone, Deserialize, JsonSchema)]
@@ -680,9 +699,8 @@ pub(super) struct ObjectEditorDef {
     /// Maximum number of visible rows.
     #[serde(default)]
     pub(super) max_visible: Option<usize>,
-    /// Store selector updated on submit.
-    #[serde(default)]
-    pub(super) submit_target: Option<String>,
+    #[serde(default, flatten)]
+    pub(super) binding: WidgetBindingDef,
 }
 
 #[derive(Debug, Clone, Deserialize, JsonSchema)]
@@ -696,9 +714,8 @@ pub(super) struct SnippetDef {
     /// Nested interactive widget definitions.
     #[serde(default)]
     pub(super) inputs: Vec<WidgetDef>,
-    /// Store selector updated on submit.
-    #[serde(default)]
-    pub(super) submit_target: Option<String>,
+    #[serde(default, flatten)]
+    pub(super) binding: WidgetBindingDef,
 }
 
 #[derive(Debug, Clone, Deserialize, JsonSchema)]
@@ -718,6 +735,8 @@ pub(super) struct TableDef {
     pub(super) initial_rows: Option<usize>,
     /// Column definitions with embedded widgets.
     pub(super) columns: Vec<TableColumnDef>,
+    #[serde(default, flatten)]
+    pub(super) binding: WidgetBindingDef,
 }
 
 #[derive(Debug, Clone, Deserialize, JsonSchema)]
@@ -745,11 +764,10 @@ pub(super) struct RepeaterDef {
     #[serde(default)]
     #[schemars(schema_with = "super::doc_model::yaml_value_schema")]
     pub(super) items: Vec<serde_yaml::Value>,
-    /// Store selector updated on submit.
-    #[serde(default)]
-    pub(super) submit_target: Option<String>,
     /// Repeater field definitions with embedded widgets.
     pub(super) fields: Vec<RepeaterFieldDef>,
+    #[serde(default, flatten)]
+    pub(super) binding: WidgetBindingDef,
 }
 
 #[derive(Debug, Clone, Deserialize, JsonSchema)]

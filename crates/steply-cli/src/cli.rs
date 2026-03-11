@@ -274,10 +274,6 @@ fn build_widget_arg(field: &FieldDoc) -> Arg {
         .value_name(field_value_name(field))
         .required(field.required && !is_auto_default_field(field.name.as_str()));
 
-    if field.name == "submit_target" {
-        arg = arg.visible_alias("target");
-    }
-
     if !field.allowed_values.is_empty() && !is_list_type(field.type_name.as_str()) {
         arg = arg.value_parser(PossibleValuesParser::new(field.allowed_values.clone()));
     }
@@ -435,9 +431,6 @@ fn field_long_help(field: &FieldDoc) -> String {
     }
 
     lines.push(format!("YAML field: `{}`", field.name));
-    if field.name == "submit_target" {
-        lines.push("CLI alias: `--target`".to_string());
-    }
     lines.push(format!("Type: `{}`", field.type_name));
     lines.push(format!(
         "Required: {}",

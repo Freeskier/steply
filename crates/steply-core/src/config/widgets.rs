@@ -4,7 +4,13 @@ mod embedded;
 mod inputs;
 mod outputs;
 
+use crate::core::store_refs::{
+    exact_template_expr, normalize_store_selector, parse_store_selector, template_expressions,
+};
 use crate::widgets::node::Node;
+use crate::widgets::shared::binding::{
+    ReadBinding, StoreBinding, WriteBinding, WriteExpr, bind_node,
+};
 use crate::widgets::static_hints;
 
 use super::doc_model::{WidgetCategory, WidgetDoc, WidgetDocDescriptor, build_widget_doc};
@@ -516,26 +522,6 @@ pub(super) fn widget_id(widget: &WidgetDef) -> &str {
     }
 }
 
-pub(super) fn visit_widget_submit_targets(
-    widget: &WidgetDef,
-    visitor: &mut impl FnMut(&str) -> Result<(), String>,
-) -> Result<(), String> {
-    match widget_submit_target(widget) {
-        Some(target) => visitor(target),
-        None => Ok(()),
-    }
-}
-
-pub(super) fn visit_widget_change_targets(
-    widget: &WidgetDef,
-    visitor: &mut impl FnMut(&str) -> Result<(), String>,
-) -> Result<(), String> {
-    for target in widget_change_targets(widget) {
-        visitor(target.as_str())?;
-    }
-    Ok(())
-}
-
 pub(super) fn visit_widget_inline_task_ids(
     widget: &WidgetDef,
     visitor: &mut impl FnMut(String) -> Result<(), String>,
@@ -570,14 +556,86 @@ pub(super) fn visit_widget_task_references(
     }
 }
 
+pub(super) fn visit_widget_binding_read_selectors(
+    widget: &WidgetDef,
+    visitor: &mut impl FnMut(&str) -> Result<(), String>,
+) -> Result<(), String> {
+    let Some(binding) = widget_binding(widget) else {
+        return Ok(());
+    };
+    let Some(reads) = &binding.reads else {
+        return Ok(());
+    };
+    visit_read_binding_selectors(reads, true, visitor)
+}
+
+pub(super) fn visit_widget_binding_write_targets(
+    widget: &WidgetDef,
+    visitor: &mut impl FnMut(&str) -> Result<(), String>,
+) -> Result<(), String> {
+    let Some(binding) = widget_binding(widget) else {
+        return Ok(());
+    };
+    match &binding.writes {
+        None => Ok(()),
+        Some(model::WriteBindingDef::Selector(selector)) => {
+            visitor(normalize_binding_selector(selector)?.as_str())
+        }
+        Some(model::WriteBindingDef::Map(entries)) => {
+            for target in entries.keys() {
+                visitor(normalize_binding_selector(target)?.as_str())?;
+            }
+            Ok(())
+        }
+    }
+}
+
+pub(super) fn visit_widget_binding_direct_value_targets(
+    widget: &WidgetDef,
+    visitor: &mut impl FnMut(&str) -> Result<(), String>,
+) -> Result<(), String> {
+    let Some(binding) = widget_binding(widget) else {
+        return Ok(());
+    };
+
+    if let Some(selector) = &binding.value {
+        return visitor(normalize_binding_selector(selector)?.as_str());
+    }
+
+    let Some(read_selector) = binding_top_level_read_selector(binding) else {
+        return Ok(());
+    };
+
+    match &binding.writes {
+        Some(model::WriteBindingDef::Selector(target))
+            if normalize_binding_selector(target)? == read_selector =>
+        {
+            visitor(read_selector.as_str())
+        }
+        Some(model::WriteBindingDef::Map(entries)) if entries.len() == 1 => {
+            let Some((target, expr)) = entries.iter().next() else {
+                return Ok(());
+            };
+            let normalized_target = normalize_binding_selector(target)?;
+            if normalized_target == read_selector && write_expr_is_identity(&expr.0) {
+                visitor(read_selector.as_str())
+            } else {
+                Ok(())
+            }
+        }
+        _ => Ok(()),
+    }
+}
+
 pub(super) fn compile_widget(def: WidgetDef) -> Result<Node, String> {
+    let binding = compile_widget_binding(widget_binding(&def).cloned())?;
     let widget_type = widget_type(&def);
     let Some(entry) = widget_entry(widget_type) else {
         return Err(format!(
             "internal widget registry is missing entry for '{widget_type}'"
         ));
     };
-    (entry.compile)(def)
+    Ok(bind_node((entry.compile)(def)?, binding))
 }
 
 fn widget_entry(widget_type: &str) -> Option<&'static WidgetRegistryEntry> {
@@ -632,29 +690,236 @@ fn widget_children(widget: &WidgetDef) -> Option<&[WidgetDef]> {
     }
 }
 
-fn widget_submit_target(widget: &WidgetDef) -> Option<&str> {
+fn widget_binding(widget: &WidgetDef) -> Option<&model::WidgetBindingDef> {
     match widget {
-        WidgetDef::TextInput(def) => def.submit_target.as_deref(),
-        WidgetDef::Select(def) => def.submit_target.as_deref(),
-        WidgetDef::ChoiceInput(def) => def.submit_target.as_deref(),
-        WidgetDef::SelectList(def) => def.submit_target.as_deref(),
-        WidgetDef::MaskedInput(def) => def.submit_target.as_deref(),
-        WidgetDef::ColorInput(def) => def.submit_target.as_deref(),
-        WidgetDef::Calendar(def) => def.submit_target.as_deref(),
-        WidgetDef::FileBrowser(def) => def.submit_target.as_deref(),
-        WidgetDef::TreeView(def) => def.submit_target.as_deref(),
-        WidgetDef::ObjectEditor(def) => def.submit_target.as_deref(),
-        WidgetDef::Snippet(def) => def.submit_target.as_deref(),
-        WidgetDef::Repeater(def) => def.submit_target.as_deref(),
+        WidgetDef::TextInput(def) => Some(&def.binding),
+        WidgetDef::ArrayInput(def) => Some(&def.binding),
+        WidgetDef::Select(def) => Some(&def.binding),
+        WidgetDef::ChoiceInput(def) => Some(&def.binding),
+        WidgetDef::SelectList(def) => Some(&def.binding),
+        WidgetDef::MaskedInput(def) => Some(&def.binding),
+        WidgetDef::Slider(def) => Some(&def.binding),
+        WidgetDef::ColorInput(def) => Some(&def.binding),
+        WidgetDef::ConfirmInput(def) => Some(&def.binding),
+        WidgetDef::Checkbox(def) => Some(&def.binding),
+        WidgetDef::Calendar(def) => Some(&def.binding),
+        WidgetDef::Textarea(def) => Some(&def.binding),
+        WidgetDef::FileBrowser(def) => Some(&def.binding),
+        WidgetDef::TreeView(def) => Some(&def.binding),
+        WidgetDef::ObjectEditor(def) => Some(&def.binding),
+        WidgetDef::Snippet(def) => Some(&def.binding),
+        WidgetDef::Table(def) => Some(&def.binding),
+        WidgetDef::Repeater(def) => Some(&def.binding),
         _ => None,
     }
 }
 
-fn widget_change_targets(widget: &WidgetDef) -> &[String] {
-    match widget {
-        WidgetDef::TextInput(def) => def.change_targets.as_slice(),
-        WidgetDef::Slider(def) => def.change_targets.as_slice(),
-        _ => &[],
+fn visit_read_binding_selectors(
+    value: &serde_yaml::Value,
+    top_level: bool,
+    visitor: &mut impl FnMut(&str) -> Result<(), String>,
+) -> Result<(), String> {
+    match value {
+        serde_yaml::Value::String(text) => {
+            if let Some(expr) = exact_template_expr(text)
+                && let Ok(selector) = normalize_binding_selector(expr)
+            {
+                return visitor(selector.as_str());
+            }
+            if text.contains("{{") && text.contains("}}") {
+                for expr in template_expressions(text) {
+                    if let Ok(selector) = normalize_binding_selector(expr.as_str()) {
+                        visitor(selector.as_str())?;
+                    }
+                }
+                return Ok(());
+            }
+            if top_level && let Ok(selector) = normalize_binding_selector(text) {
+                visitor(selector.as_str())?;
+            }
+            Ok(())
+        }
+        serde_yaml::Value::Mapping(map) => {
+            for nested in map.values() {
+                visit_read_binding_selectors(nested, false, visitor)?;
+            }
+            Ok(())
+        }
+        serde_yaml::Value::Sequence(items) => {
+            for item in items {
+                visit_read_binding_selectors(item, false, visitor)?;
+            }
+            Ok(())
+        }
+        _ => Ok(()),
+    }
+}
+
+fn compile_widget_binding(
+    binding: Option<model::WidgetBindingDef>,
+) -> Result<StoreBinding, String> {
+    let Some(binding) = binding else {
+        return Ok(StoreBinding::default());
+    };
+
+    if binding.value.is_some() && (binding.reads.is_some() || binding.writes.is_some()) {
+        return Err("binding 'value' cannot be combined with 'reads' or 'writes'".to_string());
+    }
+
+    if let Some(selector) = binding.value {
+        let target = parse_selector(selector.as_str())?;
+        return Ok(StoreBinding {
+            value: Some(target.clone()),
+            reads: Some(ReadBinding::Selector(target.clone())),
+            writes: vec![WriteBinding {
+                target,
+                expr: WriteExpr::ScopeRef("value".to_string()),
+            }],
+        });
+    }
+
+    let reads = binding
+        .reads
+        .map(|value| compile_read_binding_value(&value, true))
+        .transpose()?;
+
+    let writes = match binding.writes {
+        None => Vec::new(),
+        Some(model::WriteBindingDef::Selector(selector)) => {
+            vec![WriteBinding {
+                target: parse_selector(selector.as_str())?,
+                expr: WriteExpr::ScopeRef("value".to_string()),
+            }]
+        }
+        Some(model::WriteBindingDef::Map(entries)) => entries
+            .into_iter()
+            .map(|(target, expr)| {
+                Ok(WriteBinding {
+                    target: parse_selector(target.as_str())?,
+                    expr: compile_write_expr_value(&expr.0)?,
+                })
+            })
+            .collect::<Result<Vec<_>, String>>()?,
+    };
+
+    Ok(StoreBinding {
+        value: None,
+        reads,
+        writes,
+    })
+}
+
+fn compile_read_binding_value(
+    value: &serde_yaml::Value,
+    top_level: bool,
+) -> Result<ReadBinding, String> {
+    match value {
+        serde_yaml::Value::String(text) => {
+            if let Some(expr) = exact_template_expr(text)
+                && let Ok(selector) = parse_selector(expr)
+            {
+                return Ok(ReadBinding::Selector(selector));
+            }
+            if text.contains("{{") && text.contains("}}") {
+                return Ok(ReadBinding::Template(text.clone()));
+            }
+            if top_level && let Ok(selector) = parse_selector(text) {
+                return Ok(ReadBinding::Selector(selector));
+            }
+            Ok(ReadBinding::Literal(super::utils::yaml_value_to_value(
+                value,
+            )?))
+        }
+        serde_yaml::Value::Mapping(map) => {
+            let mut entries = indexmap::IndexMap::new();
+            for (key, nested) in map {
+                let serde_yaml::Value::String(key) = key else {
+                    return Err("reads object keys must be strings".to_string());
+                };
+                entries.insert(key.clone(), compile_read_binding_value(nested, false)?);
+            }
+            Ok(ReadBinding::Object(entries))
+        }
+        serde_yaml::Value::Sequence(items) => Ok(ReadBinding::List(
+            items
+                .iter()
+                .map(|item| compile_read_binding_value(item, false))
+                .collect::<Result<Vec<_>, String>>()?,
+        )),
+        _ => Ok(ReadBinding::Literal(super::utils::yaml_value_to_value(
+            value,
+        )?)),
+    }
+}
+
+fn compile_write_expr_value(value: &serde_yaml::Value) -> Result<WriteExpr, String> {
+    match value {
+        serde_yaml::Value::String(text) => {
+            if let Some(expr) = exact_template_expr(text) {
+                return Ok(WriteExpr::ScopeRef(expr.to_string()));
+            }
+            if is_value_scope_ref(text) {
+                return Ok(WriteExpr::ScopeRef(text.trim().to_string()));
+            }
+            if text.contains("{{") && text.contains("}}") {
+                return Ok(WriteExpr::Template(text.clone()));
+            }
+            Ok(WriteExpr::Literal(super::utils::yaml_value_to_value(
+                value,
+            )?))
+        }
+        serde_yaml::Value::Mapping(map) => {
+            let mut entries = indexmap::IndexMap::new();
+            for (key, nested) in map {
+                let serde_yaml::Value::String(key) = key else {
+                    return Err("writes object keys must be strings".to_string());
+                };
+                entries.insert(key.clone(), compile_write_expr_value(nested)?);
+            }
+            Ok(WriteExpr::Object(entries))
+        }
+        serde_yaml::Value::Sequence(items) => Ok(WriteExpr::List(
+            items
+                .iter()
+                .map(compile_write_expr_value)
+                .collect::<Result<Vec<_>, String>>()?,
+        )),
+        _ => Ok(WriteExpr::Literal(super::utils::yaml_value_to_value(
+            value,
+        )?)),
+    }
+}
+
+fn parse_selector(selector: &str) -> Result<crate::core::value_path::ValueTarget, String> {
+    parse_store_selector(selector).map_err(|err| format!("invalid selector '{selector}': {err}"))
+}
+
+fn normalize_binding_selector(selector: &str) -> Result<String, String> {
+    normalize_store_selector(selector)
+}
+
+fn is_value_scope_ref(text: &str) -> bool {
+    let trimmed = text.trim();
+    trimmed == "value" || trimmed.starts_with("value.") || trimmed.starts_with("value[")
+}
+
+fn binding_top_level_read_selector(binding: &model::WidgetBindingDef) -> Option<String> {
+    let serde_yaml::Value::String(text) = binding.reads.as_ref()? else {
+        return None;
+    };
+    if let Some(expr) = exact_template_expr(text) {
+        return normalize_binding_selector(expr).ok();
+    }
+    normalize_binding_selector(text).ok()
+}
+
+fn write_expr_is_identity(value: &serde_yaml::Value) -> bool {
+    match value {
+        serde_yaml::Value::String(text) => {
+            let trimmed = text.trim();
+            trimmed == "value" || exact_template_expr(trimmed).is_some_and(is_value_scope_ref)
+        }
+        _ => false,
     }
 }
 
@@ -777,8 +1042,7 @@ fn compile_text_input_widget(def: WidgetDef) -> Result<Node, String> {
             required,
             validators,
             completion_items,
-            submit_target,
-            change_targets,
+            ..
         }) => inputs::compile_text_input(
             id,
             label,
@@ -788,8 +1052,6 @@ fn compile_text_input_widget(def: WidgetDef) -> Result<Node, String> {
             required,
             validators,
             completion_items,
-            submit_target,
-            change_targets,
         ),
         _ => registry_dispatch_mismatch("text_input"),
     }
@@ -803,6 +1065,7 @@ fn compile_array_input_widget(def: WidgetDef) -> Result<Node, String> {
             items,
             required,
             validators,
+            ..
         }) => inputs::compile_array_input(id, label, items, required, validators),
         _ => registry_dispatch_mismatch("array_input"),
     }
@@ -830,16 +1093,9 @@ fn compile_select_widget(def: WidgetDef) -> Result<Node, String> {
             default,
             required,
             validators,
-            submit_target,
+            ..
         }) => inputs::compile_select_input(
-            id,
-            label,
-            options,
-            selected,
-            default,
-            required,
-            validators,
-            submit_target,
+            id, label, options, selected, default, required, validators,
         ),
         _ => registry_dispatch_mismatch("select"),
     }
@@ -855,17 +1111,10 @@ fn compile_choice_input_widget(def: WidgetDef) -> Result<Node, String> {
             default,
             required,
             validators,
-            submit_target,
-        }) => inputs::compile_choice_input(
-            id,
-            label,
-            options,
-            bullets,
-            default,
-            required,
-            validators,
-            submit_target,
-        ),
+            ..
+        }) => {
+            inputs::compile_choice_input(id, label, options, bullets, default, required, validators)
+        }
         _ => registry_dispatch_mismatch("choice_input"),
     }
 }
@@ -880,7 +1129,7 @@ fn compile_select_list_widget(def: WidgetDef) -> Result<Node, String> {
             max_visible,
             selected,
             show_label,
-            submit_target,
+            ..
         }) => components::compile_select_list(
             id,
             label,
@@ -889,7 +1138,6 @@ fn compile_select_list_widget(def: WidgetDef) -> Result<Node, String> {
             max_visible,
             selected,
             show_label,
-            submit_target,
         ),
         _ => registry_dispatch_mismatch("select_list"),
     }
@@ -904,16 +1152,8 @@ fn compile_masked_input_widget(def: WidgetDef) -> Result<Node, String> {
             default,
             required,
             validators,
-            submit_target,
-        }) => inputs::compile_masked_input(
-            id,
-            label,
-            mask,
-            default,
-            required,
-            validators,
-            submit_target,
-        ),
+            ..
+        }) => inputs::compile_masked_input(id, label, mask, default, required, validators),
         _ => registry_dispatch_mismatch("masked_input"),
     }
 }
@@ -931,19 +1171,9 @@ fn compile_slider_widget(def: WidgetDef) -> Result<Node, String> {
             default,
             required,
             validators,
-            change_targets,
+            ..
         }) => inputs::compile_slider_input(
-            id,
-            label,
-            min,
-            max,
-            step,
-            unit,
-            track_len,
-            default,
-            required,
-            validators,
-            change_targets,
+            id, label, min, max, step, unit, track_len, default, required, validators,
         ),
         _ => registry_dispatch_mismatch("slider"),
     }
@@ -957,8 +1187,8 @@ fn compile_color_input_widget(def: WidgetDef) -> Result<Node, String> {
             rgb,
             required,
             validators,
-            submit_target,
-        }) => inputs::compile_color_input(id, label, rgb, required, validators, submit_target),
+            ..
+        }) => inputs::compile_color_input(id, label, rgb, required, validators),
         _ => registry_dispatch_mismatch("color_input"),
     }
 }
@@ -972,6 +1202,7 @@ fn compile_confirm_input_widget(def: WidgetDef) -> Result<Node, String> {
             yes_label,
             no_label,
             default,
+            ..
         }) => inputs::compile_confirm_input(id, label, mode, yes_label, no_label, default),
         _ => registry_dispatch_mismatch("confirm_input"),
     }
@@ -985,6 +1216,7 @@ fn compile_checkbox_widget(def: WidgetDef) -> Result<Node, String> {
             checked,
             required,
             validators,
+            ..
         }) => inputs::compile_checkbox_input(id, label, checked, required, validators),
         _ => registry_dispatch_mismatch("checkbox"),
     }
@@ -998,8 +1230,8 @@ fn compile_calendar_widget(def: WidgetDef) -> Result<Node, String> {
             mode,
             required,
             validators,
-            submit_target,
-        }) => components::compile_calendar(id, label, mode, required, validators, submit_target),
+            ..
+        }) => components::compile_calendar(id, label, mode, required, validators),
         _ => registry_dispatch_mismatch("calendar"),
     }
 }
@@ -1013,6 +1245,7 @@ fn compile_textarea_widget(def: WidgetDef) -> Result<Node, String> {
             default,
             required,
             validators,
+            ..
         }) => {
             components::compile_textarea(id, min_height, max_height, default, required, validators)
         }
@@ -1059,9 +1292,9 @@ fn compile_file_browser_widget(def: WidgetDef) -> Result<Node, String> {
             hide_hidden,
             ext_filter,
             max_visible,
-            submit_target,
             required,
             validators,
+            ..
         }) => components::compile_file_browser(
             id,
             label,
@@ -1072,7 +1305,6 @@ fn compile_file_browser_widget(def: WidgetDef) -> Result<Node, String> {
             hide_hidden,
             ext_filter,
             max_visible,
-            submit_target,
             required,
             validators,
         ),
@@ -1089,16 +1321,10 @@ fn compile_tree_view_widget(def: WidgetDef) -> Result<Node, String> {
             max_visible,
             show_label,
             indent_guides,
-            submit_target,
-        }) => components::compile_tree_view(
-            id,
-            label,
-            nodes,
-            max_visible,
-            show_label,
-            indent_guides,
-            submit_target,
-        ),
+            ..
+        }) => {
+            components::compile_tree_view(id, label, nodes, max_visible, show_label, indent_guides)
+        }
         _ => registry_dispatch_mismatch("tree_view"),
     }
 }
@@ -1110,8 +1336,8 @@ fn compile_object_editor_widget(def: WidgetDef) -> Result<Node, String> {
             label,
             value,
             max_visible,
-            submit_target,
-        }) => components::compile_object_editor(id, label, value, max_visible, submit_target),
+            ..
+        }) => components::compile_object_editor(id, label, value, max_visible),
         _ => registry_dispatch_mismatch("object_editor"),
     }
 }
@@ -1123,8 +1349,8 @@ fn compile_snippet_widget(def: WidgetDef) -> Result<Node, String> {
             label,
             template,
             inputs,
-            submit_target,
-        }) => components::compile_snippet(id, label, template, inputs, submit_target),
+            ..
+        }) => components::compile_snippet(id, label, template, inputs),
         _ => registry_dispatch_mismatch("snippet"),
     }
 }
@@ -1138,6 +1364,7 @@ fn compile_table_widget(def: WidgetDef) -> Result<Node, String> {
             row_numbers,
             initial_rows,
             columns,
+            ..
         }) => components::compile_table(id, label, style, row_numbers, initial_rows, columns),
         _ => registry_dispatch_mismatch("table"),
     }
@@ -1154,8 +1381,8 @@ fn compile_repeater_widget(def: WidgetDef) -> Result<Node, String> {
             header_template,
             item_label_path,
             items,
-            submit_target,
             fields,
+            ..
         }) => components::compile_repeater(
             id,
             label,
@@ -1165,7 +1392,6 @@ fn compile_repeater_widget(def: WidgetDef) -> Result<Node, String> {
             header_template,
             item_label_path,
             items,
-            submit_target,
             fields,
         ),
         _ => registry_dispatch_mismatch("repeater"),

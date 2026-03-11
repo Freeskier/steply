@@ -11,7 +11,7 @@ use crate::widgets::{
 
 use super::super::model::{ConfirmModeDef, ValidatorDef};
 use super::super::parse::{compile_validators, parse_confirm_mode, parse_text_mode};
-use super::common::{with_change_targets, with_required_and_validators, with_submit_target};
+use super::common::with_required_and_validators;
 
 #[allow(clippy::too_many_arguments)]
 pub(super) fn compile_text_input(
@@ -23,8 +23,6 @@ pub(super) fn compile_text_input(
     required: Option<bool>,
     extra_validators: Vec<ValidatorDef>,
     completion_items: Vec<String>,
-    submit_target: Option<String>,
-    change_targets: Vec<String>,
 ) -> Result<Node, String> {
     let mut input = TextInput::new(id, label)
         .with_mode(parse_text_mode(mode.as_deref())?)
@@ -35,8 +33,6 @@ pub(super) fn compile_text_input(
     if let Some(default) = default {
         input = input.with_default(Value::Text(default));
     }
-    input = with_submit_target(input, submit_target)?;
-    input = with_change_targets(input, change_targets)?;
     input = with_required_and_validators(input, required, extra_validators);
     Ok(Node::Input(Box::new(input)))
 }
@@ -81,7 +77,6 @@ pub(super) fn compile_select_input(
     default: Option<String>,
     required: Option<bool>,
     extra_validators: Vec<ValidatorDef>,
-    submit_target: Option<String>,
 ) -> Result<Node, String> {
     let mut input = SelectInput::new(id, label, options);
     if let Some(selected) = selected {
@@ -90,7 +85,6 @@ pub(super) fn compile_select_input(
     if let Some(default) = default {
         input = input.with_default(Value::Text(default));
     }
-    input = with_submit_target(input, submit_target)?;
     input = with_required_and_validators(input, required, extra_validators);
     Ok(Node::Input(Box::new(input)))
 }
@@ -104,13 +98,11 @@ pub(super) fn compile_choice_input(
     default: Option<String>,
     required: Option<bool>,
     extra_validators: Vec<ValidatorDef>,
-    submit_target: Option<String>,
 ) -> Result<Node, String> {
     let mut input = ChoiceInput::new(id, label, options).with_bullets(bullets.unwrap_or(true));
     if let Some(default) = default {
         input = input.with_default(Value::Text(default));
     }
-    input = with_submit_target(input, submit_target)?;
     input = with_required_and_validators(input, required, extra_validators);
     Ok(Node::Input(Box::new(input)))
 }
@@ -123,13 +115,11 @@ pub(super) fn compile_masked_input(
     default: Option<String>,
     required: Option<bool>,
     extra_validators: Vec<ValidatorDef>,
-    submit_target: Option<String>,
 ) -> Result<Node, String> {
     let mut input = MaskedInput::new(id, label, mask);
     if let Some(default) = default {
         input = input.with_default(Value::Text(default));
     }
-    input = with_submit_target(input, submit_target)?;
     input = with_required_and_validators(input, required, extra_validators);
     Ok(Node::Input(Box::new(input)))
 }
@@ -146,7 +136,6 @@ pub(super) fn compile_slider_input(
     default: Option<f64>,
     required: Option<bool>,
     extra_validators: Vec<ValidatorDef>,
-    change_targets: Vec<String>,
 ) -> Result<Node, String> {
     let mut widget = SliderInput::new(id, label, min, max);
     if let Some(step) = step {
@@ -161,7 +150,6 @@ pub(super) fn compile_slider_input(
     if let Some(default) = default {
         widget = widget.with_default(Value::Number(default));
     }
-    widget = with_change_targets(widget, change_targets)?;
     widget = with_required_and_validators(widget, required, extra_validators);
     Ok(Node::Input(Box::new(widget)))
 }
@@ -172,13 +160,11 @@ pub(super) fn compile_color_input(
     rgb: Option<[u8; 3]>,
     required: Option<bool>,
     extra_validators: Vec<ValidatorDef>,
-    submit_target: Option<String>,
 ) -> Result<Node, String> {
     let mut widget = ColorInput::new(id, label);
     if let Some([r, g, b]) = rgb {
         widget = widget.with_rgb(r, g, b);
     }
-    widget = with_submit_target(widget, submit_target)?;
     widget = with_required_and_validators(widget, required, extra_validators);
     Ok(Node::Input(Box::new(widget)))
 }

@@ -1,10 +1,11 @@
 use crate::core::value::Value;
-use crate::core::value_path::ValueTarget;
-use crate::runtime::event::{SystemEvent, ValueChange, WidgetAction};
+use crate::runtime::event::{SystemEvent, WidgetAction};
+use crate::state::store::ValueStore;
 use crate::task::{TaskSpec, TaskSubscription};
 use crate::terminal::{CursorPos, KeyEvent, PointerEvent, PointerSemantic, TerminalSize};
 use crate::ui::inline::{InlineLine, flatten_lines};
 use crate::ui::span::{Span, SpanLine};
+use crate::widgets::shared::binding::StoreBinding;
 use crate::widgets::shared::text_edit;
 use serde::Serialize;
 use std::borrow::Cow;
@@ -363,22 +364,6 @@ impl InteractionResult {
         Self::with_action(WidgetAction::InputDone)
     }
 
-    pub fn submit_or_produce(target: Option<&ValueTarget>, value: Value) -> Self {
-        if let Some(target) = target {
-            return Self {
-                handled: true,
-                request_render: true,
-                actions: vec![
-                    WidgetAction::ValueChanged {
-                        change: ValueChange::with_target(target.clone(), value),
-                    },
-                    WidgetAction::ValidateFocusedSubmitAndInputDone,
-                ],
-            };
-        }
-        Self::input_done()
-    }
-
     pub fn merge(&mut self, other: Self) {
         self.handled |= other.handled;
         self.request_render |= other.request_render;
@@ -420,7 +405,7 @@ impl TextAction {
 
 pub trait Interactive: Send {
     fn focus_mode(&self) -> FocusMode;
-    fn submit_target(&self) -> Option<&ValueTarget> {
+    fn store_binding(&self) -> Option<&StoreBinding> {
         None
     }
 
@@ -479,6 +464,19 @@ pub trait Interactive: Send {
         None
     }
     fn set_value(&mut self, _value: Value) {}
+    fn sync_from_store(&mut self, store: &ValueStore) -> bool {
+        let Some(binding) = self.store_binding() else {
+            return false;
+        };
+        let Some(value) = binding.read_value(store) else {
+            return false;
+        };
+        if self.value().as_ref() == Some(&value) {
+            return false;
+        }
+        self.set_value(value);
+        true
+    }
 
     fn validate(&self, _mode: ValidationMode) -> Result<(), String> {
         Ok(())
@@ -497,10 +495,26 @@ pub trait InteractiveNode: Drawable + Interactive {}
 impl<T> InteractiveNode for T where T: Drawable + Interactive {}
 
 pub trait OutputNode: Drawable {
+    fn store_binding(&self) -> Option<&StoreBinding> {
+        None
+    }
     fn value(&self) -> Option<Value> {
         None
     }
     fn set_value(&mut self, _value: Value) {}
+    fn sync_from_store(&mut self, store: &ValueStore) -> bool {
+        let Some(binding) = self.store_binding() else {
+            return false;
+        };
+        let Some(value) = binding.read_value(store) else {
+            return false;
+        };
+        if self.value().as_ref() == Some(&value) {
+            return false;
+        }
+        self.set_value(value);
+        true
+    }
     fn on_pointer(&mut self, _event: PointerEvent) -> InteractionResult {
         InteractionResult::ignored()
     }

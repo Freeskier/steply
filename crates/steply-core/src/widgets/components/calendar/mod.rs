@@ -1,6 +1,4 @@
-use crate::core::NodeId;
 use crate::core::value::Value;
-use crate::core::value_path::{ValuePath, ValueTarget};
 use crate::terminal::{KeyCode, KeyEvent, KeyModifiers};
 use crate::ui::span::Span;
 use crate::ui::style::{Color, Style};
@@ -46,7 +44,6 @@ pub struct Calendar {
     time_input: MaskedInput,
 
     validators: Vec<Validator>,
-    submit_target: Option<ValueTarget>,
 }
 
 const MONTH_NAMES: [&str; 12] = [
@@ -80,7 +77,6 @@ impl Calendar {
             section: Section::Month,
             time_input: MaskedInput::new(time_id, "Time", "HH:mm:ss"),
             validators: Vec::new(),
-            submit_target: None,
         }
     }
 
@@ -94,16 +90,6 @@ impl Calendar {
 
     pub fn with_validator(mut self, v: Validator) -> Self {
         self.validators.push(v);
-        self
-    }
-
-    pub fn with_submit_target(mut self, target: impl Into<NodeId>) -> Self {
-        self.submit_target = Some(ValueTarget::node(target));
-        self
-    }
-
-    pub fn with_submit_target_path(mut self, root: impl Into<NodeId>, path: ValuePath) -> Self {
-        self.submit_target = Some(ValueTarget::path(root, path));
         self
     }
 
@@ -376,10 +362,6 @@ impl Interactive for Calendar {
         FocusMode::Leaf
     }
 
-    fn submit_target(&self) -> Option<&ValueTarget> {
-        self.submit_target.as_ref()
-    }
-
     fn cursor_pos(&self) -> Option<crate::terminal::CursorPos> {
         if self.is_time_section() {
             let row_offset = if self.mode == CalendarMode::Time {
@@ -432,8 +414,7 @@ impl Interactive for Calendar {
                     return InteractionResult::handled();
                 }
                 KeyCode::Enter => {
-                    let val = Value::Text(self.formatted_value());
-                    return InteractionResult::submit_or_produce(self.submit_target.as_ref(), val);
+                    return InteractionResult::input_done();
                 }
                 _ => return self.time_input.on_key(key),
             }
@@ -500,10 +481,7 @@ impl Interactive for Calendar {
                     self.select_day();
                     InteractionResult::handled()
                 }
-                _ => {
-                    let val = Value::Text(self.formatted_value());
-                    InteractionResult::submit_or_produce(self.submit_target.as_ref(), val)
-                }
+                _ => InteractionResult::input_done(),
             },
             _ => InteractionResult::ignored(),
         }

@@ -71,16 +71,7 @@ impl Repeater {
         if self.active_item + 1 < self.rows.len() {
             self.active_item += 1;
             self.active_field = 0;
-            let mut result = InteractionResult::handled();
-            if let Some(target) = &self.submit_target {
-                result.actions.push(WidgetAction::ValueChanged {
-                    change: ValueChange::with_target(
-                        target.clone(),
-                        self.build_committed_rows_value(),
-                    ),
-                });
-            }
-            return result;
+            return InteractionResult::handled();
         }
 
         self.finished = true;
@@ -112,13 +103,6 @@ impl Repeater {
     }
 
     fn submit_or_done(&self) -> InteractionResult {
-        if let Some(target) = &self.submit_target {
-            let mut result = InteractionResult::with_action(WidgetAction::ValueChanged {
-                change: ValueChange::with_target(target.clone(), self.build_rows_value()),
-            });
-            result.actions.push(WidgetAction::InputDone);
-            return result;
-        }
         InteractionResult::input_done()
     }
 
@@ -148,10 +132,6 @@ impl Repeater {
 impl Interactive for Repeater {
     fn focus_mode(&self) -> FocusMode {
         FocusMode::Group
-    }
-
-    fn submit_target(&self) -> Option<&ValueTarget> {
-        self.submit_target.as_ref()
     }
 
     fn on_key(&mut self, key: KeyEvent) -> InteractionResult {

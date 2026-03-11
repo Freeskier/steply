@@ -2,11 +2,8 @@ mod state;
 
 use std::borrow::Cow;
 
-use crate::core::NodeId;
 use crate::core::value::Value;
-use crate::core::value_path::{ValuePath, ValueTarget};
 use crate::runtime::event::WidgetAction;
-
 use crate::terminal::{
     CursorPos, KeyCode, KeyEvent, PointerButton, PointerEvent, PointerKind, PointerSemantic,
 };
@@ -104,7 +101,6 @@ pub struct TreeView<T: TreeItemLabel> {
     visible: Vec<usize>,
     active_index: usize,
     scroll: ScrollState,
-    submit_target: Option<ValueTarget>,
     show_label: bool,
     show_indent_guides: bool,
     filter: filter::ListFilter,
@@ -122,7 +118,6 @@ impl<T: TreeItemLabel> TreeView<T> {
             visible: Vec::new(),
             active_index: 0,
             scroll: ScrollState::new(None),
-            submit_target: None,
             show_label: true,
             show_indent_guides: false,
             filter: filter::ListFilter::new(
@@ -140,16 +135,6 @@ impl<T: TreeItemLabel> TreeView<T> {
     pub fn with_max_visible(mut self, max_visible: usize) -> Self {
         self.scroll.set_max_visible(max_visible);
         self.rebuild();
-        self
-    }
-
-    pub fn with_submit_target(mut self, target: impl Into<NodeId>) -> Self {
-        self.submit_target = Some(ValueTarget::node(target));
-        self
-    }
-
-    pub fn with_submit_target_path(mut self, root: impl Into<NodeId>, path: ValuePath) -> Self {
-        self.submit_target = Some(ValueTarget::path(root, path));
         self
     }
 
@@ -628,10 +613,6 @@ impl<T: TreeItemLabel> Interactive for TreeView<T> {
         FocusMode::Group
     }
 
-    fn submit_target(&self) -> Option<&ValueTarget> {
-        self.submit_target.as_ref()
-    }
-
     fn on_key(&mut self, key: KeyEvent) -> InteractionResult {
         if let Some(outcome) = self.filter.handle_toggle_shortcut(key) {
             return self.apply_filter_outcome(outcome);
@@ -650,12 +631,7 @@ impl<T: TreeItemLabel> Interactive for TreeView<T> {
             KeyCode::Down => InteractionResult::handled_if(self.move_active(1)),
             KeyCode::Right => InteractionResult::handled_if(self.expand_active()),
             KeyCode::Left => InteractionResult::handled_if(self.collapse_active()),
-            KeyCode::Enter => {
-                let Some(value) = self.value() else {
-                    return InteractionResult::input_done();
-                };
-                InteractionResult::submit_or_produce(self.submit_target.as_ref(), value)
-            }
+            KeyCode::Enter => InteractionResult::input_done(),
             _ => InteractionResult::ignored(),
         }
     }

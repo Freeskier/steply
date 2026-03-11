@@ -1,6 +1,7 @@
 use crate::core::value::Value;
-use crate::core::value_path::ValueTarget;
 use crate::runtime::event::SystemEvent;
+use crate::runtime::event::ValueChange;
+use crate::state::store::ValueStore;
 use crate::task::{TaskSpec, TaskSubscription};
 use crate::terminal::{CursorPos, KeyEvent, PointerEvent};
 use crate::widgets::traits::{
@@ -177,9 +178,14 @@ impl Node {
             .unwrap_or(FocusMode::None)
     }
 
-    pub fn submit_target(&self) -> Option<&ValueTarget> {
-        self.interactive_ref()
-            .and_then(|widget| widget.submit_target())
+    pub fn store_binding(&self) -> Option<&crate::widgets::shared::binding::StoreBinding> {
+        if let Some(widget) = self.interactive_ref() {
+            widget.store_binding()
+        } else if let Some(widget) = self.output_ref() {
+            widget.store_binding()
+        } else {
+            None
+        }
     }
 
     pub fn is_focusable(&self) -> bool {
@@ -266,6 +272,23 @@ impl Node {
         } else if let Some(widget) = self.output_mut() {
             widget.set_value(value);
         }
+    }
+
+    pub fn sync_from_store(&mut self, store: &ValueStore) -> bool {
+        if let Some(widget) = self.interactive_mut() {
+            widget.sync_from_store(store)
+        } else if let Some(widget) = self.output_mut() {
+            widget.sync_from_store(store)
+        } else {
+            false
+        }
+    }
+
+    pub fn write_changes(&self) -> Vec<ValueChange> {
+        if let Some(binding) = self.store_binding() {
+            return binding.write_changes(self.value());
+        }
+        Vec::new()
     }
 
     pub fn validate(&self, mode: ValidationMode) -> Result<(), String> {

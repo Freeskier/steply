@@ -1,0 +1,212 @@
+version: 1
+
+tasks:
+  - id: scan_directory
+    kind: exec
+    program: bash
+    args:
+      - -lc
+      - |
+        python3 - "$1" "$2" <<'PY'
+        import json
+        import os
+        import sys
+
+        def load_json(arg):
+            if not arg:
+                return []
+            try:
+                return json.loads(arg)
+            except json.JSONDecodeError:
+                return []
+
+        def planned_names(payload):
+            names = []
+            if not isinstance(payload, list):
+                return names
+            for item in payload:
+                if isinstance(item, dict):
+                    value = item.get("item")
+                    if isinstance(value, str) and value:
+                        names.append(value)
+                elif isinstance(item, str) and item:
+                    names.append(item)
+            return names
+
+        path = sys.argv[1] or "."
+        plan = load_json(sys.argv[2])
+        taken = set(planned_names(plan))
+
+        if not os.path.isdir(path):
+            print(json.dumps({
+                "options": [{
+                    "value": "__missing__",
+                    "title": "Directory not found",
+                    "description": path,
+                }]
+            }))
+            raise SystemExit(0)
+
+        options = []
+        with os.scandir(path) as entries:
+            for entry in sorted(entries, key=lambda item: item.name.lower()):
+                if entry.name in taken:
+                    continue
+                kind = "directory" if entry.is_dir() else "file"
+                title = f"{entry.name}/" if kind == "directory" else entry.name
+                options.append({
+                    "value": entry.name,
+                    "title": title,
+                    "description": kind,
+                })
+
+        if not options:
+            options.append({
+                "value": "__empty__",
+                "title": "No remaining entries",
+                "description": "Everything from this directory is already in the repeater plan.",
+            })
+
+        print(json.dumps({"options": options}))
+        PY
+      - steply-scan
+      - ${scan_dir}
+      - ${file_plan}
+    parse: json
+
+  - id: merge_batch_into_plan
+    kind: exec
+    program: bash
+    args:
+      - -lc
+      - |
+        python3 - "$1" "$2" <<'PY'
+        import json
+        import sys
+
+        def load_json(arg):
+            if not arg:
+                return []
+            try:
+                return json.loads(arg)
+            except json.JSONDecodeError:
+                return []
+
+        existing = load_json(sys.argv[1])
+        batch = load_json(sys.argv[2])
+
+        rows = []
+        seen = set()
+
+        if isinstance(existing, list):
+            for row in existing:
+                if isinstance(row, dict):
+                    item = row.get("item")
+                    if isinstance(item, str) and item and item not in seen:
+                        rows.append(row)
+                        seen.add(item)
+                elif isinstance(row, str) and row and row not in seen:
+                    rows.append({"item": row})
+                    seen.add(row)
+
+        if isinstance(batch, list):
+            for item in batch:
+                if isinstance(item, str) and item and item not in seen:
+                    rows.append({"item": item})
+                    seen.add(item)
+
+        print(json.dumps(rows))
+        PY
+      - steply-merge
+      - ${file_plan}
+      - ${batch_selection}
+    parse: json
+
+subscriptions:
+  - task: scan_directory
+    trigger:
+      on_input:
+        ref: scan_dir
+        debounce_ms: 120
+    target: file_choices
+  - task: scan_directory
+    trigger:
+      on_input:
+        ref: file_plan
+        debounce_ms: 50
+    target: file_choices
+  - task: merge_batch_into_plan
+    trigger:
+      on_input:
+        ref: batch_selection
+        debounce_ms: 10
+    target: file_plan
+
+steps:
+  - id: pick
+    title: Shell file picker -> repeater plan
+    description: Commit a batch from the shell-backed list, then keep working only through the remaining entries.
+    widgets:
+      - type: text_output
+        id: intro
+        text: |
+          Type a directory path, use Space to mark a batch, then press Enter.
+          The batch is merged into the repeater below.
+          After every commit, the select list refreshes and shows only entries that are not already in the repeater plan.
+      - type: text_input
+        id: scan_dir
+        label: Directory
+        default: .
+        placeholder: ./crates/steply-core/src/widgets
+        writes: scan_dir
+      - type: select_list
+        id: file_choices
+        label: Remaining entries
+        mode: multi
+        max_visible: 10
+        writes: batch_selection
+        options:
+          - value: booting
+            title: Loading directory listing...
+            description: Change the path or wait for the initial scan.
+      - type: array_input
+        id: batch_selection
+        label: Last committed batch
+        items: []
+      - type: repeater
+        id: file_plan
+        label: Review plan
+        layout: stacked
+        show_progress: true
+        header_template: "review [{index}/{total}] -> {item}"
+        items: []
+        fields:
+          - key: note
+            label: Note
+            widget:
+              type: text_input
+              placeholder: why does this entry matter?
+          - key: priority
+            label: Priority
+            widget:
+              type: select
+              options: [low, medium, high]
+          - key: keep
+            label: Keep
+            widget:
+              type: checkbox
+
+  - id: confirm
+    title: Confirm plan
+    when:
+      ref: file_plan
+      not_empty: true
+    widgets:
+      - type: text_output
+        id: summary
+        text: |
+          The repeater now holds the accumulated file plan.
+          As long as entries stay in `file_plan`, the select list above will not offer them again.
+      - type: confirm_input
+        id: proceed
+        label: Accept this review plan?

@@ -2,10 +2,8 @@ use std::sync::Arc;
 
 use indexmap::IndexMap;
 
-use crate::core::NodeId;
 use crate::core::value::Value;
-use crate::core::value_path::{ValuePath, ValueTarget};
-use crate::runtime::event::ValueChange;
+use crate::core::value_path::ValuePath;
 use crate::terminal::{CursorPos, KeyCode, KeyEvent};
 use crate::ui::span::{Span, SpanLine};
 use crate::ui::style::{Color, Style};
@@ -54,7 +52,6 @@ pub struct Repeater {
     header_template: String,
     item_label_path: Option<ValuePath>,
     finished: bool,
-    submit_target: Option<ValueTarget>,
 }
 
 impl Repeater {
@@ -71,7 +68,6 @@ impl Repeater {
             header_template: "configuring [{index} of {total}] for {item}:".to_string(),
             item_label_path: None,
             finished: false,
-            submit_target: None,
         }
     }
 
@@ -102,16 +98,6 @@ impl Repeater {
 
     pub fn with_items(mut self, items: Vec<Value>) -> Self {
         self.set_items(items);
-        self
-    }
-
-    pub fn with_submit_target(mut self, target: impl Into<NodeId>) -> Self {
-        self.submit_target = Some(ValueTarget::node(target));
-        self
-    }
-
-    pub fn with_submit_target_path(mut self, root: impl Into<NodeId>, path: ValuePath) -> Self {
-        self.submit_target = Some(ValueTarget::path(root, path));
         self
     }
 
@@ -296,10 +282,6 @@ impl Repeater {
 
     fn build_rows_value(&self) -> Value {
         self.build_rows_value_for_count(self.rows.len())
-    }
-
-    fn build_committed_rows_value(&self) -> Value {
-        self.build_rows_value_for_count(self.completed_items())
     }
 
     fn apply_rows_seed(&mut self, rows_seed: &[Value]) {

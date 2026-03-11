@@ -25,7 +25,7 @@ use super::super::parse::{
     parse_table_style,
 };
 use super::super::utils::yaml_value_to_value;
-use super::common::{with_required_and_validators, with_submit_target};
+use super::common::with_required_and_validators;
 use super::compile_widget;
 use super::embedded::{compile_repeater_embedded_factory, compile_table_embedded_factory};
 
@@ -38,7 +38,6 @@ pub(super) fn compile_select_list(
     max_visible: Option<usize>,
     selected: Vec<usize>,
     show_label: Option<bool>,
-    submit_target: Option<String>,
 ) -> Result<Node, String> {
     let select_mode = parse_select_mode(mode.as_deref())?;
     let items = options
@@ -61,7 +60,6 @@ pub(super) fn compile_select_list(
     if let Some(show_label) = show_label {
         widget = widget.with_show_label(show_label);
     }
-    widget = with_submit_target(widget, submit_target)?;
     Ok(Node::Component(Box::new(widget)))
 }
 
@@ -71,10 +69,8 @@ pub(super) fn compile_calendar(
     mode: Option<String>,
     required: Option<bool>,
     extra_validators: Vec<ValidatorDef>,
-    submit_target: Option<String>,
 ) -> Result<Node, String> {
     let mut widget = Calendar::new(id, label).with_mode(parse_calendar_mode(mode.as_deref())?);
-    widget = with_submit_target(widget, submit_target)?;
     widget = with_required_and_validators(widget, required, extra_validators);
     Ok(Node::Component(Box::new(widget)))
 }
@@ -143,7 +139,6 @@ pub(super) fn compile_file_browser(
     hide_hidden: Option<bool>,
     ext_filter: Vec<String>,
     max_visible: Option<usize>,
-    submit_target: Option<String>,
     required: Option<bool>,
     extra_validators: Vec<ValidatorDef>,
 ) -> Result<Node, String> {
@@ -168,7 +163,6 @@ pub(super) fn compile_file_browser(
     if let Some(max_visible) = max_visible {
         widget = widget.with_max_visible(max_visible);
     }
-    widget = with_submit_target(widget, submit_target)?;
     widget = with_required_and_validators(widget, required, extra_validators);
     Ok(Node::Component(Box::new(widget)))
 }
@@ -181,7 +175,6 @@ pub(super) fn compile_tree_view(
     max_visible: Option<usize>,
     show_label: Option<bool>,
     indent_guides: Option<bool>,
-    submit_target: Option<String>,
 ) -> Result<Node, String> {
     let mut tree_nodes = Vec::with_capacity(nodes.len());
     for node in nodes {
@@ -201,7 +194,6 @@ pub(super) fn compile_tree_view(
     if let Some(indent_guides) = indent_guides {
         widget = widget.with_indent_guides(indent_guides);
     }
-    widget = with_submit_target(widget, submit_target)?;
     Ok(Node::Component(Box::new(widget)))
 }
 
@@ -210,7 +202,6 @@ pub(super) fn compile_object_editor(
     label: String,
     value: Option<serde_yaml::Value>,
     max_visible: Option<usize>,
-    submit_target: Option<String>,
 ) -> Result<Node, String> {
     let mut widget = ObjectEditor::new(id, label);
     if let Some(value) = value {
@@ -219,7 +210,6 @@ pub(super) fn compile_object_editor(
     if let Some(max_visible) = max_visible {
         widget = widget.with_max_visible(max_visible);
     }
-    widget = with_submit_target(widget, submit_target)?;
     Ok(Node::Component(Box::new(widget)))
 }
 
@@ -228,7 +218,6 @@ pub(super) fn compile_snippet(
     label: String,
     template: String,
     inputs: Vec<WidgetDef>,
-    submit_target: Option<String>,
 ) -> Result<Node, String> {
     let mut widget = Snippet::new(id, label, template);
     for input_def in inputs {
@@ -238,7 +227,6 @@ pub(super) fn compile_snippet(
         }
         widget = widget.with_input(node);
     }
-    widget = with_submit_target(widget, submit_target)?;
     Ok(Node::Component(Box::new(widget)))
 }
 
@@ -274,7 +262,6 @@ pub(super) fn compile_repeater(
     header_template: Option<String>,
     item_label_path: Option<String>,
     items: Vec<serde_yaml::Value>,
-    submit_target: Option<String>,
     fields: Vec<RepeaterFieldDef>,
 ) -> Result<Node, String> {
     let mut widget =
@@ -304,6 +291,5 @@ pub(super) fn compile_repeater(
         let make_input = compile_repeater_embedded_factory(field.widget)?;
         widget = widget.field_boxed(field.key, field.label, make_input);
     }
-    widget = with_submit_target(widget, submit_target)?;
     Ok(Node::Component(Box::new(widget)))
 }

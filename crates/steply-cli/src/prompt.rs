@@ -188,9 +188,32 @@ fn normalize_type_name(type_name: &str) -> &str {
 fn result_selector(invocation: &PromptInvocation) -> String {
     invocation
         .values
-        .get("submit_target")
+        .get("value")
         .and_then(|values| values.last())
         .cloned()
+        .or_else(|| {
+            invocation
+                .values
+                .get("writes")
+                .and_then(|values| values.last())
+                .and_then(|raw| match parse_yaml_fragment(raw).ok()? {
+                    YamlValue::String(selector) => Some(selector),
+                    _ => None,
+                })
+        })
+        .or_else(|| {
+            invocation
+                .values
+                .get("writes")
+                .and_then(|values| values.last())
+                .and_then(|raw| match parse_yaml_fragment(raw).ok()? {
+                    YamlValue::Mapping(map) if map.len() == 1 => map
+                        .keys()
+                        .next()
+                        .and_then(|key| key.as_str().map(ToOwned::to_owned)),
+                    _ => None,
+                })
+        })
         .or_else(|| {
             invocation
                 .values

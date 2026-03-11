@@ -23,7 +23,7 @@ impl Terminal {
         self.keyboard_enhancements_active = false;
         if keyboard_enhancements_enabled() {
             self.keyboard_enhancements_active =
-                self.try_push_keyboard_enhancements().map_err(|err| {
+                self.try_push_keyboard_enhancements().inspect_err(|_| {
                     let _ = terminal::disable_raw_mode();
                     let _ = execute!(
                         self.stdout,
@@ -32,7 +32,6 @@ impl Terminal {
                         EnableLineWrap,
                         Show
                     );
-                    err
                 })?;
         }
         Ok(())
@@ -53,10 +52,9 @@ impl Terminal {
         self.keyboard_enhancements_active = false;
         if keyboard_enhancements_enabled() {
             self.keyboard_enhancements_active =
-                self.try_push_keyboard_enhancements().map_err(|err| {
+                self.try_push_keyboard_enhancements().inspect_err(|_| {
                     let _ = terminal::disable_raw_mode();
                     let _ = execute!(self.stdout, EnableLineWrap, Show);
-                    err
                 })?;
         }
         Ok(())

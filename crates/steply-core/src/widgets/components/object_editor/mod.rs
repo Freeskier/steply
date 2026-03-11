@@ -4,9 +4,8 @@ use std::sync::Arc;
 
 use indexmap::IndexMap;
 
-use crate::core::NodeId;
 use crate::core::value::Value;
-use crate::core::value_path::{PathSegment, ValuePath, ValueTarget};
+use crate::core::value_path::{PathSegment, ValuePath};
 
 use crate::terminal::{CursorPos, KeyCode, KeyEvent};
 use crate::ui::highlight::render_text_spans;
@@ -173,7 +172,6 @@ pub struct ObjectEditor {
     filter: filter::ListFilter,
     insert_types: Vec<InsertType>,
     mode: Mode,
-    submit_target: Option<ValueTarget>,
 }
 
 impl ObjectEditor {
@@ -242,7 +240,6 @@ impl ObjectEditor {
             filter: filter::ListFilter::new(filter_id, filter::FilterEscBehavior::Blur, false),
             insert_types: Vec::new(),
             mode: Mode::Normal,
-            submit_target: None,
         };
         this.rebuild();
         this
@@ -261,16 +258,6 @@ impl ObjectEditor {
         self.tree = TreeView::new(id, "", nodes)
             .with_show_label(false)
             .with_max_visible(n);
-        self
-    }
-
-    pub fn with_submit_target(mut self, target: impl Into<NodeId>) -> Self {
-        self.submit_target = Some(ValueTarget::node(target));
-        self
-    }
-
-    pub fn with_submit_target_path(mut self, root: impl Into<NodeId>, path: ValuePath) -> Self {
-        self.submit_target = Some(ValueTarget::path(root, path));
         self
     }
 
@@ -380,6 +367,36 @@ impl ObjectEditor {
             return Some("value cannot be empty".to_string());
         }
         None
+    }
+
+    fn draft_value(&self) -> Value {
+        let mut draft = self.value.clone();
+        if let Mode::EditValue {
+            visible_index,
+            key_value,
+        } = &self.mode
+        {
+            let path = self.path_at_visible_index(*visible_index);
+            let parent_path = Self::parent_path(&path);
+            let key = Self::leaf_key(&path);
+            let draft_value = Self::parse_scalar(key_value.value_text().as_str());
+            if let Some(parent) = Self::value_at_path_mut(&mut draft, &parent_path) {
+                match parent {
+                    Value::Object(map) => {
+                        map.insert(key, draft_value);
+                    }
+                    Value::List(list) => {
+                        if let Ok(index) = key.parse::<usize>()
+                            && index < list.len()
+                        {
+                            list[index] = draft_value;
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+        draft
     }
 }
 

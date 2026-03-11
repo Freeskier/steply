@@ -1,3 +1,4 @@
+use crate::core::store_refs::{parse_store_selector, render_template};
 use crate::core::value::Value;
 use crate::runtime::event::{AppEvent, SystemEvent};
 use crate::runtime::scheduler::SchedulerCommand;
@@ -106,33 +107,14 @@ impl AppState {
     }
 
     fn interpolate_store_vars_internal(&self, template: &str) -> String {
-        let chars = template.chars().collect::<Vec<_>>();
-        let mut out = String::new();
-        let mut idx = 0usize;
-        while idx < chars.len() {
-            if chars[idx] == '$' && idx + 1 < chars.len() && chars[idx + 1] == '{' {
-                let mut end = idx + 2;
-                while end < chars.len() && chars[end] != '}' {
-                    end += 1;
-                }
-                if end < chars.len() && chars[end] == '}' {
-                    let key = chars[idx + 2..end].iter().collect::<String>();
-                    let value = self
-                        .data
-                        .store
-                        .get_selector(key.as_str())
-                        .map(value_to_task_arg)
-                        .unwrap_or_default();
-                    out.push_str(value.as_str());
-                    idx = end + 1;
-                    continue;
-                }
-            }
-
-            out.push(chars[idx]);
-            idx += 1;
-        }
-        out
+        render_template(
+            template,
+            |expr| {
+                let target = parse_store_selector(expr).ok()?;
+                self.data.store.get_target(&target).cloned()
+            },
+            value_to_task_arg,
+        )
     }
 
     fn enqueue_task_request_internal(&mut self, task_id: TaskId, request: TaskRequest) {

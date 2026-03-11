@@ -85,9 +85,7 @@ use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use crate::core::NodeId;
 use crate::core::value::Value;
-use crate::core::value_path::{ValuePath, ValueTarget};
 
 use crate::terminal::{CursorPos, KeyCode, KeyEvent, KeyModifiers};
 use crate::ui::highlight::render_text_spans;
@@ -131,7 +129,6 @@ pub struct FileBrowserComponent {
     entry_filter: EF,
     ext_filter: Option<HashSet<String>>,
     display_mode: DisplayMode,
-    submit_target: Option<ValueTarget>,
     validators: Vec<Validator>,
 
     scanner: ScannerHandle,
@@ -196,7 +193,6 @@ impl FileBrowserComponent {
             entry_filter: EF::All,
             ext_filter: None,
             display_mode: DisplayMode::Relative,
-            submit_target: None,
             validators: Vec::new(),
             scanner: ScannerHandle::new(),
             tree_scanner: TreeScannerHandle::new(),
@@ -256,16 +252,6 @@ impl FileBrowserComponent {
 
     pub fn with_max_visible(mut self, n: usize) -> Self {
         self.list.set_max_visible(n);
-        self
-    }
-
-    pub fn with_submit_target(mut self, target: impl Into<NodeId>) -> Self {
-        self.submit_target = Some(ValueTarget::node(target));
-        self
-    }
-
-    pub fn with_submit_target_path(mut self, root: impl Into<NodeId>, path: ValuePath) -> Self {
-        self.submit_target = Some(ValueTarget::path(root, path));
         self
     }
 
@@ -596,10 +582,6 @@ impl Interactive for FileBrowserComponent {
         FocusMode::Leaf
     }
 
-    fn submit_target(&self) -> Option<&ValueTarget> {
-        self.submit_target.as_ref()
-    }
-
     fn on_key(&mut self, key: KeyEvent) -> InteractionResult {
         if key.code == KeyCode::Char(' ')
             && (keymap::has_exact_modifiers(key, KeyModifiers::SHIFT)
@@ -613,10 +595,7 @@ impl Interactive for FileBrowserComponent {
         }
 
         if key.code == KeyCode::Enter {
-            return InteractionResult::submit_or_produce(
-                self.submit_target.as_ref(),
-                Value::Text(self.current_input()),
-            );
+            return InteractionResult::input_done();
         }
 
         self.handle_text_key_with_rescan(key)

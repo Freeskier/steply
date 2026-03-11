@@ -1,6 +1,4 @@
-use crate::core::NodeId;
 use crate::core::value::Value;
-use crate::core::value_path::{ValuePath, ValueTarget};
 use crate::terminal::{CursorPos, KeyCode, KeyEvent, KeyModifiers};
 use crate::ui::span::Span;
 use crate::ui::style::{Color, Style};
@@ -54,7 +52,6 @@ pub struct ColorInput {
     edit_buffer: String,
     edit_mode: ColorMode,
     edit_channel: Channel,
-    submit_target: Option<ValueTarget>,
     validators: Vec<Validator>,
 }
 
@@ -68,23 +65,12 @@ impl ColorInput {
             edit_buffer: String::new(),
             edit_mode: ColorMode::Hex,
             edit_channel: Channel::First,
-            submit_target: None,
             validators: Vec::new(),
         }
     }
 
     pub fn with_rgb(mut self, r: u8, g: u8, b: u8) -> Self {
         self.rgb = [r, g, b];
-        self
-    }
-
-    pub fn with_submit_target(mut self, target: impl Into<NodeId>) -> Self {
-        self.submit_target = Some(ValueTarget::node(target));
-        self
-    }
-
-    pub fn with_submit_target_path(mut self, root: impl Into<NodeId>, path: ValuePath) -> Self {
-        self.submit_target = Some(ValueTarget::path(root, path));
         self
     }
 
@@ -316,10 +302,6 @@ impl Interactive for ColorInput {
         FocusMode::Leaf
     }
 
-    fn submit_target(&self) -> Option<&ValueTarget> {
-        self.submit_target.as_ref()
-    }
-
     fn on_key(&mut self, key: KeyEvent) -> InteractionResult {
         match key.code {
             KeyCode::Char(' ') => {
@@ -366,10 +348,7 @@ impl Interactive for ColorInput {
                 }
                 InteractionResult::ignored()
             }
-            KeyCode::Enter => InteractionResult::submit_or_produce(
-                self.submit_target.as_ref(),
-                Value::Text(rgb_to_hex(self.rgb)),
-            ),
+            KeyCode::Enter => InteractionResult::input_done(),
             _ => InteractionResult::ignored(),
         }
     }

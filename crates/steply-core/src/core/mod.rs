@@ -1,4 +1,5 @@
 pub mod search;
+pub mod store_refs;
 pub mod value;
 pub mod value_path;
 

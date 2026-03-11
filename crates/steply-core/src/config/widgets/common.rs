@@ -13,9 +13,7 @@ use crate::widgets::inputs::text::TextInput;
 use crate::widgets::validators;
 
 use super::super::model::ValidatorDef;
-use super::super::parse::{
-    WithChangeTargetPathValue, WithSubmitTargetPathValue, compile_validators, parse_value_target,
-};
+use super::super::parse::compile_validators;
 
 pub(super) trait SupportsValidator: Sized {
     fn with_runtime_validator(self, validator: validators::Validator) -> Self;
@@ -108,29 +106,4 @@ where
         widget = widget.with_runtime_validator(validator);
     }
     widget
-}
-
-pub(super) fn with_submit_target<T>(widget: T, submit_target: Option<String>) -> Result<T, String>
-where
-    T: WithSubmitTargetPathValue,
-{
-    match submit_target {
-        Some(target) => {
-            Ok(widget.with_submit_target_path_value(parse_value_target(target.as_str())?))
-        }
-        None => Ok(widget),
-    }
-}
-
-pub(super) fn with_change_targets<T>(
-    mut widget: T,
-    change_targets: Vec<String>,
-) -> Result<T, String>
-where
-    T: WithChangeTargetPathValue,
-{
-    for target in change_targets {
-        widget = widget.with_change_target_path_value(parse_value_target(target.as_str())?);
-    }
-    Ok(widget)
 }

@@ -2,9 +2,7 @@ mod format;
 mod model;
 mod parser;
 
-use crate::core::NodeId;
 use crate::core::value::Value;
-use crate::core::value_path::{ValuePath, ValueTarget};
 use crate::runtime::event::SystemEvent;
 use crate::terminal::{CursorPos, KeyCode, KeyEvent, KeyModifiers};
 use crate::ui::inline::{Inline, InlineGroup};
@@ -24,7 +22,6 @@ pub struct MaskedInput {
     tokens: Vec<MaskToken>,
     cursor_token: usize,
     cursor_offset: usize,
-    submit_target: Option<ValueTarget>,
     validators: Vec<Validator>,
 }
 
@@ -37,19 +34,8 @@ impl MaskedInput {
             tokens,
             cursor_token,
             cursor_offset: 0,
-            submit_target: None,
             validators: Vec::new(),
         }
-    }
-
-    pub fn with_submit_target(mut self, target: impl Into<NodeId>) -> Self {
-        self.submit_target = Some(ValueTarget::node(target));
-        self
-    }
-
-    pub fn with_submit_target_path(mut self, root: impl Into<NodeId>, path: ValuePath) -> Self {
-        self.submit_target = Some(ValueTarget::path(root, path));
-        self
     }
 
     pub fn with_validator(mut self, validator: Validator) -> Self {
@@ -415,10 +401,6 @@ impl Interactive for MaskedInput {
         FocusMode::Leaf
     }
 
-    fn submit_target(&self) -> Option<&ValueTarget> {
-        self.submit_target.as_ref()
-    }
-
     fn on_key(&mut self, key: KeyEvent) -> InteractionResult {
         match key.code {
             KeyCode::Tab => {
@@ -436,14 +418,7 @@ impl Interactive for MaskedInput {
             KeyCode::Right => InteractionResult::handled_if(self.move_right()),
             KeyCode::Up => InteractionResult::handled_if(self.increment_current(1)),
             KeyCode::Down => InteractionResult::handled_if(self.increment_current(-1)),
-            KeyCode::Enter => {
-                let value =
-                    format::formatted_complete_value(self.tokens.as_slice()).unwrap_or_default();
-                InteractionResult::submit_or_produce(
-                    self.submit_target.as_ref(),
-                    Value::Text(value),
-                )
-            }
+            KeyCode::Enter => InteractionResult::input_done(),
             _ => InteractionResult::ignored(),
         }
     }

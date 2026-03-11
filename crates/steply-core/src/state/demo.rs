@@ -1,4 +1,5 @@
 use crate::core::value::Value;
+use crate::core::value_path::ValueTarget;
 use crate::state::flow::Flow;
 use crate::state::step::{Step, StepNavigation};
 use crate::task::{TaskAssign, TaskParse, TaskSpec, TaskSubscription, TaskTrigger};
@@ -31,7 +32,27 @@ use crate::widgets::outputs::task_log::{TaskLog, TaskLogStep};
 use crate::widgets::outputs::text::TextOutput;
 use crate::widgets::outputs::thinking::{ThinkingMode, ThinkingOutput};
 use crate::widgets::outputs::url::UrlOutput;
+use crate::widgets::shared::binding::{StoreBinding, WriteBinding, WriteExpr, bind_node};
 use crate::widgets::validators;
+
+fn bind_writes(node: Node, targets: &[&str]) -> Node {
+    let writes = targets
+        .iter()
+        .map(|target| WriteBinding {
+            target: ValueTarget::parse_selector(target)
+                .unwrap_or_else(|_| ValueTarget::node((*target).to_string())),
+            expr: WriteExpr::ScopeRef("value".to_string()),
+        })
+        .collect();
+    bind_node(
+        node,
+        StoreBinding {
+            value: None,
+            reads: None,
+            writes,
+        },
+    )
+}
 
 fn step_thinking_output() -> Step {
     Step::new(
@@ -68,24 +89,26 @@ fn step_repeater() -> Step {
                 "rep_intro",
                 "Configure entries in Repeater, then final Enter pushes rows into Table below.",
             ))),
-            Node::Component(Box::new(
-                Repeater::new("rep_accounts", "Accounts setup")
-                    .with_layout(RepeaterLayout::Stacked)
-                    .with_header_template("configuring [{index} of {total}] for {item}:")
-                    .with_items(vec![
-                        Value::Text("Kasia".into()),
-                        Value::Text("Jas".into()),
-                        Value::Text("Zosia".into()),
-                    ])
-                    .field("path", "Path", TextInput::new)
-                    .field("password", "Password", |id, label| {
-                        TextInput::new(id, label).with_mode(TextMode::Password)
-                    })
-                    .field("priority", "Priority", |id, label| {
-                        SliderInput::new(id, label, 0, 100).with_step(5)
-                    })
-                    .with_submit_target("tbl_rep_preview"),
-            )),
+            bind_writes(
+                Node::Component(Box::new(
+                    Repeater::new("rep_accounts", "Accounts setup")
+                        .with_layout(RepeaterLayout::Stacked)
+                        .with_header_template("configuring [{index} of {total}] for {item}:")
+                        .with_items(vec![
+                            Value::Text("Kasia".into()),
+                            Value::Text("Jas".into()),
+                            Value::Text("Zosia".into()),
+                        ])
+                        .field("path", "Path", TextInput::new)
+                        .field("password", "Password", |id, label| {
+                            TextInput::new(id, label).with_mode(TextMode::Password)
+                        })
+                        .field("priority", "Priority", |id, label| {
+                            SliderInput::new(id, label, 0, 100).with_step(5)
+                        }),
+                )),
+                &["tbl_rep_preview"],
+            ),
             Node::Component(Box::new(
                 Table::new("tbl_rep_preview", "Preview from repeater")
                     .with_style(TableStyle::Grid)
@@ -111,9 +134,10 @@ fn step_pokemon_search() -> Step {
                 "poke_intro",
                 "Type a query to fetch Pokemon list from PokeAPI. Results refresh automatically.",
             ))),
-            Node::Input(Box::new(
-                TextInput::new("poke_query", "Query").with_change_target("poke_query_value"),
-            )),
+            bind_writes(
+                Node::Input(Box::new(TextInput::new("poke_query", "Query"))),
+                &["poke_query_value"],
+            ),
             Node::Component(Box::new(
                 SelectList::new("poke_results", "Results", vec![])
                     .with_mode(SelectMode::List)
@@ -153,7 +177,8 @@ fn step_snippet() -> Step {
                 "snip_intro",
                 "Tab/Shift+Tab przełącza sloty. Enter na ostatnim slocie zapisuje wynik do pola preview.",
             ))),
-            Node::Component(Box::new(
+            bind_writes(
+                Node::Component(Box::new(
                 Snippet::new(
                     "snip",
                     "Deploy command",
@@ -175,8 +200,9 @@ fn step_snippet() -> Step {
                     "Region",
                     vec!["eu-central-1".into(), "us-east-1".into(), "ap-southeast-1".into()],
                 ))))
-                .with_submit_target("snippet_preview"),
             )),
+                &["snippet_preview"],
+            ),
             Node::Input(Box::new(TextInput::new("snippet_preview", "Rendered snippet"))),
         ],
     )
@@ -395,13 +421,14 @@ fn step_outputs() -> Step {
                     .with_unit("%")
                     .with_gradient(true),
             )),
-            Node::Input(Box::new(
-                SliderInput::new("sld_cpu", "CPU %", 0, 100)
-                    .with_step(5)
-                    .with_unit("%")
-                    .with_change_target("prog_cpu")
-                    .with_change_target("chart_hist"),
-            )),
+            bind_writes(
+                Node::Input(Box::new(
+                    SliderInput::new("sld_cpu", "CPU %", 0, 100)
+                        .with_step(5)
+                        .with_unit("%"),
+                )),
+                &["prog_cpu", "chart_hist"],
+            ),
             Node::Output(Box::new(
                 ProgressOutput::new("prog_mem", "Memory")
                     .with_range(0.0, 100.0)
@@ -413,12 +440,14 @@ fn step_outputs() -> Step {
                         easing: Easing::Linear,
                     }),
             )),
-            Node::Input(Box::new(
-                SliderInput::new("sld_mem", "Memory (MB)", 0, 100)
-                    .with_step(100)
-                    .with_unit(" MB")
-                    .with_change_target("prog_mem"),
-            )),
+            bind_writes(
+                Node::Input(Box::new(
+                    SliderInput::new("sld_mem", "Memory (MB)", 0, 100)
+                        .with_step(100)
+                        .with_unit(" MB"),
+                )),
+                &["prog_mem"],
+            ),
         ],
     )
 }

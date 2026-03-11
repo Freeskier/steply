@@ -1,7 +1,4 @@
-use crate::core::NodeId;
 use crate::core::value::Value;
-use crate::core::value_path::{ValuePath, ValueTarget};
-use crate::runtime::event::{ValueChange, WidgetAction};
 use crate::terminal::{CursorPos, KeyEvent};
 use crate::ui::span::Span;
 use crate::ui::style::{Color, Style};
@@ -30,8 +27,6 @@ pub struct TextInput {
     cursor: usize,
     mode: TextMode,
     placeholder: Option<String>,
-    submit_target: Option<ValueTarget>,
-    change_targets: Vec<ValueTarget>,
     validators: Vec<Validator>,
     completion_items: Vec<String>,
 }
@@ -44,8 +39,6 @@ impl TextInput {
             cursor: 0,
             mode: TextMode::Plain,
             placeholder: None,
-            submit_target: None,
-            change_targets: Vec::new(),
             validators: Vec::new(),
             completion_items: Vec::new(),
         }
@@ -63,26 +56,6 @@ impl TextInput {
 
     pub fn with_mode(mut self, mode: TextMode) -> Self {
         self.mode = mode;
-        self
-    }
-
-    pub fn with_submit_target(mut self, target: impl Into<NodeId>) -> Self {
-        self.submit_target = Some(ValueTarget::node(target));
-        self
-    }
-
-    pub fn with_submit_target_path(mut self, root: impl Into<NodeId>, path: ValuePath) -> Self {
-        self.submit_target = Some(ValueTarget::path(root, path));
-        self
-    }
-
-    pub fn with_change_target(mut self, target: impl Into<NodeId>) -> Self {
-        self.change_targets.push(ValueTarget::node(target));
-        self
-    }
-
-    pub fn with_change_target_path(mut self, root: impl Into<NodeId>, path: ValuePath) -> Self {
-        self.change_targets.push(ValueTarget::path(root, path));
         self
     }
 
@@ -114,27 +87,6 @@ impl TextInput {
     }
 
     fn edited_result(&self) -> InteractionResult {
-        if self.change_targets.len() == 1 {
-            let target = &self.change_targets[0];
-            return InteractionResult::with_action(WidgetAction::ValueChanged {
-                change: ValueChange::with_target(target.clone(), Value::Text(self.value.clone())),
-            });
-        }
-        if self.change_targets.len() > 1 {
-            let actions = self
-                .change_targets
-                .iter()
-                .cloned()
-                .map(|target| WidgetAction::ValueChanged {
-                    change: ValueChange::with_target(target, Value::Text(self.value.clone())),
-                })
-                .collect();
-            return InteractionResult {
-                handled: true,
-                request_render: true,
-                actions,
-            };
-        }
         InteractionResult::handled()
     }
 }
@@ -190,19 +142,12 @@ impl Interactive for TextInput {
         FocusMode::Leaf
     }
 
-    fn submit_target(&self) -> Option<&ValueTarget> {
-        self.submit_target.as_ref()
-    }
-
     fn on_key(&mut self, key: KeyEvent) -> InteractionResult {
         match text_edit::apply_single_line_key(&mut self.value, &mut self.cursor, key) {
             text_edit::TextKeyOutcome::Ignored => InteractionResult::ignored(),
             text_edit::TextKeyOutcome::Changed => self.edited_result(),
             text_edit::TextKeyOutcome::CursorMoved => InteractionResult::handled(),
-            text_edit::TextKeyOutcome::Submit => InteractionResult::submit_or_produce(
-                self.submit_target.as_ref(),
-                Value::Text(self.value.clone()),
-            ),
+            text_edit::TextKeyOutcome::Submit => InteractionResult::input_done(),
             _ => InteractionResult::ignored(),
         }
     }

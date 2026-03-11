@@ -1,6 +1,4 @@
-use crate::core::NodeId;
 use crate::core::value::Value;
-use crate::core::value_path::{ValuePath, ValueTarget};
 use crate::terminal::{KeyCode, KeyEvent};
 use crate::ui::inline::{Inline, InlineGroup};
 use crate::ui::span::Span;
@@ -16,7 +14,6 @@ pub struct SelectInput {
     base: WidgetBase,
     options: Vec<String>,
     selected: usize,
-    submit_target: Option<ValueTarget>,
     validators: Vec<Validator>,
 }
 
@@ -26,19 +23,8 @@ impl SelectInput {
             base: WidgetBase::new(id, label),
             options,
             selected: 0,
-            submit_target: None,
             validators: Vec::new(),
         }
-    }
-
-    pub fn with_submit_target(mut self, target: impl Into<NodeId>) -> Self {
-        self.submit_target = Some(ValueTarget::node(target));
-        self
-    }
-
-    pub fn with_submit_target_path(mut self, root: impl Into<NodeId>, path: ValuePath) -> Self {
-        self.submit_target = Some(ValueTarget::path(root, path));
-        self
     }
 
     pub fn with_validator(mut self, validator: Validator) -> Self {
@@ -113,10 +99,6 @@ impl Interactive for SelectInput {
         FocusMode::Leaf
     }
 
-    fn submit_target(&self) -> Option<&ValueTarget> {
-        self.submit_target.as_ref()
-    }
-
     fn on_key(&mut self, key: KeyEvent) -> InteractionResult {
         match key.code {
             KeyCode::Left => InteractionResult::handled_if(list_nav::apply_cycle_index(
@@ -129,10 +111,7 @@ impl Interactive for SelectInput {
                 self.options.len(),
                 false,
             )),
-            KeyCode::Enter => InteractionResult::submit_or_produce(
-                self.submit_target.as_ref(),
-                Value::Text(self.selected_text().to_string()),
-            ),
+            KeyCode::Enter => InteractionResult::input_done(),
             _ => InteractionResult::ignored(),
         }
     }

@@ -2,6 +2,7 @@
   "$id": "https://steply.sh/schema/steply.schema.json",
   "$schema": "http://json-schema.org/draft-07/schema#",
   "definitions": {
+    "BindingYamlValueDef": true,
     "CommandRunnerCommandDef": {
       "properties": {
         "args": {
@@ -1304,14 +1305,6 @@
         },
         {
           "properties": {
-            "change_targets": {
-              "default": [],
-              "description": "Store selectors updated on each change.",
-              "items": {
-                "type": "string"
-              },
-              "type": "array"
-            },
             "completion_items": {
               "default": [],
               "description": "Static completion candidates.",
@@ -1352,19 +1345,14 @@
                 "null"
               ]
             },
+            "reads": {
+              "default": null
+            },
             "required": {
               "default": null,
               "description": "Whether the field is required.",
               "type": [
                 "boolean",
-                "null"
-              ]
-            },
-            "submit_target": {
-              "default": null,
-              "description": "Store selector updated on submit.",
-              "type": [
-                "string",
                 "null"
               ]
             },
@@ -1380,6 +1368,23 @@
                 "$ref": "#/definitions/ValidatorDef"
               },
               "type": "array"
+            },
+            "value": {
+              "default": null,
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "writes": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/WriteBindingDef"
+                },
+                {
+                  "type": "null"
+                }
+              ]
             }
           },
           "required": [
@@ -1407,6 +1412,9 @@
               "description": "Visible widget label.",
               "type": "string"
             },
+            "reads": {
+              "default": null
+            },
             "required": {
               "default": null,
               "description": "Whether the field is required.",
@@ -1427,6 +1435,23 @@
                 "$ref": "#/definitions/ValidatorDef"
               },
               "type": "array"
+            },
+            "value": {
+              "default": null,
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "writes": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/WriteBindingDef"
+                },
+                {
+                  "type": "null"
+                }
+              ]
             }
           },
           "required": [
@@ -1501,6 +1526,9 @@
               },
               "type": "array"
             },
+            "reads": {
+              "default": null
+            },
             "required": {
               "default": null,
               "description": "Whether the field is required.",
@@ -1519,14 +1547,6 @@
                 "null"
               ]
             },
-            "submit_target": {
-              "default": null,
-              "description": "Store selector updated on submit.",
-              "type": [
-                "string",
-                "null"
-              ]
-            },
             "type": {
               "enum": [
                 "select"
@@ -1539,6 +1559,23 @@
                 "$ref": "#/definitions/ValidatorDef"
               },
               "type": "array"
+            },
+            "value": {
+              "default": null,
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "writes": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/WriteBindingDef"
+                },
+                {
+                  "type": "null"
+                }
+              ]
             }
           },
           "required": [
@@ -1582,19 +1619,14 @@
               },
               "type": "array"
             },
+            "reads": {
+              "default": null
+            },
             "required": {
               "default": null,
               "description": "Whether the field is required.",
               "type": [
                 "boolean",
-                "null"
-              ]
-            },
-            "submit_target": {
-              "default": null,
-              "description": "Store selector updated on submit.",
-              "type": [
-                "string",
                 "null"
               ]
             },
@@ -1610,6 +1642,23 @@
                 "$ref": "#/definitions/ValidatorDef"
               },
               "type": "array"
+            },
+            "value": {
+              "default": null,
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "writes": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/WriteBindingDef"
+                },
+                {
+                  "type": "null"
+                }
+              ]
             }
           },
           "required": [
@@ -1655,6 +1704,9 @@
               },
               "type": "array"
             },
+            "reads": {
+              "default": null
+            },
             "selected": {
               "default": [],
               "description": "Initially selected indices.",
@@ -1673,19 +1725,28 @@
                 "null"
               ]
             },
-            "submit_target": {
-              "default": null,
-              "description": "Store selector updated on submit.",
-              "type": [
-                "string",
-                "null"
-              ]
-            },
             "type": {
               "enum": [
                 "select_list"
               ],
               "type": "string"
+            },
+            "value": {
+              "default": null,
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "writes": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/WriteBindingDef"
+                },
+                {
+                  "type": "null"
+                }
+              ]
             }
           },
           "required": [
@@ -1717,19 +1778,14 @@
               "description": "Mask pattern.",
               "type": "string"
             },
+            "reads": {
+              "default": null
+            },
             "required": {
               "default": null,
               "description": "Whether the field is required.",
               "type": [
                 "boolean",
-                "null"
-              ]
-            },
-            "submit_target": {
-              "default": null,
-              "description": "Store selector updated on submit.",
-              "type": [
-                "string",
                 "null"
               ]
             },
@@ -1745,6 +1801,23 @@
                 "$ref": "#/definitions/ValidatorDef"
               },
               "type": "array"
+            },
+            "value": {
+              "default": null,
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "writes": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/WriteBindingDef"
+                },
+                {
+                  "type": "null"
+                }
+              ]
             }
           },
           "required": [
@@ -1757,14 +1830,6 @@
         },
         {
           "properties": {
-            "change_targets": {
-              "default": [],
-              "description": "Store selectors updated on each change.",
-              "items": {
-                "type": "string"
-              },
-              "type": "array"
-            },
             "default": {
               "default": null,
               "description": "Initial numeric value.",
@@ -1791,6 +1856,9 @@
               "description": "Minimum value.",
               "format": "int64",
               "type": "integer"
+            },
+            "reads": {
+              "default": null
             },
             "required": {
               "default": null,
@@ -1839,6 +1907,23 @@
                 "$ref": "#/definitions/ValidatorDef"
               },
               "type": "array"
+            },
+            "value": {
+              "default": null,
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "writes": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/WriteBindingDef"
+                },
+                {
+                  "type": "null"
+                }
+              ]
             }
           },
           "required": [
@@ -1859,6 +1944,9 @@
             "label": {
               "description": "Visible widget label.",
               "type": "string"
+            },
+            "reads": {
+              "default": null
             },
             "required": {
               "default": null,
@@ -1883,14 +1971,6 @@
                 "null"
               ]
             },
-            "submit_target": {
-              "default": null,
-              "description": "Store selector updated on submit.",
-              "type": [
-                "string",
-                "null"
-              ]
-            },
             "type": {
               "enum": [
                 "color_input"
@@ -1903,6 +1983,23 @@
                 "$ref": "#/definitions/ValidatorDef"
               },
               "type": "array"
+            },
+            "value": {
+              "default": null,
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "writes": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/WriteBindingDef"
+                },
+                {
+                  "type": "null"
+                }
+              ]
             }
           },
           "required": [
@@ -1949,11 +2046,31 @@
                 "null"
               ]
             },
+            "reads": {
+              "default": null
+            },
             "type": {
               "enum": [
                 "confirm_input"
               ],
               "type": "string"
+            },
+            "value": {
+              "default": null,
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "writes": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/WriteBindingDef"
+                },
+                {
+                  "type": "null"
+                }
+              ]
             },
             "yes_label": {
               "default": null,
@@ -1989,6 +2106,9 @@
               "description": "Visible widget label.",
               "type": "string"
             },
+            "reads": {
+              "default": null
+            },
             "required": {
               "default": null,
               "description": "Whether the field is required.",
@@ -2009,6 +2129,23 @@
                 "$ref": "#/definitions/ValidatorDef"
               },
               "type": "array"
+            },
+            "value": {
+              "default": null,
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "writes": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/WriteBindingDef"
+                },
+                {
+                  "type": "null"
+                }
+              ]
             }
           },
           "required": [
@@ -2036,19 +2173,14 @@
                 "null"
               ]
             },
+            "reads": {
+              "default": null
+            },
             "required": {
               "default": null,
               "description": "Whether the field is required.",
               "type": [
                 "boolean",
-                "null"
-              ]
-            },
-            "submit_target": {
-              "default": null,
-              "description": "Store selector updated on submit.",
-              "type": [
-                "string",
                 "null"
               ]
             },
@@ -2064,6 +2196,23 @@
                 "$ref": "#/definitions/ValidatorDef"
               },
               "type": "array"
+            },
+            "value": {
+              "default": null,
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "writes": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/WriteBindingDef"
+                },
+                {
+                  "type": "null"
+                }
+              ]
             }
           },
           "required": [
@@ -2107,6 +2256,9 @@
                 "null"
               ]
             },
+            "reads": {
+              "default": null
+            },
             "required": {
               "default": null,
               "description": "Whether the field is required.",
@@ -2127,6 +2279,23 @@
                 "$ref": "#/definitions/ValidatorDef"
               },
               "type": "array"
+            },
+            "value": {
+              "default": null,
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "writes": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/WriteBindingDef"
+                },
+                {
+                  "type": "null"
+                }
+              ]
             }
           },
           "required": [
@@ -2279,6 +2448,9 @@
                 "null"
               ]
             },
+            "reads": {
+              "default": null
+            },
             "recursive": {
               "default": null,
               "description": "Whether to recurse into subdirectories.",
@@ -2295,14 +2467,6 @@
                 "null"
               ]
             },
-            "submit_target": {
-              "default": null,
-              "description": "Store selector updated on submit.",
-              "type": [
-                "string",
-                "null"
-              ]
-            },
             "type": {
               "enum": [
                 "file_browser"
@@ -2315,6 +2479,23 @@
                 "$ref": "#/definitions/ValidatorDef"
               },
               "type": "array"
+            },
+            "value": {
+              "default": null,
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "writes": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/WriteBindingDef"
+                },
+                {
+                  "type": "null"
+                }
+              ]
             }
           },
           "required": [
@@ -2359,6 +2540,9 @@
               },
               "type": "array"
             },
+            "reads": {
+              "default": null
+            },
             "show_label": {
               "default": null,
               "description": "Whether to render the label.",
@@ -2367,19 +2551,28 @@
                 "null"
               ]
             },
-            "submit_target": {
-              "default": null,
-              "description": "Store selector updated on submit.",
-              "type": [
-                "string",
-                "null"
-              ]
-            },
             "type": {
               "enum": [
                 "tree_view"
               ],
               "type": "string"
+            },
+            "value": {
+              "default": null,
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "writes": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/WriteBindingDef"
+                },
+                {
+                  "type": "null"
+                }
+              ]
             }
           },
           "required": [
@@ -2410,13 +2603,8 @@
                 "null"
               ]
             },
-            "submit_target": {
-              "default": null,
-              "description": "Store selector updated on submit.",
-              "type": [
-                "string",
-                "null"
-              ]
+            "reads": {
+              "default": null
             },
             "type": {
               "enum": [
@@ -2426,7 +2614,20 @@
             },
             "value": {
               "default": null,
-              "description": "Initial object value."
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "writes": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/WriteBindingDef"
+                },
+                {
+                  "type": "null"
+                }
+              ]
             }
           },
           "required": [
@@ -2453,13 +2654,8 @@
               "description": "Visible widget label.",
               "type": "string"
             },
-            "submit_target": {
-              "default": null,
-              "description": "Store selector updated on submit.",
-              "type": [
-                "string",
-                "null"
-              ]
+            "reads": {
+              "default": null
             },
             "template": {
               "description": "Snippet template string.",
@@ -2470,6 +2666,23 @@
                 "snippet"
               ],
               "type": "string"
+            },
+            "value": {
+              "default": null,
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "writes": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/WriteBindingDef"
+                },
+                {
+                  "type": "null"
+                }
+              ]
             }
           },
           "required": [
@@ -2507,6 +2720,9 @@
               "description": "Visible widget label.",
               "type": "string"
             },
+            "reads": {
+              "default": null
+            },
             "row_numbers": {
               "default": null,
               "description": "Whether to show row numbers.",
@@ -2528,6 +2744,23 @@
                 "table"
               ],
               "type": "string"
+            },
+            "value": {
+              "default": null,
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "writes": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/WriteBindingDef"
+                },
+                {
+                  "type": "null"
+                }
+              ]
             }
           },
           "required": [
@@ -2583,6 +2816,9 @@
                 "null"
               ]
             },
+            "reads": {
+              "default": null
+            },
             "show_label": {
               "default": null,
               "description": "Whether to render the label.",
@@ -2599,19 +2835,28 @@
                 "null"
               ]
             },
-            "submit_target": {
-              "default": null,
-              "description": "Store selector updated on submit.",
-              "type": [
-                "string",
-                "null"
-              ]
-            },
             "type": {
               "enum": [
                 "repeater"
               ],
               "type": "string"
+            },
+            "value": {
+              "default": null,
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "writes": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/WriteBindingDef"
+                },
+                {
+                  "type": "null"
+                }
+              ]
             }
           },
           "required": [
@@ -2620,6 +2865,19 @@
             "label",
             "type"
           ],
+          "type": "object"
+        }
+      ]
+    },
+    "WriteBindingDef": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "additionalProperties": {
+            "$ref": "#/definitions/BindingYamlValueDef"
+          },
           "type": "object"
         }
       ]

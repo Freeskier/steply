@@ -169,15 +169,9 @@ impl Drawable for Repeater {
             return vec![HintItem::new("Enter", "submit", HintGroup::Action).with_priority(20)];
         }
 
-        let mut hints = crate::widgets::traits::focused_static_hints(
+        crate::widgets::traits::focused_static_hints(
             ctx,
             crate::widgets::static_hints::REPEATER_HINTS,
-        );
-        if self.submit_target.is_some()
-            && let Some(last) = hints.last_mut()
-        {
-            last.label = "commit rows + submit".into();
-        }
-        hints
+        )
     }
 }

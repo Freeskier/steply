@@ -4,11 +4,8 @@ mod state;
 
 use std::sync::Arc;
 
-use crate::core::NodeId;
 use crate::core::value::Value;
-use crate::core::value_path::{ValuePath, ValueTarget};
 use crate::runtime::event::WidgetAction;
-
 use crate::terminal::{
     CursorPos, KeyCode, KeyEvent, PointerButton, PointerEvent, PointerKind, PointerSemantic,
 };
@@ -41,7 +38,6 @@ pub struct SelectList {
     selected: Vec<usize>,
     active_index: usize,
     scroll: ScrollState,
-    submit_target: Option<ValueTarget>,
     show_label: bool,
     filter: filter::ListFilter,
     option_renderer: OptionRenderer,
@@ -60,7 +56,6 @@ impl SelectList {
             selected: Vec::new(),
             active_index: 0,
             scroll: ScrollState::new(None),
-            submit_target: None,
             show_label: true,
             filter: filter::ListFilter::new(
                 format!("{id}__filter"),
@@ -166,20 +161,6 @@ impl SelectList {
         self.ensure_radio_selection();
         self.apply_filter(None);
         self
-    }
-
-    pub fn with_submit_target(mut self, target: impl Into<NodeId>) -> Self {
-        self.set_submit_target(Some(ValueTarget::node(target)));
-        self
-    }
-
-    pub fn with_submit_target_path(mut self, root: impl Into<NodeId>, path: ValuePath) -> Self {
-        self.set_submit_target(Some(ValueTarget::path(root, path)));
-        self
-    }
-
-    pub fn set_submit_target(&mut self, target: Option<ValueTarget>) {
-        self.submit_target = target;
     }
 
     pub fn selected_indices(&self) -> &[usize] {
@@ -626,10 +607,7 @@ impl SelectList {
                     let _ = self.activate_current();
                 }
 
-                let Some(value) = self.value() else {
-                    return InteractionResult::input_done();
-                };
-                InteractionResult::submit_or_produce(self.submit_target.as_ref(), value)
+                InteractionResult::input_done()
             }
             _ => InteractionResult::ignored(),
         }
@@ -694,10 +672,6 @@ impl Drawable for SelectList {
 impl Interactive for SelectList {
     fn focus_mode(&self) -> FocusMode {
         FocusMode::Group
-    }
-
-    fn submit_target(&self) -> Option<&ValueTarget> {
-        self.submit_target.as_ref()
     }
 
     fn on_key(&mut self, key: KeyEvent) -> InteractionResult {

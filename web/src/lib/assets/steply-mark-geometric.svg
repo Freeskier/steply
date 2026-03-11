@@ -1,0 +1,19 @@
+<svg width="256" height="256" viewBox="0 0 256 256" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="steplyMarkGradient" x1="40" y1="36" x2="208" y2="220" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFD12F"/>
+      <stop offset="1" stop-color="#F97316"/>
+    </linearGradient>
+  </defs>
+
+  <g stroke="url(#steplyMarkGradient)" stroke-width="28"  stroke-linejoin="round">
+    <path d="M156 54H88C69.222 54 54 69.222 54 88V96C54 114.778 69.222 130 88 130H100"/>
+    <path d="M156 130H168C186.778 130 202 145.222 202 164V172C202 190.778 186.778 206 168 206H100"/>
+  </g>
+
+  <g fill="url(#steplyMarkGradient)">
+    <rect x="165" y="34" width="40" height="40" rx="10"/>
+    <rect x="108" y="108" width="40" height="40" rx="10"/>
+    <rect x="51" y="184" width="40" height="40" rx="10"/>
+  </g>
+</svg>

@@ -12,7 +12,7 @@ use super::step_content::{
 use super::step_decoration::decoration_gutter_width;
 use super::{
     FocusApplyMode, RenderFrame, RendererConfig, StepRenderRange, StepVisualStatus,
-    register_block_selection_ranges,
+    register_block_selection_ranges, status_allows_interaction,
 };
 
 pub(super) fn build_base_frame(
@@ -84,7 +84,7 @@ pub(super) fn build_base_frame(
 
         let start_row = frame.lines.len() as u16;
         let block_len = content.lines.len().min(u16::MAX as usize) as u16;
-        if status == StepVisualStatus::Active {
+        if status_allows_interaction(status) {
             frame.active_step_range = Some(StepRenderRange {
                 start: start_row,
                 end_exclusive: start_row.saturating_add(block_len),
@@ -118,7 +118,7 @@ pub(super) fn build_base_frame(
             config.chrome_enabled,
             idx < render_up_to,
         );
-        if status == StepVisualStatus::Active
+        if status_allows_interaction(status)
             && let Some(range) = frame.active_step_range.as_mut()
         {
             range.end_exclusive = range.end_exclusive.saturating_add(hint_line_count);

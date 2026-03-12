@@ -9,7 +9,7 @@ use crate::ui::style::Color;
 use crate::widgets::node::{Node, NodeWalkScope, walk_nodes};
 use crate::widgets::traits::{CompletionMenu, RenderContext};
 
-use super::StepVisualStatus;
+use super::{StepVisualStatus, status_allows_interaction};
 
 pub(super) fn render_context_for_nodes(
     validation: &ValidationState,
@@ -19,7 +19,7 @@ pub(super) fn render_context_for_nodes(
     nodes: &[Node],
     focused_id: Option<&str>,
 ) -> RenderContext {
-    if status != StepVisualStatus::Active {
+    if !status_allows_interaction(status) {
         return RenderContext::empty(terminal_size);
     }
 

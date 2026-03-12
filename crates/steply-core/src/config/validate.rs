@@ -1,8 +1,9 @@
 use std::collections::{HashMap, HashSet};
 
 use super::model::WhenDef;
-use super::spec::{ConfigSpec, StepSpec, SubscriptionTriggerSpec};
+use super::spec::{ConfigSpec, StepSpec};
 use super::{utils, widgets};
+use crate::task::TaskTrigger;
 
 pub(super) fn validate(spec: &ConfigSpec) -> Result<(), String> {
     if spec.steps.is_empty() {
@@ -13,10 +14,15 @@ pub(super) fn validate(spec: &ConfigSpec) -> Result<(), String> {
     validate_widget_bindings(spec.steps.as_slice())?;
 
     let known_node_ids = collect_known_node_ids(spec.steps.as_slice());
+    let known_step_ids = spec
+        .steps
+        .iter()
+        .map(|step| step.id.clone())
+        .collect::<HashSet<_>>();
     validate_step_conditions(spec.steps.as_slice(), &known_node_ids)?;
 
     let known_task_ids = collect_known_task_ids(spec)?;
-    validate_task_references(spec, &known_task_ids, &known_node_ids)
+    validate_task_references(spec, &known_task_ids, &known_step_ids)
 }
 
 fn validate_step_widgets(steps: &[StepSpec]) -> Result<(), String> {
@@ -268,25 +274,28 @@ fn collect_known_task_ids(spec: &ConfigSpec) -> Result<HashSet<String>, String> 
 fn validate_task_references(
     spec: &ConfigSpec,
     known_task_ids: &HashSet<String>,
-    _known_node_ids: &HashSet<String>,
+    known_step_ids: &HashSet<String>,
 ) -> Result<(), String> {
-    for subscription in &spec.subscriptions {
-        if !known_task_ids.contains(subscription.task.as_str()) {
-            return Err(format!(
-                "subscription references unknown task: {}",
-                subscription.task
-            ));
-        }
-
-        match &subscription.trigger {
-            SubscriptionTriggerSpec::OnInput { field_ref, .. } => {
-                crate::core::store_refs::parse_store_selector(field_ref.as_str())
-                    .map_err(|err| format!("invalid subscription selector '{field_ref}': {err}"))?;
+    for task in &spec.tasks {
+        for trigger in &task.triggers {
+            match trigger {
+                TaskTrigger::StepEnter { step_id }
+                | TaskTrigger::StepExit { step_id }
+                | TaskTrigger::SubmitBefore { step_id }
+                | TaskTrigger::SubmitAfter { step_id } => {
+                    if !known_step_ids.contains(step_id) {
+                        return Err(format!(
+                            "task '{}' trigger references unknown step: {}",
+                            task.id, step_id
+                        ));
+                    }
+                }
+                TaskTrigger::FlowStart
+                | TaskTrigger::FlowEnd
+                | TaskTrigger::StoreChanged { .. }
+                | TaskTrigger::Interval { .. } => {}
             }
         }
-    }
-
-    for task in &spec.tasks {
         if let Some(super::model::WriteBindingDef::Selector(target)) = &task.writes {
             crate::core::store_refs::parse_store_selector(target.as_str())
                 .map_err(|err| format!("invalid task write selector '{target}': {err}"))?;

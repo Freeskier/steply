@@ -314,15 +314,20 @@ impl Runtime {
             }
             action => {
                 let result = self.state.handle_action(action);
-                self.flush_pending_scheduler_commands();
-                self.flush_pending_task_invocations();
-                result.request_render
+                self.finish_state_interaction(result)
             }
         }
     }
 
     fn apply_system_event(&mut self, event: SystemEvent) -> bool {
         let result = self.state.handle_system_event(event);
+        self.finish_state_interaction(result)
+    }
+
+    fn finish_state_interaction(
+        &mut self,
+        result: steply_core::widgets::traits::InteractionResult,
+    ) -> bool {
         self.flush_pending_scheduler_commands();
         self.flush_pending_task_invocations();
         result.request_render

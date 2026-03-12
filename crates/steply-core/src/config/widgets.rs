@@ -41,420 +41,532 @@ const fn widget_doc(
     }
 }
 
-const WIDGET_REGISTRY: &[WidgetRegistryEntry] = &[
-    WidgetRegistryEntry {
-        doc: widget_doc(
-            "text_output",
-            WidgetCategory::Output,
-            "Static text output.",
-            "Renders a fixed text block in the flow.",
-            r#"type: text_output
+macro_rules! widget_binding_value {
+    (no, $def:ident) => {
+        None
+    };
+    (yes, $def:ident) => {
+        Some(&$def.binding)
+    };
+}
+
+macro_rules! widget_children_value {
+    (none, $def:ident) => {
+        None
+    };
+    (inputs, $def:ident) => {
+        Some($def.inputs.as_slice())
+    };
+    (widgets, $def:ident) => {
+        Some($def.widgets.as_slice())
+    };
+}
+
+macro_rules! define_widget_registry {
+    (
+        $(
+            {
+                variant: $variant:ident,
+                def: $def_ty:ty,
+                type_name: $type_name:literal,
+                category: $category:ident,
+                short: $short:literal,
+                long: $long:literal,
+                example: $example:literal,
+                hints: $hints:expr,
+                compile: $compile:ident,
+                binding: $binding:ident,
+                children: $children:ident
+            }
+        ),+ $(,)?
+    ) => {
+        const WIDGET_REGISTRY: &[WidgetRegistryEntry] = &[
+            $(
+                WidgetRegistryEntry {
+                    doc: widget_doc(
+                        $type_name,
+                        WidgetCategory::$category,
+                        $short,
+                        $long,
+                        $example,
+                        $hints,
+                    ),
+                    build_doc: build_widget_doc::<$def_ty>,
+                    compile: $compile,
+                },
+            )+
+        ];
+
+        impl WidgetDef {
+            fn registry_type_name(&self) -> &'static str {
+                match self {
+                    $(Self::$variant(_) => $type_name,)+
+                }
+            }
+
+            fn registry_id(&self) -> &str {
+                match self {
+                    $(Self::$variant(def) => def.id.as_str(),)+
+                }
+            }
+
+            fn registry_binding(&self) -> Option<&model::WidgetBindingDef> {
+                match self {
+                    $(Self::$variant(_def) => widget_binding_value!($binding, _def),)+
+                }
+            }
+
+            fn registry_children(&self) -> Option<&[WidgetDef]> {
+                match self {
+                    $(Self::$variant(_def) => widget_children_value!($children, _def),)+
+                }
+            }
+        }
+    };
+}
+
+define_widget_registry! {
+    {
+        variant: TextOutput,
+        def: model::TextOutputDef,
+        type_name: "text_output",
+        category: Output,
+        short: "Static text output.",
+        long: "Renders a fixed text block in the flow.",
+        example: r#"type: text_output
 id: intro
 text: Welcome to Steply"#,
-            &[],
-        ),
-        build_doc: build_widget_doc::<model::TextOutputDef>,
+        hints: &[],
         compile: compile_text_output_widget,
+        binding: no,
+        children: none
     },
-    WidgetRegistryEntry {
-        doc: widget_doc(
-            "url_output",
-            WidgetCategory::Output,
-            "Clickable URL output.",
-            "Displays a URL with an optional human-friendly label.",
-            r#"type: url_output
+    {
+        variant: UrlOutput,
+        def: model::UrlOutputDef,
+        type_name: "url_output",
+        category: Output,
+        short: "Clickable URL output.",
+        long: "Displays a URL with an optional human-friendly label.",
+        example: r#"type: url_output
 id: docs
 url: https://example.com
 name: Open docs"#,
-            &[],
-        ),
-        build_doc: build_widget_doc::<model::UrlOutputDef>,
+        hints: &[],
         compile: compile_url_output_widget,
+        binding: no,
+        children: none
     },
-    WidgetRegistryEntry {
-        doc: widget_doc(
-            "thinking_output",
-            WidgetCategory::Output,
-            "Animated thinking output.",
-            "Shows animated status text for background work or waiting states.",
-            r#"type: thinking_output
+    {
+        variant: ThinkingOutput,
+        def: model::ThinkingOutputDef,
+        type_name: "thinking_output",
+        category: Output,
+        short: "Animated thinking output.",
+        long: "Shows animated status text for background work or waiting states.",
+        example: r#"type: thinking_output
 id: thinking
 label: Preparing
 text: Resolving inputs"#,
-            &[],
-        ),
-        build_doc: build_widget_doc::<model::ThinkingOutputDef>,
+        hints: &[],
         compile: compile_thinking_output_widget,
+        binding: no,
+        children: none
     },
-    WidgetRegistryEntry {
-        doc: widget_doc(
-            "progress_output",
-            WidgetCategory::Output,
-            "Progress bar output.",
-            "Displays progress with optional range, style and transition settings.",
-            r#"type: progress_output
+    {
+        variant: ProgressOutput,
+        def: model::ProgressOutputDef,
+        type_name: "progress_output",
+        category: Output,
+        short: "Progress bar output.",
+        long: "Displays progress with optional range, style and transition settings.",
+        example: r#"type: progress_output
 id: build_progress
 label: Build
 min: 0
 max: 100"#,
-            &[],
-        ),
-        build_doc: build_widget_doc::<model::ProgressOutputDef>,
+        hints: &[],
         compile: compile_progress_output_widget,
+        binding: no,
+        children: none
     },
-    WidgetRegistryEntry {
-        doc: widget_doc(
-            "chart_output",
-            WidgetCategory::Output,
-            "Terminal chart output.",
-            "Renders numeric values as a small terminal chart.",
-            r#"type: chart_output
+    {
+        variant: ChartOutput,
+        def: model::ChartOutputDef,
+        type_name: "chart_output",
+        category: Output,
+        short: "Terminal chart output.",
+        long: "Renders numeric values as a small terminal chart.",
+        example: r#"type: chart_output
 id: cpu
 label: CPU load"#,
-            &[],
-        ),
-        build_doc: build_widget_doc::<model::ChartOutputDef>,
+        hints: &[],
         compile: compile_chart_output_widget,
+        binding: no,
+        children: none
     },
-    WidgetRegistryEntry {
-        doc: widget_doc(
-            "table_output",
-            WidgetCategory::Output,
-            "Read-only table output.",
-            "Displays tabular data without inline editing.",
-            r#"type: table_output
+    {
+        variant: TableOutput,
+        def: model::TableOutputDef,
+        type_name: "table_output",
+        category: Output,
+        short: "Read-only table output.",
+        long: "Displays tabular data without inline editing.",
+        example: r#"type: table_output
 id: summary
 label: Summary
 headers: [Name, Value]"#,
-            &[],
-        ),
-        build_doc: build_widget_doc::<model::TableOutputDef>,
+        hints: &[],
         compile: compile_table_output_widget,
+        binding: no,
+        children: none
     },
-    WidgetRegistryEntry {
-        doc: widget_doc(
-            "diff_output",
-            WidgetCategory::Output,
-            "Text diff output.",
-            "Shows the difference between two text values.",
-            r#"type: diff_output
+    {
+        variant: DiffOutput,
+        def: model::DiffOutputDef,
+        type_name: "diff_output",
+        category: Output,
+        short: "Text diff output.",
+        long: "Shows the difference between two text values.",
+        example: r#"type: diff_output
 id: diff
 label: Planned changes
 old: before
 new: after"#,
-            &[],
-        ),
-        build_doc: build_widget_doc::<model::DiffOutputDef>,
+        hints: &[],
         compile: compile_diff_output_widget,
+        binding: no,
+        children: none
     },
-    WidgetRegistryEntry {
-        doc: widget_doc(
-            "task_log_output",
-            WidgetCategory::Output,
-            "Task log output.",
-            "Displays task execution progress as a step-by-step log.",
-            r#"type: task_log_output
+    {
+        variant: TaskLogOutput,
+        def: model::TaskLogOutputDef,
+        type_name: "task_log_output",
+        category: Output,
+        short: "Task log output.",
+        long: "Displays task execution progress as a step-by-step log.",
+        example: r#"type: task_log_output
 id: task_log
 steps:
   - label: Clone repo
     task_id: clone"#,
-            &[],
-        ),
-        build_doc: build_widget_doc::<model::TaskLogOutputDef>,
+        hints: &[],
         compile: compile_task_log_output_widget,
+        binding: no,
+        children: none
     },
-    WidgetRegistryEntry {
-        doc: widget_doc(
-            "text_input",
-            WidgetCategory::Input,
-            "Single-line text input.",
-            "Collects one line of text with optional validation and completion.",
-            r#"type: text_input
+    {
+        variant: TextInput,
+        def: model::TextInputDef,
+        type_name: "text_input",
+        category: Input,
+        short: "Single-line text input.",
+        long: "Collects one line of text with optional validation and completion.",
+        example: r#"type: text_input
 id: project_name
 label: Project name"#,
-            &[],
-        ),
-        build_doc: build_widget_doc::<model::TextInputDef>,
+        hints: &[],
         compile: compile_text_input_widget,
+        binding: yes,
+        children: none
     },
-    WidgetRegistryEntry {
-        doc: widget_doc(
-            "array_input",
-            WidgetCategory::Input,
-            "Array input.",
-            "Collects multiple string values as a list.",
-            r#"type: array_input
+    {
+        variant: ArrayInput,
+        def: model::ArrayInputDef,
+        type_name: "array_input",
+        category: Input,
+        short: "Array input.",
+        long: "Collects multiple string values as a list.",
+        example: r#"type: array_input
 id: tags
 label: Tags"#,
-            &[],
-        ),
-        build_doc: build_widget_doc::<model::ArrayInputDef>,
+        hints: &[],
         compile: compile_array_input_widget,
+        binding: yes,
+        children: none
     },
-    WidgetRegistryEntry {
-        doc: widget_doc(
-            "button_input",
-            WidgetCategory::Input,
-            "Button input.",
-            "Focusable button that may trigger a task when activated.",
-            r#"type: button_input
+    {
+        variant: ButtonInput,
+        def: model::ButtonInputDef,
+        type_name: "button_input",
+        category: Input,
+        short: "Button input.",
+        long: "Focusable button that may trigger a task when activated.",
+        example: r#"type: button_input
 id: refresh
 label: Refresh"#,
-            &[],
-        ),
-        build_doc: build_widget_doc::<model::ButtonInputDef>,
+        hints: &[],
         compile: compile_button_input_widget,
+        binding: no,
+        children: none
     },
-    WidgetRegistryEntry {
-        doc: widget_doc(
-            "select",
-            WidgetCategory::Input,
-            "Single-select input.",
-            "Lets the user choose one option from a list.",
-            r#"type: select
+    {
+        variant: Select,
+        def: model::SelectDef,
+        type_name: "select",
+        category: Input,
+        short: "Single-select input.",
+        long: "Lets the user choose one option from a list.",
+        example: r#"type: select
 id: region
 label: Region
 options: [eu, us]"#,
-            &[],
-        ),
-        build_doc: build_widget_doc::<model::SelectDef>,
+        hints: &[],
         compile: compile_select_widget,
+        binding: yes,
+        children: none
     },
-    WidgetRegistryEntry {
-        doc: widget_doc(
-            "choice_input",
-            WidgetCategory::Input,
-            "Choice input.",
-            "Choice selector rendered as navigable options.",
-            r#"type: choice_input
+    {
+        variant: ChoiceInput,
+        def: model::ChoiceInputDef,
+        type_name: "choice_input",
+        category: Input,
+        short: "Choice input.",
+        long: "Choice selector rendered as navigable options.",
+        example: r#"type: choice_input
 id: package_manager
 label: Package manager
 options: [cargo, npm]"#,
-            static_hints::CHOICE_INPUT_HINTS,
-        ),
-        build_doc: build_widget_doc::<model::ChoiceInputDef>,
+        hints: static_hints::CHOICE_INPUT_HINTS,
         compile: compile_choice_input_widget,
+        binding: yes,
+        children: none
     },
-    WidgetRegistryEntry {
-        doc: widget_doc(
-            "select_list",
-            WidgetCategory::Component,
-            "Selectable list component.",
-            "Interactive list component supporting single or multi selection.",
-            r#"type: select_list
+    {
+        variant: SelectList,
+        def: model::SelectListDef,
+        type_name: "select_list",
+        category: Component,
+        short: "Selectable list component.",
+        long: "Interactive list component supporting single or multi selection.",
+        example: r#"type: select_list
 id: features
 label: Features
 options: [auth, api]"#,
-            static_hints::SELECT_LIST_DOC_HINTS,
-        ),
-        build_doc: build_widget_doc::<model::SelectListDef>,
+        hints: static_hints::SELECT_LIST_DOC_HINTS,
         compile: compile_select_list_widget,
+        binding: yes,
+        children: none
     },
-    WidgetRegistryEntry {
-        doc: widget_doc(
-            "masked_input",
-            WidgetCategory::Input,
-            "Masked input.",
-            "Text input constrained by a mask pattern.",
-            r#"type: masked_input
+    {
+        variant: MaskedInput,
+        def: model::MaskedInputDef,
+        type_name: "masked_input",
+        category: Input,
+        short: "Masked input.",
+        long: "Text input constrained by a mask pattern.",
+        example: r#"type: masked_input
 id: phone
 label: Phone
 mask: \"(999) 999-9999\""#,
-            &[],
-        ),
-        build_doc: build_widget_doc::<model::MaskedInputDef>,
+        hints: &[],
         compile: compile_masked_input_widget,
+        binding: yes,
+        children: none
     },
-    WidgetRegistryEntry {
-        doc: widget_doc(
-            "slider",
-            WidgetCategory::Input,
-            "Slider input.",
-            "Numeric slider with configurable range and step.",
-            r#"type: slider
+    {
+        variant: Slider,
+        def: model::SliderDef,
+        type_name: "slider",
+        category: Input,
+        short: "Slider input.",
+        long: "Numeric slider with configurable range and step.",
+        example: r#"type: slider
 id: retries
 label: Retries
 min: 0
 max: 10"#,
-            &[],
-        ),
-        build_doc: build_widget_doc::<model::SliderDef>,
+        hints: &[],
         compile: compile_slider_widget,
+        binding: yes,
+        children: none
     },
-    WidgetRegistryEntry {
-        doc: widget_doc(
-            "color_input",
-            WidgetCategory::Input,
-            "Color input.",
-            "Picks a color represented as RGB values.",
-            r#"type: color_input
+    {
+        variant: ColorInput,
+        def: model::ColorInputDef,
+        type_name: "color_input",
+        category: Input,
+        short: "Color input.",
+        long: "Picks a color represented as RGB values.",
+        example: r#"type: color_input
 id: accent
 label: Accent color"#,
-            &[],
-        ),
-        build_doc: build_widget_doc::<model::ColorInputDef>,
+        hints: &[],
         compile: compile_color_input_widget,
+        binding: yes,
+        children: none
     },
-    WidgetRegistryEntry {
-        doc: widget_doc(
-            "confirm_input",
-            WidgetCategory::Input,
-            "Confirmation input.",
-            "Confirms a yes/no choice in relaxed or strict mode.",
-            r#"type: confirm_input
+    {
+        variant: ConfirmInput,
+        def: model::ConfirmInputDef,
+        type_name: "confirm_input",
+        category: Input,
+        short: "Confirmation input.",
+        long: "Confirms a yes/no choice in relaxed or strict mode.",
+        example: r#"type: confirm_input
 id: proceed
 label: Continue?"#,
-            static_hints::CONFIRM_STRICT_HINTS,
-        ),
-        build_doc: build_widget_doc::<model::ConfirmInputDef>,
+        hints: static_hints::CONFIRM_STRICT_HINTS,
         compile: compile_confirm_input_widget,
+        binding: yes,
+        children: none
     },
-    WidgetRegistryEntry {
-        doc: widget_doc(
-            "checkbox",
-            WidgetCategory::Input,
-            "Checkbox input.",
-            "Single boolean checkbox control.",
-            r#"type: checkbox
+    {
+        variant: Checkbox,
+        def: model::CheckboxDef,
+        type_name: "checkbox",
+        category: Input,
+        short: "Checkbox input.",
+        long: "Single boolean checkbox control.",
+        example: r#"type: checkbox
 id: accept
 label: Accept terms"#,
-            &[],
-        ),
-        build_doc: build_widget_doc::<model::CheckboxDef>,
+        hints: &[],
         compile: compile_checkbox_widget,
+        binding: yes,
+        children: none
     },
-    WidgetRegistryEntry {
-        doc: widget_doc(
-            "calendar",
-            WidgetCategory::Component,
-            "Calendar component.",
-            "Interactive date, time or date-time picker.",
-            r#"type: calendar
+    {
+        variant: Calendar,
+        def: model::CalendarDef,
+        type_name: "calendar",
+        category: Component,
+        short: "Calendar component.",
+        long: "Interactive date, time or date-time picker.",
+        example: r#"type: calendar
 id: deploy_at
 label: Deploy at"#,
-            static_hints::CALENDAR_COMMON_HINTS,
-        ),
-        build_doc: build_widget_doc::<model::CalendarDef>,
+        hints: static_hints::CALENDAR_COMMON_HINTS,
         compile: compile_calendar_widget,
+        binding: yes,
+        children: none
     },
-    WidgetRegistryEntry {
-        doc: widget_doc(
-            "textarea",
-            WidgetCategory::Component,
-            "Textarea component.",
-            "Multi-line text editor widget.",
-            r#"type: textarea
+    {
+        variant: Textarea,
+        def: model::TextareaDef,
+        type_name: "textarea",
+        category: Component,
+        short: "Textarea component.",
+        long: "Multi-line text editor widget.",
+        example: r#"type: textarea
 id: notes
 min_height: 4"#,
-            static_hints::TEXTAREA_HINTS,
-        ),
-        build_doc: build_widget_doc::<model::TextareaDef>,
+        hints: static_hints::TEXTAREA_HINTS,
         compile: compile_textarea_widget,
+        binding: yes,
+        children: none
     },
-    WidgetRegistryEntry {
-        doc: widget_doc(
-            "command_runner",
-            WidgetCategory::Component,
-            "Command runner.",
-            "Runs one or more shell commands inside the flow.",
-            r#"type: command_runner
+    {
+        variant: CommandRunner,
+        def: model::CommandRunnerDef,
+        type_name: "command_runner",
+        category: Component,
+        short: "Command runner.",
+        long: "Runs one or more shell commands inside the flow.",
+        example: r#"type: command_runner
 id: install
 label: Install dependencies
 commands:
   - label: Cargo fetch
     program: cargo
     args: [fetch]"#,
-            static_hints::COMMAND_RUNNER_HINTS,
-        ),
-        build_doc: build_widget_doc::<model::CommandRunnerDef>,
+        hints: static_hints::COMMAND_RUNNER_HINTS,
         compile: compile_command_runner_widget,
+        binding: yes,
+        children: none
     },
-    WidgetRegistryEntry {
-        doc: widget_doc(
-            "file_browser",
-            WidgetCategory::Component,
-            "File browser component.",
-            "Interactive file or directory browser with optional completion.",
-            r#"type: file_browser
+    {
+        variant: FileBrowser,
+        def: model::FileBrowserDef,
+        type_name: "file_browser",
+        category: Component,
+        short: "File browser component.",
+        long: "Interactive file or directory browser with optional completion.",
+        example: r#"type: file_browser
 id: project_dir
 label: Select project directory"#,
-            static_hints::FILE_BROWSER_DOC_HINTS,
-        ),
-        build_doc: build_widget_doc::<model::FileBrowserDef>,
+        hints: static_hints::FILE_BROWSER_DOC_HINTS,
         compile: compile_file_browser_widget,
+        binding: yes,
+        children: none
     },
-    WidgetRegistryEntry {
-        doc: widget_doc(
-            "tree_view",
-            WidgetCategory::Component,
-            "Tree view component.",
-            "Interactive hierarchical tree selector.",
-            r#"type: tree_view
+    {
+        variant: TreeView,
+        def: model::TreeViewDef,
+        type_name: "tree_view",
+        category: Component,
+        short: "Tree view component.",
+        long: "Interactive hierarchical tree selector.",
+        example: r#"type: tree_view
 id: modules
 label: Modules
 nodes:
   - item: core
     depth: 0
     has_children: true"#,
-            static_hints::TREE_VIEW_DOC_HINTS,
-        ),
-        build_doc: build_widget_doc::<model::TreeViewDef>,
+        hints: static_hints::TREE_VIEW_DOC_HINTS,
         compile: compile_tree_view_widget,
+        binding: yes,
+        children: none
     },
-    WidgetRegistryEntry {
-        doc: widget_doc(
-            "object_editor",
-            WidgetCategory::Component,
-            "Object editor.",
-            "Structured editor for object-like values.",
-            r#"type: object_editor
+    {
+        variant: ObjectEditor,
+        def: model::ObjectEditorDef,
+        type_name: "object_editor",
+        category: Component,
+        short: "Object editor.",
+        long: "Structured editor for object-like values.",
+        example: r#"type: object_editor
 id: payload
 label: Payload"#,
-            static_hints::OBJECT_EDITOR_DOC_HINTS,
-        ),
-        build_doc: build_widget_doc::<model::ObjectEditorDef>,
+        hints: static_hints::OBJECT_EDITOR_DOC_HINTS,
         compile: compile_object_editor_widget,
+        binding: yes,
+        children: none
     },
-    WidgetRegistryEntry {
-        doc: widget_doc(
-            "snippet",
-            WidgetCategory::Component,
-            "Snippet component.",
-            "Builds a snippet from nested interactive inputs.",
-            r#"type: snippet
+    {
+        variant: Snippet,
+        def: model::SnippetDef,
+        type_name: "snippet",
+        category: Component,
+        short: "Snippet component.",
+        long: "Builds a snippet from nested interactive inputs.",
+        example: r#"type: snippet
 id: export_cmd
 label: Export command
 template: \"export NAME={{name}}\""#,
-            static_hints::SNIPPET_HINTS,
-        ),
-        build_doc: build_widget_doc::<model::SnippetDef>,
+        hints: static_hints::SNIPPET_HINTS,
         compile: compile_snippet_widget,
+        binding: yes,
+        children: inputs
     },
-    WidgetRegistryEntry {
-        doc: widget_doc(
-            "table",
-            WidgetCategory::Component,
-            "Editable table component.",
-            "Edits repeated rows using embedded widgets per column.",
-            r#"type: table
+    {
+        variant: Table,
+        def: model::TableDef,
+        type_name: "table",
+        category: Component,
+        short: "Editable table component.",
+        long: "Edits repeated rows using embedded widgets per column.",
+        example: r#"type: table
 id: envs
 label: Environments
 columns:
   - header: Name
     widget:
       type: text_input"#,
-            static_hints::TABLE_DOC_HINTS,
-        ),
-        build_doc: build_widget_doc::<model::TableDef>,
+        hints: static_hints::TABLE_DOC_HINTS,
         compile: compile_table_widget,
+        binding: yes,
+        children: none
     },
-    WidgetRegistryEntry {
-        doc: widget_doc(
-            "repeater",
-            WidgetCategory::Component,
-            "Repeater component.",
-            "Edits repeated items using embedded widget fields.",
-            r#"type: repeater
+    {
+        variant: Repeater,
+        def: model::RepeaterDef,
+        type_name: "repeater",
+        category: Component,
+        short: "Repeater component.",
+        long: "Edits repeated items using embedded widget fields.",
+        example: r#"type: repeater
 id: services
 label: Services
 fields:
@@ -462,12 +574,12 @@ fields:
     label: Name
     widget:
       type: text_input"#,
-            static_hints::REPEATER_HINTS,
-        ),
-        build_doc: build_widget_doc::<model::RepeaterDef>,
+        hints: static_hints::REPEATER_HINTS,
         compile: compile_repeater_widget,
-    },
-];
+        binding: yes,
+        children: widgets
+    }
+}
 
 pub(super) fn widget_registry() -> &'static [WidgetRegistryEntry] {
     WIDGET_REGISTRY
@@ -483,7 +595,7 @@ pub(super) fn walk_widgets(
 ) -> Result<(), String> {
     for widget in widgets {
         visitor(widget)?;
-        if let Some(children) = widget_children(widget) {
+        if let Some(children) = widget.registry_children() {
             walk_widgets(children, visitor)?;
         }
     }
@@ -491,36 +603,7 @@ pub(super) fn walk_widgets(
 }
 
 pub(super) fn widget_id(widget: &WidgetDef) -> &str {
-    match widget {
-        WidgetDef::TextOutput(def) => def.id.as_str(),
-        WidgetDef::UrlOutput(def) => def.id.as_str(),
-        WidgetDef::ThinkingOutput(def) => def.id.as_str(),
-        WidgetDef::ProgressOutput(def) => def.id.as_str(),
-        WidgetDef::ChartOutput(def) => def.id.as_str(),
-        WidgetDef::TableOutput(def) => def.id.as_str(),
-        WidgetDef::DiffOutput(def) => def.id.as_str(),
-        WidgetDef::TaskLogOutput(def) => def.id.as_str(),
-        WidgetDef::TextInput(def) => def.id.as_str(),
-        WidgetDef::ArrayInput(def) => def.id.as_str(),
-        WidgetDef::ButtonInput(def) => def.id.as_str(),
-        WidgetDef::Select(def) => def.id.as_str(),
-        WidgetDef::ChoiceInput(def) => def.id.as_str(),
-        WidgetDef::SelectList(def) => def.id.as_str(),
-        WidgetDef::MaskedInput(def) => def.id.as_str(),
-        WidgetDef::Slider(def) => def.id.as_str(),
-        WidgetDef::ColorInput(def) => def.id.as_str(),
-        WidgetDef::ConfirmInput(def) => def.id.as_str(),
-        WidgetDef::Checkbox(def) => def.id.as_str(),
-        WidgetDef::Calendar(def) => def.id.as_str(),
-        WidgetDef::Textarea(def) => def.id.as_str(),
-        WidgetDef::CommandRunner(def) => def.id.as_str(),
-        WidgetDef::FileBrowser(def) => def.id.as_str(),
-        WidgetDef::TreeView(def) => def.id.as_str(),
-        WidgetDef::ObjectEditor(def) => def.id.as_str(),
-        WidgetDef::Snippet(def) => def.id.as_str(),
-        WidgetDef::Table(def) => def.id.as_str(),
-        WidgetDef::Repeater(def) => def.id.as_str(),
-    }
+    widget.registry_id()
 }
 
 pub(super) fn visit_widget_inline_task_ids(
@@ -562,7 +645,7 @@ pub(super) fn visit_widget_binding_read_selectors(
     visitor: &mut impl FnMut(&str) -> Result<(), String>,
 ) -> Result<(), String> {
     visit_widget_option_selectors(widget, visitor)?;
-    let Some(binding) = widget_binding(widget) else {
+    let Some(binding) = widget.registry_binding() else {
         return Ok(());
     };
     let Some(reads) = &binding.reads else {
@@ -575,7 +658,7 @@ pub(super) fn visit_widget_binding_write_targets(
     widget: &WidgetDef,
     visitor: &mut impl FnMut(&str) -> Result<(), String>,
 ) -> Result<(), String> {
-    let Some(binding) = widget_binding(widget) else {
+    let Some(binding) = widget.registry_binding() else {
         return Ok(());
     };
     match &binding.writes {
@@ -596,7 +679,7 @@ pub(super) fn visit_widget_binding_direct_value_targets(
     widget: &WidgetDef,
     visitor: &mut impl FnMut(&str) -> Result<(), String>,
 ) -> Result<(), String> {
-    let Some(binding) = widget_binding(widget) else {
+    let Some(binding) = widget.registry_binding() else {
         return Ok(());
     };
 
@@ -631,7 +714,7 @@ pub(super) fn visit_widget_binding_direct_value_targets(
 
 pub(super) fn compile_widget(def: WidgetDef) -> Result<Node, String> {
     let binding = compile_store_binding(&def)?;
-    let widget_type = widget_type(&def);
+    let widget_type = def.registry_type_name();
     let Some(entry) = widget_entry(widget_type) else {
         return Err(format!(
             "internal widget registry is missing entry for '{widget_type}'"
@@ -646,76 +729,10 @@ fn widget_entry(widget_type: &str) -> Option<&'static WidgetRegistryEntry> {
         .find(|entry| entry.doc.widget_type == widget_type)
 }
 
-fn widget_type(widget: &WidgetDef) -> &'static str {
-    match widget {
-        WidgetDef::TextOutput(_) => "text_output",
-        WidgetDef::UrlOutput(_) => "url_output",
-        WidgetDef::ThinkingOutput(_) => "thinking_output",
-        WidgetDef::ProgressOutput(_) => "progress_output",
-        WidgetDef::ChartOutput(_) => "chart_output",
-        WidgetDef::TableOutput(_) => "table_output",
-        WidgetDef::DiffOutput(_) => "diff_output",
-        WidgetDef::TaskLogOutput(_) => "task_log_output",
-        WidgetDef::TextInput(_) => "text_input",
-        WidgetDef::ArrayInput(_) => "array_input",
-        WidgetDef::ButtonInput(_) => "button_input",
-        WidgetDef::Select(_) => "select",
-        WidgetDef::ChoiceInput(_) => "choice_input",
-        WidgetDef::SelectList(_) => "select_list",
-        WidgetDef::MaskedInput(_) => "masked_input",
-        WidgetDef::Slider(_) => "slider",
-        WidgetDef::ColorInput(_) => "color_input",
-        WidgetDef::ConfirmInput(_) => "confirm_input",
-        WidgetDef::Checkbox(_) => "checkbox",
-        WidgetDef::Calendar(_) => "calendar",
-        WidgetDef::Textarea(_) => "textarea",
-        WidgetDef::CommandRunner(_) => "command_runner",
-        WidgetDef::FileBrowser(_) => "file_browser",
-        WidgetDef::TreeView(_) => "tree_view",
-        WidgetDef::ObjectEditor(_) => "object_editor",
-        WidgetDef::Snippet(_) => "snippet",
-        WidgetDef::Table(_) => "table",
-        WidgetDef::Repeater(_) => "repeater",
-    }
-}
-
 fn registry_dispatch_mismatch<T>(widget_type: &str) -> Result<T, String> {
     Err(format!(
         "internal widget registry dispatch mismatch for '{widget_type}'"
     ))
-}
-
-fn widget_children(widget: &WidgetDef) -> Option<&[WidgetDef]> {
-    match widget {
-        WidgetDef::Snippet(def) => Some(def.inputs.as_slice()),
-        WidgetDef::Repeater(def) => Some(def.widgets.as_slice()),
-        _ => None,
-    }
-}
-
-fn widget_binding(widget: &WidgetDef) -> Option<&model::WidgetBindingDef> {
-    match widget {
-        WidgetDef::TextInput(def) => Some(&def.binding),
-        WidgetDef::ArrayInput(def) => Some(&def.binding),
-        WidgetDef::Select(def) => Some(&def.binding),
-        WidgetDef::ChoiceInput(def) => Some(&def.binding),
-        WidgetDef::SelectList(def) => Some(&def.binding),
-        WidgetDef::MaskedInput(def) => Some(&def.binding),
-        WidgetDef::Slider(def) => Some(&def.binding),
-        WidgetDef::ColorInput(def) => Some(&def.binding),
-        WidgetDef::ConfirmInput(def) => Some(&def.binding),
-        WidgetDef::Checkbox(def) => Some(&def.binding),
-        WidgetDef::Calendar(def) => Some(&def.binding),
-        WidgetDef::Textarea(def) => Some(&def.binding),
-        WidgetDef::CommandRunner(def) => Some(&def.binding),
-        WidgetDef::FileBrowser(def) => Some(&def.binding),
-        WidgetDef::TreeView(def) => Some(&def.binding),
-        WidgetDef::ObjectEditor(def) => Some(&def.binding),
-        WidgetDef::Snippet(def) => Some(&def.binding),
-        WidgetDef::Table(def) => Some(&def.binding),
-        WidgetDef::Repeater(def) => Some(&def.binding),
-        _ => None,
-    }
 }
 
 fn visit_widget_option_selectors(
@@ -781,7 +798,7 @@ fn visit_read_binding_selectors(
 }
 
 fn compile_store_binding(def: &WidgetDef) -> Result<StoreBinding, String> {
-    let mut binding = compile_widget_binding(def, widget_binding(def).cloned())?;
+    let mut binding = compile_widget_binding(def, def.registry_binding().cloned())?;
     binding.options = compile_option_binding(def)?;
     Ok(binding)
 }

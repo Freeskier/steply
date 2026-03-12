@@ -24,14 +24,7 @@ steps:
 
   - id: build_groups
     title: Build groups
-    description: Add as many groups as you want. Every repeater row can choose any files from the original selection.
     widgets:
-      - type: text_output
-        id: repeater_intro
-        text: |
-          Each iteration stores one object with:
-          - `selected_files`
-          - `name`
       - type: repeater
         id: groups
         label: File groups
@@ -39,19 +32,16 @@ steps:
         layout: stacked
         value: plan.rows
         widgets:
-          - type: text_output
-            id: step_meta
-            text: "Row {{_index}}"
+          - type: text_input
+            id: name
+            label: Group name
+            reads: "Row {{_index}}"
           - type: select_list
             id: selected_files
             label: Files in this group
             mode: multi
             options: profile.files
             writes: selected_files
-          - type: text_input
-            id: name
-            label: Group name
-            writes: name
           - type: text_output
             id: row_preview
             text: "Draft: {{_row}}"

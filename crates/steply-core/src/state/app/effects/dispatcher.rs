@@ -2,6 +2,7 @@ use crate::runtime::event::{SystemEvent, WidgetAction};
 use crate::state::app::AppState;
 use crate::task::TaskId;
 use crate::task::engine::{complete_task_run, request_task_run};
+use crate::time::Instant;
 use crate::widgets::node::{NodeWalkScope, find_node, walk_nodes_mut};
 use crate::widgets::traits::{InteractionResult, ValidationMode};
 
@@ -65,8 +66,7 @@ impl<'a> EffectDispatcher<'a> {
                     target: Some(target),
                 };
                 let result = self.broadcast_system_event(&focus_event);
-                self.process_broadcast_result(result);
-                InteractionResult::handled()
+                self.handled_with_followup(result)
             }
             WidgetAction::TaskRequested { request } => {
                 request_task_run(self.state, request);
@@ -116,7 +116,11 @@ impl<'a> EffectDispatcher<'a> {
             | SystemEvent::TaskStartRejected { .. }
             | SystemEvent::TaskLogLine { .. } => {
                 let result = self.broadcast_system_event(&event);
-                self.process_broadcast_result(result);
+                self.handled_with_followup(result)
+            }
+            SystemEvent::TaskLoadingStateTick { step_id } => {
+                self.state
+                    .sync_step_loading_visual_state_internal(step_id.as_str(), Instant::now());
                 InteractionResult::handled()
             }
             SystemEvent::TaskCompleted { ref completion } => {
@@ -124,7 +128,7 @@ impl<'a> EffectDispatcher<'a> {
                 let accepted = complete_task_run(self.state, completion.clone());
                 if accepted {
                     let result = self.dispatch_system_event_with_scope(&event, route);
-                    self.process_broadcast_result(result);
+                    return self.handled_with_followup(result);
                 }
                 InteractionResult::handled()
             }
@@ -211,10 +215,32 @@ impl<'a> EffectDispatcher<'a> {
             .unwrap_or(EventDispatchScope::CurrentStep)
     }
 
-    pub(super) fn process_broadcast_result(&mut self, result: InteractionResult) {
-        for action in result.actions {
-            let _ = self.handle_action(action);
+    fn handled_with_followup(&mut self, result: InteractionResult) -> InteractionResult {
+        let mut merged = InteractionResult::handled();
+        merged.merge(self.process_broadcast_result(result));
+        merged
+    }
+
+    pub(super) fn process_broadcast_result(
+        &mut self,
+        result: InteractionResult,
+    ) -> InteractionResult {
+        let InteractionResult {
+            handled,
+            request_render,
+            actions,
+        } = result;
+        let mut merged = InteractionResult {
+            handled,
+            request_render,
+            actions: Vec::new(),
+        };
+
+        for action in actions {
+            merged.merge(self.handle_action(action));
         }
+
+        merged
     }
 }
 
@@ -238,7 +264,10 @@ impl AppState {
         self.effect_dispatcher().broadcast_system_event(event)
     }
 
-    pub(in crate::state::app) fn process_broadcast_result(&mut self, result: InteractionResult) {
+    pub(in crate::state::app) fn process_broadcast_result(
+        &mut self,
+        result: InteractionResult,
+    ) -> InteractionResult {
         self.effect_dispatcher().process_broadcast_result(result)
     }
 }

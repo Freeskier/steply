@@ -1,10 +1,8 @@
-use super::spec::{
-    ConfigSpec, StepSpec, SubscriptionSpec, SubscriptionTriggerSpec, TaskTemplateSpec,
-};
+use super::spec::{ConfigSpec, StepSpec, TaskTemplateSpec};
 use super::{LoadedConfig, parse, utils, widgets};
 use crate::state::flow::Flow;
 use crate::state::step::{Step, StepCondition, StepNavigation};
-use crate::task::{TaskSpec, TaskSubscription, TaskTrigger};
+use crate::task::TaskSpec;
 use crate::widgets::node::Node;
 
 pub(super) fn assemble(spec: ConfigSpec) -> Result<LoadedConfig, String> {
@@ -12,13 +10,11 @@ pub(super) fn assemble(spec: ConfigSpec) -> Result<LoadedConfig, String> {
     for step in spec.steps {
         steps.push(assemble_step(step)?);
     }
-    let (task_specs, task_subscriptions) =
-        assemble_tasks_and_subscriptions(spec.tasks, spec.subscriptions)?;
+    let task_specs = assemble_tasks(spec.tasks)?;
 
     Ok(LoadedConfig {
         flow: Flow::new(steps),
         task_specs,
-        task_subscriptions,
     })
 }
 
@@ -95,10 +91,7 @@ fn assemble_when(def: &super::model::WhenDef) -> Result<StepCondition, String> {
     Err("unsupported condition: use equal/not_equal/not_empty/all/any/not".to_string())
 }
 
-fn assemble_tasks_and_subscriptions(
-    tasks: Vec<TaskTemplateSpec>,
-    subscriptions: Vec<SubscriptionSpec>,
-) -> Result<(Vec<TaskSpec>, Vec<TaskSubscription>), String> {
+fn assemble_tasks(tasks: Vec<TaskTemplateSpec>) -> Result<Vec<TaskSpec>, String> {
     let mut task_specs = Vec::<TaskSpec>::with_capacity(tasks.len());
     let mut task_ids = std::collections::HashSet::<String>::new();
     for task in tasks {
@@ -108,45 +101,18 @@ fn assemble_tasks_and_subscriptions(
         let compiled = assemble_task(task)?;
         task_specs.push(compiled);
     }
-
-    let mut task_subscriptions = Vec::<TaskSubscription>::with_capacity(subscriptions.len());
-    for subscription in subscriptions {
-        let task_id = subscription.task.clone();
-        task_subscriptions.push(assemble_subscription(subscription, task_id)?);
-    }
-
-    Ok((task_specs, task_subscriptions))
+    Ok(task_specs)
 }
 
 fn assemble_task(def: TaskTemplateSpec) -> Result<TaskSpec, String> {
     parse::parse_task_kind(def.kind.as_str())?;
     let mut spec = TaskSpec::exec(def.id, def.program, def.args)
         .with_env(def.env)
+        .with_triggers(def.triggers)
         .with_enabled(def.enabled)
         .with_writes(widgets::compile_task_writes(def.writes)?);
     if let Some(timeout_ms) = def.timeout_ms {
         spec = spec.with_timeout_ms(timeout_ms);
     }
     Ok(spec)
-}
-
-fn assemble_subscription(
-    def: SubscriptionSpec,
-    resolved_task_id: String,
-) -> Result<TaskSubscription, String> {
-    let trigger = match def.trigger {
-        SubscriptionTriggerSpec::OnInput {
-            field_ref,
-            debounce_ms,
-        } => {
-            let selector = crate::core::store_refs::parse_store_selector(field_ref.as_str())
-                .map_err(|err| format!("invalid subscription selector '{field_ref}': {err}"))?;
-            TaskTrigger::OnStoreValueChanged {
-                selector,
-                debounce_ms,
-            }
-        }
-    };
-
-    Ok(TaskSubscription::new(resolved_task_id, trigger).with_enabled(def.enabled))
 }

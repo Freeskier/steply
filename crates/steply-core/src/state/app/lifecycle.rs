@@ -1,40 +1,25 @@
-use std::collections::HashMap;
-
 use crate::state::flow::Flow;
-use crate::task::{
-    TaskId, TaskSpec, TaskSubscription, collect_inline_tasks_from_flow, validate_task_id_collisions,
-};
+use crate::task::{TaskSpec, collect_inline_tasks_from_flow, validate_task_id_collisions};
 
 use super::state::{DataState, RuntimeState, ViewState};
 use super::{AppState, AppStateInitError};
 
 impl AppState {
     pub fn new(flow: Flow) -> Result<Self, AppStateInitError> {
-        Self::with_tasks(flow, Vec::new(), Vec::new())
+        Self::with_tasks(flow, Vec::new())
     }
 
-    pub fn with_tasks(
-        flow: Flow,
-        task_specs: Vec<TaskSpec>,
-        task_subscriptions: Vec<TaskSubscription>,
-    ) -> Result<Self, AppStateInitError> {
-        let (inline_specs, inline_subscriptions) = collect_inline_tasks_from_flow(&flow);
+    pub fn with_tasks(flow: Flow, task_specs: Vec<TaskSpec>) -> Result<Self, AppStateInitError> {
+        let inline_specs = collect_inline_tasks_from_flow(&flow);
         validate_task_id_collisions(&task_specs, &inline_specs)?;
-        let mut spec_map = HashMap::<TaskId, TaskSpec>::new();
-        for spec in inline_specs {
-            spec_map.insert(spec.id.clone(), spec);
-        }
-        for spec in task_specs {
-            spec_map.insert(spec.id.clone(), spec);
-        }
-        let mut subscriptions = inline_subscriptions;
-        subscriptions.extend(task_subscriptions);
+        let mut specs = inline_specs;
+        specs.extend(task_specs);
 
         let mut state = Self {
             flow,
             ui: ViewState::default(),
             data: DataState::default(),
-            runtime: RuntimeState::with_tasks(spec_map, subscriptions),
+            runtime: RuntimeState::with_tasks(specs),
             scratch_nodes: Vec::new(),
             should_exit: false,
             pending_back_confirm: None,

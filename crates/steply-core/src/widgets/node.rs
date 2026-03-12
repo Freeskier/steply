@@ -2,7 +2,7 @@ use crate::core::value::Value;
 use crate::runtime::event::SystemEvent;
 use crate::runtime::event::ValueChange;
 use crate::state::store::ValueStore;
-use crate::task::{TaskSpec, TaskSubscription};
+use crate::task::TaskSpec;
 use crate::terminal::{CursorPos, KeyEvent, PointerEvent};
 use crate::widgets::traits::{
     CompletionState, DrawOutput, FocusMode, HintContext, HintItem, InteractionResult,
@@ -327,16 +327,6 @@ impl Node {
             widget.task_specs()
         } else if let Some(widget) = self.output_ref() {
             widget.task_specs()
-        } else {
-            Vec::new()
-        }
-    }
-
-    pub fn task_subscriptions(&self) -> Vec<TaskSubscription> {
-        if let Some(widget) = self.interactive_ref() {
-            widget.task_subscriptions()
-        } else if let Some(widget) = self.output_ref() {
-            widget.task_subscriptions()
         } else {
             Vec::new()
         }

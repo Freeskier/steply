@@ -2,23 +2,38 @@ use super::AppState;
 use crate::core::{NodeId, value::Value, value_path::ValueTarget};
 use crate::runtime::event::ValueChange;
 use crate::widgets::node::{NodeWalkScope, walk_nodes, walk_nodes_mut};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 const MAX_BINDING_SETTLE_PASSES: usize = 8;
 
 impl AppState {
     pub(super) fn sync_current_step_values_to_store(&mut self) {
-        let _ = self.push_current_step_writes_to_store();
+        let changed_targets = self.push_current_step_writes_to_store();
+        self.emit_store_change_triggers(changed_targets);
     }
 
     pub(super) fn settle_current_step_bindings(&mut self) {
+        let changed_targets = self.settle_current_step_bindings_collect();
+        self.emit_store_change_triggers(changed_targets);
+    }
+
+    fn settle_current_step_bindings_collect(&mut self) -> Vec<ValueTarget> {
+        let mut changed_targets = Vec::new();
+        let mut seen = HashSet::new();
+
         for _ in 0..MAX_BINDING_SETTLE_PASSES {
-            let store_changed = self.push_current_step_writes_to_store();
+            let pass_changes = self.push_current_step_writes_to_store();
+            let store_changed = !pass_changes.is_empty();
+            for target in pass_changes {
+                push_unique_target(&mut changed_targets, &mut seen, target);
+            }
             let hydrated = self.hydrate_current_step_from_store();
             if !store_changed && !hydrated {
                 break;
             }
         }
+
+        changed_targets
     }
 
     pub(super) fn apply_value_change(&mut self, target: impl Into<NodeId>, value: Value) {
@@ -31,6 +46,7 @@ impl AppState {
 
     fn write_value_direct(&mut self, target: ValueTarget, value: Value) {
         let root = target.root().clone();
+        let direct_target = target.clone();
         let changed = match self.write_store_target(target, value) {
             Ok(changed) => changed,
             Err(err) => {
@@ -43,12 +59,17 @@ impl AppState {
         self.runtime
             .validation
             .clear_runtime_step_error(store_write_error_key(root.as_str()).as_str());
-        if !self.reconcile_current_step_after_store_change() {
-            self.settle_current_step_bindings();
-        }
+        let mut changed_targets = Vec::new();
+        let mut seen = HashSet::new();
         if changed {
-            crate::task::engine::trigger_store_value_changed_tasks(self, &ValueTarget::node(root));
+            push_unique_target(&mut changed_targets, &mut seen, direct_target);
         }
+        if !self.reconcile_current_step_after_store_change() {
+            for target in self.settle_current_step_bindings_collect() {
+                push_unique_target(&mut changed_targets, &mut seen, target);
+            }
+        }
+        self.emit_store_change_triggers(changed_targets);
     }
 
     pub(super) fn hydrate_current_step_from_store(&mut self) -> bool {
@@ -62,7 +83,7 @@ impl AppState {
         changed
     }
 
-    fn push_current_step_writes_to_store(&mut self) -> bool {
+    fn push_current_step_writes_to_store(&mut self) -> Vec<ValueTarget> {
         let focused_id = self.ui.focus.current_id().map(str::to_string);
         let changes = {
             let mut out = Vec::new();
@@ -100,7 +121,7 @@ impl AppState {
                 }
             }
         }
-        let mut store_changed = false;
+        let mut changed_targets = Vec::new();
         let mut changes = selected.into_values().collect::<Vec<_>>();
         changes.sort_by_key(|pending| pending.order);
         for pending in changes {
@@ -108,9 +129,8 @@ impl AppState {
             let target = change.target;
             match self.write_store_target(target.clone(), change.value) {
                 Ok(changed) => {
-                    store_changed |= changed;
                     if changed {
-                        crate::task::engine::trigger_store_value_changed_tasks(self, &target);
+                        changed_targets.push(target);
                     }
                 }
                 Err(err) => {
@@ -122,7 +142,7 @@ impl AppState {
                 }
             }
         }
-        store_changed
+        changed_targets
     }
 
     fn write_store_target(
@@ -140,6 +160,12 @@ impl AppState {
         Ok(updated
             .as_ref()
             .is_some_and(|updated| before.as_ref() != Some(updated)))
+    }
+
+    fn emit_store_change_triggers(&mut self, targets: Vec<ValueTarget>) {
+        for target in dedupe_targets(targets) {
+            crate::task::engine::trigger_store_value_changed_tasks(self, &target);
+        }
     }
 }
 
@@ -179,4 +205,24 @@ fn err_root_key(err: &crate::state::store::StoreWriteError) -> String {
 
 fn store_write_error_key(root: &str) -> String {
     format!("store:{root}")
+}
+
+fn dedupe_targets(targets: Vec<ValueTarget>) -> Vec<ValueTarget> {
+    let mut unique = Vec::new();
+    let mut seen = HashSet::new();
+    for target in targets {
+        push_unique_target(&mut unique, &mut seen, target);
+    }
+    unique
+}
+
+fn push_unique_target(
+    targets: &mut Vec<ValueTarget>,
+    seen: &mut HashSet<String>,
+    target: ValueTarget,
+) {
+    let selector = target.to_selector();
+    if seen.insert(selector) {
+        targets.push(target);
+    }
 }

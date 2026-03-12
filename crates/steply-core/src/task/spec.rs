@@ -1,3 +1,4 @@
+use crate::core::value_path::ValueTarget;
 use crate::task::policy::{ConcurrencyPolicy, RerunPolicy};
 use crate::widgets::shared::binding::WriteBinding;
 use std::borrow::Borrow;
@@ -67,12 +68,39 @@ pub enum TaskKind {
     },
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TaskTrigger {
+    FlowStart,
+    FlowEnd,
+    StepEnter {
+        step_id: String,
+    },
+    StepExit {
+        step_id: String,
+    },
+    SubmitBefore {
+        step_id: String,
+    },
+    SubmitAfter {
+        step_id: String,
+    },
+    StoreChanged {
+        selector: ValueTarget,
+        debounce_ms: u64,
+    },
+    Interval {
+        every_ms: u64,
+        only_when_step_active: bool,
+    },
+}
+
 #[derive(Debug, Clone)]
 pub struct TaskSpec {
     pub id: TaskId,
     pub kind: TaskKind,
     pub rerun_policy: RerunPolicy,
     pub concurrency_policy: ConcurrencyPolicy,
+    pub triggers: Vec<TaskTrigger>,
     pub writes: Vec<WriteBinding>,
     pub enabled: bool,
 }
@@ -89,6 +117,7 @@ impl TaskSpec {
             },
             rerun_policy: RerunPolicy::default(),
             concurrency_policy: ConcurrencyPolicy::default(),
+            triggers: Vec::new(),
             writes: Vec::new(),
             enabled: true,
         }
@@ -116,6 +145,16 @@ impl TaskSpec {
 
     pub fn with_concurrency_policy(mut self, concurrency_policy: ConcurrencyPolicy) -> Self {
         self.concurrency_policy = concurrency_policy;
+        self
+    }
+
+    pub fn with_trigger(mut self, trigger: TaskTrigger) -> Self {
+        self.triggers.push(trigger);
+        self
+    }
+
+    pub fn with_triggers(mut self, triggers: Vec<TaskTrigger>) -> Self {
+        self.triggers = triggers;
         self
     }
 

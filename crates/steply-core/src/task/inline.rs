@@ -6,7 +6,7 @@ use crate::state::flow::Flow;
 use crate::state::step::Step;
 use crate::widgets::node::{NodeWalkScope, walk_nodes};
 
-use super::{TaskSpec, TaskSubscription};
+use super::TaskSpec;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TaskSetupError {
@@ -32,17 +32,12 @@ impl fmt::Display for TaskSetupError {
 
 impl Error for TaskSetupError {}
 
-pub(crate) fn collect_inline_tasks_from_flow(
-    flow: &Flow,
-) -> (Vec<TaskSpec>, Vec<TaskSubscription>) {
+pub(crate) fn collect_inline_tasks_from_flow(flow: &Flow) -> Vec<TaskSpec> {
     collect_inline_tasks_from_steps(flow.steps())
 }
 
-pub(crate) fn collect_inline_tasks_from_steps(
-    steps: &[Step],
-) -> (Vec<TaskSpec>, Vec<TaskSubscription>) {
+pub(crate) fn collect_inline_tasks_from_steps(steps: &[Step]) -> Vec<TaskSpec> {
     let mut specs = Vec::<TaskSpec>::new();
-    let mut subscriptions = Vec::<TaskSubscription>::new();
 
     for step in steps {
         walk_nodes(
@@ -50,12 +45,11 @@ pub(crate) fn collect_inline_tasks_from_steps(
             NodeWalkScope::Recursive,
             &mut |node| {
                 specs.extend(node.task_specs());
-                subscriptions.extend(node.task_subscriptions());
             },
         );
     }
 
-    (specs, subscriptions)
+    specs
 }
 
 pub(crate) fn validate_task_id_collisions(

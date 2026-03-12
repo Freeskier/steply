@@ -6,17 +6,16 @@ use crate::task::{TaskRequest, TaskTrigger};
 
 pub fn bootstrap_interval_tasks(host: &mut impl TaskEngineHost) {
     let intervals = host
-        .task_subscriptions()
+        .task_triggers()
         .iter()
         .enumerate()
-        .filter(|(_, sub)| sub.enabled)
-        .filter_map(|(index, sub)| match &sub.trigger {
-            TaskTrigger::OnInterval {
+        .filter_map(|(index, (task_id, trigger))| match trigger {
+            TaskTrigger::Interval {
                 every_ms,
                 only_when_step_active,
             } => Some((
-                sub.task_id.to_string(),
-                interval_key(sub.task_id.as_str(), index),
+                task_id.to_string(),
+                interval_key(task_id.as_str(), index),
                 (*every_ms).max(1),
                 *only_when_step_active,
             )),
@@ -37,11 +36,11 @@ pub fn bootstrap_interval_tasks(host: &mut impl TaskEngineHost) {
 
 pub fn cancel_interval_tasks(host: &mut impl TaskEngineHost) {
     let keys = host
-        .task_subscriptions()
+        .task_triggers()
         .iter()
         .enumerate()
-        .filter_map(|(index, sub)| match sub.trigger {
-            TaskTrigger::OnInterval { .. } => Some(interval_key(sub.task_id.as_str(), index)),
+        .filter_map(|(index, (task_id, trigger))| match trigger {
+            TaskTrigger::Interval { .. } => Some(interval_key(task_id.as_str(), index)),
             _ => None,
         })
         .collect::<Vec<_>>();
@@ -53,17 +52,16 @@ pub fn cancel_interval_tasks(host: &mut impl TaskEngineHost) {
 
 pub fn refresh_active_step_interval_tasks(host: &mut impl TaskEngineHost) {
     let intervals = host
-        .task_subscriptions()
+        .task_triggers()
         .iter()
         .enumerate()
-        .filter(|(_, sub)| sub.enabled)
-        .filter_map(|(index, sub)| match &sub.trigger {
-            TaskTrigger::OnInterval {
+        .filter_map(|(index, (task_id, trigger))| match trigger {
+            TaskTrigger::Interval {
                 every_ms,
                 only_when_step_active: true,
             } => Some((
-                sub.task_id.to_string(),
-                interval_key(sub.task_id.as_str(), index),
+                task_id.to_string(),
+                interval_key(task_id.as_str(), index),
                 (*every_ms).max(1),
             )),
             _ => None,
@@ -80,17 +78,17 @@ pub fn refresh_active_step_interval_tasks(host: &mut impl TaskEngineHost) {
 }
 
 pub fn trigger_flow_start_tasks(host: &mut impl TaskEngineHost) {
-    trigger_for(host, |t| matches!(t, TaskTrigger::OnFlowStart), None);
+    trigger_for(host, |t| matches!(t, TaskTrigger::FlowStart), None);
 }
 
 pub fn trigger_flow_end_tasks(host: &mut impl TaskEngineHost) {
-    trigger_for(host, |t| matches!(t, TaskTrigger::OnFlowEnd), None);
+    trigger_for(host, |t| matches!(t, TaskTrigger::FlowEnd), None);
 }
 
 pub fn trigger_step_enter_tasks(host: &mut impl TaskEngineHost, step_id: &str) {
     trigger_for(
         host,
-        |t| matches!(t, TaskTrigger::OnStepEnter { step_id: s } if s == step_id),
+        |t| matches!(t, TaskTrigger::StepEnter { step_id: s } if s == step_id),
         None,
     );
 }
@@ -98,7 +96,7 @@ pub fn trigger_step_enter_tasks(host: &mut impl TaskEngineHost, step_id: &str) {
 pub fn trigger_step_exit_tasks(host: &mut impl TaskEngineHost, step_id: &str) {
     trigger_for(
         host,
-        |t| matches!(t, TaskTrigger::OnStepExit { step_id: s } if s == step_id),
+        |t| matches!(t, TaskTrigger::StepExit { step_id: s } if s == step_id),
         None,
     );
 }
@@ -106,7 +104,7 @@ pub fn trigger_step_exit_tasks(host: &mut impl TaskEngineHost, step_id: &str) {
 pub fn trigger_submit_before_tasks(host: &mut impl TaskEngineHost, step_id: &str) {
     trigger_for(
         host,
-        |t| matches!(t, TaskTrigger::OnSubmitBefore { step_id: s } if s == step_id),
+        |t| matches!(t, TaskTrigger::SubmitBefore { step_id: s } if s == step_id),
         None,
     );
 }
@@ -114,7 +112,7 @@ pub fn trigger_submit_before_tasks(host: &mut impl TaskEngineHost, step_id: &str
 pub fn trigger_submit_after_tasks(host: &mut impl TaskEngineHost, step_id: &str) {
     trigger_for(
         host,
-        |t| matches!(t, TaskTrigger::OnSubmitAfter { step_id: s } if s == step_id),
+        |t| matches!(t, TaskTrigger::SubmitAfter { step_id: s } if s == step_id),
         None,
     );
 }
@@ -123,19 +121,18 @@ pub fn trigger_store_value_changed_tasks(
     host: &mut impl TaskEngineHost,
     changed_target: &ValueTarget,
 ) {
-    let subscriptions = host
-        .task_subscriptions()
+    let triggers = host
+        .task_triggers()
         .iter()
-        .filter(|sub| sub.enabled)
-        .filter_map(|sub| match &sub.trigger {
-            TaskTrigger::OnStoreValueChanged {
+        .filter_map(|(task_id, trigger)| match trigger {
+            TaskTrigger::StoreChanged {
                 selector,
                 debounce_ms,
             } if selectors_overlap(selector, changed_target) => {
                 let value = host.read_store_target(selector)?;
                 let fingerprint = fingerprint_value(selector.to_selector().as_str(), &value);
                 Some((
-                    sub.task_id.clone(),
+                    task_id.clone(),
                     *debounce_ms,
                     fingerprint,
                     selector.to_selector(),
@@ -145,7 +142,7 @@ pub fn trigger_store_value_changed_tasks(
         })
         .collect::<Vec<_>>();
 
-    for (task_id, debounce_ms, fingerprint, selector) in subscriptions {
+    for (task_id, debounce_ms, fingerprint, selector) in triggers {
         let request = TaskRequest::new(task_id).with_fingerprint(fingerprint);
         if debounce_ms == 0 {
             let _ = request_task_run(host, request);
@@ -186,11 +183,10 @@ fn trigger_for(
     fingerprint: Option<u64>,
 ) {
     let matched = host
-        .task_subscriptions()
+        .task_triggers()
         .iter()
-        .filter(|sub| sub.enabled)
-        .filter(|sub| predicate(&sub.trigger))
-        .map(|sub| sub.task_id.clone())
+        .filter(|(_, trigger)| predicate(trigger))
+        .map(|(task_id, _)| task_id.clone())
         .collect::<Vec<_>>();
 
     for task_id in matched {

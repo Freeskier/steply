@@ -2,7 +2,7 @@ use crate::core::value::Value;
 use crate::core::value_path::ValueTarget;
 use crate::state::flow::Flow;
 use crate::state::step::{Step, StepNavigation};
-use crate::task::{TaskSpec, TaskSubscription, TaskTrigger};
+use crate::task::{TaskSpec, TaskTrigger};
 use crate::widgets::components::calendar::{Calendar, CalendarMode};
 use crate::widgets::components::file_browser::FileBrowserInput;
 use crate::widgets::components::object_editor::{InsertType, ObjectEditor};
@@ -750,8 +750,8 @@ pub fn build_demo_flow() -> Flow {
     ])
 }
 
-pub fn build_demo_tasks() -> (Vec<TaskSpec>, Vec<TaskSubscription>) {
-    let specs = vec![
+pub fn build_demo_tasks() -> Vec<TaskSpec> {
+    vec![
         TaskSpec::exec(
             "poke_search",
             "python3",
@@ -798,6 +798,10 @@ print(json.dumps(out))
             ],
         )
         .with_timeout_ms(12_000)
+        .with_trigger(TaskTrigger::StoreChanged {
+            selector: crate::core::value_path::ValueTarget::node("poke_query_value"),
+            debounce_ms: 250,
+        })
         .with_writes(vec![WriteBinding {
             target: ValueTarget::parse_selector("poke_results")
                 .unwrap_or_else(|_| ValueTarget::node("poke_results")),
@@ -836,7 +840,10 @@ echo '[prepare] Environment ready.'
 "#.into(),
             ],
         )
-        .with_timeout_ms(30_000),
+        .with_timeout_ms(30_000)
+        .with_trigger(TaskTrigger::StepEnter {
+            step_id: "step_task_log".into(),
+        }),
 
         TaskSpec::exec(
             "tlog_build",
@@ -902,21 +909,5 @@ echo '[verify] All checks passed.'
             ],
         )
         .with_timeout_ms(30_000),
-    ];
-
-    let subs = vec![
-        TaskSubscription::on_store_value_changed(
-            "poke_search",
-            crate::core::value_path::ValueTarget::node("poke_query_value"),
-            250,
-        ),
-        TaskSubscription::new(
-            "tlog_prepare",
-            TaskTrigger::OnStepEnter {
-                step_id: "step_task_log".into(),
-            },
-        ),
-    ];
-
-    (specs, subs)
+    ]
 }

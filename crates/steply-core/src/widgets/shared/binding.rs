@@ -5,7 +5,7 @@ use crate::core::value::Value;
 use crate::core::value_path::{PathSegment, ValuePath, ValueTarget};
 use crate::runtime::event::{SystemEvent, ValueChange, WidgetAction};
 use crate::state::store::ValueStore;
-use crate::task::{TaskSpec, TaskSubscription};
+use crate::task::TaskSpec;
 use crate::terminal::{CursorPos, KeyEvent, PointerEvent};
 use crate::widgets::node::{Component, Node};
 use crate::widgets::traits::{
@@ -392,10 +392,6 @@ impl Interactive for BoundInteractiveNode {
         self.inner.task_specs()
     }
 
-    fn task_subscriptions(&self) -> Vec<TaskSubscription> {
-        self.inner.task_subscriptions()
-    }
-
     fn store_binding(&self) -> Option<&StoreBinding> {
         Some(&self.binding)
     }
@@ -522,10 +518,6 @@ impl Interactive for BoundComponentNode {
         self.inner.task_specs()
     }
 
-    fn task_subscriptions(&self) -> Vec<TaskSubscription> {
-        self.inner.task_subscriptions()
-    }
-
     fn store_binding(&self) -> Option<&StoreBinding> {
         Some(&self.binding)
     }
@@ -616,10 +608,6 @@ impl OutputNode for BoundOutputNode {
 
     fn task_specs(&self) -> Vec<TaskSpec> {
         self.inner.task_specs()
-    }
-
-    fn task_subscriptions(&self) -> Vec<TaskSubscription> {
-        self.inner.task_subscriptions()
     }
 
     fn store_binding(&self) -> Option<&StoreBinding> {

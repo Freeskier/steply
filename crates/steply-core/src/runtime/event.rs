@@ -84,6 +84,9 @@ pub enum SystemEvent {
         run_id: u64,
         line: String,
     },
+    TaskLoadingStateTick {
+        step_id: String,
+    },
     TaskCompleted {
         completion: TaskCompletion,
     },

@@ -85,6 +85,7 @@ impl AppState {
             run_id,
             cancel_token.clone(),
             origin_step_id,
+            now,
         );
         self.runtime.push_task_invocation(TaskInvocation {
             spec,
@@ -151,7 +152,9 @@ impl AppState {
         run_id: u64,
         cancel_token: TaskCancelToken,
         origin_step_id: Option<String>,
+        started_at: Instant,
     ) {
+        let loading_step_id = origin_step_id.clone();
         self.runtime
             .running_task_cancellations
             .entry(task_id)
@@ -160,7 +163,11 @@ impl AppState {
                 run_id,
                 cancel_token,
                 origin_step_id,
+                started_at,
             });
+        if let Some(step_id) = loading_step_id.as_deref() {
+            self.sync_step_loading_visual_state_internal(step_id, started_at);
+        }
     }
 
     pub(in crate::state::app) fn running_task_origin_step_id(
@@ -187,11 +194,21 @@ impl AppState {
         else {
             return;
         };
-        tokens.retain(|handle| handle.run_id != run_id);
+        let mut finished_step_id = None;
+        tokens.retain(|handle| {
+            let keep = handle.run_id != run_id;
+            if !keep {
+                finished_step_id = handle.origin_step_id.clone();
+            }
+            keep
+        });
         if tokens.is_empty() {
             self.runtime
                 .running_task_cancellations
                 .remove(task_id.as_str());
+        }
+        if let Some(step_id) = finished_step_id {
+            self.sync_step_loading_visual_state_internal(step_id.as_str(), Instant::now());
         }
     }
 
@@ -220,6 +237,133 @@ impl AppState {
                 })
         });
         self.flow.set_current_running(any_running);
+    }
+
+    fn step_loading_refresh_key(step_id: &str) -> String {
+        format!("task_loading_visual:{step_id}")
+    }
+
+    pub(in crate::state::app) fn is_step_visually_running_at(
+        &self,
+        step_id: &str,
+        now: Instant,
+    ) -> bool {
+        let Some(visible_since) = self
+            .runtime
+            .task_visual_loading
+            .step_visible_since
+            .get(step_id)
+            .copied()
+        else {
+            return false;
+        };
+
+        let has_running = self
+            .runtime
+            .running_task_cancellations
+            .values()
+            .any(|handles| {
+                handles
+                    .iter()
+                    .any(|handle| handle.origin_step_id.as_deref() == Some(step_id))
+            });
+
+        has_running
+            || now
+                .checked_duration_since(visible_since)
+                .is_some_and(|elapsed| {
+                    elapsed < self.runtime.task_visual_loading.config.min_visible
+                })
+    }
+
+    pub(in crate::state::app) fn sync_step_loading_visual_state_internal(
+        &mut self,
+        step_id: &str,
+        now: Instant,
+    ) {
+        let key = Self::step_loading_refresh_key(step_id);
+        self.runtime
+            .push_scheduler_command(SchedulerCommand::Cancel { key: key.clone() });
+
+        let mut earliest_started_at: Option<Instant> = None;
+        let mut has_running = false;
+        for handles in self.runtime.running_task_cancellations.values() {
+            for handle in handles {
+                if handle.origin_step_id.as_deref() != Some(step_id) {
+                    continue;
+                }
+                has_running = true;
+                earliest_started_at = Some(match earliest_started_at {
+                    Some(current) => current.min(handle.started_at),
+                    None => handle.started_at,
+                });
+            }
+        }
+
+        let config = self.runtime.task_visual_loading.config;
+        let visible_since = self
+            .runtime
+            .task_visual_loading
+            .step_visible_since
+            .get(step_id)
+            .copied();
+
+        if visible_since.is_none() {
+            if let Some(started_at) = earliest_started_at {
+                if now
+                    .checked_duration_since(started_at)
+                    .is_some_and(|elapsed| elapsed >= config.visibility_delay)
+                {
+                    self.runtime
+                        .task_visual_loading
+                        .step_visible_since
+                        .insert(step_id.to_string(), now);
+                } else if let Some(remaining) = config
+                    .visibility_delay
+                    .checked_sub(now.saturating_duration_since(started_at))
+                {
+                    self.runtime
+                        .push_scheduler_command(SchedulerCommand::EmitAfter {
+                            key,
+                            delay: remaining,
+                            event: AppEvent::System(SystemEvent::TaskLoadingStateTick {
+                                step_id: step_id.to_string(),
+                            }),
+                        });
+                }
+            } else {
+                self.runtime
+                    .task_visual_loading
+                    .step_visible_since
+                    .remove(step_id);
+            }
+            return;
+        }
+
+        let visible_since = visible_since.expect("visible_since checked above");
+        if has_running {
+            return;
+        }
+
+        if let Some(remaining) = config
+            .min_visible
+            .checked_sub(now.saturating_duration_since(visible_since))
+        {
+            self.runtime
+                .push_scheduler_command(SchedulerCommand::EmitAfter {
+                    key,
+                    delay: remaining,
+                    event: AppEvent::System(SystemEvent::TaskLoadingStateTick {
+                        step_id: step_id.to_string(),
+                    }),
+                });
+            return;
+        }
+
+        self.runtime
+            .task_visual_loading
+            .step_visible_since
+            .remove(step_id);
     }
 
     fn emit_task_start_feedback_internal(&mut self, result: &TaskStartResult) {
@@ -255,8 +399,8 @@ impl AppState {
 }
 
 impl TaskEngineHost for AppState {
-    fn task_subscriptions(&self) -> &[crate::task::TaskSubscription] {
-        self.runtime.task_subscriptions.as_slice()
+    fn task_triggers(&self) -> &[(TaskId, crate::task::TaskTrigger)] {
+        self.runtime.task_triggers.as_slice()
     }
 
     fn find_task_spec(&self, task_id: &TaskId) -> Option<TaskSpec> {

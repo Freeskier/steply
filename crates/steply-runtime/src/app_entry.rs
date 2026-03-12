@@ -38,8 +38,8 @@ pub fn run_with_options(options: StartOptions) -> io::Result<()> {
             .map_err(|err| io::Error::other(format!("app init error: {err}")))?
     } else {
         let flow = build_demo_flow();
-        let (task_specs, task_subscriptions) = build_demo_tasks();
-        steply_core::state::app::AppState::with_tasks(flow, task_specs, task_subscriptions)
+        let task_specs = build_demo_tasks();
+        steply_core::state::app::AppState::with_tasks(flow, task_specs)
             .map_err(|err| io::Error::other(format!("app init error: {err}")))?
     };
     let terminal = Terminal::new()?;

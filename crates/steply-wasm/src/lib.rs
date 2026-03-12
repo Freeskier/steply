@@ -173,10 +173,9 @@ mod wasm_exports {
         let loaded = steply_core::config::load_from_yaml_str(yaml)
             .map_err(|e| JsValue::from_str(&e.to_string()))?;
         Ok(format!(
-            "ok: steps={}, tasks={}, subscriptions={}",
+            "ok: steps={}, tasks={}",
             loaded.flow.steps().len(),
-            loaded.task_specs.len(),
-            loaded.task_subscriptions.len()
+            loaded.task_specs.len()
         ))
     }
 

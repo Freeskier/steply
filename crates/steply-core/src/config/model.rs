@@ -12,8 +12,6 @@ pub(super) struct ConfigDoc {
     pub(super) flow: Vec<FlowItemDef>,
     #[serde(default)]
     pub(super) tasks: Vec<TaskDef>,
-    #[serde(default)]
-    pub(super) subscriptions: Vec<SubscriptionDef>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -61,29 +59,39 @@ pub(super) struct TaskDef {
     #[serde(default)]
     pub(super) env: BTreeMap<String, String>,
     #[serde(default)]
+    pub(super) triggers: Vec<TaskTriggerDef>,
+    #[serde(default)]
     pub(super) writes: Option<WriteBindingDef>,
 }
 
-#[derive(Debug, Deserialize, JsonSchema)]
-pub(super) struct SubscriptionDef {
-    pub(super) task: String,
-    pub(super) trigger: TriggerDef,
-    #[serde(default)]
-    pub(super) enabled: Option<bool>,
-}
-
-#[derive(Debug, Deserialize, JsonSchema)]
-pub(super) struct TriggerDef {
-    #[serde(default)]
-    pub(super) on_input: Option<OnInputTriggerDef>,
-}
-
-#[derive(Debug, Deserialize, JsonSchema)]
-pub(super) struct OnInputTriggerDef {
-    #[serde(rename = "ref")]
-    pub(super) field_ref: String,
-    #[serde(default)]
-    pub(super) debounce_ms: Option<u64>,
+#[derive(Debug, Deserialize, Clone, JsonSchema)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub(super) enum TaskTriggerDef {
+    FlowStart,
+    FlowEnd,
+    StepEnter {
+        step_id: String,
+    },
+    StepExit {
+        step_id: String,
+    },
+    SubmitBefore {
+        step_id: String,
+    },
+    SubmitAfter {
+        step_id: String,
+    },
+    StoreChanged {
+        #[serde(rename = "ref")]
+        field_ref: String,
+        #[serde(default)]
+        debounce_ms: Option<u64>,
+    },
+    Interval {
+        every_ms: u64,
+        #[serde(default)]
+        only_when_step_active: bool,
+    },
 }
 
 #[derive(Debug, Deserialize, Clone, JsonSchema)]

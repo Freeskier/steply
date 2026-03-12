@@ -1,0 +1,140 @@
+version: 1
+
+tasks:
+  - id: welcome_banner
+    kind: exec
+    program: python3
+    args:
+      - -c
+      - |
+        print("This flow uses task-owned triggers. Edit the title, enter review, and open the live status step.")
+    triggers:
+      - type: flow_start
+    writes: session.welcome
+
+  - id: slugify_title
+    kind: exec
+    program: python3
+    args:
+      - -c
+      - |
+        import re
+        import sys
+
+        title = (sys.argv[1] if len(sys.argv) > 1 else "").strip().lower()
+        slug = re.sub(r"[^a-z0-9]+", "-", title).strip("-")
+        print(slug or "untitled-note")
+      - "{{story.title}}"
+    triggers:
+      - type: store_changed
+        ref: story.title
+        debounce_ms: 250
+    writes: story.slug
+
+  - id: review_hint
+    kind: exec
+    program: python3
+    args:
+      - -c
+      - |
+        import sys
+
+        title = (sys.argv[1] if len(sys.argv) > 1 else "").strip() or "Untitled note"
+        slug = (sys.argv[2] if len(sys.argv) > 2 else "").strip() or "untitled-note"
+        print(f'Reviewing "{title}" as "{slug}". If it looks good, run the packaging task.')
+      - "{{story.title}}"
+      - "{{story.slug}}"
+    triggers:
+      - type: step_enter
+        step_id: review
+    writes: review.hint
+
+  - id: live_clock
+    kind: exec
+    program: python3
+    args:
+      - -c
+      - |
+        from datetime import datetime
+
+        print(datetime.now().strftime("%H:%M:%S"))
+    triggers:
+      - type: interval
+        every_ms: 1000
+        only_when_step_active: true
+    writes: live.clock
+
+  - id: package_story
+    kind: exec
+    program: bash
+    args:
+      - -lc
+      - |
+        slug="${1:-untitled-note}"
+        echo "[1/4] Collecting notes for ${slug}"
+        sleep 0.2
+        echo "[2/4] Building manifest"
+        sleep 0.2
+        echo "[3/4] Packing archive"
+        sleep 0.2
+        echo "[4/4] Done: dist/${slug}.zip"
+      - package-story
+      - "{{story.slug}}"
+
+steps:
+  - id: draft
+    title: Triggered draft
+    widgets:
+      - type: text_output
+        id: intro
+        text: "Task-owned triggers are active in this flow."
+      - type: text_output
+        id: intro_detail
+        text: "Edit the title below. The slug updates from a fast store_changed task."
+      - type: text_input
+        id: title
+        label: Story title
+        default: Moonbase incident report
+        value: story.title
+      - type: text_output
+        id: slug_preview
+        text: "Live slug: {{story.slug}}"
+      - type: text_output
+        id: draft_hint
+        text: "This slug comes from a top-level task in tasks[].triggers."
+
+  - id: review
+    title: Review step
+    description: Entering this step auto-runs a task that prepares a short review hint.
+    widgets:
+      - type: text_output
+        id: review_hint_text
+        text: "{{review.hint}}"
+      - type: text_output
+        id: review_hint_detail
+        text: "{{session.welcome}}"
+      - type: button_input
+        id: package_button
+        label: Package story
+        text: Build package now
+        task_id: package_story
+      - type: task_log_output
+        id: package_log
+        visible_lines: 8
+        steps:
+          - label: Package current story
+            task_id: package_story
+
+  - id: live_status
+    title: Live status
+    description: An interval task refreshes the clock while this step is active.
+    widgets:
+      - type: text_output
+        id: clock_intro
+        text: The value below is updated by a repeating task trigger.
+      - type: text_output
+        id: clock_value
+        text: "Active clock: {{live.clock}}"
+      - type: text_output
+        id: slug_snapshot
+        text: "Current slug snapshot: {{story.slug}}"

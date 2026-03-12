@@ -320,26 +320,6 @@
         }
       ]
     },
-    "OnInputTriggerDef": {
-      "properties": {
-        "debounce_ms": {
-          "default": null,
-          "format": "uint64",
-          "minimum": 0.0,
-          "type": [
-            "integer",
-            "null"
-          ]
-        },
-        "ref": {
-          "type": "string"
-        }
-      },
-      "required": [
-        "ref"
-      ],
-      "type": "object"
-    },
     "ProgressTransitionDef": {
       "oneOf": [
         {
@@ -490,28 +470,6 @@
         }
       ]
     },
-    "SubscriptionDef": {
-      "properties": {
-        "enabled": {
-          "default": null,
-          "type": [
-            "boolean",
-            "null"
-          ]
-        },
-        "task": {
-          "type": "string"
-        },
-        "trigger": {
-          "$ref": "#/definitions/TriggerDef"
-        }
-      },
-      "required": [
-        "task",
-        "trigger"
-      ],
-      "type": "object"
-    },
     "TableColumnDef": {
       "properties": {
         "header": {
@@ -574,6 +532,12 @@
             "null"
           ]
         },
+        "triggers": {
+          "items": {
+            "$ref": "#/definitions/TaskTriggerDef"
+          },
+          "type": "array"
+        },
         "writes": {
           "anyOf": [
             {
@@ -609,6 +573,161 @@
       ],
       "type": "object"
     },
+    "TaskTriggerDef": {
+      "oneOf": [
+        {
+          "properties": {
+            "type": {
+              "enum": [
+                "flow_start"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "type": {
+              "enum": [
+                "flow_end"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "step_id": {
+              "type": "string"
+            },
+            "type": {
+              "enum": [
+                "step_enter"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "step_id",
+            "type"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "step_id": {
+              "type": "string"
+            },
+            "type": {
+              "enum": [
+                "step_exit"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "step_id",
+            "type"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "step_id": {
+              "type": "string"
+            },
+            "type": {
+              "enum": [
+                "submit_before"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "step_id",
+            "type"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "step_id": {
+              "type": "string"
+            },
+            "type": {
+              "enum": [
+                "submit_after"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "step_id",
+            "type"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "debounce_ms": {
+              "default": null,
+              "format": "uint64",
+              "minimum": 0.0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "ref": {
+              "type": "string"
+            },
+            "type": {
+              "enum": [
+                "store_changed"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "ref",
+            "type"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "every_ms": {
+              "format": "uint64",
+              "minimum": 0.0,
+              "type": "integer"
+            },
+            "only_when_step_active": {
+              "default": false,
+              "type": "boolean"
+            },
+            "type": {
+              "enum": [
+                "interval"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "every_ms",
+            "type"
+          ],
+          "type": "object"
+        }
+      ]
+    },
     "TreeNodeDef": {
       "properties": {
         "depth": {
@@ -639,21 +758,6 @@
         "has_children",
         "item"
       ],
-      "type": "object"
-    },
-    "TriggerDef": {
-      "properties": {
-        "on_input": {
-          "anyOf": [
-            {
-              "$ref": "#/definitions/OnInputTriggerDef"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        }
-      },
       "type": "object"
     },
     "ValidatorDef": {
@@ -2962,12 +3066,6 @@
     "steps": {
       "items": {
         "$ref": "#/definitions/StepDef"
-      },
-      "type": "array"
-    },
-    "subscriptions": {
-      "items": {
-        "$ref": "#/definitions/SubscriptionDef"
       },
       "type": "array"
     },

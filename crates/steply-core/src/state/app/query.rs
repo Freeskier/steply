@@ -46,11 +46,24 @@ impl AppState {
     }
 
     pub fn step_status_at(&self, index: usize) -> crate::state::step::StepStatus {
-        self.flow.status_at(index)
+        let status = self.flow.status_at(index);
+        let Some(step) = self.flow.steps().get(index) else {
+            return status;
+        };
+        let now = crate::time::Instant::now();
+        match status {
+            StepStatus::Active if self.is_step_visually_running_at(step.id.as_str(), now) => {
+                StepStatus::Running
+            }
+            StepStatus::Running if !self.is_step_visually_running_at(step.id.as_str(), now) => {
+                StepStatus::Active
+            }
+            _ => status,
+        }
     }
 
     pub fn current_step_status(&self) -> StepStatus {
-        self.flow.current_status()
+        self.step_status_at(self.flow.current_index())
     }
 
     pub fn step_visible_at(&self, index: usize) -> bool {

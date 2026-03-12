@@ -3,7 +3,7 @@ use crate::preview::render::render_json;
 use crate::preview::request::RenderJsonRequest;
 use crate::state::app::AppStateInitError;
 use crate::state::flow::Flow;
-use crate::task::{TaskSpec, TaskSubscription};
+use crate::task::TaskSpec;
 use crate::terminal::TerminalSize;
 use crate::ui::renderer::{Renderer, RendererConfig};
 use std::error::Error;
@@ -89,25 +89,15 @@ impl PreviewService {
     }
 
     pub fn from_flow(flow: Flow) -> Result<Self, AppStateInitError> {
-        Self::from_parts(
-            flow,
-            Vec::new(),
-            Vec::new(),
-            PreviewServiceOptions::default(),
-        )
+        Self::from_parts(flow, Vec::new(), PreviewServiceOptions::default())
     }
 
     pub fn from_parts(
         flow: Flow,
         task_specs: Vec<TaskSpec>,
-        task_subscriptions: Vec<TaskSubscription>,
         options: PreviewServiceOptions,
     ) -> Result<Self, AppStateInitError> {
-        let loaded = LoadedConfig {
-            flow,
-            task_specs,
-            task_subscriptions,
-        };
+        let loaded = LoadedConfig { flow, task_specs };
         Self::from_loaded_config_with_options(loaded, options)
     }
 

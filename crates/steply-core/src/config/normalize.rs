@@ -1,9 +1,8 @@
 use std::collections::{HashMap, HashSet};
 
-use super::model::{ConfigDoc, FlowItemDef, StepDef, SubscriptionDef, TaskDef, WhenDef};
-use super::spec::{
-    ConfigSpec, StepSpec, SubscriptionSpec, SubscriptionTriggerSpec, TaskTemplateSpec,
-};
+use super::model::{ConfigDoc, FlowItemDef, StepDef, TaskDef, TaskTriggerDef, WhenDef};
+use super::spec::{ConfigSpec, StepSpec, TaskTemplateSpec};
+use crate::task::TaskTrigger;
 
 pub(super) fn normalize(doc: ConfigDoc) -> Result<ConfigSpec, String> {
     if doc.version.unwrap_or(1) != 1 {
@@ -12,13 +11,8 @@ pub(super) fn normalize(doc: ConfigDoc) -> Result<ConfigSpec, String> {
 
     let steps = resolve_steps(doc.steps, doc.flow)?;
     let tasks = resolve_tasks(doc.tasks)?;
-    let subscriptions = resolve_subscriptions(doc.subscriptions)?;
 
-    Ok(ConfigSpec {
-        steps,
-        tasks,
-        subscriptions,
-    })
+    Ok(ConfigSpec { steps, tasks })
 }
 
 fn resolve_steps(steps: Vec<StepDef>, flow: Vec<FlowItemDef>) -> Result<Vec<StepSpec>, String> {
@@ -87,33 +81,43 @@ fn resolve_tasks(tasks: Vec<TaskDef>) -> Result<Vec<TaskTemplateSpec>, String> {
             timeout_ms: task.timeout_ms,
             enabled: task.enabled.unwrap_or(true),
             env: task.env,
+            triggers: resolve_task_triggers(task.triggers)?,
             writes: task.writes,
         });
     }
     Ok(out)
 }
 
-fn resolve_subscriptions(
-    subscriptions: Vec<SubscriptionDef>,
-) -> Result<Vec<SubscriptionSpec>, String> {
-    let mut out = Vec::with_capacity(subscriptions.len());
-    for subscription in subscriptions {
-        let trigger = if let Some(on_input) = subscription.trigger.on_input {
-            SubscriptionTriggerSpec::OnInput {
-                field_ref: on_input.field_ref,
-                debounce_ms: on_input.debounce_ms.unwrap_or(200).max(1),
+fn resolve_task_triggers(triggers: Vec<TaskTriggerDef>) -> Result<Vec<TaskTrigger>, String> {
+    triggers
+        .into_iter()
+        .map(|trigger| match trigger {
+            TaskTriggerDef::FlowStart => Ok(TaskTrigger::FlowStart),
+            TaskTriggerDef::FlowEnd => Ok(TaskTrigger::FlowEnd),
+            TaskTriggerDef::StepEnter { step_id } => Ok(TaskTrigger::StepEnter { step_id }),
+            TaskTriggerDef::StepExit { step_id } => Ok(TaskTrigger::StepExit { step_id }),
+            TaskTriggerDef::SubmitBefore { step_id } => Ok(TaskTrigger::SubmitBefore { step_id }),
+            TaskTriggerDef::SubmitAfter { step_id } => Ok(TaskTrigger::SubmitAfter { step_id }),
+            TaskTriggerDef::StoreChanged {
+                field_ref,
+                debounce_ms,
+            } => {
+                let selector = crate::core::store_refs::parse_store_selector(field_ref.as_str())
+                    .map_err(|err| format!("invalid task trigger selector '{field_ref}': {err}"))?;
+                Ok(TaskTrigger::StoreChanged {
+                    selector,
+                    debounce_ms: debounce_ms.unwrap_or(200),
+                })
             }
-        } else {
-            return Err("subscription.trigger requires on_input in v1".to_string());
-        };
-
-        out.push(SubscriptionSpec {
-            task: subscription.task,
-            trigger,
-            enabled: subscription.enabled.unwrap_or(true),
-        });
-    }
-    Ok(out)
+            TaskTriggerDef::Interval {
+                every_ms,
+                only_when_step_active,
+            } => Ok(TaskTrigger::Interval {
+                every_ms: every_ms.max(1),
+                only_when_step_active,
+            }),
+        })
+        .collect()
 }
 
 fn merge_when(step_when: Option<&WhenDef>, flow_when: Option<&WhenDef>) -> Option<WhenDef> {

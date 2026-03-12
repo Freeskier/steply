@@ -17,7 +17,7 @@ use super::step_decoration::{
 };
 use super::{
     DrawNodesOptions, DrawNodesState, FocusCursorState, RendererConfig, StepContentRender,
-    StepHintsRender, StepVisualStatus, draw_nodes,
+    StepHintsRender, StepVisualStatus, draw_nodes, status_allows_interaction,
 };
 
 pub(super) fn active_focus_id(
@@ -25,7 +25,7 @@ pub(super) fn active_focus_id(
     blocking_overlay: bool,
     focused_id: Option<&str>,
 ) -> Option<&str> {
-    if status == StepVisualStatus::Active && !blocking_overlay {
+    if status_allows_interaction(status) && !blocking_overlay {
         focused_id
     } else {
         None
@@ -60,7 +60,7 @@ pub(super) fn render_step_content(
     }
 
     let is_active_interaction_pass =
-        status == StepVisualStatus::Active && !view.has_blocking_overlay;
+        status_allows_interaction(status) && !view.has_blocking_overlay;
     let ctx = render_context_for_nodes(
         view.validation,
         view.completion.as_ref(),
@@ -158,7 +158,7 @@ pub(super) fn resolve_step_focus_cursor(
     let focus_anchor = resolve_focus_anchor(
         focused_id,
         &content.hit_map,
-        status == StepVisualStatus::Active,
+        status_allows_interaction(status),
         content.focus_anchor,
     )
     .map(|(row, col)| CursorPos {
@@ -186,7 +186,7 @@ pub(super) fn step_frame_footer<'a>(
         });
     }
 
-    if status != StepVisualStatus::Active {
+    if !status_allows_interaction(status) {
         return None;
     }
 
@@ -226,7 +226,7 @@ pub(super) fn render_step_hints(
     view: &RenderView<'_>,
     nodes: &[Node],
 ) -> StepHintsRender {
-    if status != StepVisualStatus::Active {
+    if !status_allows_interaction(status) {
         return StepHintsRender::default();
     }
 

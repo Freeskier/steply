@@ -5,8 +5,9 @@ use crate::state::overlay::OverlayState;
 use crate::state::store::ValueStore;
 use crate::state::validation::ValidationState;
 use crate::task::{
-    TaskCancelToken, TaskId, TaskInvocation, TaskRequest, TaskRunState, TaskSpec, TaskSubscription,
+    TaskCancelToken, TaskId, TaskInvocation, TaskRequest, TaskRunState, TaskSpec, TaskTrigger,
 };
+use crate::time::{Duration, Instant};
 use crate::widgets::node_index::NodeIndex;
 use std::collections::{HashMap, VecDeque};
 
@@ -50,6 +51,28 @@ pub(super) struct RunningTaskHandle {
     pub(super) run_id: u64,
     pub(super) cancel_token: TaskCancelToken,
     pub(super) origin_step_id: Option<String>,
+    pub(super) started_at: Instant,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) struct TaskVisualLoadingConfig {
+    pub(super) visibility_delay: Duration,
+    pub(super) min_visible: Duration,
+}
+
+impl Default for TaskVisualLoadingConfig {
+    fn default() -> Self {
+        Self {
+            visibility_delay: Duration::from_millis(250),
+            min_visible: Duration::from_millis(350),
+        }
+    }
+}
+
+#[derive(Default)]
+pub(super) struct TaskVisualLoadingState {
+    pub(super) config: TaskVisualLoadingConfig,
+    pub(super) step_visible_since: HashMap<String, Instant>,
 }
 
 #[derive(Default)]
@@ -62,17 +85,29 @@ pub(super) struct RuntimeState {
     pub(super) running_task_cancellations: HashMap<TaskId, Vec<RunningTaskHandle>>,
     pub(super) task_runs: HashMap<TaskId, TaskRunState>,
     pub(super) task_specs: HashMap<TaskId, TaskSpec>,
-    pub(super) task_subscriptions: Vec<TaskSubscription>,
+    pub(super) task_triggers: Vec<(TaskId, TaskTrigger)>,
+    pub(super) task_visual_loading: TaskVisualLoadingState,
 }
 
 impl RuntimeState {
-    pub(super) fn with_tasks(
-        task_specs: HashMap<TaskId, TaskSpec>,
-        task_subscriptions: Vec<TaskSubscription>,
-    ) -> Self {
+    pub(super) fn with_tasks(task_specs: Vec<TaskSpec>) -> Self {
+        let task_triggers = task_specs
+            .iter()
+            .filter(|spec| spec.enabled)
+            .flat_map(|spec| {
+                spec.triggers
+                    .iter()
+                    .cloned()
+                    .map(|trigger| (spec.id.clone(), trigger))
+            })
+            .collect();
+        let task_specs = task_specs
+            .into_iter()
+            .map(|spec| (spec.id.clone(), spec))
+            .collect();
         Self {
             task_specs,
-            task_subscriptions,
+            task_triggers,
             ..Self::default()
         }
     }

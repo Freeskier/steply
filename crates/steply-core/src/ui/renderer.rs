@@ -130,6 +130,10 @@ impl From<StepStatus> for StepVisualStatus {
     }
 }
 
+fn status_allows_interaction(status: StepVisualStatus) -> bool {
+    matches!(status, StepVisualStatus::Active | StepVisualStatus::Running)
+}
+
 impl Renderer {
     pub fn new(config: RendererConfig) -> Self {
         Self {

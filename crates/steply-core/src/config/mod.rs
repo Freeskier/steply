@@ -18,13 +18,12 @@ use schemars::schema_for;
 
 use crate::state::app::{AppState, AppStateInitError};
 use crate::state::flow::Flow;
-use crate::task::{TaskSpec, TaskSubscription};
+use crate::task::TaskSpec;
 
 pub use error::ConfigLoadError;
 pub struct LoadedConfig {
     pub flow: Flow,
     pub task_specs: Vec<TaskSpec>,
-    pub task_subscriptions: Vec<TaskSubscription>,
 }
 
 pub use doc_model::{
@@ -33,7 +32,7 @@ pub use doc_model::{
 
 impl LoadedConfig {
     pub fn into_app_state(self) -> Result<AppState, AppStateInitError> {
-        AppState::with_tasks(self.flow, self.task_specs, self.task_subscriptions)
+        AppState::with_tasks(self.flow, self.task_specs)
     }
 }
 
@@ -46,7 +45,16 @@ pub fn load_from_yaml_file(path: &Path) -> Result<LoadedConfig, ConfigLoadError>
 }
 
 pub fn load_from_yaml_str(raw: &str) -> Result<LoadedConfig, ConfigLoadError> {
-    let doc: ConfigDoc = serde_yaml::from_str(raw).map_err(ConfigLoadError::ParseYaml)?;
+    let value: serde_yaml::Value = serde_yaml::from_str(raw).map_err(ConfigLoadError::ParseYaml)?;
+    if value.as_mapping().is_some_and(|mapping| {
+        mapping.contains_key(serde_yaml::Value::String("subscriptions".to_string()))
+    }) {
+        return Err(ConfigLoadError::Normalize(
+            "root-level 'subscriptions' was removed; move triggers into tasks[].triggers"
+                .to_string(),
+        ));
+    }
+    let doc: ConfigDoc = serde_yaml::from_value(value).map_err(ConfigLoadError::ParseYaml)?;
     let spec = normalize::normalize(doc).map_err(ConfigLoadError::Normalize)?;
     validate::validate(&spec).map_err(ConfigLoadError::Validate)?;
     assemble::assemble(spec).map_err(ConfigLoadError::Assemble)

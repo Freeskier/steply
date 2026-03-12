@@ -599,13 +599,6 @@ impl Interactive for Repeater {
     fn task_specs(&self) -> Vec<crate::task::TaskSpec> {
         self.widgets.iter().flat_map(Node::task_specs).collect()
     }
-
-    fn task_subscriptions(&self) -> Vec<crate::task::TaskSubscription> {
-        self.widgets
-            .iter()
-            .flat_map(Node::task_subscriptions)
-            .collect()
-    }
 }
 
 fn clone_store(store: &ValueStore) -> ValueStore {

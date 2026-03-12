@@ -55,6 +55,6 @@ impl AppState {
     fn broadcast_current_focus_request(&mut self) {
         let focused_id = self.ui.focus.current_id().map(|id| id.into());
         let result = self.broadcast_system_event(&SystemEvent::RequestFocus { target: focused_id });
-        self.process_broadcast_result(result);
+        let _ = self.process_broadcast_result(result);
     }
 }

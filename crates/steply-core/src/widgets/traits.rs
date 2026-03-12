@@ -1,7 +1,7 @@
 use crate::core::value::Value;
 use crate::runtime::event::{SystemEvent, WidgetAction};
 use crate::state::store::ValueStore;
-use crate::task::{TaskSpec, TaskSubscription};
+use crate::task::TaskSpec;
 use crate::terminal::{CursorPos, KeyEvent, PointerEvent, PointerSemantic, TerminalSize};
 use crate::ui::inline::{InlineLine, flatten_lines};
 use crate::ui::span::{Span, SpanLine};
@@ -488,10 +488,6 @@ pub trait Interactive: Send {
     fn task_specs(&self) -> Vec<TaskSpec> {
         Vec::new()
     }
-
-    fn task_subscriptions(&self) -> Vec<TaskSubscription> {
-        Vec::new()
-    }
 }
 
 pub trait InteractiveNode: Drawable + Interactive {}
@@ -532,10 +528,6 @@ pub trait OutputNode: Drawable {
     }
 
     fn task_specs(&self) -> Vec<TaskSpec> {
-        Vec::new()
-    }
-
-    fn task_subscriptions(&self) -> Vec<TaskSubscription> {
         Vec::new()
     }
 }

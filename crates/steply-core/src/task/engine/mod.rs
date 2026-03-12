@@ -4,7 +4,7 @@ mod triggering;
 
 use crate::core::value::Value;
 use crate::core::value_path::ValueTarget;
-use crate::task::{RerunPolicy, TaskId, TaskRequest, TaskSpec, TaskSubscription};
+use crate::task::{RerunPolicy, TaskId, TaskRequest, TaskSpec, TaskTrigger};
 use crate::time::Instant;
 
 pub use keys::{fingerprint_value, interval_key, node_change_debounce_key, value_to_task_arg};
@@ -27,7 +27,7 @@ pub enum TaskStartResult {
 }
 
 pub trait TaskEngineHost {
-    fn task_subscriptions(&self) -> &[TaskSubscription];
+    fn task_triggers(&self) -> &[(TaskId, TaskTrigger)];
 
     fn find_task_spec(&self, task_id: &TaskId) -> Option<TaskSpec>;
 

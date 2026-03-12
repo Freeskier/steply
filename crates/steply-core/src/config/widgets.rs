@@ -5,7 +5,7 @@ mod inputs;
 mod outputs;
 
 use crate::core::store_refs::{
-    exact_template_expr, normalize_store_selector, parse_store_selector, template_expressions,
+    exact_template_expr, normalize_store_selector, template_expressions,
 };
 use crate::widgets::node::Node;
 use crate::widgets::shared::binding::{
@@ -13,6 +13,7 @@ use crate::widgets::shared::binding::{
 };
 use crate::widgets::static_hints;
 
+use super::binding_compile::{compile_read_binding_value, compile_write_bindings, parse_selector};
 use super::doc_model::{WidgetCategory, WidgetDoc, WidgetDocDescriptor, build_widget_doc};
 use super::model::{self, WidgetDef};
 
@@ -687,6 +688,7 @@ fn registry_dispatch_mismatch<T>(widget_type: &str) -> Result<T, String> {
 fn widget_children(widget: &WidgetDef) -> Option<&[WidgetDef]> {
     match widget {
         WidgetDef::Snippet(def) => Some(def.inputs.as_slice()),
+        WidgetDef::Repeater(def) => Some(def.widgets.as_slice()),
         _ => None,
     }
 }
@@ -705,6 +707,7 @@ fn widget_binding(widget: &WidgetDef) -> Option<&model::WidgetBindingDef> {
         WidgetDef::Checkbox(def) => Some(&def.binding),
         WidgetDef::Calendar(def) => Some(&def.binding),
         WidgetDef::Textarea(def) => Some(&def.binding),
+        WidgetDef::CommandRunner(def) => Some(&def.binding),
         WidgetDef::FileBrowser(def) => Some(&def.binding),
         WidgetDef::TreeView(def) => Some(&def.binding),
         WidgetDef::ObjectEditor(def) => Some(&def.binding),
@@ -778,9 +781,15 @@ fn visit_read_binding_selectors(
 }
 
 fn compile_store_binding(def: &WidgetDef) -> Result<StoreBinding, String> {
-    let mut binding = compile_widget_binding(widget_binding(def).cloned())?;
+    let mut binding = compile_widget_binding(def, widget_binding(def).cloned())?;
     binding.options = compile_option_binding(def)?;
     Ok(binding)
+}
+
+pub(super) fn compile_task_writes(
+    writes: Option<model::WriteBindingDef>,
+) -> Result<Vec<WriteBinding>, String> {
+    compile_write_bindings(writes, "stdout", is_task_scope_ref)
 }
 
 fn compile_option_binding(def: &WidgetDef) -> Result<Option<ReadBinding>, String> {
@@ -804,6 +813,7 @@ fn compile_option_binding(def: &WidgetDef) -> Result<Option<ReadBinding>, String
 }
 
 fn compile_widget_binding(
+    def: &WidgetDef,
     binding: Option<model::WidgetBindingDef>,
 ) -> Result<StoreBinding, String> {
     let Some(binding) = binding else {
@@ -832,24 +842,7 @@ fn compile_widget_binding(
         .map(|value| compile_read_binding_value(&value, true))
         .transpose()?;
 
-    let writes = match binding.writes {
-        None => Vec::new(),
-        Some(model::WriteBindingDef::Selector(selector)) => {
-            vec![WriteBinding {
-                target: parse_selector(selector.as_str())?,
-                expr: WriteExpr::ScopeRef("value".to_string()),
-            }]
-        }
-        Some(model::WriteBindingDef::Map(entries)) => entries
-            .into_iter()
-            .map(|(target, expr)| {
-                Ok(WriteBinding {
-                    target: parse_selector(target.as_str())?,
-                    expr: compile_write_expr_value(&expr.0)?,
-                })
-            })
-            .collect::<Result<Vec<_>, String>>()?,
-    };
+    let writes = compile_write_bindings(binding.writes, "value", widget_scope_ref(def))?;
 
     Ok(StoreBinding {
         value: None,
@@ -859,89 +852,11 @@ fn compile_widget_binding(
     })
 }
 
-fn compile_read_binding_value(
-    value: &serde_yaml::Value,
-    top_level: bool,
-) -> Result<ReadBinding, String> {
-    match value {
-        serde_yaml::Value::String(text) => {
-            if let Some(expr) = exact_template_expr(text)
-                && let Ok(selector) = parse_selector(expr)
-            {
-                return Ok(ReadBinding::Selector(selector));
-            }
-            if text.contains("{{") && text.contains("}}") {
-                return Ok(ReadBinding::Template(text.clone()));
-            }
-            if top_level && let Ok(selector) = parse_selector(text) {
-                return Ok(ReadBinding::Selector(selector));
-            }
-            Ok(ReadBinding::Literal(super::utils::yaml_value_to_value(
-                value,
-            )?))
-        }
-        serde_yaml::Value::Mapping(map) => {
-            let mut entries = indexmap::IndexMap::new();
-            for (key, nested) in map {
-                let serde_yaml::Value::String(key) = key else {
-                    return Err("reads object keys must be strings".to_string());
-                };
-                entries.insert(key.clone(), compile_read_binding_value(nested, false)?);
-            }
-            Ok(ReadBinding::Object(entries))
-        }
-        serde_yaml::Value::Sequence(items) => Ok(ReadBinding::List(
-            items
-                .iter()
-                .map(|item| compile_read_binding_value(item, false))
-                .collect::<Result<Vec<_>, String>>()?,
-        )),
-        _ => Ok(ReadBinding::Literal(super::utils::yaml_value_to_value(
-            value,
-        )?)),
+fn widget_scope_ref(def: &WidgetDef) -> fn(&str) -> bool {
+    match def {
+        WidgetDef::CommandRunner(_) => is_command_runner_scope_ref,
+        _ => is_value_scope_ref,
     }
-}
-
-fn compile_write_expr_value(value: &serde_yaml::Value) -> Result<WriteExpr, String> {
-    match value {
-        serde_yaml::Value::String(text) => {
-            if let Some(expr) = exact_template_expr(text) {
-                return Ok(WriteExpr::ScopeRef(expr.to_string()));
-            }
-            if is_value_scope_ref(text) {
-                return Ok(WriteExpr::ScopeRef(text.trim().to_string()));
-            }
-            if text.contains("{{") && text.contains("}}") {
-                return Ok(WriteExpr::Template(text.clone()));
-            }
-            Ok(WriteExpr::Literal(super::utils::yaml_value_to_value(
-                value,
-            )?))
-        }
-        serde_yaml::Value::Mapping(map) => {
-            let mut entries = indexmap::IndexMap::new();
-            for (key, nested) in map {
-                let serde_yaml::Value::String(key) = key else {
-                    return Err("writes object keys must be strings".to_string());
-                };
-                entries.insert(key.clone(), compile_write_expr_value(nested)?);
-            }
-            Ok(WriteExpr::Object(entries))
-        }
-        serde_yaml::Value::Sequence(items) => Ok(WriteExpr::List(
-            items
-                .iter()
-                .map(compile_write_expr_value)
-                .collect::<Result<Vec<_>, String>>()?,
-        )),
-        _ => Ok(WriteExpr::Literal(super::utils::yaml_value_to_value(
-            value,
-        )?)),
-    }
-}
-
-fn parse_selector(selector: &str) -> Result<crate::core::value_path::ValueTarget, String> {
-    parse_store_selector(selector).map_err(|err| format!("invalid selector '{selector}': {err}"))
 }
 
 fn compile_string_options(options: model::StringOptionsDef) -> Vec<String> {
@@ -969,6 +884,29 @@ fn is_value_scope_ref(text: &str) -> bool {
     trimmed == "value" || trimmed.starts_with("value.") || trimmed.starts_with("value[")
 }
 
+fn is_task_scope_ref(text: &str) -> bool {
+    let trimmed = text.trim();
+    matches!(
+        trimmed,
+        "stdout" | "stderr" | "exit_code" | "error" | "cancelled" | "task_id"
+    ) || trimmed.starts_with("stdout.")
+        || trimmed.starts_with("stdout[")
+        || trimmed.starts_with("stderr.")
+        || trimmed.starts_with("stderr[")
+        || trimmed.starts_with("exit_code.")
+        || trimmed.starts_with("exit_code[")
+        || trimmed.starts_with("error.")
+        || trimmed.starts_with("error[")
+        || trimmed.starts_with("cancelled.")
+        || trimmed.starts_with("cancelled[")
+        || trimmed.starts_with("task_id.")
+        || trimmed.starts_with("task_id[")
+}
+
+fn is_command_runner_scope_ref(text: &str) -> bool {
+    is_value_scope_ref(text) || is_task_scope_ref(text)
+}
+
 fn binding_top_level_read_selector(binding: &model::WidgetBindingDef) -> Option<String> {
     let serde_yaml::Value::String(text) = binding.reads.as_ref()? else {
         return None;
@@ -992,7 +930,18 @@ fn write_expr_is_identity(value: &serde_yaml::Value) -> bool {
 fn compile_text_output_widget(def: WidgetDef) -> Result<Node, String> {
     match def {
         WidgetDef::TextOutput(model::TextOutputDef { id, text }) => {
-            Ok(outputs::compile_text_output(id, text))
+            let node = outputs::compile_text_output(id, text.clone());
+            if text.contains("{{") && text.contains("}}") {
+                Ok(bind_node(
+                    node,
+                    StoreBinding {
+                        reads: Some(ReadBinding::Template(text)),
+                        ..StoreBinding::default()
+                    },
+                ))
+            } else {
+                Ok(node)
+            }
         }
         _ => registry_dispatch_mismatch("text_output"),
     }
@@ -1343,6 +1292,7 @@ fn compile_command_runner_widget(def: WidgetDef) -> Result<Node, String> {
             spinner_style,
             timeout_ms,
             commands,
+            ..
         }) => components::compile_command_runner(
             id,
             label,
@@ -1364,7 +1314,10 @@ fn compile_file_browser_widget(def: WidgetDef) -> Result<Node, String> {
             id,
             label,
             browser_mode,
+            selection_mode,
+            entry_filter,
             display_mode,
+            value_mode,
             cwd,
             recursive,
             hide_hidden,
@@ -1377,7 +1330,10 @@ fn compile_file_browser_widget(def: WidgetDef) -> Result<Node, String> {
             id,
             label,
             browser_mode,
+            selection_mode,
+            entry_filter,
             display_mode,
+            value_mode,
             cwd,
             recursive,
             hide_hidden,
@@ -1453,24 +1409,28 @@ fn compile_repeater_widget(def: WidgetDef) -> Result<Node, String> {
         WidgetDef::Repeater(model::RepeaterDef {
             id,
             label,
+            mode,
             layout,
             show_label,
             show_progress,
             header_template,
             item_label_path,
             items,
-            fields,
+            count,
+            widgets,
             ..
         }) => components::compile_repeater(
             id,
             label,
+            mode,
             layout,
             show_label,
             show_progress,
             header_template,
             item_label_path,
             items,
-            fields,
+            count,
+            widgets,
         ),
         _ => registry_dispatch_mismatch("repeater"),
     }

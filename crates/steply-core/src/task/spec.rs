@@ -1,5 +1,7 @@
 use crate::task::policy::{ConcurrencyPolicy, RerunPolicy};
+use crate::widgets::shared::binding::WriteBinding;
 use std::borrow::Borrow;
+use std::collections::BTreeMap;
 use std::fmt;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -60,38 +62,18 @@ pub enum TaskKind {
     Exec {
         program: String,
         args: Vec<String>,
+        env: BTreeMap<String, String>,
         timeout_ms: u64,
     },
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub enum TaskParse {
-    #[default]
-    RawText,
-    Number,
-    Json,
-    Lines,
-    Regex {
-        pattern: String,
-        group: usize,
-    },
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub enum TaskAssign {
-    #[default]
-    Ignore,
-    SetValue(String),
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 pub struct TaskSpec {
     pub id: TaskId,
     pub kind: TaskKind,
     pub rerun_policy: RerunPolicy,
     pub concurrency_policy: ConcurrencyPolicy,
-    pub parse: TaskParse,
-    pub assign: TaskAssign,
+    pub writes: Vec<WriteBinding>,
     pub enabled: bool,
 }
 
@@ -102,12 +84,12 @@ impl TaskSpec {
             kind: TaskKind::Exec {
                 program: program.into(),
                 args,
+                env: BTreeMap::new(),
                 timeout_ms: 2_000,
             },
             rerun_policy: RerunPolicy::default(),
             concurrency_policy: ConcurrencyPolicy::default(),
-            parse: TaskParse::default(),
-            assign: TaskAssign::default(),
+            writes: Vec::new(),
             enabled: true,
         }
     }
@@ -121,6 +103,12 @@ impl TaskSpec {
         self
     }
 
+    pub fn with_env(mut self, env: BTreeMap<String, String>) -> Self {
+        let TaskKind::Exec { env: current, .. } = &mut self.kind;
+        *current = env;
+        self
+    }
+
     pub fn with_rerun_policy(mut self, rerun_policy: RerunPolicy) -> Self {
         self.rerun_policy = rerun_policy;
         self
@@ -131,13 +119,8 @@ impl TaskSpec {
         self
     }
 
-    pub fn with_parse(mut self, parse: TaskParse) -> Self {
-        self.parse = parse;
-        self
-    }
-
-    pub fn with_assign(mut self, assign: TaskAssign) -> Self {
-        self.assign = assign;
+    pub fn with_writes(mut self, writes: Vec<WriteBinding>) -> Self {
+        self.writes = writes;
         self
     }
 

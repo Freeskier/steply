@@ -1,6 +1,5 @@
 use super::{TaskEngineHost, TaskStartResult};
-use crate::core::value_path::ValueTarget;
-use crate::task::{ConcurrencyPolicy, TaskAssign, TaskCompletion, TaskRequest};
+use crate::task::{ConcurrencyPolicy, TaskCompletion, TaskRequest};
 use crate::time::Instant;
 
 pub fn request_task_run(host: &mut impl TaskEngineHost, request: TaskRequest) -> TaskStartResult {
@@ -97,17 +96,12 @@ pub fn complete_task_run(host: &mut impl TaskEngineHost, completion: TaskComplet
         return false;
     }
 
-    let Some(value) = completion.value else {
-        return true;
-    };
-
-    match completion.assign {
-        TaskAssign::Ignore => true,
-        TaskAssign::SetValue(path) => {
-            let target = ValueTarget::parse_selector(path.as_str())
-                .unwrap_or_else(|_| ValueTarget::node(path.clone()));
-            host.apply_value_change_target(target, value);
-            true
+    let scope = completion.scope_value();
+    if let Some(spec) = host.find_task_spec(&completion.task_id) {
+        for binding in spec.writes {
+            let value = binding.expr.resolve_in_scope(&scope);
+            host.apply_value_change_target(binding.target, value);
         }
     }
+    true
 }

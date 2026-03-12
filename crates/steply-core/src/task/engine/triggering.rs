@@ -1,7 +1,7 @@
 use super::TaskEngineHost;
 use super::keys::{fingerprint_value, interval_key, node_change_debounce_key};
 use super::lifecycle::request_task_run;
-use crate::core::value::Value;
+use crate::core::value_path::{PathSegment, ValuePath, ValueTarget};
 use crate::task::{TaskRequest, TaskTrigger};
 
 pub fn bootstrap_interval_tasks(host: &mut impl TaskEngineHost) {
@@ -119,38 +119,65 @@ pub fn trigger_submit_after_tasks(host: &mut impl TaskEngineHost, step_id: &str)
     );
 }
 
-pub fn trigger_node_value_changed_tasks(
+pub fn trigger_store_value_changed_tasks(
     host: &mut impl TaskEngineHost,
-    node_id: &str,
-    value: &Value,
+    changed_target: &ValueTarget,
 ) {
-    let fingerprint = fingerprint_value(node_id, value);
-
     let subscriptions = host
         .task_subscriptions()
         .iter()
         .filter(|sub| sub.enabled)
         .filter_map(|sub| match &sub.trigger {
-            TaskTrigger::OnNodeValueChanged {
-                node_id: n,
+            TaskTrigger::OnStoreValueChanged {
+                selector,
                 debounce_ms,
-            } if n.as_str() == node_id => Some((sub.task_id.clone(), *debounce_ms)),
+            } if selectors_overlap(selector, changed_target) => {
+                let value = host.read_store_target(selector)?;
+                let fingerprint = fingerprint_value(selector.to_selector().as_str(), &value);
+                Some((
+                    sub.task_id.clone(),
+                    *debounce_ms,
+                    fingerprint,
+                    selector.to_selector(),
+                ))
+            }
             _ => None,
         })
         .collect::<Vec<_>>();
 
-    for (task_id, debounce_ms) in subscriptions {
+    for (task_id, debounce_ms, fingerprint, selector) in subscriptions {
         let request = TaskRequest::new(task_id).with_fingerprint(fingerprint);
         if debounce_ms == 0 {
             let _ = request_task_run(host, request);
             continue;
         }
         host.schedule_debounced_task_request(
-            node_change_debounce_key(node_id, request.task_id.as_str()),
+            node_change_debounce_key(selector.as_str(), request.task_id.as_str()),
             request,
             debounce_ms,
         );
     }
+}
+
+fn selectors_overlap(a: &ValueTarget, b: &ValueTarget) -> bool {
+    if a.root() != b.root() {
+        return false;
+    }
+
+    path_prefix_of(a.nested_path(), b.nested_path())
+        || path_prefix_of(b.nested_path(), a.nested_path())
+}
+
+fn path_prefix_of(prefix: Option<&ValuePath>, full: Option<&ValuePath>) -> bool {
+    match (prefix, full) {
+        (None, _) => true,
+        (Some(_), None) => false,
+        (Some(prefix), Some(full)) => path_segments_prefix_of(prefix.segments(), full.segments()),
+    }
+}
+
+fn path_segments_prefix_of(prefix: &[PathSegment], full: &[PathSegment]) -> bool {
+    prefix.len() <= full.len() && prefix.iter().zip(full.iter()).all(|(a, b)| a == b)
 }
 
 fn trigger_for(

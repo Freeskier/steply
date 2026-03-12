@@ -1,6 +1,7 @@
 use crate::core::value::Value;
 use crate::task::policy::ConcurrencyPolicy;
-use crate::task::spec::{TaskAssign, TaskId, TaskSpec};
+use crate::task::spec::{TaskId, TaskSpec};
+use indexmap::IndexMap;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::Sender;
@@ -80,12 +81,37 @@ impl TaskCancelToken {
 pub struct TaskCompletion {
     pub task_id: TaskId,
     pub run_id: u64,
-    pub assign: TaskAssign,
     pub concurrency_policy: ConcurrencyPolicy,
-    pub value: Option<Value>,
     pub status_code: Option<i32>,
     pub stdout: String,
     pub stderr: String,
     pub error: Option<String>,
     pub cancelled: bool,
+}
+
+impl TaskCompletion {
+    pub fn scope_value(&self) -> Value {
+        let mut map = IndexMap::<String, Value>::new();
+        map.insert(
+            "task_id".to_string(),
+            Value::Text(self.task_id.as_str().to_string()),
+        );
+        map.insert("stdout".to_string(), Value::Text(self.stdout.clone()));
+        map.insert("stderr".to_string(), Value::Text(self.stderr.clone()));
+        map.insert(
+            "exit_code".to_string(),
+            self.status_code
+                .map(|code| Value::Number(code as f64))
+                .unwrap_or(Value::None),
+        );
+        map.insert(
+            "error".to_string(),
+            self.error
+                .as_ref()
+                .map(|error| Value::Text(error.clone()))
+                .unwrap_or(Value::None),
+        );
+        map.insert("cancelled".to_string(), Value::Bool(self.cancelled));
+        Value::Object(map)
+    }
 }

@@ -9,6 +9,7 @@ pub(super) fn build_tree_nodes_for(
     browse_dir: &Path,
     show_parent_option: bool,
     result: &ScanResult,
+    selected_paths: &[PathBuf],
 ) -> Vec<TreeNode<FileTreeItem>> {
     let mut nodes = Vec::<TreeNode<FileTreeItem>>::new();
 
@@ -21,7 +22,7 @@ pub(super) fn build_tree_nodes_for(
             kind: model::EntryKind::Dir,
         };
         nodes.push(TreeNode::new(
-            FileTreeItem::new(dotdot_entry, Vec::new()),
+            FileTreeItem::new(dotdot_entry, Vec::new(), false),
             0,
             false,
         ));
@@ -53,7 +54,13 @@ pub(super) fn build_tree_nodes_for(
                 let idx = nodes.len();
                 node_index_by_path.insert((*entry.path).clone(), idx);
                 nodes.push(TreeNode::new(
-                    FileTreeItem::new(entry.clone(), highlights),
+                    FileTreeItem::new(
+                        entry.clone(),
+                        highlights,
+                        selected_paths
+                            .iter()
+                            .any(|path| path == entry.path.as_ref()),
+                    ),
                     0,
                     entry.kind.is_dir(),
                 ));
@@ -78,8 +85,15 @@ pub(super) fn build_tree_nodes_for(
                     path: Arc::new(anc_abs.clone()),
                     kind: model::EntryKind::Dir,
                 };
-                let mut node =
-                    TreeNode::new(FileTreeItem::new(dir_entry, Vec::new()), anc_depth, true);
+                let mut node = TreeNode::new(
+                    FileTreeItem::new(
+                        dir_entry,
+                        Vec::new(),
+                        selected_paths.iter().any(|path| path == anc_abs.as_path()),
+                    ),
+                    anc_depth,
+                    true,
+                );
 
                 node.expanded = true;
                 node.children_loaded = true;
@@ -99,7 +113,13 @@ pub(super) fn build_tree_nodes_for(
         let idx = nodes.len();
         node_index_by_path.insert((*entry.path).clone(), idx);
         nodes.push(TreeNode::new(
-            FileTreeItem::new(entry.clone(), highlights),
+            FileTreeItem::new(
+                entry.clone(),
+                highlights,
+                selected_paths
+                    .iter()
+                    .any(|path| path == entry.path.as_ref()),
+            ),
             depth,
             entry.kind.is_dir(),
         ));

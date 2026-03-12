@@ -96,6 +96,7 @@ impl FileBrowserComponent {
                 seq: self.tree_build_seq,
                 browse_dir: self.browse_dir.clone(),
                 show_parent_option: self.should_show_parent_option(),
+                selected_paths: self.selected_paths.clone(),
                 result,
             });
     }
@@ -105,10 +106,15 @@ impl FileBrowserComponent {
     }
 
     fn apply_list_result(&mut self, result: &ScanResult) {
+        if let Some(tokens) = self.pending_selection_tokens.clone() {
+            self.selected_paths =
+                self.resolve_tokens_against_result(tokens.as_slice(), Some(result));
+        }
         let (options, items) = self.overlay_list_options(result);
         let preferred = self.preferred_list_active_index(items.as_slice());
         self.list.set_options(options);
         self.list_overlay_items = items;
+        self.sync_list_selection();
         if let Some(index) = preferred {
             self.list.set_active_index(index);
         }
@@ -160,6 +166,13 @@ impl FileBrowserComponent {
         self.scanning = false;
         self.text
             .set_completion_items(result.completion_items.clone());
+        if let Some(tokens) = self.pending_selection_tokens.clone() {
+            self.selected_paths =
+                self.resolve_tokens_against_result(tokens.as_slice(), Some(result.as_ref()));
+            if !self.selected_paths.is_empty() {
+                self.pending_selection_tokens = None;
+            }
+        }
 
         if self.overlay_open {
             if self.browser_mode == BrowserMode::Tree {
@@ -225,6 +238,14 @@ impl FileBrowserComponent {
                     return InteractionResult::handled();
                 }
                 if allow_file_select {
+                    if self.is_multi_select() {
+                        self.toggle_selected_path(path);
+                        self.sync_list_selection();
+                        self.sync_tree_selection();
+                        self.sync_multi_input_text(false);
+                        self.schedule_scan();
+                        return InteractionResult::handled();
+                    }
                     self.text
                         .set_value(Value::Text(self.path_value_for_submit(path.as_path())));
                     return self.close_browser();
@@ -235,19 +256,34 @@ impl FileBrowserComponent {
     }
 
     pub(super) fn reset_query_or_close_browser(&mut self) -> InteractionResult {
-        let parsed = parse_input(&self.current_input(), &self.cwd);
+        let parsed = parse_input(&self.query_input(), &self.cwd);
         if !parsed.query.trim().is_empty() {
-            self.browse_into(self.browse_dir.clone());
+            if self.is_multi_select() {
+                self.set_active_query(String::new());
+                self.schedule_scan();
+            } else {
+                self.browse_into(self.browse_dir.clone());
+            }
             return InteractionResult::handled();
         }
         self.close_browser()
     }
 
     pub(super) fn path_value_for_submit(&self, path: &Path) -> String {
-        if let Ok(rel) = path.strip_prefix(&self.cwd) {
-            rel.to_string_lossy().to_string()
-        } else {
-            path.to_string_lossy().to_string()
+        match self.value_mode {
+            super::DisplayMode::Full => path.to_string_lossy().to_string(),
+            super::DisplayMode::Relative => {
+                if let Ok(rel) = path.strip_prefix(&self.cwd) {
+                    rel.to_string_lossy().to_string()
+                } else {
+                    path.to_string_lossy().to_string()
+                }
+            }
+            super::DisplayMode::Name => path
+                .file_name()
+                .map(|name| name.to_string_lossy().to_string())
+                .filter(|name| !name.is_empty())
+                .unwrap_or_else(|| path.to_string_lossy().to_string()),
         }
     }
 

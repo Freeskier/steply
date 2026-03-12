@@ -11,8 +11,8 @@ pub use keys::{fingerprint_value, interval_key, node_change_debounce_key, value_
 pub use lifecycle::{complete_task_run, request_task_run};
 pub use triggering::{
     bootstrap_interval_tasks, cancel_interval_tasks, refresh_active_step_interval_tasks,
-    trigger_flow_end_tasks, trigger_flow_start_tasks, trigger_node_value_changed_tasks,
-    trigger_step_enter_tasks, trigger_step_exit_tasks, trigger_submit_after_tasks,
+    trigger_flow_end_tasks, trigger_flow_start_tasks, trigger_step_enter_tasks,
+    trigger_step_exit_tasks, trigger_store_value_changed_tasks, trigger_submit_after_tasks,
     trigger_submit_before_tasks,
 };
 
@@ -30,6 +30,8 @@ pub trait TaskEngineHost {
     fn task_subscriptions(&self) -> &[TaskSubscription];
 
     fn find_task_spec(&self, task_id: &TaskId) -> Option<TaskSpec>;
+
+    fn read_store_target(&self, target: &ValueTarget) -> Option<Value>;
 
     fn schedule_interval_request(
         &mut self,

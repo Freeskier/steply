@@ -55,19 +55,19 @@ pub(super) struct TaskDef {
     #[serde(default)]
     pub(super) args: Vec<String>,
     #[serde(default)]
-    pub(super) parse: Option<String>,
-    #[serde(default)]
     pub(super) timeout_ms: Option<u64>,
     #[serde(default)]
     pub(super) enabled: Option<bool>,
+    #[serde(default)]
+    pub(super) env: BTreeMap<String, String>,
+    #[serde(default)]
+    pub(super) writes: Option<WriteBindingDef>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub(super) struct SubscriptionDef {
     pub(super) task: String,
     pub(super) trigger: TriggerDef,
-    #[serde(default)]
-    pub(super) target: Option<String>,
     #[serde(default)]
     pub(super) enabled: Option<bool>,
 }
@@ -646,6 +646,8 @@ pub(super) struct CommandRunnerDef {
     pub(super) timeout_ms: Option<u64>,
     /// Commands executed by the runner.
     pub(super) commands: Vec<CommandRunnerCommandDef>,
+    #[serde(default, flatten)]
+    pub(super) binding: WidgetBindingDef,
 }
 
 #[derive(Debug, Clone, Deserialize, JsonSchema)]
@@ -657,9 +659,18 @@ pub(super) struct FileBrowserDef {
     /// Browser mode.
     #[serde(default)]
     pub(super) browser_mode: Option<String>,
+    /// Selection mode.
+    #[serde(default)]
+    pub(super) selection_mode: Option<String>,
+    /// Entry filter mode.
+    #[serde(default)]
+    pub(super) entry_filter: Option<String>,
     /// Path display mode.
     #[serde(default)]
     pub(super) display_mode: Option<String>,
+    /// Output path mode.
+    #[serde(default)]
+    pub(super) value_mode: Option<String>,
     /// Starting directory.
     #[serde(default)]
     pub(super) cwd: Option<String>,
@@ -765,6 +776,9 @@ pub(super) struct RepeaterDef {
     pub(super) id: String,
     /// Visible widget label.
     pub(super) label: String,
+    /// Iteration mode.
+    #[serde(default)]
+    pub(super) mode: Option<String>,
     /// Repeater layout mode.
     #[serde(default)]
     pub(super) layout: Option<String>,
@@ -780,12 +794,17 @@ pub(super) struct RepeaterDef {
     /// Relative path used as item label.
     #[serde(default)]
     pub(super) item_label_path: Option<String>,
-    /// Initial item values.
+    /// Item source or literal item list.
     #[serde(default)]
     #[schemars(schema_with = "super::doc_model::yaml_value_schema")]
-    pub(super) items: Vec<serde_yaml::Value>,
-    /// Repeater field definitions with embedded widgets.
-    pub(super) fields: Vec<RepeaterFieldDef>,
+    pub(super) items: Option<serde_yaml::Value>,
+    /// Optional explicit iteration count.
+    #[serde(default)]
+    #[schemars(schema_with = "super::doc_model::yaml_value_schema")]
+    pub(super) count: Option<serde_yaml::Value>,
+    /// Widgets rendered for the active iteration.
+    #[serde(default)]
+    pub(super) widgets: Vec<WidgetDef>,
     #[serde(default, flatten)]
     pub(super) binding: WidgetBindingDef,
 }
@@ -809,16 +828,6 @@ pub(super) struct TableColumnDef {
     /// Visible column header.
     pub(super) header: String,
     /// Embedded widget used by the column.
-    pub(super) widget: EmbeddedWidgetDef,
-}
-
-#[derive(Debug, Clone, Deserialize, JsonSchema)]
-pub(super) struct RepeaterFieldDef {
-    /// Stable field key used in item values.
-    pub(super) key: String,
-    /// Visible field label.
-    pub(super) label: String,
-    /// Embedded widget used by the field.
     pub(super) widget: EmbeddedWidgetDef,
 }
 
@@ -971,4 +980,7 @@ pub(super) struct CommandRunnerCommandDef {
     /// Program arguments.
     #[serde(default)]
     pub(super) args: Vec<String>,
+    /// Environment variables passed to the command.
+    #[serde(default)]
+    pub(super) env: BTreeMap<String, String>,
 }

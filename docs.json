@@ -1790,7 +1790,7 @@
         },
         {
           "name": "commands",
-          "type": "{ args?: string[]; label: string; program: string }[]",
+          "type": "{ args?: string[]; env?: Record<string, string>; label: string; program: string }[]",
           "required": true,
           "short_description": "Commands executed by the runner.",
           "long_description": null,
@@ -1825,6 +1825,15 @@
           "allowed_values": []
         },
         {
+          "name": "reads",
+          "type": "unknown",
+          "required": false,
+          "short_description": "",
+          "long_description": null,
+          "default": "null",
+          "allowed_values": []
+        },
+        {
           "name": "run_mode",
           "type": "string | null",
           "required": false,
@@ -1852,12 +1861,30 @@
           "allowed_values": []
         },
         {
+          "name": "value",
+          "type": "string | null",
+          "required": false,
+          "short_description": "",
+          "long_description": null,
+          "default": "null",
+          "allowed_values": []
+        },
+        {
           "name": "visible_lines",
           "type": "number | null",
           "required": false,
           "short_description": "Maximum number of rendered log lines.",
           "long_description": null,
           "default": "null",
+          "allowed_values": []
+        },
+        {
+          "name": "writes",
+          "type": "string | Record<string, unknown> | null",
+          "required": false,
+          "short_description": "",
+          "long_description": null,
+          "default": null,
           "allowed_values": []
         }
       ]
@@ -1953,6 +1980,15 @@
           "allowed_values": []
         },
         {
+          "name": "entry_filter",
+          "type": "string | null",
+          "required": false,
+          "short_description": "Entry filter mode.",
+          "long_description": null,
+          "default": "null",
+          "allowed_values": []
+        },
+        {
           "name": "ext_filter",
           "type": "string[]",
           "required": false,
@@ -2025,6 +2061,15 @@
           "allowed_values": []
         },
         {
+          "name": "selection_mode",
+          "type": "string | null",
+          "required": false,
+          "short_description": "Selection mode.",
+          "long_description": null,
+          "default": "null",
+          "allowed_values": []
+        },
+        {
           "name": "validators",
           "type": "({ message?: string | null; type: \"required\" } | { type: \"min_length\"; value: number } | { type: \"max_length\"; value: number } | { type: \"min_selections\"; value: number } | { type: \"max_selections\"; value: number } | { type: \"must_be_checked\" } | { type: \"min_value\"; value: number } | { type: \"max_value\"; value: number })[]",
           "required": false,
@@ -2038,6 +2083,15 @@
           "type": "string | null",
           "required": false,
           "short_description": "",
+          "long_description": null,
+          "default": "null",
+          "allowed_values": []
+        },
+        {
+          "name": "value_mode",
+          "type": "string | null",
+          "required": false,
+          "short_description": "Output path mode.",
           "long_description": null,
           "default": "null",
           "allowed_values": []
@@ -2320,7 +2374,7 @@
         },
         {
           "name": "inputs",
-          "type": "({ id: string; text: string; type: \"text_output\" } | { id: string; name?: string | null; type: \"url_output\"; url: string } | { base_rgb?: array | null; id: string; label: string; mode?: string | null; peak_rgb?: array | null; tail_len?: number | null; text: string; tick_ms?: number | null; ... } | { bar_width?: number | null; id: string; label: string; max?: number | null; min?: number | null; style?: string | null; transition?: unknown | null; type: \"progress_output\"; ... } | { capacity?: number | null; gradient?: boolean | null; id: string; label: string; max?: number | null; min?: number | null; mode?: string | null; type: \"chart_output\"; ... } | { headers?: string[]; id: string; label: string; rows?: string[][]; style?: string | null; type: \"table_output\" } | { id: string; label: string; max_visible?: number | null; new: string; old: string; type: \"diff_output\" } | { id: string; spinner_style?: string | null; steps: Record<string, unknown>[]; type: \"task_log_output\"; visible_lines?: number | null } | { completion_items?: string[]; default?: string | null; id: string; label: string; mode?: string | null; placeholder?: string | null; reads?: unknown; required?: boolean | null; ... } | { id: string; items?: string[]; label: string; reads?: unknown; required?: boolean | null; type: \"array_input\"; validators?: unknown[]; value?: string | null; ... } | { id: string; label: string; task_id?: string | null; text?: string | null; type: \"button_input\" } | { default?: string | null; id: string; label: string; options: unknown; reads?: unknown; required?: boolean | null; selected?: number | null; type: \"select\"; ... } | { bullets?: boolean | null; default?: string | null; id: string; label: string; options: unknown; reads?: unknown; required?: boolean | null; type: \"choice_input\"; ... } | { id: string; label: string; max_visible?: number | null; mode?: string | null; options?: unknown; reads?: unknown; selected?: number[]; show_label?: boolean | null; ... } | { default?: string | null; id: string; label: string; mask: string; reads?: unknown; required?: boolean | null; type: \"masked_input\"; validators?: unknown[]; ... } | { default?: number | null; id: string; label: string; max: number; min: number; reads?: unknown; required?: boolean | null; step?: number | null; ... } | { id: string; label: string; reads?: unknown; required?: boolean | null; rgb?: array | null; type: \"color_input\"; validators?: unknown[]; value?: string | null; ... } | { default?: boolean | null; id: string; label: string; mode?: unknown | null; no_label?: string | null; reads?: unknown; type: \"confirm_input\"; value?: string | null; ... } | { checked?: boolean | null; id: string; label: string; reads?: unknown; required?: boolean | null; type: \"checkbox\"; validators?: unknown[]; value?: string | null; ... } | { id: string; label: string; mode?: string | null; reads?: unknown; required?: boolean | null; type: \"calendar\"; validators?: unknown[]; value?: string | null; ... } | { default?: string | null; id: string; max_height?: number | null; min_height?: number | null; reads?: unknown; required?: boolean | null; type: \"textarea\"; validators?: unknown[]; ... } | { advance_on_success?: boolean | null; commands: Record<string, unknown>[]; id: string; label: string; on_error?: string | null; run_mode?: string | null; spinner_style?: string | null; timeout_ms?: number | null; ... } | { browser_mode?: string | null; cwd?: string | null; display_mode?: string | null; ext_filter?: string[]; hide_hidden?: boolean | null; id: string; label: string; max_visible?: number | null; ... } | { id: string; indent_guides?: boolean | null; label: string; max_visible?: number | null; nodes: Record<string, unknown>[]; reads?: unknown; show_label?: boolean | null; type: \"tree_view\"; ... } | { id: string; label: string; max_visible?: number | null; reads?: unknown; type: \"object_editor\"; value?: string | null; writes?: unknown | null } | { id: string; inputs?: WidgetDef[]; label: string; reads?: unknown; template: string; type: \"snippet\"; value?: string | null; writes?: unknown | null } | { columns: Record<string, unknown>[]; id: string; initial_rows?: number | null; label: string; reads?: unknown; row_numbers?: boolean | null; style?: string | null; type: \"table\"; ... } | { fields: Record<string, unknown>[]; header_template?: string | null; id: string; item_label_path?: string | null; items?: unknown; label: string; layout?: string | null; reads?: unknown; ... })[]",
+          "type": "({ id: string; text: string; type: \"text_output\" } | { id: string; name?: string | null; type: \"url_output\"; url: string } | { base_rgb?: array | null; id: string; label: string; mode?: string | null; peak_rgb?: array | null; tail_len?: number | null; text: string; tick_ms?: number | null; ... } | { bar_width?: number | null; id: string; label: string; max?: number | null; min?: number | null; style?: string | null; transition?: unknown | null; type: \"progress_output\"; ... } | { capacity?: number | null; gradient?: boolean | null; id: string; label: string; max?: number | null; min?: number | null; mode?: string | null; type: \"chart_output\"; ... } | { headers?: string[]; id: string; label: string; rows?: string[][]; style?: string | null; type: \"table_output\" } | { id: string; label: string; max_visible?: number | null; new: string; old: string; type: \"diff_output\" } | { id: string; spinner_style?: string | null; steps: Record<string, unknown>[]; type: \"task_log_output\"; visible_lines?: number | null } | { completion_items?: string[]; default?: string | null; id: string; label: string; mode?: string | null; placeholder?: string | null; reads?: unknown; required?: boolean | null; ... } | { id: string; items?: string[]; label: string; reads?: unknown; required?: boolean | null; type: \"array_input\"; validators?: unknown[]; value?: string | null; ... } | { id: string; label: string; task_id?: string | null; text?: string | null; type: \"button_input\" } | { default?: string | null; id: string; label: string; options: unknown; reads?: unknown; required?: boolean | null; selected?: number | null; type: \"select\"; ... } | { bullets?: boolean | null; default?: string | null; id: string; label: string; options: unknown; reads?: unknown; required?: boolean | null; type: \"choice_input\"; ... } | { id: string; label: string; max_visible?: number | null; mode?: string | null; options?: unknown; reads?: unknown; selected?: number[]; show_label?: boolean | null; ... } | { default?: string | null; id: string; label: string; mask: string; reads?: unknown; required?: boolean | null; type: \"masked_input\"; validators?: unknown[]; ... } | { default?: number | null; id: string; label: string; max: number; min: number; reads?: unknown; required?: boolean | null; step?: number | null; ... } | { id: string; label: string; reads?: unknown; required?: boolean | null; rgb?: array | null; type: \"color_input\"; validators?: unknown[]; value?: string | null; ... } | { default?: boolean | null; id: string; label: string; mode?: unknown | null; no_label?: string | null; reads?: unknown; type: \"confirm_input\"; value?: string | null; ... } | { checked?: boolean | null; id: string; label: string; reads?: unknown; required?: boolean | null; type: \"checkbox\"; validators?: unknown[]; value?: string | null; ... } | { id: string; label: string; mode?: string | null; reads?: unknown; required?: boolean | null; type: \"calendar\"; validators?: unknown[]; value?: string | null; ... } | { default?: string | null; id: string; max_height?: number | null; min_height?: number | null; reads?: unknown; required?: boolean | null; type: \"textarea\"; validators?: unknown[]; ... } | { advance_on_success?: boolean | null; commands: Record<string, unknown>[]; id: string; label: string; on_error?: string | null; reads?: unknown; run_mode?: string | null; spinner_style?: string | null; ... } | { browser_mode?: string | null; cwd?: string | null; display_mode?: string | null; entry_filter?: string | null; ext_filter?: string[]; hide_hidden?: boolean | null; id: string; label: string; ... } | { id: string; indent_guides?: boolean | null; label: string; max_visible?: number | null; nodes: Record<string, unknown>[]; reads?: unknown; show_label?: boolean | null; type: \"tree_view\"; ... } | { id: string; label: string; max_visible?: number | null; reads?: unknown; type: \"object_editor\"; value?: string | null; writes?: unknown | null } | { id: string; inputs?: WidgetDef[]; label: string; reads?: unknown; template: string; type: \"snippet\"; value?: string | null; writes?: unknown | null } | { columns: Record<string, unknown>[]; id: string; initial_rows?: number | null; label: string; reads?: unknown; row_numbers?: boolean | null; style?: string | null; type: \"table\"; ... } | { count?: unknown; header_template?: string | null; id: string; item_label_path?: string | null; items?: unknown; label: string; layout?: string | null; mode?: string | null; ... })[]",
           "required": false,
           "short_description": "Nested interactive widget definitions.",
           "long_description": null,
@@ -2542,12 +2596,12 @@
       ],
       "fields": [
         {
-          "name": "fields",
-          "type": "{ key: string; label: string; widget: Record<string, unknown> }[]",
-          "required": true,
-          "short_description": "Repeater field definitions with embedded widgets.",
+          "name": "count",
+          "type": "unknown",
+          "required": false,
+          "short_description": "Optional explicit iteration count.",
           "long_description": null,
-          "default": null,
+          "default": "null",
           "allowed_values": []
         },
         {
@@ -2581,9 +2635,9 @@
           "name": "items",
           "type": "unknown",
           "required": false,
-          "short_description": "Initial item values.",
+          "short_description": "Item source or literal item list.",
           "long_description": null,
-          "default": "[]",
+          "default": "null",
           "allowed_values": []
         },
         {
@@ -2600,6 +2654,15 @@
           "type": "string | null",
           "required": false,
           "short_description": "Repeater layout mode.",
+          "long_description": null,
+          "default": "null",
+          "allowed_values": []
+        },
+        {
+          "name": "mode",
+          "type": "string | null",
+          "required": false,
+          "short_description": "Iteration mode.",
           "long_description": null,
           "default": "null",
           "allowed_values": []
@@ -2638,6 +2701,15 @@
           "short_description": "",
           "long_description": null,
           "default": "null",
+          "allowed_values": []
+        },
+        {
+          "name": "widgets",
+          "type": "({ id: string; text: string; type: \"text_output\" } | { id: string; name?: string | null; type: \"url_output\"; url: string } | { base_rgb?: array | null; id: string; label: string; mode?: string | null; peak_rgb?: array | null; tail_len?: number | null; text: string; tick_ms?: number | null; ... } | { bar_width?: number | null; id: string; label: string; max?: number | null; min?: number | null; style?: string | null; transition?: unknown | null; type: \"progress_output\"; ... } | { capacity?: number | null; gradient?: boolean | null; id: string; label: string; max?: number | null; min?: number | null; mode?: string | null; type: \"chart_output\"; ... } | { headers?: string[]; id: string; label: string; rows?: string[][]; style?: string | null; type: \"table_output\" } | { id: string; label: string; max_visible?: number | null; new: string; old: string; type: \"diff_output\" } | { id: string; spinner_style?: string | null; steps: Record<string, unknown>[]; type: \"task_log_output\"; visible_lines?: number | null } | { completion_items?: string[]; default?: string | null; id: string; label: string; mode?: string | null; placeholder?: string | null; reads?: unknown; required?: boolean | null; ... } | { id: string; items?: string[]; label: string; reads?: unknown; required?: boolean | null; type: \"array_input\"; validators?: unknown[]; value?: string | null; ... } | { id: string; label: string; task_id?: string | null; text?: string | null; type: \"button_input\" } | { default?: string | null; id: string; label: string; options: unknown; reads?: unknown; required?: boolean | null; selected?: number | null; type: \"select\"; ... } | { bullets?: boolean | null; default?: string | null; id: string; label: string; options: unknown; reads?: unknown; required?: boolean | null; type: \"choice_input\"; ... } | { id: string; label: string; max_visible?: number | null; mode?: string | null; options?: unknown; reads?: unknown; selected?: number[]; show_label?: boolean | null; ... } | { default?: string | null; id: string; label: string; mask: string; reads?: unknown; required?: boolean | null; type: \"masked_input\"; validators?: unknown[]; ... } | { default?: number | null; id: string; label: string; max: number; min: number; reads?: unknown; required?: boolean | null; step?: number | null; ... } | { id: string; label: string; reads?: unknown; required?: boolean | null; rgb?: array | null; type: \"color_input\"; validators?: unknown[]; value?: string | null; ... } | { default?: boolean | null; id: string; label: string; mode?: unknown | null; no_label?: string | null; reads?: unknown; type: \"confirm_input\"; value?: string | null; ... } | { checked?: boolean | null; id: string; label: string; reads?: unknown; required?: boolean | null; type: \"checkbox\"; validators?: unknown[]; value?: string | null; ... } | { id: string; label: string; mode?: string | null; reads?: unknown; required?: boolean | null; type: \"calendar\"; validators?: unknown[]; value?: string | null; ... } | { default?: string | null; id: string; max_height?: number | null; min_height?: number | null; reads?: unknown; required?: boolean | null; type: \"textarea\"; validators?: unknown[]; ... } | { advance_on_success?: boolean | null; commands: Record<string, unknown>[]; id: string; label: string; on_error?: string | null; reads?: unknown; run_mode?: string | null; spinner_style?: string | null; ... } | { browser_mode?: string | null; cwd?: string | null; display_mode?: string | null; entry_filter?: string | null; ext_filter?: string[]; hide_hidden?: boolean | null; id: string; label: string; ... } | { id: string; indent_guides?: boolean | null; label: string; max_visible?: number | null; nodes: Record<string, unknown>[]; reads?: unknown; show_label?: boolean | null; type: \"tree_view\"; ... } | { id: string; label: string; max_visible?: number | null; reads?: unknown; type: \"object_editor\"; value?: string | null; writes?: unknown | null } | { id: string; inputs?: WidgetDef[]; label: string; reads?: unknown; template: string; type: \"snippet\"; value?: string | null; writes?: unknown | null } | { columns: Record<string, unknown>[]; id: string; initial_rows?: number | null; label: string; reads?: unknown; row_numbers?: boolean | null; style?: string | null; type: \"table\"; ... } | { count?: unknown; header_template?: string | null; id: string; item_label_path?: string | null; items?: unknown; label: string; layout?: string | null; mode?: string | null; ... })[]",
+          "required": false,
+          "short_description": "Widgets rendered for the active iteration.",
+          "long_description": null,
+          "default": null,
           "allowed_values": []
         },
         {

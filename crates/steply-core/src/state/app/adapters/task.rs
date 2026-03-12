@@ -98,10 +98,15 @@ impl AppState {
     }
 
     fn resolve_task_spec_templates_internal(&self, mut spec: TaskSpec) -> TaskSpec {
-        let TaskKind::Exec { program, args, .. } = &mut spec.kind;
+        let TaskKind::Exec {
+            program, args, env, ..
+        } = &mut spec.kind;
         *program = self.interpolate_store_vars_internal(program);
         for arg in args {
             *arg = self.interpolate_store_vars_internal(arg.as_str());
+        }
+        for value in env.values_mut() {
+            *value = self.interpolate_store_vars_internal(value.as_str());
         }
         spec
     }
@@ -256,6 +261,10 @@ impl TaskEngineHost for AppState {
 
     fn find_task_spec(&self, task_id: &TaskId) -> Option<TaskSpec> {
         self.runtime.task_specs.get(task_id.as_str()).cloned()
+    }
+
+    fn read_store_target(&self, target: &crate::core::value_path::ValueTarget) -> Option<Value> {
+        self.data.store.get_target(target).cloned()
     }
 
     fn schedule_interval_request(

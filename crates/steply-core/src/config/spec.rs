@@ -1,4 +1,5 @@
-use super::model::{NavigationDef, WhenDef, WidgetDef};
+use super::model::{NavigationDef, WhenDef, WidgetDef, WriteBindingDef};
+use std::collections::BTreeMap;
 
 #[derive(Debug)]
 pub(super) struct ConfigSpec {
@@ -23,16 +24,16 @@ pub(super) struct TaskTemplateSpec {
     pub kind: String,
     pub program: String,
     pub args: Vec<String>,
-    pub parse: Option<String>,
     pub timeout_ms: Option<u64>,
     pub enabled: bool,
+    pub env: BTreeMap<String, String>,
+    pub writes: Option<WriteBindingDef>,
 }
 
 #[derive(Debug, Clone)]
 pub(super) struct SubscriptionSpec {
     pub task: String,
     pub trigger: SubscriptionTriggerSpec,
-    pub target: Option<String>,
     pub enabled: bool,
 }
 

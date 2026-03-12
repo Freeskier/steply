@@ -4,6 +4,21 @@ use crate::widgets::components::tree_view::TreeNode;
 use crate::widgets::shared::keymap;
 
 impl FileBrowserComponent {
+    fn toggle_active_selection(&mut self) -> InteractionResult {
+        let Some(item) = self.active_item_in_mode(self.browser_mode) else {
+            return InteractionResult::handled();
+        };
+        let ActiveOverlayItem::Entry { path, .. } = item else {
+            return InteractionResult::handled();
+        };
+        self.toggle_selected_path(path);
+        self.sync_list_selection();
+        self.sync_tree_selection();
+        self.sync_multi_input_text(false);
+        self.schedule_scan();
+        InteractionResult::handled()
+    }
+
     fn set_browser_mode(&mut self, mode: BrowserMode) {
         if self.browser_mode == mode {
             return;
@@ -62,7 +77,13 @@ impl FileBrowserComponent {
 
         match key.code {
             KeyCode::Esc => self.reset_query_or_close_browser(),
-            KeyCode::Enter => self.navigate_active_item(BrowserMode::List, true),
+            KeyCode::Enter => {
+                if self.is_multi_select() {
+                    self.close_browser()
+                } else {
+                    self.navigate_active_item(BrowserMode::List, true)
+                }
+            }
             KeyCode::Right => {
                 let Some(item) = self.active_item_in_mode(BrowserMode::List) else {
                     return InteractionResult::handled();
@@ -76,6 +97,7 @@ impl FileBrowserComponent {
             KeyCode::Left => InteractionResult::handled_if(self.navigate_parent()),
 
             KeyCode::Up | KeyCode::Down => self.list.on_key(key),
+            KeyCode::Char(' ') if self.is_multi_select() => self.toggle_active_selection(),
 
             _ => self.handle_text_key_with_rescan(key),
         }
@@ -84,6 +106,14 @@ impl FileBrowserComponent {
     fn handle_tree_key(&mut self, key: KeyEvent) -> InteractionResult {
         match key.code {
             KeyCode::Esc => self.reset_query_or_close_browser(),
+            KeyCode::Enter if self.is_multi_select() => self.close_browser(),
+
+            KeyCode::Char(' ')
+                if self.is_multi_select()
+                    && keymap::has_exact_modifiers(key, crate::terminal::KeyModifiers::CONTROL) =>
+            {
+                self.toggle_active_selection()
+            }
 
             KeyCode::Up => InteractionResult::handled_if(self.move_tree_active(-1)),
             KeyCode::Down => InteractionResult::handled_if(self.move_tree_active(1)),
@@ -101,6 +131,13 @@ impl FileBrowserComponent {
             KeyCode::Enter => self.navigate_active_item(BrowserMode::Tree, true),
 
             KeyCode::Char(' ') => {
+                if self.is_multi_select()
+                    && self.active_tree_item().is_some_and(|item| {
+                        matches!(item, ActiveOverlayItem::Entry { is_dir: false, .. })
+                    })
+                {
+                    return self.toggle_active_selection();
+                }
                 if matches!(self.active_tree_item(), Some(ActiveOverlayItem::Parent)) {
                     let _ = self.navigate_parent();
                     return InteractionResult::handled();
@@ -142,7 +179,15 @@ impl FileBrowserComponent {
                         .into_iter()
                         .map(|entry| {
                             let is_dir = entry.kind.is_dir();
-                            TreeNode::new(FileTreeItem::new(entry, Vec::new()), 0, is_dir)
+                            TreeNode::new(
+                                FileTreeItem::new(
+                                    entry.clone(),
+                                    Vec::new(),
+                                    self.is_selected_path(entry.path.as_ref()),
+                                ),
+                                0,
+                                is_dir,
+                            )
                         })
                         .collect::<Vec<_>>();
                     if let Some(tree) = self.tree.as_mut() {

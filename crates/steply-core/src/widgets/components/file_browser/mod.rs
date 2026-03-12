@@ -18,18 +18,27 @@ pub enum BrowserMode {
     Tree,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum SelectionMode {
+    #[default]
+    Single,
+    Multi,
+}
+
 struct FileTreeItem {
     entry: model::FileEntry,
     highlights: Vec<(usize, usize)>,
     leaf_count: usize,
+    selected: bool,
 }
 
 impl FileTreeItem {
-    fn new(entry: model::FileEntry, highlights: Vec<(usize, usize)>) -> Self {
+    fn new(entry: model::FileEntry, highlights: Vec<(usize, usize)>, selected: bool) -> Self {
         Self {
             entry,
             highlights,
             leaf_count: 0,
+            selected,
         }
     }
 }
@@ -45,6 +54,8 @@ impl TreeItemLabel for FileTreeItem {
     ) -> Vec<Span> {
         let base_style = if state.focused && state.active {
             Style::new().color(Color::Cyan).bold()
+        } else if state.selected || self.selected {
+            Style::new().color(Color::Yellow).bold()
         } else if self.entry.kind.is_dir() {
             Style::new().color(Color::Blue).bold()
         } else {
@@ -93,7 +104,9 @@ use crate::ui::span::Span;
 use crate::ui::style::{Color, Style};
 use crate::ui::text::text_display_width;
 use crate::widgets::base::WidgetBase;
-use crate::widgets::components::select_list::{SelectList, SelectMode};
+use crate::widgets::components::select_list::{
+    SelectList, SelectMode, default_render_option_lines,
+};
 use crate::widgets::components::tree_view::{TreeItemLabel, TreeNode, TreeView};
 use crate::widgets::inputs::text::TextInput;
 use crate::widgets::node::LeafComponent;
@@ -129,6 +142,8 @@ pub struct FileBrowserComponent {
     entry_filter: EF,
     ext_filter: Option<HashSet<String>>,
     display_mode: DisplayMode,
+    value_mode: DisplayMode,
+    selection_mode: SelectionMode,
     validators: Vec<Validator>,
 
     scanner: ScannerHandle,
@@ -153,9 +168,18 @@ pub struct FileBrowserComponent {
     tree_build_seq: u64,
     pending_focus_restore: Option<FocusRestore>,
     focus_history: HashMap<PathBuf, FocusMemory>,
+    selected_paths: Vec<PathBuf>,
+    pending_selection_tokens: Option<Vec<String>>,
 }
 
 pub type FileBrowserInput = FileBrowserComponent;
+
+const MULTI_VALUE_SEPARATOR: &str = ", ";
+
+struct MultiInputState {
+    active_query: String,
+    query_start_chars: usize,
+}
 
 #[derive(Clone)]
 pub(super) struct FocusMemory {
@@ -182,7 +206,7 @@ impl FileBrowserComponent {
             .with_show_label(false)
             .with_max_visible(12);
 
-        Self {
+        let mut widget = Self {
             base: WidgetBase::new(id, label),
             text,
             list,
@@ -193,13 +217,15 @@ impl FileBrowserComponent {
             entry_filter: EF::All,
             ext_filter: None,
             display_mode: DisplayMode::Relative,
+            value_mode: DisplayMode::Relative,
+            selection_mode: SelectionMode::Single,
             validators: Vec::new(),
             scanner: ScannerHandle::new(),
             tree_scanner: TreeScannerHandle::new(),
             cache: ScanCache::new(),
             last_scan_result: None,
             debounce_deadline: None,
-            overlay_open: false,
+            overlay_open: true,
             spinner_frame: 0,
             spinner_last_tick: Instant::now(),
             scanning: false,
@@ -211,7 +237,16 @@ impl FileBrowserComponent {
             tree_build_seq: 0,
             pending_focus_restore: None,
             focus_history: HashMap::new(),
-        }
+            selected_paths: Vec::new(),
+            pending_selection_tokens: None,
+        };
+        widget.list.set_option_renderer(|item, mut state| {
+            if state.selected && !(state.focused && state.active) {
+                state.base_style = Style::new().color(Color::Yellow).bold();
+            }
+            default_render_option_lines(item, state)
+        });
+        widget
     }
 
     pub fn with_cwd(mut self, cwd: impl Into<PathBuf>) -> Self {
@@ -250,6 +285,16 @@ impl FileBrowserComponent {
         self
     }
 
+    pub fn with_value_mode(mut self, mode: DisplayMode) -> Self {
+        self.value_mode = mode;
+        self
+    }
+
+    pub fn with_selection_mode(mut self, mode: SelectionMode) -> Self {
+        self.selection_mode = mode;
+        self
+    }
+
     pub fn with_max_visible(mut self, n: usize) -> Self {
         self.list.set_max_visible(n);
         self
@@ -257,6 +302,9 @@ impl FileBrowserComponent {
 
     pub fn with_browser_mode(mut self, mode: BrowserMode) -> Self {
         self.browser_mode = mode;
+        if self.browser_mode == BrowserMode::Tree {
+            self.ensure_tree_widget();
+        }
         self
     }
 
@@ -270,6 +318,20 @@ impl FileBrowserComponent {
             .value()
             .and_then(|v| v.to_text_scalar())
             .unwrap_or_default()
+    }
+
+    fn query_input(&self) -> String {
+        if !self.is_multi_select() {
+            return self.current_input();
+        }
+        split_multi_input(self.current_input().as_str()).active_query
+    }
+
+    fn query_start_char_index(&self) -> usize {
+        if !self.is_multi_select() {
+            return 0;
+        }
+        split_multi_input(self.current_input().as_str()).query_start_chars
     }
 
     fn spinner_char(&self) -> char {
@@ -342,7 +404,7 @@ impl FileBrowserComponent {
             return false;
         }
         let current_key = {
-            let parsed = parse_input(&self.current_input(), &self.cwd);
+            let parsed = parse_input(&self.query_input(), &self.cwd);
             self.make_key(
                 &parsed.view_dir,
                 &parsed.query,
@@ -390,7 +452,7 @@ impl FileBrowserComponent {
             return false;
         }
         self.debounce_deadline = None;
-        let parsed = parse_input(&self.current_input(), &self.cwd);
+        let parsed = parse_input(&self.query_input(), &self.cwd);
         self.browse_dir = parsed.view_dir.clone();
         let recursive = parsed.mode.recursive(self.recursive, parsed.query.as_str());
         let is_glob = parsed.mode.is_glob();
@@ -435,14 +497,18 @@ impl FileBrowserComponent {
                 format!("{abs}/")
             }
         };
-        self.text.set_value(Value::Text(path_str));
+        if self.is_multi_select() {
+            self.set_active_query(path_str);
+        } else {
+            self.text.set_value(Value::Text(path_str));
+        }
         self.submit_scan(dir, String::new(), false, false);
     }
 
     fn open_browser(&mut self) -> InteractionResult {
         self.debounce_deadline = None;
         self.overlay_open = true;
-        let parsed = parse_input(&self.current_input(), &self.cwd);
+        let parsed = parse_input(&self.query_input(), &self.cwd);
         self.browse_dir = parsed.view_dir.clone();
         self.pending_focus_restore = self
             .focus_history
@@ -460,6 +526,10 @@ impl FileBrowserComponent {
         InteractionResult::handled()
     }
 
+    pub fn initialize_open(&mut self) {
+        let _ = self.open_browser();
+    }
+
     fn close_browser(&mut self) -> InteractionResult {
         self.overlay_open = false;
         self.tree_building = false;
@@ -470,6 +540,147 @@ impl FileBrowserComponent {
     fn child_ctx(&self, ctx: &RenderContext, focused_id: Option<String>) -> RenderContext {
         ctx.with_focus(focused_id)
             .with_completion_owner(self.base.id(), Some(self.text.id()))
+    }
+
+    fn is_multi_select(&self) -> bool {
+        self.selection_mode == SelectionMode::Multi
+    }
+
+    fn selected_output_values(&self) -> Vec<Value> {
+        self.selected_paths
+            .iter()
+            .map(|path| Value::Text(self.path_value_for_submit(path.as_path())))
+            .collect()
+    }
+
+    fn is_selected_path(&self, path: &Path) -> bool {
+        self.selected_paths.iter().any(|selected| selected == path)
+    }
+
+    fn set_selected_path(&mut self, path: PathBuf, selected: bool) {
+        if selected {
+            if !self.selected_paths.iter().any(|existing| existing == &path) {
+                self.selected_paths.push(path);
+            }
+        } else {
+            self.selected_paths.retain(|existing| existing != &path);
+        }
+    }
+
+    fn toggle_selected_path(&mut self, path: PathBuf) -> bool {
+        let was_selected = self.is_selected_path(path.as_path());
+        self.set_selected_path(path, !was_selected);
+        !was_selected
+    }
+
+    fn sync_list_selection(&mut self) {
+        let values = Value::List(
+            self.selected_paths
+                .iter()
+                .map(|path| Value::Text(path.to_string_lossy().to_string()))
+                .collect(),
+        );
+        self.list.set_value(values);
+    }
+
+    fn sync_tree_selection(&mut self) {
+        let selected = self.selected_paths.clone();
+        if let Some(tree) = self.tree.as_mut() {
+            for node in tree.nodes_mut() {
+                node.item.selected = selected
+                    .iter()
+                    .any(|path| path == node.item.entry.path.as_ref());
+            }
+        }
+    }
+
+    fn resolve_tokens_against_result(
+        &self,
+        tokens: &[String],
+        result: Option<&ScanResult>,
+    ) -> Vec<PathBuf> {
+        match self.value_mode {
+            DisplayMode::Full => tokens.iter().map(PathBuf::from).collect(),
+            DisplayMode::Relative => tokens.iter().map(|token| self.cwd.join(token)).collect(),
+            DisplayMode::Name => {
+                let Some(result) = result else {
+                    return Vec::new();
+                };
+                let mut selected = Vec::new();
+                for token in tokens {
+                    for entry in &result.entries {
+                        if entry.name == *token
+                            && !selected.iter().any(|path| path == entry.path.as_ref())
+                        {
+                            selected.push((*entry.path).clone());
+                        }
+                    }
+                }
+                selected
+            }
+        }
+    }
+
+    fn set_selected_paths_from_tokens(&mut self, tokens: Vec<String>) {
+        let resolved =
+            self.resolve_tokens_against_result(tokens.as_slice(), self.last_scan_result.as_deref());
+        self.pending_selection_tokens =
+            if self.value_mode == DisplayMode::Name && resolved.is_empty() && !tokens.is_empty() {
+                Some(tokens)
+            } else {
+                None
+            };
+        self.selected_paths = resolved;
+        self.sync_list_selection();
+        self.sync_tree_selection();
+        self.sync_multi_input_text(true);
+    }
+
+    fn sync_multi_input_text(&mut self, preserve_query: bool) {
+        if !self.is_multi_select() {
+            return;
+        }
+        let active_query = if preserve_query {
+            split_multi_input(self.current_input().as_str()).active_query
+        } else {
+            String::new()
+        };
+        let mut text = self
+            .selected_output_values()
+            .into_iter()
+            .filter_map(|value| value.to_text_scalar())
+            .collect::<Vec<_>>()
+            .join(MULTI_VALUE_SEPARATOR);
+        if !text.is_empty() {
+            if !active_query.is_empty() {
+                text.push_str(MULTI_VALUE_SEPARATOR);
+                text.push_str(active_query.as_str());
+            } else {
+                text.push_str(MULTI_VALUE_SEPARATOR);
+            }
+        } else if !active_query.is_empty() {
+            text = active_query;
+        }
+        self.text.set_value(Value::Text(text));
+    }
+
+    fn set_active_query(&mut self, active_query: String) {
+        if !self.is_multi_select() {
+            self.text.set_value(Value::Text(active_query));
+            return;
+        }
+
+        let mut text = self
+            .selected_output_values()
+            .into_iter()
+            .filter_map(|value| value.to_text_scalar())
+            .collect::<Vec<_>>()
+            .join(MULTI_VALUE_SEPARATOR);
+        if !text.is_empty() {
+            text.push_str(MULTI_VALUE_SEPARATOR);
+        }
+        text.push_str(active_query.as_str());
+        self.text.set_value(Value::Text(text));
     }
 }
 
@@ -495,14 +706,14 @@ impl Drawable for FileBrowserComponent {
             },
         );
         let mut lines = self.text.draw(&text_ctx).lines;
-        if focused && (self.scanning || self.tree_building) {
+        if self.overlay_open && (self.scanning || self.tree_building) {
             let status = format!("{} scanning...", self.spinner_char());
             if let Some(input_line) = lines.first_mut() {
                 append_right_status(input_line, status.as_str(), ctx.terminal_size.width);
             }
         }
 
-        if focused && self.overlay_open {
+        if self.overlay_open {
             if self.browser_mode == BrowserMode::Tree {
                 if let Some(tree) = &self.tree {
                     lines.extend(tree.render_lines(true));
@@ -552,14 +763,33 @@ impl Drawable for FileBrowserComponent {
             hints.push(
                 HintItem::new("← →", "navigate dirs", HintGroup::Navigation).with_priority(12),
             );
+            if self.is_multi_select() {
+                hints.push(
+                    HintItem::new("Enter", "accept selection", HintGroup::Action).with_priority(24),
+                );
+                hints.push(
+                    HintItem::new("Space", "toggle file", HintGroup::Action).with_priority(25),
+                );
+            }
             if self.browser_mode == BrowserMode::Tree {
                 hints.push(
                     HintItem::new("↑ ↓", "move in tree", HintGroup::Navigation).with_priority(13),
                 );
-                hints.push(
-                    HintItem::new("Space", "expand/collapse", HintGroup::Navigation)
-                        .with_priority(14),
-                );
+                if self.is_multi_select() {
+                    hints.push(
+                        HintItem::new("Ctrl+Space", "toggle dir", HintGroup::Action)
+                            .with_priority(26),
+                    );
+                    hints.push(
+                        HintItem::new("Space", "expand/collapse", HintGroup::Navigation)
+                            .with_priority(14),
+                    );
+                } else {
+                    hints.push(
+                        HintItem::new("Space", "expand/collapse", HintGroup::Navigation)
+                            .with_priority(14),
+                    );
+                }
                 hints.push(
                     HintItem::new("Ctrl+T", "switch to list", HintGroup::View).with_priority(22),
                 );
@@ -610,8 +840,9 @@ impl Interactive for FileBrowserComponent {
     }
 
     fn completion(&mut self) -> Option<CompletionState<'_>> {
-        let parsed = parse_input(&self.current_input(), &self.cwd);
+        let parsed = parse_input(&self.query_input(), &self.cwd);
         self.sync_completion_items_for_dir(parsed.view_dir.as_path());
+        let query_start = self.query_start_char_index();
 
         let mut state = self.text.completion()?;
 
@@ -623,10 +854,21 @@ impl Interactive for FileBrowserComponent {
             .nth(pos)
             .map(|(i, _)| i)
             .unwrap_or(state.value.len());
-        let start = state.value[..byte_end]
+        let query_start_byte = state
+            .value
+            .char_indices()
+            .nth(query_start)
+            .map(|(i, _)| i)
+            .unwrap_or(state.value.len());
+        let start = state.value[query_start_byte..byte_end]
             .rfind('/')
-            .map(|i| state.value[..=i].chars().count())
-            .unwrap_or(0);
+            .map(|relative| {
+                query_start
+                    + state.value[query_start_byte..query_start_byte + relative + 1]
+                        .chars()
+                        .count()
+            })
+            .unwrap_or(query_start);
         state.prefix_start = Some(start);
         Some(state)
     }
@@ -654,10 +896,23 @@ impl Interactive for FileBrowserComponent {
     }
 
     fn value(&self) -> Option<Value> {
+        if self.is_multi_select() {
+            return Some(Value::List(self.selected_output_values()));
+        }
         Some(Value::Text(self.current_input()))
     }
 
     fn set_value(&mut self, value: Value) {
+        if self.is_multi_select() {
+            if let Some(items) = value.to_text_list() {
+                self.set_selected_paths_from_tokens(items);
+                return;
+            }
+            if let Some(text) = value.to_text_scalar() {
+                self.set_selected_paths_from_tokens(vec![text]);
+                return;
+            }
+        }
         if let Some(text) = value.to_text_scalar() {
             self.text.set_value(Value::Text(text));
             self.schedule_scan();
@@ -700,4 +955,23 @@ fn append_right_status(line: &mut Vec<Span>, status: &str, terminal_width: u16) 
 
     line.push(Span::new(" ".repeat(gap)).no_wrap());
     line.push(Span::styled(status.to_string(), Style::new().color(Color::DarkGrey)).no_wrap());
+}
+
+fn split_multi_input(raw: &str) -> MultiInputState {
+    let Some((prefix, tail)) = raw.rsplit_once(',') else {
+        return MultiInputState {
+            active_query: raw.to_string(),
+            query_start_chars: 0,
+        };
+    };
+
+    let _ = prefix;
+    let active_query = tail.trim_start().to_string();
+    let query_start_chars = raw.chars().count() - tail.chars().count()
+        + tail.chars().take_while(|ch| ch.is_whitespace()).count();
+
+    MultiInputState {
+        active_query,
+        query_start_chars,
+    }
 }

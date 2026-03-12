@@ -84,9 +84,10 @@ fn resolve_tasks(tasks: Vec<TaskDef>) -> Result<Vec<TaskTemplateSpec>, String> {
             kind: task.kind,
             program: task.program,
             args: task.args,
-            parse: task.parse,
             timeout_ms: task.timeout_ms,
             enabled: task.enabled.unwrap_or(true),
+            env: task.env,
+            writes: task.writes,
         });
     }
     Ok(out)
@@ -109,7 +110,6 @@ fn resolve_subscriptions(
         out.push(SubscriptionSpec {
             task: subscription.task,
             trigger,
-            target: subscription.target,
             enabled: subscription.enabled.unwrap_or(true),
         });
     }

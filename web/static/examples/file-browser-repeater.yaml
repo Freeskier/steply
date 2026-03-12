@@ -1,0 +1,60 @@
+version: 1
+steps:
+  - id: pick_files
+    title: Pick files
+    description: Select multiple files in the browser. Only files are shown.
+    widgets:
+      - type: text_output
+        id: intro
+        text: |
+          Pick any number of files in the browser below.
+          The next step will let you create repeated groups using those file names.
+      - type: file_browser
+        id: files
+        label: Files
+        browser_mode: tree
+        selection_mode: multi
+        entry_filter: files
+        display_mode: relative
+        value_mode: relative
+        value: profile.files
+      - type: text_output
+        id: picked
+        text: "Picked: {{profile.files}}"
+
+  - id: build_groups
+    title: Build groups
+    description: Add as many groups as you want. Every repeater row can choose any files from the original selection.
+    widgets:
+      - type: text_output
+        id: repeater_intro
+        text: |
+          Each iteration stores one object with:
+          - `selected_files`
+          - `name`
+      - type: repeater
+        id: groups
+        label: File groups
+        mode: append
+        layout: stacked
+        value: plan.rows
+        widgets:
+          - type: text_output
+            id: step_meta
+            text: "Row {{_index}}"
+          - type: select_list
+            id: selected_files
+            label: Files in this group
+            mode: multi
+            options: profile.files
+            writes: selected_files
+          - type: text_input
+            id: name
+            label: Group name
+            writes: name
+          - type: text_output
+            id: row_preview
+            text: "Draft: {{_row}}"
+      - type: text_output
+        id: plan_preview
+        text: "Saved rows: {{plan.rows}}"

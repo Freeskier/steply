@@ -46,8 +46,8 @@ impl AppState {
         if !self.reconcile_current_step_after_store_change() {
             self.settle_current_step_bindings();
         }
-        if changed && let Some(updated) = self.data.store.get(root.as_str()).cloned() {
-            crate::task::engine::trigger_node_value_changed_tasks(self, root.as_str(), &updated);
+        if changed {
+            crate::task::engine::trigger_store_value_changed_tasks(self, &ValueTarget::node(root));
         }
     }
 
@@ -105,9 +105,13 @@ impl AppState {
         changes.sort_by_key(|pending| pending.order);
         for pending in changes {
             let change = pending.change;
-            match self.write_store_target(change.target, change.value) {
+            let target = change.target;
+            match self.write_store_target(target.clone(), change.value) {
                 Ok(changed) => {
                     store_changed |= changed;
+                    if changed {
+                        crate::task::engine::trigger_store_value_changed_tasks(self, &target);
+                    }
                 }
                 Err(err) => {
                     let root = err_root_key(&err);

@@ -27,7 +27,7 @@ use render::{OptionRenderer, default_option_renderer};
 use state::marker_symbol;
 
 pub use model::{SelectItem, SelectItemView, SelectMode};
-pub use render::SelectItemRenderState;
+pub use render::{SelectItemRenderState, default_render_option_lines};
 
 pub struct SelectList {
     base: WidgetBase,
@@ -737,11 +737,6 @@ impl Interactive for SelectList {
     }
 
     fn set_value(&mut self, value: Value) {
-        if let Some(options) = options_from_value(&value) {
-            self.set_options(options);
-            return;
-        }
-
         if let Some(values) = value.as_list() {
             self.selected.clear();
             for value in values {

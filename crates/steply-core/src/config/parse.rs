@@ -1,6 +1,8 @@
 use crate::ui::spinner::SpinnerStyle;
 use crate::widgets::components::calendar::CalendarMode;
-use crate::widgets::components::file_browser::{BrowserMode, DisplayMode};
+use crate::widgets::components::file_browser::{
+    BrowserMode, DisplayMode, EntryFilter, SelectionMode,
+};
 use crate::widgets::components::select_list::SelectMode;
 use crate::widgets::inputs::text::TextMode;
 use crate::widgets::outputs::chart::ChartRenderMode;
@@ -64,6 +66,29 @@ pub(super) fn parse_browser_mode(raw: Option<&str>) -> Result<BrowserMode, Strin
         "tree" => Ok(BrowserMode::Tree),
         other => Err(format!(
             "unsupported file_browser browser_mode: {other} (expected list|tree)"
+        )),
+    }
+}
+
+pub(super) fn parse_file_browser_selection_mode(
+    raw: Option<&str>,
+) -> Result<SelectionMode, String> {
+    match raw.unwrap_or("single") {
+        "single" => Ok(SelectionMode::Single),
+        "multi" => Ok(SelectionMode::Multi),
+        other => Err(format!(
+            "unsupported file_browser selection_mode: {other} (expected single|multi)"
+        )),
+    }
+}
+
+pub(super) fn parse_file_browser_entry_filter(raw: Option<&str>) -> Result<EntryFilter, String> {
+    match raw.unwrap_or("all") {
+        "all" => Ok(EntryFilter::All),
+        "files" => Ok(EntryFilter::FilesOnly),
+        "dirs" => Ok(EntryFilter::DirsOnly),
+        other => Err(format!(
+            "unsupported file_browser entry_filter: {other} (expected all|files|dirs)"
         )),
     }
 }
@@ -219,18 +244,6 @@ pub(super) fn compile_validators(defs: Vec<ValidatorDef>) -> Vec<validators::Val
             ValidatorDef::MaxValue { value } => validators::max_value(value),
         })
         .collect()
-}
-
-pub(super) fn parse_task_parse(raw: &str) -> Result<crate::task::TaskParse, String> {
-    match raw {
-        "raw_text" => Ok(crate::task::TaskParse::RawText),
-        "number" => Ok(crate::task::TaskParse::Number),
-        "json" => Ok(crate::task::TaskParse::Json),
-        "lines" => Ok(crate::task::TaskParse::Lines),
-        other => Err(format!(
-            "unsupported task parse mode: {other} (expected raw_text|number|json|lines)"
-        )),
-    }
 }
 
 pub(super) fn parse_task_kind(raw: &str) -> Result<(), String> {

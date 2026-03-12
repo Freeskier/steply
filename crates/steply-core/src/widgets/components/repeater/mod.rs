@@ -1,27 +1,28 @@
-use std::sync::Arc;
-
 use indexmap::IndexMap;
 
 use crate::core::value::Value;
-use crate::core::value_path::ValuePath;
-use crate::terminal::{CursorPos, KeyCode, KeyEvent};
+use crate::core::value_path::{PathSegment, ValuePath, ValueTarget};
+use crate::runtime::event::{ValueChange, WidgetAction};
+use crate::state::store::ValueStore;
+use crate::terminal::{CursorPos, KeyCode, KeyEvent, PointerEvent};
 use crate::ui::span::{Span, SpanLine};
 use crate::ui::style::{Color, Style};
 use crate::widgets::base::WidgetBase;
-use crate::widgets::node::LeafComponent;
-use crate::widgets::shared::list_policy;
+use crate::widgets::node::{LeafComponent, Node};
+use crate::widgets::shared::binding::ReadBinding;
+use crate::widgets::shared::render_ctx::child_context_for;
 use crate::widgets::shared::validation::decorate_component_validation;
-use crate::widgets::shared::value_seed::{normalize_ascii_key, seed_value_from_record};
 use crate::widgets::traits::{
     CompletionState, DrawOutput, Drawable, FocusMode, HintContext, HintGroup, HintItem,
-    InteractionResult, Interactive, InteractiveNode, RenderContext, TextAction, ValidationMode,
+    InteractionResult, Interactive, RenderContext, TextAction, ValidationMode,
 };
 
-mod interaction;
-mod render;
-
-pub type RepeaterFieldFactory =
-    Arc<dyn Fn(String, String) -> Box<dyn InteractiveNode> + Send + Sync>;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum RepeaterIterationMode {
+    #[default]
+    Fixed,
+    Append,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RepeaterLayout {
@@ -29,50 +30,62 @@ pub enum RepeaterLayout {
     Stacked,
 }
 
-struct RepeaterFieldDef {
-    key: String,
-    label: String,
-    make_input: RepeaterFieldFactory,
-}
-
-struct RepeaterRow {
-    item: Value,
-    fields: Vec<Box<dyn InteractiveNode>>,
-}
-
 pub struct Repeater {
     base: WidgetBase,
-    fields: Vec<RepeaterFieldDef>,
-    rows: Vec<RepeaterRow>,
-    active_item: usize,
-    active_field: usize,
+    widgets: Vec<Node>,
+    active_widget: usize,
+    items_binding: Option<ReadBinding>,
+    count_binding: Option<ReadBinding>,
+    items: Vec<Value>,
+    explicit_count: Option<usize>,
+    rows: Vec<Value>,
+    current_row: Value,
+    active_index: usize,
     layout: RepeaterLayout,
+    mode: RepeaterIterationMode,
     show_label: bool,
     show_progress: bool,
     header_template: String,
     item_label_path: Option<ValuePath>,
     finished: bool,
+    store_snapshot: ValueStore,
+    last_items_value: Option<Option<Value>>,
+    last_count_value: Option<Option<Value>>,
 }
 
 impl Repeater {
     pub fn new(id: impl Into<String>, label: impl Into<String>) -> Self {
         Self {
             base: WidgetBase::new(id, label),
-            fields: Vec::new(),
+            widgets: Vec::new(),
+            active_widget: 0,
+            items_binding: None,
+            count_binding: None,
+            items: Vec::new(),
+            explicit_count: None,
             rows: Vec::new(),
-            active_item: 0,
-            active_field: 0,
+            current_row: empty_row(),
+            active_index: 0,
             layout: RepeaterLayout::SingleField,
+            mode: RepeaterIterationMode::Fixed,
             show_label: true,
             show_progress: true,
-            header_template: "configuring [{index} of {total}] for {item}:".to_string(),
+            header_template: "configuring [{index} of {count}]".to_string(),
             item_label_path: None,
             finished: false,
+            store_snapshot: ValueStore::new(),
+            last_items_value: None,
+            last_count_value: None,
         }
     }
 
     pub fn with_layout(mut self, layout: RepeaterLayout) -> Self {
         self.layout = layout;
+        self
+    }
+
+    pub fn with_mode(mut self, mode: RepeaterIterationMode) -> Self {
+        self.mode = mode;
         self
     }
 
@@ -96,279 +109,543 @@ impl Repeater {
         self
     }
 
+    pub fn with_items_binding(mut self, binding: ReadBinding) -> Self {
+        self.items_binding = Some(binding);
+        self
+    }
+
     pub fn with_items(mut self, items: Vec<Value>) -> Self {
-        self.set_items(items);
+        self.items = items;
         self
     }
 
-    pub fn field<I, F>(
-        mut self,
-        key: impl Into<String>,
-        label: impl Into<String>,
-        make_input: F,
-    ) -> Self
-    where
-        I: InteractiveNode + 'static,
-        F: Fn(String, String) -> I + Send + Sync + 'static,
-    {
-        self.push_field(
-            key.into(),
-            label.into(),
-            Arc::new(move |id, label| Box::new(make_input(id, label))),
-        );
+    pub fn with_count_binding(mut self, binding: ReadBinding) -> Self {
+        self.count_binding = Some(binding);
         self
     }
 
-    pub fn field_auto<I, F>(mut self, label: impl Into<String>, make_input: F) -> Self
-    where
-        I: InteractiveNode + 'static,
-        F: Fn(String, String) -> I + Send + Sync + 'static,
-    {
-        let label = label.into();
-        let key = normalize_ascii_key(label.as_str(), "field");
-        self.push_field(
-            key,
-            label,
-            Arc::new(move |id, label| Box::new(make_input(id, label))),
-        );
-        self
-    }
-
-    pub fn field_boxed(
-        mut self,
-        key: impl Into<String>,
-        label: impl Into<String>,
-        make_input: RepeaterFieldFactory,
-    ) -> Self {
-        self.push_field(key.into(), label.into(), make_input);
-        self
-    }
-
-    fn push_field(&mut self, key: String, label: String, make_input: RepeaterFieldFactory) {
-        let unique_key = unique_field_key(self.fields.as_slice(), key.as_str());
-        let field_idx = self.fields.len();
-        let base_id = self.base.id().to_string();
-        self.fields.push(RepeaterFieldDef {
-            key: unique_key,
-            label: label.clone(),
-            make_input: make_input.clone(),
-        });
-
-        for (row_idx, row) in self.rows.iter_mut().enumerate() {
-            let id = format!("{base_id}__i{row_idx}__f{field_idx}");
-            row.fields.push(make_input(id, label.clone()));
-        }
+    pub fn with_widget(mut self, widget: Node) -> Self {
+        self.widgets.push(widget);
         self.clamp_cursor();
+        self
     }
 
-    fn set_items(&mut self, items: Vec<Value>) {
-        let mut rows = Vec::<RepeaterRow>::with_capacity(items.len());
-        for (row_idx, item) in items.into_iter().enumerate() {
-            let fields = self
-                .fields
-                .iter()
-                .enumerate()
-                .map(|(field_idx, field)| {
-                    let id = self.field_id(row_idx, field_idx);
-                    (field.make_input)(id, field.label.clone())
-                })
-                .collect::<Vec<_>>();
-            rows.push(RepeaterRow { item, fields });
-        }
-        self.rows = rows;
-        self.finished = false;
-        self.clamp_cursor();
+    fn child_context(
+        &self,
+        ctx: &RenderContext,
+        focused_child_id: Option<String>,
+    ) -> RenderContext {
+        child_context_for(self.base.id(), ctx, focused_child_id)
     }
 
-    fn field_id(&self, row_idx: usize, field_idx: usize) -> String {
-        format!("{}__i{}__f{}", self.base.id(), row_idx, field_idx)
+    fn active_widget_ref(&self) -> Option<&Node> {
+        self.widgets.get(self.active_widget)
     }
 
-    fn active_row(&self) -> Option<&RepeaterRow> {
-        self.rows.get(self.active_item)
-    }
-
-    fn active_row_mut(&mut self) -> Option<&mut RepeaterRow> {
-        self.rows.get_mut(self.active_item)
-    }
-
-    fn active_field_widget(&self) -> Option<&dyn InteractiveNode> {
-        let row = self.active_row()?;
-        let field = row.fields.get(self.active_field)?;
-        Some(field.as_ref())
-    }
-
-    fn active_field_widget_mut(&mut self) -> Option<&mut Box<dyn InteractiveNode>> {
-        let active_field = self.active_field;
-        let row = self.active_row_mut()?;
-        row.fields.get_mut(active_field)
-    }
-
-    fn active_field_label(&self) -> &str {
-        self.fields
-            .get(self.active_field)
-            .map(|f| f.label.as_str())
-            .unwrap_or("Field")
+    fn active_widget_mut(&mut self) -> Option<&mut Node> {
+        self.widgets.get_mut(self.active_widget)
     }
 
     fn clamp_cursor(&mut self) {
-        self.active_item = list_policy::clamp_index(self.active_item, self.rows.len());
-        self.active_field = list_policy::clamp_index(self.active_field, self.fields.len());
-    }
-
-    fn completed_items(&self) -> usize {
-        if self.finished {
-            return self.rows.len();
+        if self.widgets.is_empty() {
+            self.active_widget = 0;
+        } else {
+            self.active_widget = self.active_widget.min(self.widgets.len().saturating_sub(1));
         }
-        self.active_item.min(self.rows.len())
     }
 
-    fn has_work(&self) -> bool {
-        !self.rows.is_empty() && !self.fields.is_empty()
-    }
-
-    fn item_label(&self, row_idx: usize) -> String {
-        let Some(row) = self.rows.get(row_idx) else {
-            return String::new();
-        };
-        if let Some(path) = &self.item_label_path
-            && let Some(nested) = row.item.get_path(path)
-        {
-            return display_scalar_or_json(nested);
+    fn total_count(&self) -> usize {
+        match self.mode {
+            RepeaterIterationMode::Fixed => self.explicit_count.unwrap_or(self.items.len()),
+            RepeaterIterationMode::Append => {
+                self.explicit_count.unwrap_or_else(|| self.rows.len() + 1)
+            }
         }
-        display_scalar_or_json(&row.item)
+    }
+
+    fn current_item(&self) -> Option<&Value> {
+        self.items.get(self.active_index)
     }
 
     fn header_line(&self) -> String {
-        if self.rows.is_empty() {
-            return "configuring [0 of 0]: no items".to_string();
-        }
-        let total = self.rows.len();
-        let index = self.active_item.saturating_add(1).min(total);
-        let item = self.item_label(self.active_item);
+        let index = self.active_index.saturating_add(1);
+        let count = self.total_count();
+        let item = self
+            .current_item()
+            .map(|value| self.item_label(value))
+            .unwrap_or_default();
         self.header_template
             .replace("{index}", index.to_string().as_str())
-            .replace("{total}", total.to_string().as_str())
+            .replace("{count}", count.to_string().as_str())
             .replace("{item}", item.as_str())
+    }
+
+    fn item_label(&self, value: &Value) -> String {
+        if let Some(path) = &self.item_label_path
+            && let Some(nested) = value.get_path(path)
+        {
+            return display_scalar_or_json(nested);
+        }
+        display_scalar_or_json(value)
     }
 
     fn progress_line(&self) -> Option<String> {
         if !self.show_progress {
             return None;
         }
-        let total = self.rows.len();
-        let completed = self.completed_items().min(total);
-        Some(format!("progress: {completed}/{total} completed"))
+        let count = self.total_count();
+        let completed = self.rows.len().min(count);
+        Some(format!("progress: {completed}/{count} completed"))
     }
 
-    fn build_rows_value_for_count(&self, count: usize) -> Value {
-        let limit = count.min(self.rows.len());
-        let mut rows = Vec::<Value>::with_capacity(limit);
-        for row in self.rows.iter().take(limit) {
-            let mut map = IndexMap::<String, Value>::new();
-            map.insert("item".to_string(), row.item.clone());
-            for (idx, field) in self.fields.iter().enumerate() {
-                let value = row
-                    .fields
-                    .get(idx)
-                    .and_then(|widget| widget.value())
-                    .unwrap_or(Value::None);
-                map.insert(field.key.clone(), value);
-            }
-            rows.push(Value::Object(map));
+    fn scoped_store(&self) -> ValueStore {
+        let mut scoped = ValueStore::new();
+        for (key, value) in self.store_snapshot.iter() {
+            let _ = scoped.set(key.to_string(), value.clone());
         }
-        Value::List(rows)
+        let _ = scoped.set("_row", self.current_row.clone());
+        if let Some(item) = self.current_item() {
+            let _ = scoped.set("_item", item.clone());
+        } else {
+            let _ = scoped.set("_item", Value::None);
+        }
+        let _ = scoped.set("_index", Value::Number(self.active_index as f64));
+        let _ = scoped.set("_count", Value::Number(self.total_count() as f64));
+        scoped
     }
 
-    fn build_rows_value(&self) -> Value {
-        self.build_rows_value_for_count(self.rows.len())
+    fn sync_widgets_from_scope(&mut self) -> bool {
+        let scoped = self.scoped_store();
+        let mut changed = false;
+        for widget in &mut self.widgets {
+            changed |= widget.sync_from_store(&scoped);
+        }
+        changed
     }
 
-    fn apply_rows_seed(&mut self, rows_seed: &[Value]) {
-        for (row_idx, row_seed) in rows_seed.iter().enumerate() {
-            let Some(row) = self.rows.get_mut(row_idx) else {
-                break;
+    fn refresh_sources(&mut self, store: &ValueStore) -> bool {
+        self.store_snapshot = clone_store(store);
+        let mut changed = false;
+
+        let next_items = self
+            .items_binding
+            .as_ref()
+            .and_then(|binding| binding.resolve(store));
+        if self.last_items_value.as_ref() != Some(&next_items) {
+            self.last_items_value = Some(next_items.clone());
+            self.items = match next_items {
+                Some(Value::List(items)) => items,
+                Some(Value::None) | None => Vec::new(),
+                Some(value) => vec![value],
             };
-            for (field_idx, field) in self.fields.iter().enumerate() {
-                if let Some(seed) = seed_value_from_record(
-                    Some(row_seed),
-                    field_idx,
-                    field.key.as_str(),
-                    field.label.as_str(),
-                ) && let Some(widget) = row.fields.get_mut(field_idx)
-                {
-                    widget.set_value(seed);
-                }
-            }
+            changed = true;
+        }
+
+        let next_count = self
+            .count_binding
+            .as_ref()
+            .and_then(|binding| binding.resolve(store));
+        if self.last_count_value.as_ref() != Some(&next_count) {
+            self.last_count_value = Some(next_count.clone());
+            self.explicit_count = next_count.as_ref().and_then(read_count_value);
+            changed = true;
+        }
+
+        if changed {
+            self.active_index = self.active_index.min(self.max_active_index());
+            self.load_current_row();
+        }
+
+        changed
+    }
+
+    fn max_active_index(&self) -> usize {
+        self.total_count().saturating_sub(1)
+    }
+
+    fn load_current_row(&mut self) {
+        self.current_row = self
+            .rows
+            .get(self.active_index)
+            .cloned()
+            .unwrap_or_else(empty_row);
+    }
+
+    fn commit_current_row(&mut self) {
+        if self.active_index < self.rows.len() {
+            self.rows[self.active_index] = self.current_row.clone();
+        } else {
+            self.rows.push(self.current_row.clone());
         }
     }
 
-    fn set_rows_value(&mut self, rows: &[Value]) {
-        let items = rows.iter().map(extract_item_from_row).collect::<Vec<_>>();
-        self.set_items(items);
-        self.apply_rows_seed(rows);
+    fn next_iteration(&mut self) -> bool {
+        self.commit_current_row();
+        self.active_widget = 0;
+        match self.mode {
+            RepeaterIterationMode::Fixed => {
+                if self.active_index + 1 >= self.total_count() {
+                    self.finished = true;
+                    return false;
+                }
+                self.active_index += 1;
+            }
+            RepeaterIterationMode::Append => {
+                if self.active_index + 1 >= self.total_count() {
+                    self.finished = true;
+                    return false;
+                }
+                self.active_index += 1;
+            }
+        }
+        self.current_row = self
+            .rows
+            .get(self.active_index)
+            .cloned()
+            .unwrap_or_else(empty_row);
+        let _ = self.sync_widgets_from_scope();
+        true
+    }
+
+    fn previous_iteration(&mut self) -> bool {
+        if self.active_index == 0 {
+            return false;
+        }
+        self.active_index -= 1;
+        self.active_widget = self.widgets.len().saturating_sub(1);
+        self.finished = false;
+        self.load_current_row();
+        let _ = self.sync_widgets_from_scope();
+        true
+    }
+
+    fn draw_single_widget(&self, ctx: &RenderContext, focused: bool) -> Vec<SpanLine> {
+        let Some(widget) = self.active_widget_ref() else {
+            return vec![empty_line("No repeater widgets configured.")];
+        };
+        let focused_id = focused.then(|| widget.id().to_string());
+        let child_ctx = self.child_context(ctx, focused_id);
+        let mut out = widget.draw(&child_ctx).lines;
+        if out.is_empty() {
+            out.push(vec![Span::new(String::new()).no_wrap()]);
+        }
+        if let Some(first) = out.first_mut() {
+            first.insert(
+                0,
+                Span::styled(
+                    "❯ ",
+                    if focused {
+                        Style::new().color(Color::Cyan).bold()
+                    } else {
+                        Style::new().color(Color::DarkGrey)
+                    },
+                )
+                .no_wrap(),
+            );
+        }
+        out
+    }
+
+    fn draw_stacked_widgets(&self, ctx: &RenderContext, focused: bool) -> Vec<SpanLine> {
+        if self.widgets.is_empty() {
+            return vec![empty_line("No repeater widgets configured.")];
+        }
+
+        let mut lines = Vec::new();
+        for (index, widget) in self.widgets.iter().enumerate() {
+            let is_active = index == self.active_widget;
+            let focused_id = (focused && is_active).then(|| widget.id().to_string());
+            let child_ctx = self.child_context(ctx, focused_id);
+            let mut out = widget.draw(&child_ctx).lines;
+            if out.is_empty() {
+                out.push(vec![Span::new(String::new()).no_wrap()]);
+            }
+            if let Some(first) = out.first_mut() {
+                first.insert(
+                    0,
+                    Span::styled(
+                        if is_active { "❯ " } else { "  " },
+                        if focused && is_active {
+                            Style::new().color(Color::Cyan).bold()
+                        } else {
+                            Style::new().color(Color::DarkGrey)
+                        },
+                    )
+                    .no_wrap(),
+                );
+            }
+            lines.extend(out);
+        }
+        lines
+    }
+
+    fn line_prefix_rows(&self) -> usize {
+        let mut rows = 0usize;
+        if self.show_label && !self.base.label().is_empty() {
+            rows += 1;
+        }
+        rows += 1;
+        if self.progress_line().is_some() {
+            rows += 1;
+        }
+        rows
+    }
+
+    fn apply_local_change(&mut self, change: ValueChange) -> bool {
+        let Some(target) = localize_row_target(&change.target) else {
+            return false;
+        };
+        let mut store = ValueStore::new();
+        let _ = store.set("_row", self.current_row.clone());
+        if store.set_target(&target, change.value).is_err() {
+            return false;
+        }
+        self.current_row = store.get("_row").cloned().unwrap_or_else(empty_row);
+        true
+    }
+
+    fn process_child_result(&mut self, mut result: InteractionResult) -> InteractionResult {
+        let mut should_advance = false;
+        let mut retained = Vec::with_capacity(result.actions.len());
+
+        for action in result.actions.drain(..) {
+            match action {
+                WidgetAction::InputDone => {
+                    should_advance = true;
+                }
+                WidgetAction::ValueChanged { change } => {
+                    if !self.apply_local_change(change.clone()) {
+                        retained.push(WidgetAction::ValueChanged { change });
+                    }
+                }
+                other => retained.push(other),
+            }
+        }
+
+        result.actions = retained;
+
+        if self.sync_widgets_from_scope() {
+            result.handled = true;
+            result.request_render = true;
+        }
+
+        if should_advance {
+            if self.active_widget + 1 < self.widgets.len() {
+                self.active_widget += 1;
+                result.handled = true;
+                result.request_render = true;
+            } else if self.next_iteration() {
+                result.handled = true;
+                result.request_render = true;
+            } else {
+                result.merge(InteractionResult::input_done());
+            }
+        }
+
+        result
     }
 }
 
 impl LeafComponent for Repeater {}
 
-fn unique_field_key(fields: &[RepeaterFieldDef], requested: &str) -> String {
-    let base = normalize_ascii_key(requested, "field");
-    if !fields.iter().any(|field| field.key == base) {
-        return base;
+impl Drawable for Repeater {
+    fn id(&self) -> &str {
+        self.base.id()
     }
-    let mut idx = 2usize;
-    loop {
-        let next = format!("{base}_{idx}");
-        if !fields.iter().any(|field| field.key == next) {
-            return next;
+
+    fn label(&self) -> &str {
+        self.base.label()
+    }
+
+    fn draw(&self, ctx: &RenderContext) -> DrawOutput {
+        let focused = self.base.is_focused(ctx);
+        let mut lines = Vec::<SpanLine>::new();
+
+        if self.show_label && !self.base.label().is_empty() {
+            lines.push(vec![Span::new(self.base.label()).no_wrap()]);
         }
-        idx = idx.saturating_add(1);
+        lines.push(vec![
+            Span::styled(self.header_line(), Style::new().color(Color::Yellow).bold()).no_wrap(),
+        ]);
+
+        if let Some(progress) = self.progress_line() {
+            lines.push(vec![
+                Span::styled(progress, Style::new().color(Color::DarkGrey)).no_wrap(),
+            ]);
+        }
+
+        let body = match self.layout {
+            RepeaterLayout::SingleField => self.draw_single_widget(ctx, focused),
+            RepeaterLayout::Stacked => self.draw_stacked_widgets(ctx, focused),
+        };
+        lines.extend(body);
+
+        decorate_component_validation(&mut lines, ctx, self.base.id());
+        DrawOutput::with_lines(lines)
+    }
+
+    fn hints(&self, ctx: HintContext) -> Vec<HintItem> {
+        if !ctx.focused {
+            return Vec::new();
+        }
+        vec![
+            HintItem::new("Tab", "next field", HintGroup::Navigation).with_priority(20),
+            HintItem::new("Shift+Tab", "previous field", HintGroup::Navigation).with_priority(20),
+            HintItem::new("Enter", "commit and next", HintGroup::Action).with_priority(30),
+        ]
     }
 }
 
-fn looks_like_rows_list(rows: &[Value], fields: &[RepeaterFieldDef]) -> bool {
-    rows.iter().any(|row| match row {
-        Value::Object(map) => {
-            map.contains_key("item")
-                || fields
-                    .iter()
-                    .any(|field| map.contains_key(field.key.as_str()))
+impl Interactive for Repeater {
+    fn focus_mode(&self) -> FocusMode {
+        FocusMode::Group
+    }
+
+    fn on_key(&mut self, key: KeyEvent) -> InteractionResult {
+        if self.finished {
+            return match key.code {
+                KeyCode::Enter => InteractionResult::input_done(),
+                _ => InteractionResult::ignored(),
+            };
         }
-        _ => false,
-    })
+
+        if let Some(widget) = self.active_widget_mut() {
+            let result = widget.on_key(key);
+            if result.handled {
+                return self.process_child_result(result);
+            }
+        }
+
+        match key.code {
+            KeyCode::Enter | KeyCode::Tab => {
+                self.process_child_result(InteractionResult::input_done())
+            }
+            KeyCode::BackTab => {
+                if self.active_widget > 0 {
+                    self.active_widget -= 1;
+                    InteractionResult::handled()
+                } else if self.previous_iteration() {
+                    InteractionResult::handled()
+                } else {
+                    InteractionResult::ignored()
+                }
+            }
+            _ => InteractionResult::ignored(),
+        }
+    }
+
+    fn on_pointer(&mut self, _event: PointerEvent) -> InteractionResult {
+        InteractionResult::ignored()
+    }
+
+    fn on_text_action(&mut self, action: TextAction) -> InteractionResult {
+        let Some(widget) = self.active_widget_mut() else {
+            return InteractionResult::ignored();
+        };
+        let result = widget.on_text_action(action);
+        if result.handled {
+            self.process_child_result(result)
+        } else {
+            InteractionResult::ignored()
+        }
+    }
+
+    fn completion(&mut self) -> Option<CompletionState<'_>> {
+        self.active_widget_mut()?.completion()
+    }
+
+    fn cursor_pos(&self) -> Option<CursorPos> {
+        let widget = self.active_widget_ref()?;
+        let local = widget.cursor_pos()?;
+        let row_offset = self.line_prefix_rows() as u16;
+        Some(CursorPos {
+            col: local.col.saturating_add(2),
+            row: local.row.saturating_add(row_offset),
+        })
+    }
+
+    fn value(&self) -> Option<Value> {
+        Some(Value::List(self.rows.clone()))
+    }
+
+    fn set_value(&mut self, value: Value) {
+        self.rows = match value {
+            Value::List(rows) => rows,
+            Value::Object(map) => match map.get("rows") {
+                Some(Value::List(rows)) => rows.clone(),
+                _ => Vec::new(),
+            },
+            Value::None => Vec::new(),
+            scalar => vec![scalar],
+        };
+        self.active_index = self.rows.len().min(self.max_active_index());
+        self.load_current_row();
+        let _ = self.sync_widgets_from_scope();
+    }
+
+    fn sync_from_store(&mut self, store: &ValueStore) -> bool {
+        let changed = self.refresh_sources(store);
+        let child_changed = self.sync_widgets_from_scope();
+        changed || child_changed
+    }
+
+    fn validate(&self, mode: ValidationMode) -> Result<(), String> {
+        for widget in &self.widgets {
+            widget.validate(mode)?;
+        }
+        Ok(())
+    }
+
+    fn task_specs(&self) -> Vec<crate::task::TaskSpec> {
+        self.widgets.iter().flat_map(Node::task_specs).collect()
+    }
+
+    fn task_subscriptions(&self) -> Vec<crate::task::TaskSubscription> {
+        self.widgets
+            .iter()
+            .flat_map(Node::task_subscriptions)
+            .collect()
+    }
 }
 
-fn extract_item_from_row(row: &Value) -> Value {
-    match row {
-        Value::Object(map) => map.get("item").cloned().unwrap_or(Value::None),
-        _ => Value::None,
+fn clone_store(store: &ValueStore) -> ValueStore {
+    let mut out = ValueStore::new();
+    for (key, value) in store.iter() {
+        let _ = out.set(key.to_string(), value.clone());
     }
+    out
+}
+
+fn read_count_value(value: &Value) -> Option<usize> {
+    match value {
+        Value::Number(number) => Some((*number).max(0.0) as usize),
+        Value::Text(text) => text.trim().parse::<usize>().ok(),
+        Value::List(items) => Some(items.len()),
+        _ => None,
+    }
+}
+
+fn empty_row() -> Value {
+    Value::Object(IndexMap::new())
+}
+
+fn empty_line(text: &str) -> SpanLine {
+    vec![Span::styled(text.to_string(), Style::new().color(Color::DarkGrey)).no_wrap()]
 }
 
 fn display_scalar_or_json(value: &Value) -> String {
-    if let Some(scalar) = value.to_text_scalar() {
-        return scalar;
-    }
-    match value {
-        Value::None => "null".to_string(),
-        Value::List(_) | Value::Object(_) => {
-            let json = value.to_json();
-            truncate_text(json.as_str(), 40)
-        }
-        _ => String::new(),
-    }
+    value.to_text_scalar().unwrap_or_else(|| value.to_json())
 }
 
-fn truncate_text(input: &str, max_chars: usize) -> String {
-    let count = input.chars().count();
-    if count <= max_chars {
-        return input.to_string();
+fn localize_row_target(target: &ValueTarget) -> Option<ValueTarget> {
+    match target {
+        ValueTarget::Node(root) if !root.as_str().starts_with('_') => Some(ValueTarget::path(
+            "_row".to_string(),
+            ValuePath::new(vec![PathSegment::Key(root.to_string())]),
+        )),
+        ValueTarget::Path { root, path } if root.as_str() == "_row" => {
+            Some(ValueTarget::path("_row".to_string(), path.clone()))
+        }
+        _ => None,
     }
-    let mut out = input
-        .chars()
-        .take(max_chars.saturating_sub(1))
-        .collect::<String>();
-    out.push('…');
-    out
 }

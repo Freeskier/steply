@@ -1,4 +1,4 @@
-use crate::core::NodeId;
+use crate::core::value_path::ValueTarget;
 use crate::task::spec::TaskId;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -17,8 +17,8 @@ pub enum TaskTrigger {
     OnSubmitAfter {
         step_id: String,
     },
-    OnNodeValueChanged {
-        node_id: NodeId,
+    OnStoreValueChanged {
+        selector: ValueTarget,
         debounce_ms: u64,
     },
     OnInterval {
@@ -48,15 +48,15 @@ impl TaskSubscription {
         Self::new(task_id, TaskTrigger::Manual)
     }
 
-    pub fn on_node_value_changed(
+    pub fn on_store_value_changed(
         task_id: impl Into<TaskId>,
-        node_id: impl Into<NodeId>,
+        selector: ValueTarget,
         debounce_ms: u64,
     ) -> Self {
         Self::new(
             task_id,
-            TaskTrigger::OnNodeValueChanged {
-                node_id: node_id.into(),
+            TaskTrigger::OnStoreValueChanged {
+                selector,
                 debounce_ms,
             },
         )

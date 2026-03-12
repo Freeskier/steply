@@ -23,7 +23,10 @@ pub fn default_option_renderer() -> OptionRenderer {
     Arc::new(default_render_option_lines)
 }
 
-fn default_render_option_lines(item: &SelectItem, state: SelectItemRenderState) -> Vec<SpanLine> {
+pub fn default_render_option_lines(
+    item: &SelectItem,
+    state: SelectItemRenderState,
+) -> Vec<SpanLine> {
     let base_style = state.base_style;
     let highlight_style = state.highlight_style;
 

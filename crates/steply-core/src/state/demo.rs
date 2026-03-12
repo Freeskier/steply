@@ -2,7 +2,7 @@ use crate::core::value::Value;
 use crate::core::value_path::ValueTarget;
 use crate::state::flow::Flow;
 use crate::state::step::{Step, StepNavigation};
-use crate::task::{TaskAssign, TaskParse, TaskSpec, TaskSubscription, TaskTrigger};
+use crate::task::{TaskSpec, TaskSubscription, TaskTrigger};
 use crate::widgets::components::calendar::{Calendar, CalendarMode};
 use crate::widgets::components::file_browser::FileBrowserInput;
 use crate::widgets::components::object_editor::{InsertType, ObjectEditor};
@@ -94,19 +94,20 @@ fn step_repeater() -> Step {
                 Node::Component(Box::new(
                     Repeater::new("rep_accounts", "Accounts setup")
                         .with_layout(RepeaterLayout::Stacked)
-                        .with_header_template("configuring [{index} of {total}] for {item}:")
+                        .with_header_template("configuring [{index} of {count}] for {item}:")
                         .with_items(vec![
                             Value::Text("Kasia".into()),
                             Value::Text("Jas".into()),
                             Value::Text("Zosia".into()),
                         ])
-                        .field("path", "Path", TextInput::new)
-                        .field("password", "Password", |id, label| {
-                            TextInput::new(id, label).with_mode(TextMode::Password)
-                        })
-                        .field("priority", "Priority", |id, label| {
-                            SliderInput::new(id, label, 0, 100).with_step(5)
-                        }),
+                        .with_widget(Node::Input(Box::new(TextInput::new("rep_path", "Path"))))
+                        .with_widget(Node::Input(Box::new(
+                            TextInput::new("rep_password", "Password")
+                                .with_mode(TextMode::Password),
+                        )))
+                        .with_widget(Node::Input(Box::new(
+                            SliderInput::new("rep_priority", "Priority", 0, 100).with_step(5),
+                        ))),
                 )),
                 &["tbl_rep_preview"],
             ),
@@ -797,8 +798,11 @@ print(json.dumps(out))
             ],
         )
         .with_timeout_ms(12_000)
-        .with_parse(TaskParse::Json)
-        .with_assign(TaskAssign::SetValue("poke_results".into())),
+        .with_writes(vec![WriteBinding {
+            target: ValueTarget::parse_selector("poke_results")
+                .unwrap_or_else(|_| ValueTarget::node("poke_results")),
+            expr: WriteExpr::ScopeRef("stdout".into()),
+        }]),
 
         TaskSpec::exec(
             "tlog_prepare",
@@ -901,7 +905,11 @@ echo '[verify] All checks passed.'
     ];
 
     let subs = vec![
-        TaskSubscription::on_node_value_changed("poke_search", "poke_query_value", 250),
+        TaskSubscription::on_store_value_changed(
+            "poke_search",
+            crate::core::value_path::ValueTarget::node("poke_query_value"),
+            250,
+        ),
         TaskSubscription::new(
             "tlog_prepare",
             TaskTrigger::OnStepEnter {

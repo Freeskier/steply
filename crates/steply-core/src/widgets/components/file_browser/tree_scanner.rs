@@ -14,6 +14,7 @@ pub(super) struct TreeBuildRequest {
     pub seq: u64,
     pub browse_dir: PathBuf,
     pub show_parent_option: bool,
+    pub selected_paths: Vec<PathBuf>,
     pub result: Arc<ScanResult>,
 }
 
@@ -72,6 +73,7 @@ fn worker(rx: Receiver<TreeBuildRequest>, tx: Sender<TreeBuildResult>) {
             req.browse_dir.as_path(),
             req.show_parent_option,
             req.result.as_ref(),
+            req.selected_paths.as_slice(),
         );
 
         let _ = tx.send(TreeBuildResult {

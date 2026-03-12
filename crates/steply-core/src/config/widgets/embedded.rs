@@ -10,7 +10,6 @@ use crate::widgets::traits::InteractiveNode;
 use super::super::doc_model::{WidgetCategory, WidgetDoc, WidgetDocDescriptor, build_widget_doc};
 use super::super::model::{self, EmbeddedWidgetDef};
 use super::super::parse::parse_text_mode;
-use crate::widgets::components::repeater::RepeaterFieldFactory;
 
 type EmbeddedNodeFactory = Arc<dyn Fn(String, String) -> Box<dyn InteractiveNode> + Send + Sync>;
 
@@ -113,12 +112,6 @@ pub(super) fn embedded_widget_registry() -> &'static [EmbeddedWidgetRegistryEntr
 pub(super) fn compile_table_embedded_factory(
     def: EmbeddedWidgetDef,
 ) -> Result<CellFactory, String> {
-    compile_embedded_factory(def)
-}
-
-pub(super) fn compile_repeater_embedded_factory(
-    def: EmbeddedWidgetDef,
-) -> Result<RepeaterFieldFactory, String> {
     compile_embedded_factory(def)
 }
 

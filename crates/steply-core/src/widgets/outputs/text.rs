@@ -1,3 +1,4 @@
+use crate::core::value::Value;
 use crate::widgets::traits::{DrawOutput, Drawable, OutputNode, RenderContext};
 
 pub struct TextOutput {
@@ -24,4 +25,12 @@ impl Drawable for TextOutput {
     }
 }
 
-impl OutputNode for TextOutput {}
+impl OutputNode for TextOutput {
+    fn value(&self) -> Option<Value> {
+        Some(Value::Text(self.text.clone()))
+    }
+
+    fn set_value(&mut self, value: Value) {
+        self.text = value.to_text_scalar().unwrap_or_else(|| value.to_json());
+    }
+}

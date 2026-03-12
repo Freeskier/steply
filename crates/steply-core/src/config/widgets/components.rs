@@ -5,7 +5,7 @@ use crate::widgets::{
         command_runner::CommandRunner,
         file_browser::FileBrowserInput,
         object_editor::ObjectEditor,
-        repeater::Repeater,
+        repeater::{Repeater, RepeaterIterationMode},
         select_list::{SelectItem, SelectList},
         snippet::Snippet,
         table::Table,
@@ -15,19 +15,20 @@ use crate::widgets::{
     node::Node,
 };
 
+use super::super::binding_compile::compile_read_binding_value;
 use super::super::model::{
-    CommandRunnerCommandDef, RepeaterFieldDef, SelectListOptionDef, TableColumnDef, TreeNodeDef,
-    ValidatorDef, WidgetDef,
+    CommandRunnerCommandDef, SelectListOptionDef, TableColumnDef, TreeNodeDef, ValidatorDef,
+    WidgetDef,
 };
 use super::super::parse::{
-    parse_browser_mode, parse_calendar_mode, parse_display_mode, parse_on_error,
-    parse_repeater_layout, parse_run_mode, parse_select_mode, parse_spinner_style,
-    parse_table_style,
+    parse_browser_mode, parse_calendar_mode, parse_display_mode, parse_file_browser_entry_filter,
+    parse_file_browser_selection_mode, parse_on_error, parse_repeater_layout, parse_run_mode,
+    parse_select_mode, parse_spinner_style, parse_table_style,
 };
 use super::super::utils::yaml_value_to_value;
 use super::common::with_required_and_validators;
 use super::compile_widget;
-use super::embedded::{compile_repeater_embedded_factory, compile_table_embedded_factory};
+use super::embedded::compile_table_embedded_factory;
 
 #[allow(clippy::too_many_arguments)]
 pub(super) fn compile_select_list(
@@ -114,7 +115,7 @@ pub(super) fn compile_command_runner(
         .with_on_error(parse_on_error(on_error.as_deref())?)
         .with_advance_on_success(advance_on_success.unwrap_or(false));
     for command in commands {
-        runner = runner.command(command.label, command.program, command.args);
+        runner = runner.command_with_env(command.label, command.program, command.args, command.env);
     }
     if let Some(timeout_ms) = timeout_ms {
         runner = runner.with_timeout_ms(timeout_ms);
@@ -133,7 +134,10 @@ pub(super) fn compile_file_browser(
     id: String,
     label: String,
     browser_mode: Option<String>,
+    selection_mode: Option<String>,
+    entry_filter: Option<String>,
     display_mode: Option<String>,
+    value_mode: Option<String>,
     cwd: Option<String>,
     recursive: Option<bool>,
     hide_hidden: Option<bool>,
@@ -143,9 +147,17 @@ pub(super) fn compile_file_browser(
     extra_validators: Vec<ValidatorDef>,
 ) -> Result<Node, String> {
     let mode = parse_browser_mode(browser_mode.as_deref())?;
-    let mut widget = FileBrowserInput::new(id, label).with_browser_mode(mode);
+    let selection_mode = parse_file_browser_selection_mode(selection_mode.as_deref())?;
+    let entry_filter = parse_file_browser_entry_filter(entry_filter.as_deref())?;
+    let mut widget = FileBrowserInput::new(id, label)
+        .with_browser_mode(mode)
+        .with_entry_filter(entry_filter)
+        .with_selection_mode(selection_mode);
     if let Some(display_mode) = display_mode {
         widget = widget.with_display_mode(parse_display_mode(display_mode.as_str())?);
+    }
+    if let Some(value_mode) = value_mode {
+        widget = widget.with_value_mode(parse_display_mode(value_mode.as_str())?);
     }
     if let Some(cwd) = cwd {
         widget = widget.with_cwd(cwd);
@@ -164,6 +176,7 @@ pub(super) fn compile_file_browser(
         widget = widget.with_max_visible(max_visible);
     }
     widget = with_required_and_validators(widget, required, extra_validators);
+    widget.initialize_open();
     Ok(Node::Component(Box::new(widget)))
 }
 
@@ -256,16 +269,19 @@ pub(super) fn compile_table(
 pub(super) fn compile_repeater(
     id: String,
     label: String,
+    mode: Option<String>,
     layout: Option<String>,
     show_label: Option<bool>,
     show_progress: Option<bool>,
     header_template: Option<String>,
     item_label_path: Option<String>,
-    items: Vec<serde_yaml::Value>,
-    fields: Vec<RepeaterFieldDef>,
+    items: Option<serde_yaml::Value>,
+    count: Option<serde_yaml::Value>,
+    widgets: Vec<WidgetDef>,
 ) -> Result<Node, String> {
-    let mut widget =
-        Repeater::new(id, label).with_layout(parse_repeater_layout(layout.as_deref())?);
+    let mut widget = Repeater::new(id, label)
+        .with_layout(parse_repeater_layout(layout.as_deref())?)
+        .with_mode(parse_repeater_mode(mode.as_deref())?);
     if let Some(show_label) = show_label {
         widget = widget.with_show_label(show_label);
     }
@@ -280,16 +296,24 @@ pub(super) fn compile_repeater(
             .map_err(|err| format!("invalid repeater item_label_path: {err}"))?;
         widget = widget.with_item_label_path(path);
     }
-    if !items.is_empty() {
-        let parsed_items = items
-            .into_iter()
-            .map(|item| yaml_value_to_value(&item))
-            .collect::<Result<Vec<_>, _>>()?;
-        widget = widget.with_items(parsed_items);
+    if let Some(items) = items {
+        widget = widget.with_items_binding(compile_read_binding_value(&items, true)?);
     }
-    for field in fields {
-        let make_input = compile_repeater_embedded_factory(field.widget)?;
-        widget = widget.field_boxed(field.key, field.label, make_input);
+    if let Some(count) = count {
+        widget = widget.with_count_binding(compile_read_binding_value(&count, true)?);
+    }
+    for child in widgets {
+        widget = widget.with_widget(compile_widget(child)?);
     }
     Ok(Node::Component(Box::new(widget)))
+}
+
+fn parse_repeater_mode(raw: Option<&str>) -> Result<RepeaterIterationMode, String> {
+    match raw.unwrap_or("fixed").trim() {
+        "fixed" => Ok(RepeaterIterationMode::Fixed),
+        "append" => Ok(RepeaterIterationMode::Append),
+        other => Err(format!(
+            "invalid repeater mode '{other}', expected 'fixed' or 'append'"
+        )),
+    }
 }

@@ -2,35 +2,34 @@ use std::io::{BufRead, BufReader, Read};
 use std::process::{Command, Stdio};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
-use steply_core::core::value::Value;
 use steply_core::task::execution::{TaskCompletion, TaskInvocation};
-use steply_core::task::spec::{TaskKind, TaskParse};
+use steply_core::task::spec::TaskKind;
 
 pub fn execute_invocation(invocation: TaskInvocation) -> TaskCompletion {
     let task_id = invocation.spec.id.clone();
-    let assign = invocation.spec.assign.clone();
     let concurrency_policy = invocation.spec.concurrency_policy;
 
     let TaskKind::Exec {
         program,
         args,
+        env,
         timeout_ms,
     } = invocation.spec.kind.clone();
 
-    let mut child = match Command::new(program.as_str())
+    let mut command = Command::new(program.as_str());
+    command
         .args(args.as_slice())
+        .envs(env.iter())
         .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-    {
+        .stderr(Stdio::piped());
+
+    let mut child = match command.spawn() {
         Ok(child) => child,
         Err(err) => {
             return TaskCompletion {
                 task_id,
                 run_id: invocation.run_id,
-                assign,
                 concurrency_policy,
-                value: None,
                 status_code: None,
                 stdout: String::new(),
                 stderr: String::new(),
@@ -74,9 +73,7 @@ pub fn execute_invocation(invocation: TaskInvocation) -> TaskCompletion {
             return TaskCompletion {
                 task_id,
                 run_id: invocation.run_id,
-                assign,
                 concurrency_policy,
-                value: None,
                 status_code: None,
                 stdout,
                 stderr,
@@ -96,9 +93,7 @@ pub fn execute_invocation(invocation: TaskInvocation) -> TaskCompletion {
                     return TaskCompletion {
                         task_id,
                         run_id: invocation.run_id,
-                        assign,
                         concurrency_policy,
-                        value: None,
                         status_code: None,
                         stdout,
                         stderr,
@@ -116,9 +111,7 @@ pub fn execute_invocation(invocation: TaskInvocation) -> TaskCompletion {
                 return TaskCompletion {
                     task_id,
                     run_id: invocation.run_id,
-                    assign,
                     concurrency_policy,
-                    value: None,
                     status_code: None,
                     stdout,
                     stderr,
@@ -134,12 +127,6 @@ pub fn execute_invocation(invocation: TaskInvocation) -> TaskCompletion {
 
     let status_code = status.code();
 
-    let parse_result = parse_value(invocation.spec.parse, stdout.as_str());
-    let (value, parse_error) = match parse_result {
-        Ok(value) => (Some(value), None),
-        Err(err) => (None, Some(err)),
-    };
-
     let status_error = if status.success() {
         None
     } else {
@@ -153,13 +140,11 @@ pub fn execute_invocation(invocation: TaskInvocation) -> TaskCompletion {
     TaskCompletion {
         task_id,
         run_id: invocation.run_id,
-        assign,
         concurrency_policy,
-        value,
         status_code,
         stdout,
         stderr,
-        error: status_error.or(parse_error),
+        error: status_error,
         cancelled: false,
     }
 }
@@ -171,57 +156,6 @@ fn take_output(handle: &mut Option<JoinHandle<String>>) -> String {
         .unwrap_or_default()
 }
 
-fn parse_value(parse: TaskParse, stdout: &str) -> Result<Value, String> {
-    let normalized = normalize_text(stdout);
-
-    match parse {
-        TaskParse::Number => parse_number(normalized),
-        TaskParse::RawText => Ok(Value::Text(normalized.to_string())),
-        TaskParse::Json => Value::from_json(normalized),
-        TaskParse::Regex { pattern, group } => parse_regex(normalized, &pattern, group),
-        TaskParse::Lines => {
-            let lines = normalized
-                .lines()
-                .map(str::trim)
-                .filter(|line| !line.is_empty())
-                .map(|line| Value::Text(line.to_string()))
-                .collect::<Vec<_>>();
-            Ok(Value::List(lines))
-        }
-    }
-}
-
 fn normalize_text(value: &str) -> &str {
     value.trim_end_matches(['\r', '\n'])
-}
-
-fn parse_number(value: &str) -> Result<Value, String> {
-    let trimmed = value.trim();
-    if trimmed.is_empty() {
-        return Err("number parse error: empty output".to_string());
-    }
-
-    let first = trimmed
-        .split_whitespace()
-        .next()
-        .unwrap_or_default()
-        .trim_matches('%');
-
-    if let Ok(number) = first.parse::<f64>() {
-        return Ok(Value::Number(number));
-    }
-
-    Err(format!("number parse error: '{first}'"))
-}
-
-fn parse_regex(value: &str, pattern: &str, group: usize) -> Result<Value, String> {
-    let re = regex::Regex::new(pattern).map_err(|e| format!("bad regex: {e}"))?;
-    let caps = re
-        .captures(value)
-        .ok_or_else(|| format!("no match for /{pattern}/"))?;
-    let matched = caps
-        .get(group)
-        .ok_or_else(|| format!("no group {group} in match"))?
-        .as_str();
-    Ok(Value::Text(matched.to_string()))
 }

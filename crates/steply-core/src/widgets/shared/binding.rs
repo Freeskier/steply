@@ -75,7 +75,7 @@ pub enum ReadBinding {
 }
 
 impl ReadBinding {
-    fn resolve(&self, store: &ValueStore) -> Option<Value> {
+    pub(crate) fn resolve(&self, store: &ValueStore) -> Option<Value> {
         match self {
             Self::Selector(target) => store.get_target(target).cloned(),
             Self::Literal(value) => Some(value.clone()),
@@ -132,7 +132,7 @@ pub enum WriteExpr {
 }
 
 impl WriteExpr {
-    fn resolve(&self, scope: &Value) -> Value {
+    pub fn resolve_in_scope(&self, scope: &Value) -> Value {
         match self {
             Self::ScopeRef(path) => resolve_scope_ref(scope, path).unwrap_or(Value::None),
             Self::Template(template) => Value::Text(render_template(scope, template)),
@@ -147,6 +147,10 @@ impl WriteExpr {
                 Value::List(items.iter().map(|item| item.resolve(scope)).collect())
             }
         }
+    }
+
+    fn resolve(&self, scope: &Value) -> Value {
+        self.resolve_in_scope(scope)
     }
 }
 
@@ -223,7 +227,8 @@ impl BoundInteractiveNode {
             &mut self.last_resolved_read,
             self.binding.interactive_read_mode(),
         );
-        options_changed || value_changed
+        let inner_changed = self.inner.sync_from_store(store);
+        options_changed || value_changed || inner_changed
     }
 }
 
@@ -261,7 +266,8 @@ impl BoundComponentNode {
             &mut self.last_resolved_read,
             self.binding.interactive_read_mode(),
         );
-        options_changed || value_changed
+        let inner_changed = self.inner.sync_from_store(store);
+        options_changed || value_changed || inner_changed
     }
 }
 
@@ -575,14 +581,21 @@ impl OutputNode for BoundOutputNode {
     }
 
     fn sync_from_store(&mut self, store: &ValueStore) -> bool {
-        let Some(value) = self.binding.read_value(store) else {
-            return false;
+        let binding_changed = if let Some(value) = self.binding.read_value(store) {
+            if self.inner.value().as_ref() == Some(&value) {
+                false
+            } else {
+                self.inner.set_value(value);
+                true
+            }
+        } else {
+            false
         };
-        if self.inner.value().as_ref() == Some(&value) {
-            return false;
+        let inner_changed = self.inner.sync_from_store(store);
+        if binding_changed || inner_changed {
+            return true;
         }
-        self.inner.set_value(value);
-        true
+        false
     }
 
     fn on_pointer(&mut self, event: PointerEvent) -> InteractionResult {

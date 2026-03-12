@@ -164,9 +164,7 @@ fn rejected_completion(invocation: TaskInvocation, reason: &str) -> TaskCompleti
     TaskCompletion {
         task_id: invocation.spec.id,
         run_id: invocation.run_id,
-        assign: invocation.spec.assign,
         concurrency_policy: invocation.spec.concurrency_policy,
-        value: None,
         status_code: None,
         stdout: String::new(),
         stderr: String::new(),

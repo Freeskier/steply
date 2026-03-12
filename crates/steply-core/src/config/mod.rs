@@ -1,4 +1,5 @@
 mod assemble;
+mod binding_compile;
 mod doc_model;
 mod error;
 mod model;

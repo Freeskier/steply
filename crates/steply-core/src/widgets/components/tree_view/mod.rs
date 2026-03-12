@@ -27,6 +27,7 @@ use state::{rebuild_visible, rebuild_visible_filtered};
 pub struct TreeItemRenderState {
     pub focused: bool,
     pub active: bool,
+    pub selected: bool,
     pub has_children: bool,
     pub expanded: bool,
     pub loading: bool,
@@ -43,6 +44,8 @@ pub trait TreeItemLabel: Send + 'static {
     fn render_spans(&self, state: TreeItemRenderState) -> Vec<Span> {
         let style = if state.focused && state.active {
             Style::new().color(Color::Cyan).bold()
+        } else if state.selected {
+            Style::new().color(Color::Yellow).bold()
         } else if state.has_children {
             Style::new().color(Color::Blue).bold()
         } else {
@@ -403,6 +406,7 @@ impl<T: TreeItemLabel> TreeView<T> {
         line.extend(node.item.render_spans(TreeItemRenderState {
             focused,
             active,
+            selected: false,
             has_children: node.has_children,
             expanded: node.expanded,
             loading,

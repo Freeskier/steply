@@ -268,7 +268,7 @@ fn collect_known_task_ids(spec: &ConfigSpec) -> Result<HashSet<String>, String> 
 fn validate_task_references(
     spec: &ConfigSpec,
     known_task_ids: &HashSet<String>,
-    known_node_ids: &HashSet<String>,
+    _known_node_ids: &HashSet<String>,
 ) -> Result<(), String> {
     for subscription in &spec.subscriptions {
         if !known_task_ids.contains(subscription.task.as_str()) {
@@ -280,12 +280,22 @@ fn validate_task_references(
 
         match &subscription.trigger {
             SubscriptionTriggerSpec::OnInput { field_ref, .. } => {
-                utils::validate_selector_root_known(field_ref.as_str(), known_node_ids)?;
+                crate::core::store_refs::parse_store_selector(field_ref.as_str())
+                    .map_err(|err| format!("invalid subscription selector '{field_ref}': {err}"))?;
             }
         }
+    }
 
-        if let Some(target) = &subscription.target {
-            utils::validate_selector_root_known(target.as_str(), known_node_ids)?;
+    for task in &spec.tasks {
+        if let Some(super::model::WriteBindingDef::Selector(target)) = &task.writes {
+            crate::core::store_refs::parse_store_selector(target.as_str())
+                .map_err(|err| format!("invalid task write selector '{target}': {err}"))?;
+        }
+        if let Some(super::model::WriteBindingDef::Map(entries)) = &task.writes {
+            for target in entries.keys() {
+                crate::core::store_refs::parse_store_selector(target.as_str())
+                    .map_err(|err| format!("invalid task write selector '{target}': {err}"))?;
+            }
         }
     }
 

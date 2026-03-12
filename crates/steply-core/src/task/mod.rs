@@ -10,7 +10,7 @@ pub use engine::TaskStartResult;
 pub use execution::{TaskCancelToken, TaskCompletion, TaskInvocation, TaskRequest};
 pub use policy::{ConcurrencyPolicy, RerunPolicy};
 pub use run_state::TaskRunState;
-pub use spec::{TaskAssign, TaskId, TaskKind, TaskParse, TaskSpec};
+pub use spec::{TaskId, TaskKind, TaskSpec};
 pub use subscription::{TaskSubscription, TaskTrigger};
 
 pub use inline::TaskSetupError;

@@ -203,12 +203,14 @@ impl BoundInteractiveNode {
         if before != after {
             result.handled = true;
             result.request_render = true;
-            result.actions.extend(
-                self.binding
-                    .write_changes(after)
-                    .into_iter()
-                    .map(|change| WidgetAction::ValueChanged { change }),
-            );
+            result
+                .actions
+                .extend(self.binding.write_changes(after).into_iter().map(|change| {
+                    WidgetAction::ValueChanged {
+                        source: self.inner.id().into(),
+                        change,
+                    }
+                }));
         }
         result
     }
@@ -247,12 +249,14 @@ impl BoundComponentNode {
         if before != after {
             result.handled = true;
             result.request_render = true;
-            result.actions.extend(
-                self.binding
-                    .write_changes(after)
-                    .into_iter()
-                    .map(|change| WidgetAction::ValueChanged { change }),
-            );
+            result
+                .actions
+                .extend(self.binding.write_changes(after).into_iter().map(|change| {
+                    WidgetAction::ValueChanged {
+                        source: self.inner.id().into(),
+                        change,
+                    }
+                }));
         }
         result
     }
@@ -313,6 +317,10 @@ impl Interactive for BoundInteractiveNode {
 
     fn overlay_placement(&self) -> Option<OverlayPlacement> {
         self.inner.overlay_placement()
+    }
+
+    fn commit_policy(&self) -> crate::state::change::StoreCommitPolicy {
+        self.inner.commit_policy()
     }
 
     fn overlay_open(&mut self, saved_focus_id: Option<String>) -> bool {
@@ -439,6 +447,10 @@ impl Interactive for BoundComponentNode {
 
     fn overlay_placement(&self) -> Option<OverlayPlacement> {
         self.inner.overlay_placement()
+    }
+
+    fn commit_policy(&self) -> crate::state::change::StoreCommitPolicy {
+        self.inner.commit_policy()
     }
 
     fn overlay_open(&mut self, saved_focus_id: Option<String>) -> bool {

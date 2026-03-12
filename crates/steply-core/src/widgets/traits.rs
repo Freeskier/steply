@@ -1,5 +1,6 @@
 use crate::core::value::Value;
 use crate::runtime::event::{SystemEvent, WidgetAction};
+use crate::state::change::StoreCommitPolicy;
 use crate::state::store::ValueStore;
 use crate::task::TaskSpec;
 use crate::terminal::{CursorPos, KeyEvent, PointerEvent, PointerSemantic, TerminalSize};
@@ -416,6 +417,9 @@ pub trait Interactive: Send {
     }
     fn store_sync_policy(&self) -> StoreSyncPolicy {
         StoreSyncPolicy::Always
+    }
+    fn commit_policy(&self) -> StoreCommitPolicy {
+        StoreCommitPolicy::Immediate
     }
 
     fn overlay_placement(&self) -> Option<OverlayPlacement> {

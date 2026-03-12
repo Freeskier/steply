@@ -4,6 +4,7 @@ mod triggering;
 
 use crate::core::value::Value;
 use crate::core::value_path::ValueTarget;
+use crate::state::change::StorePatch;
 use crate::task::{RerunPolicy, TaskId, TaskRequest, TaskSpec, TaskTrigger};
 use crate::time::Instant;
 
@@ -84,5 +85,5 @@ pub trait TaskEngineHost {
 
     fn refresh_current_step_running_status(&mut self);
 
-    fn apply_value_change_target(&mut self, target: ValueTarget, value: Value);
+    fn apply_store_patch(&mut self, patch: StorePatch);
 }

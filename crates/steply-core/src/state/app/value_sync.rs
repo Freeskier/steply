@@ -1,60 +1,52 @@
 use super::AppState;
+use super::transaction::AppliedStorePatch;
 use crate::core::{NodeId, value::Value, value_path::ValueTarget};
+use crate::state::change::{StoreCommitPolicy, StorePatch, StoreTransaction, StoreWriteOrigin};
 use crate::widgets::node::{NodeWalkScope, find_node, walk_nodes_mut};
-use std::collections::HashSet;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum CommitPhase {
+    Live,
+    Submit,
+}
 
 impl AppState {
     pub(super) fn sync_current_step_values_to_store(&mut self) {
-        let changed_targets = self.refresh_current_step_bindings_collect();
-        self.emit_store_change_triggers(changed_targets);
+        let applied = self.refresh_current_step_bindings_for_phase(CommitPhase::Submit);
+        self.emit_store_change_triggers(applied.into_targets());
     }
 
     pub(super) fn refresh_current_step_bindings(&mut self) {
-        let changed_targets = self.refresh_current_step_bindings_collect();
-        self.emit_store_change_triggers(changed_targets);
+        let applied = self.refresh_current_step_bindings_for_phase(CommitPhase::Live);
+        self.emit_store_change_triggers(applied.into_targets());
     }
 
-    fn refresh_current_step_bindings_collect(&mut self) -> Vec<ValueTarget> {
-        let mut commit = BindingCommit::default();
-        self.bootstrap_missing_current_step_value_bindings(&mut commit);
-        self.commit_focused_current_step_writes(&mut commit);
+    pub(super) fn refresh_current_step_bindings_collect_for_live(&mut self) -> AppliedStorePatch {
+        self.refresh_current_step_bindings_for_phase(CommitPhase::Live)
+    }
+
+    fn refresh_current_step_bindings_for_phase(&mut self, phase: CommitPhase) -> AppliedStorePatch {
+        let mut applied = AppliedStorePatch::default();
+
+        let bootstrap_patch = self.bootstrap_missing_current_step_value_bindings();
+        applied.extend(self.apply_store_patch(bootstrap_patch));
+
+        let commit_patch = self.collect_current_step_commit_patch(phase);
+        applied.extend(self.apply_store_transaction(commit_patch));
+
         self.hydrate_current_step_from_store();
-        self.propagate_current_step_derived_writes(&mut commit);
+        applied.extend(self.apply_current_step_derived_writes());
         self.hydrate_current_step_from_store();
-        commit.finish()
+
+        applied
     }
 
     pub(super) fn apply_value_change(&mut self, target: impl Into<NodeId>, value: Value) {
-        self.write_value_direct(ValueTarget::node(target.into()), value);
-    }
-
-    pub(super) fn apply_value_change_target(&mut self, target: ValueTarget, value: Value) {
-        self.write_value_direct(target, value);
-    }
-
-    fn write_value_direct(&mut self, target: ValueTarget, value: Value) {
-        let root = target.root().clone();
-        let direct_target = target.clone();
-        let changed = match self.write_store_target(target, value) {
-            Ok(changed) => changed,
-            Err(err) => {
-                self.runtime
-                    .validation
-                    .set_runtime_step_error(store_write_error_key(root.as_str()), err.to_string());
-                return;
-            }
-        };
-        self.runtime
-            .validation
-            .clear_runtime_step_error(store_write_error_key(root.as_str()).as_str());
-        let mut commit = BindingCommit::default();
-        if changed {
-            commit.record_target(direct_target);
-        }
-        if !self.reconcile_current_step_after_store_change() {
-            commit.extend(self.refresh_current_step_bindings_collect());
-        }
-        self.emit_store_change_triggers(commit.finish());
+        self.apply_system_value_change(
+            ValueTarget::node(target.into()),
+            value,
+            StoreWriteOrigin::System,
+        );
     }
 
     pub(super) fn hydrate_current_step_from_store(&mut self) -> bool {
@@ -74,13 +66,15 @@ impl AppState {
         changed
     }
 
-    fn bootstrap_missing_current_step_value_bindings(&mut self, commit: &mut BindingCommit) {
+    fn bootstrap_missing_current_step_value_bindings(&self) -> StorePatch {
+        let mut patch = StorePatch::new();
         let bindings = self
             .flow
             .current_step()
             .binding_plan
             .direct_value_nodes
             .clone();
+
         for binding in bindings {
             if self.data.store.get_target(&binding.target).is_some() {
                 continue;
@@ -91,126 +85,66 @@ impl AppState {
             else {
                 continue;
             };
-            commit.apply_write(self, binding.target, value);
+            patch.push(
+                binding.target,
+                value,
+                StoreWriteOrigin::DefaultSeed {
+                    node_id: binding.node_id,
+                },
+            );
         }
+
+        patch
     }
 
-    fn commit_focused_current_step_writes(&mut self, commit: &mut BindingCommit) {
-        let Some(focused_id) = self.ui.focus.current_id().map(str::to_string) else {
-            return;
-        };
-        let nodes = self.flow.current_step().nodes.as_slice();
-        let Some(changes) = find_node(nodes, focused_id.as_str()).map(|node| node.write_changes())
-        else {
-            return;
-        };
-        for change in changes {
-            commit.apply_write(self, change.target, change.value);
-        }
-    }
-
-    fn propagate_current_step_derived_writes(&mut self, commit: &mut BindingCommit) {
-        let derived_ids = self
+    fn collect_current_step_commit_patch(&self, phase: CommitPhase) -> StoreTransaction {
+        let mut transaction = StoreTransaction::new();
+        let bindings = self
             .flow
             .current_step()
             .binding_plan
-            .derived_write_nodes
+            .direct_value_nodes
             .clone();
-        for node_id in derived_ids {
+        let focused_id = self.ui.focus.current_id().map(str::to_string);
+
+        for binding in bindings {
+            let should_commit = match phase {
+                CommitPhase::Live => {
+                    binding.commit_policy == StoreCommitPolicy::Immediate
+                        && focused_id.as_deref() == Some(binding.node_id.as_str())
+                }
+                CommitPhase::Submit => matches!(
+                    binding.commit_policy,
+                    StoreCommitPolicy::Immediate | StoreCommitPolicy::OnSubmit
+                ),
+            };
+            if !should_commit {
+                continue;
+            }
+
             let nodes = self.flow.current_step().nodes.as_slice();
-            let Some(changes) = find_node(nodes, node_id.as_str()).map(|node| node.write_changes())
+            let Some(value) =
+                find_node(nodes, binding.node_id.as_str()).and_then(|node| node.value())
             else {
                 continue;
             };
-            let mut node_changed = false;
-            for change in changes {
-                node_changed |= commit.apply_write(self, change.target, change.value);
-            }
-            if node_changed {
-                self.hydrate_current_step_from_store();
-            }
+            let origin = match phase {
+                CommitPhase::Live => StoreWriteOrigin::UserInput {
+                    node_id: binding.node_id,
+                },
+                CommitPhase::Submit => StoreWriteOrigin::StepSubmit {
+                    node_id: binding.node_id,
+                },
+            };
+            transaction.push(binding.target, value, origin);
         }
+
+        transaction
     }
 
-    fn write_store_target(
-        &mut self,
-        target: ValueTarget,
-        value: Value,
-    ) -> Result<bool, crate::state::store::StoreWriteError> {
-        let root = target.root().clone();
-        let before = self.data.store.get(root.as_str()).cloned();
-        self.data.store.set_target(&target, value)?;
-        self.runtime
-            .validation
-            .clear_runtime_step_error(store_write_error_key(root.as_str()).as_str());
-        let updated = self.data.store.get(root.as_str()).cloned();
-        Ok(updated
-            .as_ref()
-            .is_some_and(|updated| before.as_ref() != Some(updated)))
-    }
-
-    fn emit_store_change_triggers(&mut self, targets: Vec<ValueTarget>) {
+    pub(super) fn emit_store_change_triggers(&mut self, targets: Vec<ValueTarget>) {
         for target in targets {
             crate::task::engine::trigger_store_value_changed_tasks(self, &target);
         }
     }
-}
-
-#[derive(Default)]
-struct BindingCommit {
-    changed_targets: Vec<ValueTarget>,
-    seen_targets: HashSet<String>,
-}
-
-impl BindingCommit {
-    fn apply_write(&mut self, state: &mut AppState, target: ValueTarget, value: Value) -> bool {
-        match state.write_store_target(target.clone(), value) {
-            Ok(changed) => {
-                if changed {
-                    self.record_target(target);
-                }
-                changed
-            }
-            Err(err) => {
-                let root = err_root_key(&err);
-                state
-                    .runtime
-                    .validation
-                    .set_runtime_step_error(store_write_error_key(root.as_str()), err.to_string());
-                false
-            }
-        }
-    }
-
-    fn record_target(&mut self, target: ValueTarget) {
-        let selector = target.to_selector();
-        if self.seen_targets.insert(selector) {
-            self.changed_targets.push(target);
-        }
-    }
-
-    fn extend(&mut self, targets: Vec<ValueTarget>) {
-        for target in targets {
-            self.record_target(target);
-        }
-    }
-
-    fn finish(self) -> Vec<ValueTarget> {
-        self.changed_targets
-    }
-}
-
-fn err_root_key(err: &crate::state::store::StoreWriteError) -> String {
-    match err {
-        crate::state::store::StoreWriteError::RootTypeConflict { root, .. } => root.clone(),
-        crate::state::store::StoreWriteError::PathTypeConflict { target, .. } => {
-            ValueTarget::parse_selector(target)
-                .map(|target| target.root().to_string())
-                .unwrap_or_else(|_| target.clone())
-        }
-    }
-}
-
-fn store_write_error_key(root: &str) -> String {
-    format!("store:{root}")
 }

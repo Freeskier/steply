@@ -23,9 +23,9 @@ impl<'a> EffectDispatcher<'a> {
 
     pub(super) fn handle_action(&mut self, action: WidgetAction) -> InteractionResult {
         match action {
-            WidgetAction::ValueChanged { change } => {
+            WidgetAction::ValueChanged { source, change } => {
                 self.state
-                    .apply_value_change_target(change.target, change.value);
+                    .apply_user_value_change(source.to_string(), change.target, change.value);
                 self.state.clear_completion_session();
                 self.state.clear_step_errors();
                 InteractionResult::handled()

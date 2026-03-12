@@ -1,3 +1,4 @@
+use crate::state::change::collect_store_ownership;
 use crate::state::flow::Flow;
 use crate::task::{TaskSpec, collect_inline_tasks_from_flow, validate_task_id_collisions};
 
@@ -25,6 +26,8 @@ impl AppState {
             pending_back_confirm: None,
             pending_exit_confirm: None,
         };
+        state.runtime.store_ownership =
+            collect_store_ownership(&state.flow, state.runtime.task_specs.values().cloned());
         if state.flow.is_empty() {
             state.should_exit = true;
         } else {

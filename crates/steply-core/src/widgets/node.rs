@@ -1,6 +1,7 @@
 use crate::core::value::Value;
 use crate::runtime::event::SystemEvent;
 use crate::runtime::event::ValueChange;
+use crate::state::change::StoreCommitPolicy;
 use crate::state::store::ValueStore;
 use crate::task::TaskSpec;
 use crate::terminal::{CursorPos, KeyEvent, PointerEvent};
@@ -186,6 +187,12 @@ impl Node {
         } else {
             None
         }
+    }
+
+    pub fn commit_policy(&self) -> StoreCommitPolicy {
+        self.interactive_ref()
+            .map(|widget| widget.commit_policy())
+            .unwrap_or(StoreCommitPolicy::Immediate)
     }
 
     pub fn is_focusable(&self) -> bool {

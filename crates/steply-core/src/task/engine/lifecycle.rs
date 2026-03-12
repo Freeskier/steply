@@ -1,4 +1,5 @@
 use super::{TaskEngineHost, TaskStartResult};
+use crate::state::change::{StorePatch, StoreWriteOrigin};
 use crate::task::{ConcurrencyPolicy, TaskCompletion, TaskRequest};
 use crate::time::Instant;
 
@@ -109,9 +110,19 @@ pub fn complete_task_run(host: &mut impl TaskEngineHost, completion: TaskComplet
     if completion.error.is_none() {
         let scope = completion.scope_value();
         if let Some(spec) = host.find_task_spec(&completion.task_id) {
+            let mut patch = StorePatch::new();
             for binding in spec.writes {
                 let value = binding.expr.resolve_in_scope(&scope);
-                host.apply_value_change_target(binding.target, value);
+                patch.push(
+                    binding.target,
+                    value,
+                    StoreWriteOrigin::TaskResult {
+                        task_id: completion.task_id.clone(),
+                    },
+                );
+            }
+            if !patch.is_empty() {
+                host.apply_store_patch(patch);
             }
         }
     }

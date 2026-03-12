@@ -413,9 +413,9 @@ impl Repeater {
                 WidgetAction::InputDone => {
                     should_advance = true;
                 }
-                WidgetAction::ValueChanged { change } => {
+                WidgetAction::ValueChanged { source, change } => {
                     if !self.apply_local_change(change.clone()) {
-                        retained.push(WidgetAction::ValueChanged { change });
+                        retained.push(WidgetAction::ValueChanged { source, change });
                     }
                 }
                 other => retained.push(other),

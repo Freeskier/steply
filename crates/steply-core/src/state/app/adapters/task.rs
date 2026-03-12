@@ -2,6 +2,7 @@ use crate::core::value::Value;
 use crate::runtime::event::{AppEvent, SystemEvent};
 use crate::runtime::scheduler::SchedulerCommand;
 use crate::state::app::AppState;
+use crate::state::change::StorePatch;
 use crate::state::step::StepStatus;
 use crate::task::engine::{TaskEngineHost, TaskStartResult};
 use crate::task::{TaskCancelToken, TaskId, TaskInvocation, TaskKind, TaskRequest, TaskSpec};
@@ -506,11 +507,11 @@ impl TaskEngineHost for AppState {
         self.refresh_current_step_running_status_internal();
     }
 
-    fn apply_value_change_target(
-        &mut self,
-        target: crate::core::value_path::ValueTarget,
-        value: Value,
-    ) {
-        self.apply_value_change_target(target, value);
+    fn apply_store_patch(&mut self, patch: StorePatch) {
+        let mut applied = self.apply_store_patch(patch);
+        if !self.reconcile_current_step_after_store_change() {
+            applied.extend(self.refresh_current_step_bindings_collect_for_live());
+        }
+        self.emit_store_change_triggers(applied.into_targets());
     }
 }

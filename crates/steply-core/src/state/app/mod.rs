@@ -116,6 +116,7 @@ impl AppState {
 }
 
 mod adapters;
+mod derived;
 mod effects;
 mod exit;
 mod flow;
@@ -124,5 +125,6 @@ mod lifecycle;
 mod overlay_access;
 mod query;
 mod state;
+mod transaction;
 mod validation_runtime;
 mod value_sync;

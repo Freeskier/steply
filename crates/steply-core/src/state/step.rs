@@ -1,6 +1,7 @@
 use crate::core::store_refs::{parse_store_selector, template_expressions};
 use crate::core::value::Value;
 use crate::core::value_path::{PathSegment, ValueTarget};
+use crate::state::change::StoreCommitPolicy;
 use crate::state::store::ValueStore;
 use crate::state::validation::{StepContext, StepIssue, StepValidator};
 use crate::widgets::node::{Component, Node, NodeWalkScope, walk_nodes};
@@ -45,13 +46,20 @@ pub struct Step {
 #[derive(Debug, Clone, Default)]
 pub struct StepBindingPlan {
     pub direct_value_nodes: Vec<StepDirectValueBinding>,
-    pub derived_write_nodes: Vec<String>,
+    pub derived_writers: Vec<StepDerivedBindingWriter>,
 }
 
 #[derive(Debug, Clone)]
 pub struct StepDirectValueBinding {
     pub node_id: String,
     pub target: ValueTarget,
+    pub commit_policy: StoreCommitPolicy,
+}
+
+#[derive(Debug, Clone)]
+pub struct StepDerivedBindingWriter {
+    pub node_id: String,
+    pub write_targets: Vec<ValueTarget>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -265,6 +273,7 @@ struct BindingNodeInfo {
     read_selectors: Vec<ValueTarget>,
     write_targets: Vec<ValueTarget>,
     derived_writer: bool,
+    commit_policy: StoreCommitPolicy,
 }
 
 impl StepBindingPlan {
@@ -276,13 +285,14 @@ impl StepBindingPlan {
                 Some(StepDirectValueBinding {
                     node_id: info.node_id.clone(),
                     target: info.direct_value_target.clone()?,
+                    commit_policy: info.commit_policy,
                 })
             })
             .collect();
-        let derived_write_nodes = topological_derived_writers(infos.as_slice());
+        let derived_writers = topological_derived_writers(infos.as_slice());
         Self {
             direct_value_nodes,
-            derived_write_nodes,
+            derived_writers,
         }
     }
 }
@@ -305,6 +315,7 @@ fn collect_binding_node_infos(nodes: &[Node]) -> Vec<BindingNodeInfo> {
             derived_writer: binding.value.is_none()
                 && binding.reads.is_some()
                 && !binding.writes.is_empty(),
+            commit_policy: node.commit_policy(),
         });
     });
     infos
@@ -345,7 +356,7 @@ fn collect_read_binding_selectors(binding: &ReadBinding, out: &mut Vec<ValueTarg
     }
 }
 
-fn topological_derived_writers(infos: &[BindingNodeInfo]) -> Vec<String> {
+fn topological_derived_writers(infos: &[BindingNodeInfo]) -> Vec<StepDerivedBindingWriter> {
     let derived = infos
         .iter()
         .enumerate()
@@ -384,7 +395,10 @@ fn topological_derived_writers(infos: &[BindingNodeInfo]) -> Vec<String> {
 
     let mut ordered = Vec::with_capacity(derived.len());
     while let Some(index) = ready.pop_front() {
-        ordered.push(derived[index].1.node_id.clone());
+        ordered.push(StepDerivedBindingWriter {
+            node_id: derived[index].1.node_id.clone(),
+            write_targets: derived[index].1.write_targets.clone(),
+        });
         let mut next = edges[index].clone();
         next.sort_unstable();
         next.dedup();
@@ -404,7 +418,10 @@ fn topological_derived_writers(infos: &[BindingNodeInfo]) -> Vec<String> {
     let mut seen = HashSet::<String>::new();
     for (_, info) in derived {
         if seen.insert(info.node_id.clone()) {
-            fallback.push(info.node_id.clone());
+            fallback.push(StepDerivedBindingWriter {
+                node_id: info.node_id.clone(),
+                write_targets: info.write_targets.clone(),
+            });
         }
     }
     fallback

@@ -48,6 +48,7 @@ fn bind_writes(node: Node, targets: &[&str]) -> Node {
         node,
         StoreBinding {
             value: None,
+            options: None,
             reads: None,
             writes,
         },

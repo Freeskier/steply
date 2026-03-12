@@ -136,6 +136,26 @@ pub(super) enum WriteBindingDef {
     Map(BTreeMap<String, BindingYamlValueDef>),
 }
 
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+#[serde(untagged)]
+pub(super) enum StringOptionsDef {
+    Values(Vec<String>),
+    Selector(String),
+}
+
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+#[serde(untagged)]
+pub(super) enum SelectListOptionsDef {
+    Values(Vec<SelectListOptionDef>),
+    Selector(String),
+}
+
+impl Default for SelectListOptionsDef {
+    fn default() -> Self {
+        Self::Values(Vec::new())
+    }
+}
+
 #[derive(Debug, Deserialize, Clone, JsonSchema)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub(super) enum WidgetDef {
@@ -379,7 +399,7 @@ pub(super) struct SelectDef {
     /// Visible widget label.
     pub(super) label: String,
     /// Available option values.
-    pub(super) options: Vec<String>,
+    pub(super) options: StringOptionsDef,
     /// Initially selected option index.
     #[serde(default)]
     pub(super) selected: Option<usize>,
@@ -403,7 +423,7 @@ pub(super) struct ChoiceInputDef {
     /// Visible widget label.
     pub(super) label: String,
     /// Available option values.
-    pub(super) options: Vec<String>,
+    pub(super) options: StringOptionsDef,
     /// Whether to show bullet markers.
     #[serde(default)]
     pub(super) bullets: Option<bool>,
@@ -428,7 +448,7 @@ pub(super) struct SelectListDef {
     pub(super) label: String,
     /// List items, plain or detailed.
     #[serde(default)]
-    pub(super) options: Vec<SelectListOptionDef>,
+    pub(super) options: SelectListOptionsDef,
     /// Selection mode.
     #[serde(default)]
     pub(super) mode: Option<String>,

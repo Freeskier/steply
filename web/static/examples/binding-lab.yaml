@@ -32,9 +32,26 @@ steps:
         id: reviewer_full
         label: Derived full string
         reads: "Output: {{review.author.team}} {{review.author.full}}"
-  # - id: binding2
-  #   title: cos nowego
-  #   widgets:
-  #     - type: text_output
-  #       text: "Output: {{review.author.team}} {{review.author.full}}"
-  #       id: binding_output
+  - id: binding2
+    title: Tag sync
+    widgets:
+      - type: text_output
+        id: tags_intro
+        text: |
+          Edit the source tags in the array input.
+          The select list uses those tags as dynamic options and stores its own selection in `profile.selected`.
+      - type: array_input
+        id: tags_text
+        label: Available tags
+        items: [rust, tui]
+        value: profile.tags
+      - type: select_list
+        id: tags_picker
+        label: Tags as picker
+        mode: multi
+        value: profile.selected
+        options: profile.tags
+      - type: text_input
+        id: tags_summary
+        label: Summary
+        reads: "Available: {{profile.tags}} | Selected: {{profile.selected}}"

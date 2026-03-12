@@ -64,6 +64,19 @@ impl ChoiceInput {
         }
         false
     }
+
+    fn clamp_selected(&mut self) {
+        if self.options.is_empty() {
+            self.selected = 0;
+        } else if self.selected >= self.options.len() {
+            self.selected = self.options.len() - 1;
+        }
+    }
+
+    pub fn set_options(&mut self, options: Vec<String>) {
+        self.options = options;
+        self.clamp_selected();
+    }
 }
 
 impl Drawable for ChoiceInput {
@@ -159,6 +172,22 @@ impl Interactive for ChoiceInput {
         {
             self.selected = pos;
         }
+    }
+
+    fn set_options_from_value(&mut self, value: Value) -> bool {
+        let Some(options) = value.as_list().map(|items| {
+            items
+                .iter()
+                .filter_map(Value::to_text_scalar)
+                .collect::<Vec<_>>()
+        }) else {
+            return false;
+        };
+        if self.options == options {
+            return false;
+        }
+        self.set_options(options);
+        true
     }
 
     fn validate(&self, _mode: ValidationMode) -> Result<(), String> {

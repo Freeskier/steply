@@ -45,12 +45,16 @@ impl ArrayInput {
         self
     }
 
-    fn replace_items(&mut self, items: Vec<String>) {
-        let cleaned = items
+    fn normalized_items(items: Vec<String>) -> Vec<String> {
+        items
             .into_iter()
             .map(|item| item.trim().to_string())
             .filter(|item| !item.is_empty())
-            .collect::<Vec<_>>();
+            .collect()
+    }
+
+    fn replace_items(&mut self, items: Vec<String>) {
+        let cleaned = Self::normalized_items(items);
 
         if cleaned.is_empty() {
             self.items = vec![String::new()];
@@ -62,6 +66,23 @@ impl ArrayInput {
         self.items = cleaned;
         self.active = 0;
         self.cursor = text_edit::char_count(self.items[0].as_str());
+    }
+
+    fn replace_items_preserving_state(&mut self, items: Vec<String>) {
+        let cleaned = Self::normalized_items(items);
+
+        if cleaned.is_empty() {
+            self.items = vec![String::new()];
+            self.active = 0;
+            self.cursor = 0;
+            return;
+        }
+
+        let active = self.active.min(cleaned.len().saturating_sub(1));
+        let cursor = self.cursor;
+        self.items = cleaned;
+        self.active = active;
+        self.cursor = text_edit::clamp_cursor(cursor, self.items[self.active].as_str());
     }
 
     fn ensure_invariants(&mut self) {
@@ -214,14 +235,13 @@ impl ArrayInput {
             } else {
                 Style::default()
             };
-
+            let display_width = UnicodeWidthStr::width(display.as_str());
             if is_active {
                 let cursor_chars = self.cursor.min(text_edit::char_count(item.as_str()));
                 cursor_width = width + width_of_char_prefix(item.as_str(), cursor_chars);
             }
-
-            width += UnicodeWidthStr::width(display.as_str());
             spans.push(Span::styled(display, style).no_wrap());
+            width += display_width;
         }
 
         spans.push(Span::new("]").no_wrap());
@@ -315,7 +335,10 @@ impl Interactive for ArrayInput {
 
     fn set_value(&mut self, value: Value) {
         if let Some(items) = value.to_text_list() {
-            self.replace_items(items);
+            if Self::normalized_items(items.clone()) == Self::normalized_items(self.items.clone()) {
+                return;
+            }
+            self.replace_items_preserving_state(items);
             return;
         }
         if let Some(text) = value.as_text() {
@@ -324,11 +347,17 @@ impl Interactive for ArrayInput {
                 .map(|part| part.trim().to_string())
                 .filter(|part| !part.is_empty())
                 .collect::<Vec<_>>();
-            self.replace_items(parts);
+            if Self::normalized_items(parts.clone()) == Self::normalized_items(self.items.clone()) {
+                return;
+            }
+            self.replace_items_preserving_state(parts);
             return;
         }
         if matches!(value, Value::None) {
-            self.replace_items(Vec::new());
+            if Self::normalized_items(self.items.clone()).is_empty() {
+                return;
+            }
+            self.replace_items_preserving_state(Vec::new());
         }
     }
 
@@ -357,4 +386,117 @@ fn width_of_char_prefix(value: &str, chars: usize) -> usize {
         .take(chars)
         .map(|ch| UnicodeWidthChar::width(ch).unwrap_or(0))
         .sum()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ArrayInput;
+    use crate::config::load_from_yaml_str;
+    use crate::terminal::{KeyCode, KeyEvent, KeyModifiers};
+    use crate::ui::render_view::RenderView;
+    use crate::ui::renderer::{Renderer, RendererConfig};
+    use crate::widgets::traits::Interactive;
+
+    #[test]
+    fn cursor_stays_after_inserted_char_in_first_item() {
+        let mut input =
+            ArrayInput::new("tags", "Tags").with_items(vec!["rust".into(), "tui".into()]);
+
+        input.on_key(KeyEvent {
+            code: KeyCode::End,
+            modifiers: KeyModifiers::NONE,
+        });
+        input.on_key(KeyEvent {
+            code: KeyCode::Char('a'),
+            modifiers: KeyModifiers::NONE,
+        });
+
+        let cursor = input.cursor_pos().expect("cursor");
+        assert_eq!(cursor.col, 6);
+    }
+
+    #[test]
+    fn rendered_frame_cursor_matches_array_input_offset() {
+        let yaml = r#"
+version: 1
+steps:
+  - id: demo
+    title: Demo
+    widgets:
+      - type: array_input
+        id: tags
+        label: Tags
+        items: [rust, tui]
+"#;
+
+        let loaded = load_from_yaml_str(yaml).expect("load config");
+        let mut state = loaded.into_app_state().expect("app state");
+        assert_eq!(state.focused_id(), Some("tags"));
+
+        state.dispatch_key_to_focused(KeyEvent {
+            code: KeyCode::End,
+            modifiers: KeyModifiers::NONE,
+        });
+        state.dispatch_key_to_focused(KeyEvent {
+            code: KeyCode::Char('a'),
+            modifiers: KeyModifiers::NONE,
+        });
+
+        let view = RenderView::from_state(&state);
+        let mut renderer = Renderer::new(RendererConfig {
+            chrome_enabled: false,
+        });
+        let frame = renderer.render(
+            &view,
+            crate::terminal::TerminalSize {
+                width: 80,
+                height: 20,
+            },
+        );
+
+        assert_eq!(frame.cursor.expect("frame cursor").col, 12);
+    }
+
+    #[test]
+    fn bound_array_input_keeps_cursor_after_store_sync() {
+        let yaml = r#"
+version: 1
+steps:
+  - id: demo
+    title: Demo
+    widgets:
+      - type: array_input
+        id: tags
+        label: Tags
+        items: [rust, tui]
+        value: profile.tags
+"#;
+
+        let loaded = load_from_yaml_str(yaml).expect("load config");
+        let mut state = loaded.into_app_state().expect("app state");
+        assert_eq!(state.focused_id(), Some("tags"));
+
+        state.dispatch_key_to_focused(KeyEvent {
+            code: KeyCode::End,
+            modifiers: KeyModifiers::NONE,
+        });
+        state.dispatch_key_to_focused(KeyEvent {
+            code: KeyCode::Char('a'),
+            modifiers: KeyModifiers::NONE,
+        });
+
+        let view = RenderView::from_state(&state);
+        let mut renderer = Renderer::new(RendererConfig {
+            chrome_enabled: false,
+        });
+        let frame = renderer.render(
+            &view,
+            crate::terminal::TerminalSize {
+                width: 80,
+                height: 20,
+            },
+        );
+
+        assert_eq!(frame.cursor.expect("frame cursor").col, 12);
+    }
 }

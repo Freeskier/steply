@@ -560,6 +560,7 @@ pub(super) fn visit_widget_binding_read_selectors(
     widget: &WidgetDef,
     visitor: &mut impl FnMut(&str) -> Result<(), String>,
 ) -> Result<(), String> {
+    visit_widget_option_selectors(widget, visitor)?;
     let Some(binding) = widget_binding(widget) else {
         return Ok(());
     };
@@ -628,7 +629,7 @@ pub(super) fn visit_widget_binding_direct_value_targets(
 }
 
 pub(super) fn compile_widget(def: WidgetDef) -> Result<Node, String> {
-    let binding = compile_widget_binding(widget_binding(&def).cloned())?;
+    let binding = compile_store_binding(&def)?;
     let widget_type = widget_type(&def);
     let Some(entry) = widget_entry(widget_type) else {
         return Err(format!(
@@ -714,6 +715,27 @@ fn widget_binding(widget: &WidgetDef) -> Option<&model::WidgetBindingDef> {
     }
 }
 
+fn visit_widget_option_selectors(
+    widget: &WidgetDef,
+    visitor: &mut impl FnMut(&str) -> Result<(), String>,
+) -> Result<(), String> {
+    match widget {
+        WidgetDef::Select(model::SelectDef {
+            options: model::StringOptionsDef::Selector(selector),
+            ..
+        })
+        | WidgetDef::ChoiceInput(model::ChoiceInputDef {
+            options: model::StringOptionsDef::Selector(selector),
+            ..
+        })
+        | WidgetDef::SelectList(model::SelectListDef {
+            options: model::SelectListOptionsDef::Selector(selector),
+            ..
+        }) => visitor(normalize_binding_selector(selector)?.as_str()),
+        _ => Ok(()),
+    }
+}
+
 fn visit_read_binding_selectors(
     value: &serde_yaml::Value,
     top_level: bool,
@@ -755,6 +777,32 @@ fn visit_read_binding_selectors(
     }
 }
 
+fn compile_store_binding(def: &WidgetDef) -> Result<StoreBinding, String> {
+    let mut binding = compile_widget_binding(widget_binding(def).cloned())?;
+    binding.options = compile_option_binding(def)?;
+    Ok(binding)
+}
+
+fn compile_option_binding(def: &WidgetDef) -> Result<Option<ReadBinding>, String> {
+    match def {
+        WidgetDef::Select(model::SelectDef {
+            options: model::StringOptionsDef::Selector(selector),
+            ..
+        })
+        | WidgetDef::ChoiceInput(model::ChoiceInputDef {
+            options: model::StringOptionsDef::Selector(selector),
+            ..
+        })
+        | WidgetDef::SelectList(model::SelectListDef {
+            options: model::SelectListOptionsDef::Selector(selector),
+            ..
+        }) => Ok(Some(ReadBinding::Selector(parse_selector(
+            selector.as_str(),
+        )?))),
+        _ => Ok(None),
+    }
+}
+
 fn compile_widget_binding(
     binding: Option<model::WidgetBindingDef>,
 ) -> Result<StoreBinding, String> {
@@ -770,6 +818,7 @@ fn compile_widget_binding(
         let target = parse_selector(selector.as_str())?;
         return Ok(StoreBinding {
             value: Some(target.clone()),
+            options: None,
             reads: Some(ReadBinding::Selector(target.clone())),
             writes: vec![WriteBinding {
                 target,
@@ -804,6 +853,7 @@ fn compile_widget_binding(
 
     Ok(StoreBinding {
         value: None,
+        options: None,
         reads,
         writes,
     })
@@ -892,6 +942,22 @@ fn compile_write_expr_value(value: &serde_yaml::Value) -> Result<WriteExpr, Stri
 
 fn parse_selector(selector: &str) -> Result<crate::core::value_path::ValueTarget, String> {
     parse_store_selector(selector).map_err(|err| format!("invalid selector '{selector}': {err}"))
+}
+
+fn compile_string_options(options: model::StringOptionsDef) -> Vec<String> {
+    match options {
+        model::StringOptionsDef::Values(values) => values,
+        model::StringOptionsDef::Selector(_) => Vec::new(),
+    }
+}
+
+fn compile_select_list_options(
+    options: model::SelectListOptionsDef,
+) -> Vec<model::SelectListOptionDef> {
+    match options {
+        model::SelectListOptionsDef::Values(values) => values,
+        model::SelectListOptionsDef::Selector(_) => Vec::new(),
+    }
 }
 
 fn normalize_binding_selector(selector: &str) -> Result<String, String> {
@@ -1095,7 +1161,13 @@ fn compile_select_widget(def: WidgetDef) -> Result<Node, String> {
             validators,
             ..
         }) => inputs::compile_select_input(
-            id, label, options, selected, default, required, validators,
+            id,
+            label,
+            compile_string_options(options),
+            selected,
+            default,
+            required,
+            validators,
         ),
         _ => registry_dispatch_mismatch("select"),
     }
@@ -1112,9 +1184,15 @@ fn compile_choice_input_widget(def: WidgetDef) -> Result<Node, String> {
             required,
             validators,
             ..
-        }) => {
-            inputs::compile_choice_input(id, label, options, bullets, default, required, validators)
-        }
+        }) => inputs::compile_choice_input(
+            id,
+            label,
+            compile_string_options(options),
+            bullets,
+            default,
+            required,
+            validators,
+        ),
         _ => registry_dispatch_mismatch("choice_input"),
     }
 }
@@ -1133,7 +1211,7 @@ fn compile_select_list_widget(def: WidgetDef) -> Result<Node, String> {
         }) => components::compile_select_list(
             id,
             label,
-            options,
+            compile_select_list_options(options),
             mode,
             max_visible,
             selected,

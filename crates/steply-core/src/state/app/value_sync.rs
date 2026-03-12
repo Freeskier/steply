@@ -13,8 +13,8 @@ impl AppState {
 
     pub(super) fn settle_current_step_bindings(&mut self) {
         for _ in 0..MAX_BINDING_SETTLE_PASSES {
-            let hydrated = self.hydrate_current_step_from_store();
             let store_changed = self.push_current_step_writes_to_store();
+            let hydrated = self.hydrate_current_step_from_store();
             if !store_changed && !hydrated {
                 break;
             }

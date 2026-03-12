@@ -434,6 +434,19 @@
         }
       ]
     },
+    "SelectListOptionsDef": {
+      "anyOf": [
+        {
+          "items": {
+            "$ref": "#/definitions/SelectListOptionDef"
+          },
+          "type": "array"
+        },
+        {
+          "type": "string"
+        }
+      ]
+    },
     "StepDef": {
       "properties": {
         "description": {
@@ -481,6 +494,19 @@
         "title"
       ],
       "type": "object"
+    },
+    "StringOptionsDef": {
+      "anyOf": [
+        {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        {
+          "type": "string"
+        }
+      ]
     },
     "SubscriptionDef": {
       "properties": {
@@ -1520,11 +1546,12 @@
               "type": "string"
             },
             "options": {
-              "description": "Available option values.",
-              "items": {
-                "type": "string"
-              },
-              "type": "array"
+              "allOf": [
+                {
+                  "$ref": "#/definitions/StringOptionsDef"
+                }
+              ],
+              "description": "Available option values."
             },
             "reads": {
               "default": null
@@ -1613,11 +1640,12 @@
               "type": "string"
             },
             "options": {
-              "description": "Available option values.",
-              "items": {
-                "type": "string"
-              },
-              "type": "array"
+              "allOf": [
+                {
+                  "$ref": "#/definitions/StringOptionsDef"
+                }
+              ],
+              "description": "Available option values."
             },
             "reads": {
               "default": null
@@ -1698,11 +1726,12 @@
               ]
             },
             "options": {
-              "description": "List items, plain or detailed.",
-              "items": {
-                "$ref": "#/definitions/SelectListOptionDef"
-              },
-              "type": "array"
+              "allOf": [
+                {
+                  "$ref": "#/definitions/SelectListOptionsDef"
+                }
+              ],
+              "description": "List items, plain or detailed."
             },
             "reads": {
               "default": null

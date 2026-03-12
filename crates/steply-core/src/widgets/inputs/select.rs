@@ -128,6 +128,22 @@ impl Interactive for SelectInput {
         }
     }
 
+    fn set_options_from_value(&mut self, value: Value) -> bool {
+        let Some(options) = value.as_list().map(|items| {
+            items
+                .iter()
+                .filter_map(Value::to_text_scalar)
+                .collect::<Vec<_>>()
+        }) else {
+            return false;
+        };
+        if self.options == options {
+            return false;
+        }
+        self.set_options(options);
+        true
+    }
+
     fn validate(&self, _mode: ValidationMode) -> Result<(), String> {
         run_validators(
             &self.validators,

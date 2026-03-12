@@ -18,13 +18,17 @@ use indexmap::IndexMap;
 #[derive(Debug, Clone, Default)]
 pub struct StoreBinding {
     pub value: Option<ValueTarget>,
+    pub options: Option<ReadBinding>,
     pub reads: Option<ReadBinding>,
     pub writes: Vec<WriteBinding>,
 }
 
 impl StoreBinding {
     pub fn is_empty(&self) -> bool {
-        self.value.is_none() && self.reads.is_none() && self.writes.is_empty()
+        self.value.is_none()
+            && self.options.is_none()
+            && self.reads.is_none()
+            && self.writes.is_empty()
     }
 
     pub fn read_value(&self, store: &ValueStore) -> Option<Value> {
@@ -155,11 +159,13 @@ pub fn bind_node(node: Node, binding: StoreBinding) -> Node {
         Node::Input(widget) => Node::Input(Box::new(BoundInteractiveNode {
             inner: widget,
             binding,
+            last_resolved_options: None,
             last_resolved_read: None,
         })),
         Node::Component(widget) => Node::Component(Box::new(BoundComponentNode {
             inner: widget,
             binding,
+            last_resolved_options: None,
             last_resolved_read: None,
         })),
         Node::Output(widget) => Node::Output(Box::new(BoundOutputNode {
@@ -172,12 +178,14 @@ pub fn bind_node(node: Node, binding: StoreBinding) -> Node {
 struct BoundInteractiveNode {
     inner: Box<dyn crate::widgets::traits::InteractiveNode>,
     binding: StoreBinding,
+    last_resolved_options: Option<Option<Value>>,
     last_resolved_read: Option<Option<Value>>,
 }
 
 struct BoundComponentNode {
     inner: Box<dyn Component>,
     binding: StoreBinding,
+    last_resolved_options: Option<Option<Value>>,
     last_resolved_read: Option<Option<Value>>,
 }
 
@@ -202,13 +210,20 @@ impl BoundInteractiveNode {
     }
 
     fn sync_from_store(&mut self, store: &ValueStore) -> bool {
-        sync_bound_value(
+        let options_changed = sync_bound_options(
+            store,
+            &mut *self.inner,
+            &self.binding,
+            &mut self.last_resolved_options,
+        );
+        let value_changed = sync_bound_value(
             store,
             &mut *self.inner,
             &self.binding,
             &mut self.last_resolved_read,
             self.binding.interactive_read_mode(),
-        )
+        );
+        options_changed || value_changed
     }
 }
 
@@ -233,13 +248,20 @@ impl BoundComponentNode {
     }
 
     fn sync_from_store(&mut self, store: &ValueStore) -> bool {
-        sync_bound_value(
+        let options_changed = sync_bound_options(
+            store,
+            &mut *self.inner,
+            &self.binding,
+            &mut self.last_resolved_options,
+        );
+        let value_changed = sync_bound_value(
             store,
             &mut *self.inner,
             &self.binding,
             &mut self.last_resolved_read,
             self.binding.interactive_read_mode(),
-        )
+        );
+        options_changed || value_changed
     }
 }
 
@@ -656,6 +678,29 @@ fn sync_bound_value(
             true
         }
     }
+}
+
+fn sync_bound_options(
+    store: &ValueStore,
+    node: &mut dyn crate::widgets::traits::Interactive,
+    binding: &StoreBinding,
+    last_resolved_options: &mut Option<Option<Value>>,
+) -> bool {
+    let Some(next) = binding
+        .options
+        .as_ref()
+        .map(|options| options.resolve(store))
+    else {
+        return false;
+    };
+    if last_resolved_options.as_ref() == Some(&next) {
+        return false;
+    }
+    *last_resolved_options = Some(next.clone());
+    let Some(value) = next else {
+        return false;
+    };
+    node.set_options_from_value(value)
 }
 
 fn insert_scope_paths(store: &mut ValueStore, prefix: &str, value: &Value) {

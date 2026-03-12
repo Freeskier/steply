@@ -464,6 +464,9 @@ pub trait Interactive: Send {
         None
     }
     fn set_value(&mut self, _value: Value) {}
+    fn set_options_from_value(&mut self, _value: Value) -> bool {
+        false
+    }
     fn sync_from_store(&mut self, store: &ValueStore) -> bool {
         let Some(binding) = self.store_binding() else {
             return false;

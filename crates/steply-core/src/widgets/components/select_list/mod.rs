@@ -766,6 +766,14 @@ impl Interactive for SelectList {
 
         self.apply_filter(None);
     }
+
+    fn set_options_from_value(&mut self, value: Value) -> bool {
+        let Some(options) = options_from_value(&value) else {
+            return false;
+        };
+        self.set_options(options);
+        true
+    }
 }
 
 fn filter_options(query: &str, source_options: &[SelectItem]) -> (Vec<SelectItem>, Vec<usize>) {
@@ -846,6 +854,19 @@ fn with_highlights(
 fn options_from_value(value: &Value) -> Option<Vec<SelectItem>> {
     match value {
         Value::Object(map) => map.get("options").and_then(options_from_value),
+        Value::List(items)
+            if items
+                .iter()
+                .all(|item| matches!(item, Value::Text(_) | Value::Number(_) | Value::Bool(_))) =>
+        {
+            Some(
+                items
+                    .iter()
+                    .filter_map(Value::to_text_scalar)
+                    .map(SelectItem::plain)
+                    .collect(),
+            )
+        }
         Value::List(items) if items.iter().all(|item| matches!(item, Value::Object(_))) => {
             let mut options = Vec::<SelectItem>::new();
             for item in items {

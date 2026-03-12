@@ -806,7 +806,7 @@ fn compile_store_binding(def: &WidgetDef) -> Result<StoreBinding, String> {
 pub(super) fn compile_task_writes(
     writes: Option<model::WriteBindingDef>,
 ) -> Result<Vec<WriteBinding>, String> {
-    compile_write_bindings(writes, "stdout", is_task_scope_ref)
+    compile_write_bindings(writes, "result", is_task_scope_ref)
 }
 
 fn compile_option_binding(def: &WidgetDef) -> Result<Option<ReadBinding>, String> {
@@ -871,7 +871,6 @@ fn compile_widget_binding(
 
 fn widget_scope_ref(def: &WidgetDef) -> fn(&str) -> bool {
     match def {
-        WidgetDef::CommandRunner(_) => is_command_runner_scope_ref,
         _ => is_value_scope_ref,
     }
 }
@@ -903,25 +902,7 @@ fn is_value_scope_ref(text: &str) -> bool {
 
 fn is_task_scope_ref(text: &str) -> bool {
     let trimmed = text.trim();
-    matches!(
-        trimmed,
-        "stdout" | "stderr" | "exit_code" | "error" | "cancelled" | "task_id"
-    ) || trimmed.starts_with("stdout.")
-        || trimmed.starts_with("stdout[")
-        || trimmed.starts_with("stderr.")
-        || trimmed.starts_with("stderr[")
-        || trimmed.starts_with("exit_code.")
-        || trimmed.starts_with("exit_code[")
-        || trimmed.starts_with("error.")
-        || trimmed.starts_with("error[")
-        || trimmed.starts_with("cancelled.")
-        || trimmed.starts_with("cancelled[")
-        || trimmed.starts_with("task_id.")
-        || trimmed.starts_with("task_id[")
-}
-
-fn is_command_runner_scope_ref(text: &str) -> bool {
-    is_value_scope_ref(text) || is_task_scope_ref(text)
+    trimmed == "result" || trimmed.starts_with("result.") || trimmed.starts_with("result[")
 }
 
 fn binding_top_level_read_selector(binding: &model::WidgetBindingDef) -> Option<String> {
@@ -1385,10 +1366,10 @@ fn compile_object_editor_widget(def: WidgetDef) -> Result<Node, String> {
         WidgetDef::ObjectEditor(model::ObjectEditorDef {
             id,
             label,
-            value,
+            default,
             max_visible,
             ..
-        }) => components::compile_object_editor(id, label, value, max_visible),
+        }) => components::compile_object_editor(id, label, default, max_visible),
         _ => registry_dispatch_mismatch("object_editor"),
     }
 }

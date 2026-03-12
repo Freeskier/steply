@@ -275,10 +275,14 @@ impl Node {
     }
 
     pub fn sync_from_store(&mut self, store: &ValueStore) -> bool {
+        self.sync_from_store_with_focus(store, false)
+    }
+
+    pub fn sync_from_store_with_focus(&mut self, store: &ValueStore, is_focused: bool) -> bool {
         if let Some(widget) = self.interactive_mut() {
-            widget.sync_from_store(store)
+            widget.sync_from_store_with_focus(store, is_focused)
         } else if let Some(widget) = self.output_mut() {
-            widget.sync_from_store(store)
+            widget.sync_from_store_with_focus(store, is_focused)
         } else {
             false
         }

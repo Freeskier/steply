@@ -208,12 +208,21 @@ impl Value {
         Ok(Self::from_serde(jv))
     }
 
+    pub fn to_json_string(&self) -> Result<String, String> {
+        serde_json::to_string(&self.to_serde_checked()?).map_err(|err| err.to_string())
+    }
+
+    pub fn to_json_string_pretty(&self) -> Result<String, String> {
+        serde_json::to_string_pretty(&self.to_serde_checked()?).map_err(|err| err.to_string())
+    }
+
     pub fn to_json(&self) -> String {
-        serde_json::to_string(&self.to_serde()).unwrap_or_else(|_| "null".to_string())
+        self.to_json_string().unwrap_or_else(|_| "null".to_string())
     }
 
     pub fn to_json_pretty(&self) -> String {
-        serde_json::to_string_pretty(&self.to_serde()).unwrap_or_else(|_| "null".to_string())
+        self.to_json_string_pretty()
+            .unwrap_or_else(|_| "null".to_string())
     }
 
     fn from_serde(jv: serde_json::Value) -> Self {
@@ -233,16 +242,29 @@ impl Value {
         }
     }
 
-    fn to_serde(&self) -> serde_json::Value {
+    fn to_serde_checked(&self) -> Result<serde_json::Value, String> {
         match self {
-            Self::None => serde_json::Value::Null,
-            Self::Bool(b) => serde_json::Value::Bool(*b),
-            Self::Number(n) => serde_json::json!(n),
-            Self::Text(s) => serde_json::Value::String(s.clone()),
-            Self::List(arr) => serde_json::Value::Array(arr.iter().map(|v| v.to_serde()).collect()),
-            Self::Object(map) => serde_json::Value::Object(
-                map.iter().map(|(k, v)| (k.clone(), v.to_serde())).collect(),
-            ),
+            Self::None => Ok(serde_json::Value::Null),
+            Self::Bool(b) => Ok(serde_json::Value::Bool(*b)),
+            Self::Number(n) => {
+                if !n.is_finite() {
+                    return Err(format!("cannot serialize non-finite number: {n}"));
+                }
+                let number = serde_json::Number::from_f64(*n)
+                    .ok_or_else(|| format!("cannot serialize number: {n}"))?;
+                Ok(serde_json::Value::Number(number))
+            }
+            Self::Text(s) => Ok(serde_json::Value::String(s.clone())),
+            Self::List(arr) => Ok(serde_json::Value::Array(
+                arr.iter()
+                    .map(Value::to_serde_checked)
+                    .collect::<Result<Vec<_>, _>>()?,
+            )),
+            Self::Object(map) => Ok(serde_json::Value::Object(
+                map.iter()
+                    .map(|(k, v)| Ok((k.clone(), v.to_serde_checked()?)))
+                    .collect::<Result<_, String>>()?,
+            )),
         }
     }
 }

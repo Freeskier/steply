@@ -1,10 +1,9 @@
-use crate::core::store_refs::{parse_store_selector, render_template};
 use crate::core::value::Value;
 use crate::runtime::event::{AppEvent, SystemEvent};
 use crate::runtime::scheduler::SchedulerCommand;
 use crate::state::app::AppState;
 use crate::state::step::StepStatus;
-use crate::task::engine::{TaskEngineHost, TaskStartResult, value_to_task_arg};
+use crate::task::engine::{TaskEngineHost, TaskStartResult};
 use crate::task::{TaskCancelToken, TaskId, TaskInvocation, TaskKind, TaskRequest, TaskSpec};
 use crate::time::{Duration, Instant};
 
@@ -72,6 +71,7 @@ impl AppState {
     fn start_task_invocation_internal(
         &mut self,
         spec: TaskSpec,
+        stdin_json: String,
         fingerprint: Option<u64>,
         now: Instant,
         origin_step_id: Option<String>,
@@ -91,6 +91,7 @@ impl AppState {
             spec,
             run_id,
             fingerprint,
+            stdin_json,
             cancel_token,
             log_tx: None,
         });
@@ -98,29 +99,16 @@ impl AppState {
         run_id
     }
 
-    fn resolve_task_spec_templates_internal(&self, mut spec: TaskSpec) -> TaskSpec {
-        let TaskKind::Exec {
-            program, args, env, ..
-        } = &mut spec.kind;
-        *program = self.interpolate_store_vars_internal(program);
-        for arg in args {
-            *arg = self.interpolate_store_vars_internal(arg.as_str());
-        }
-        for value in env.values_mut() {
-            *value = self.interpolate_store_vars_internal(value.as_str());
-        }
-        spec
-    }
-
-    fn interpolate_store_vars_internal(&self, template: &str) -> String {
-        render_template(
-            template,
-            |expr| {
-                let target = parse_store_selector(expr).ok()?;
-                self.data.store.get_target(&target).cloned()
-            },
-            value_to_task_arg,
-        )
+    fn build_task_stdin_json_internal(&self, spec: &TaskSpec) -> Result<String, String> {
+        let reads = match &spec.kind {
+            TaskKind::Exec { reads, .. } => reads
+                .as_ref()
+                .and_then(|binding| binding.resolve(&self.data.store))
+                .unwrap_or(Value::None),
+        };
+        reads
+            .to_json_string()
+            .map_err(|err| format!("failed to serialize task input for '{}': {err}", spec.id))
     }
 
     fn enqueue_task_request_internal(&mut self, task_id: TaskId, request: TaskRequest) {
@@ -392,6 +380,10 @@ impl AppState {
                 task_id: task_id.clone(),
                 reason: "task dropped by concurrency policy".to_string(),
             },
+            TaskStartResult::Rejected { task_id, reason } => SystemEvent::TaskStartRejected {
+                task_id: task_id.clone(),
+                reason: reason.clone(),
+            },
         };
         self.runtime
             .push_scheduler_command(SchedulerCommand::EmitNow(AppEvent::System(event)));
@@ -473,8 +465,8 @@ impl TaskEngineHost for AppState {
         self.cancel_running_task_internal(task_id);
     }
 
-    fn resolve_task_spec_templates(&self, spec: TaskSpec) -> TaskSpec {
-        self.resolve_task_spec_templates_internal(spec)
+    fn build_task_stdin_json(&self, spec: &TaskSpec) -> Result<String, String> {
+        self.build_task_stdin_json_internal(spec)
     }
 
     fn current_step_id_if_any(&self) -> Option<String> {
@@ -484,11 +476,12 @@ impl TaskEngineHost for AppState {
     fn start_task_invocation(
         &mut self,
         spec: TaskSpec,
+        stdin_json: String,
         fingerprint: Option<u64>,
         now: Instant,
         origin_step_id: Option<String>,
     ) -> u64 {
-        self.start_task_invocation_internal(spec, fingerprint, now, origin_step_id)
+        self.start_task_invocation_internal(spec, stdin_json, fingerprint, now, origin_step_id)
     }
 
     fn emit_task_start_feedback(&mut self, result: &TaskStartResult) {

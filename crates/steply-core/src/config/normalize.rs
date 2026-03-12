@@ -78,9 +78,9 @@ fn resolve_tasks(tasks: Vec<TaskDef>) -> Result<Vec<TaskTemplateSpec>, String> {
             kind: task.kind,
             program: task.program,
             args: task.args,
+            reads: task.reads,
             timeout_ms: task.timeout_ms,
             enabled: task.enabled.unwrap_or(true),
-            env: task.env,
             triggers: resolve_task_triggers(task.triggers)?,
             writes: task.writes,
         });

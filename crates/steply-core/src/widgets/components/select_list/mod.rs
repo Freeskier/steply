@@ -20,7 +20,7 @@ use crate::widgets::shared::list_policy;
 use crate::widgets::shared::scroll::ScrollState;
 use crate::widgets::traits::{
     CompletionState, DrawOutput, Drawable, FocusMode, HintContext, HintGroup, HintItem,
-    InteractionResult, Interactive, PointerRowMap, RenderContext, TextAction,
+    InteractionResult, Interactive, PointerRowMap, RenderContext, StoreSyncPolicy, TextAction,
 };
 use model::item_search_text;
 use render::{OptionRenderer, default_option_renderer};
@@ -672,6 +672,10 @@ impl Drawable for SelectList {
 impl Interactive for SelectList {
     fn focus_mode(&self) -> FocusMode {
         FocusMode::Group
+    }
+
+    fn store_sync_policy(&self) -> StoreSyncPolicy {
+        StoreSyncPolicy::PreserveLocalStateWhileFocused
     }
 
     fn on_key(&mut self, key: KeyEvent) -> InteractionResult {

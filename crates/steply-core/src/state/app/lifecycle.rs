@@ -29,7 +29,7 @@ impl AppState {
             state.should_exit = true;
         } else {
             state.reconcile_current_step_visibility();
-            state.settle_current_step_bindings();
+            state.refresh_current_step_bindings();
             state.rebuild_focus();
             crate::task::engine::trigger_flow_start_tasks(&mut state);
             let current_step_id = state.current_step_id().to_string();
@@ -42,7 +42,7 @@ impl AppState {
     pub(super) fn prepare_current_step_for_preview(&mut self) {
         self.reconcile_current_step_visibility();
         self.ui.overlays.clear();
-        self.settle_current_step_bindings();
+        self.refresh_current_step_bindings();
         self.rebuild_focus();
     }
 }

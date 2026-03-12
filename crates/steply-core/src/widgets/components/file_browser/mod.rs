@@ -812,6 +812,10 @@ impl Interactive for FileBrowserComponent {
         FocusMode::Leaf
     }
 
+    fn store_sync_policy(&self) -> crate::widgets::traits::StoreSyncPolicy {
+        crate::widgets::traits::StoreSyncPolicy::PreserveLocalStateWhileFocused
+    }
+
     fn on_key(&mut self, key: KeyEvent) -> InteractionResult {
         if key.code == KeyCode::Char(' ')
             && (keymap::has_exact_modifiers(key, KeyModifiers::SHIFT)

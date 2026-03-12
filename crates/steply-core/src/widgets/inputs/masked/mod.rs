@@ -10,7 +10,8 @@ use crate::ui::span::Span;
 use crate::widgets::base::WidgetBase;
 use crate::widgets::shared::text_edit;
 use crate::widgets::traits::{
-    DrawOutput, Drawable, FocusMode, InteractionResult, Interactive, RenderContext, ValidationMode,
+    DrawOutput, Drawable, FocusMode, InteractionResult, Interactive, RenderContext,
+    StoreSyncPolicy, ValidationMode,
 };
 use crate::widgets::validators::{Validator, run_validators};
 use model::{MaskToken, SegmentKind};
@@ -399,6 +400,10 @@ impl Drawable for MaskedInput {
 impl Interactive for MaskedInput {
     fn focus_mode(&self) -> FocusMode {
         FocusMode::Leaf
+    }
+
+    fn store_sync_policy(&self) -> StoreSyncPolicy {
+        StoreSyncPolicy::PreserveLocalStateWhileFocused
     }
 
     fn on_key(&mut self, key: KeyEvent) -> InteractionResult {

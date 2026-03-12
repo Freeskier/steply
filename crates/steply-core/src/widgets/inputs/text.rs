@@ -6,7 +6,7 @@ use crate::widgets::base::WidgetBase;
 use crate::widgets::shared::text_edit;
 use crate::widgets::traits::{
     CompletionState, DrawOutput, Drawable, FocusMode, InteractionResult, Interactive,
-    RenderContext, TextAction, TextEditState, ValidationMode,
+    RenderContext, StoreSyncPolicy, TextAction, TextEditState, ValidationMode,
 };
 use crate::widgets::validators::{Validator, run_validators};
 use unicode_width::UnicodeWidthChar;
@@ -140,6 +140,10 @@ impl Drawable for TextInput {
 impl Interactive for TextInput {
     fn focus_mode(&self) -> FocusMode {
         FocusMode::Leaf
+    }
+
+    fn store_sync_policy(&self) -> StoreSyncPolicy {
+        StoreSyncPolicy::PreserveLocalStateWhileFocused
     }
 
     fn on_key(&mut self, key: KeyEvent) -> InteractionResult {

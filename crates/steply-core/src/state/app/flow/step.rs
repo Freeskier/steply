@@ -116,7 +116,7 @@ impl AppState {
 
     pub(in crate::state::app) fn enter_current_step_after_transition(&mut self) {
         self.ui.overlays.clear();
-        self.settle_current_step_bindings();
+        self.refresh_current_step_bindings();
         let current_step_id = self.current_step_id().to_string();
         let restore_focus = self
             .ui

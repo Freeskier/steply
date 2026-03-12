@@ -17,10 +17,6 @@ pub fn fingerprint_value(node_id: &str, value: &Value) -> u64 {
     hasher.finish()
 }
 
-pub fn value_to_task_arg(value: &Value) -> String {
-    value.to_text_scalar().unwrap_or_else(|| value.to_json())
-}
-
 fn hash_value(hasher: &mut DefaultHasher, value: &Value) {
     match value {
         Value::None => 0u8.hash(hasher),

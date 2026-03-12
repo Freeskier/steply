@@ -1,0 +1,39 @@
+version: 1
+steps:
+  - id: runner
+    title: Command runner JSON
+    widgets:
+      - type: text_input
+        id: name
+        label: Name
+        default: Ada
+        value: profile.name
+
+      - type: command_runner
+        id: greet
+        label: Generate greeting
+        run_mode: manual
+        commands:
+          - label: Echo greeting
+            program: bash
+            args:
+              - -lc
+              - |
+                payload="$(cat)"
+                name="$(printf '%s' "$payload" | jq -r '.name // "friend"')"
+                echo "building greeting for ${name}" >&2
+                jq -n --arg message "hello ${name}" --arg upper "$(printf '%s' "$name" | tr '[:lower:]' '[:upper:]')" \
+                  '{message: $message, upper: $upper}'
+            reads:
+              name: "{{profile.name}}"
+        writes:
+          runner.message: value.message
+          runner.upper: value.upper
+
+      - type: text_output
+        id: message_preview
+        text: "Message: {{runner.message}}"
+
+      - type: text_output
+        id: upper_preview
+        text: "Upper: {{runner.upper}}"

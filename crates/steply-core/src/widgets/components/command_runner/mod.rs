@@ -8,13 +8,13 @@ use crate::ui::style::{Color, Style};
 use crate::widgets::base::WidgetBase;
 use crate::widgets::node::{Component, Node};
 use crate::widgets::outputs::task_log::{TaskLog, TaskLogStep};
+use crate::widgets::shared::binding::ReadBinding;
 use crate::widgets::shared::keymap;
 use crate::widgets::shared::task_watcher::TaskWatcherStatus;
 use crate::widgets::traits::{
     DrawOutput, Drawable, FocusMode, HintContext, HintItem, InteractionResult, Interactive,
     OutputNode, RenderContext, ValidationMode,
 };
-use std::collections::BTreeMap;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum RunMode {
@@ -35,7 +35,7 @@ struct CommandSpec {
     task_id: TaskId,
     program: String,
     args: Vec<String>,
-    env: BTreeMap<String, String>,
+    reads: Option<ReadBinding>,
     timeout_ms: u64,
 }
 
@@ -82,16 +82,16 @@ impl CommandRunner {
         I: IntoIterator<Item = S>,
         S: Into<String>,
     {
-        self = self.command_with_env(label, program, args, BTreeMap::new());
+        self = self.command_with_reads(label, program, args, None);
         self
     }
 
-    pub fn command_with_env<I, S>(
+    pub fn command_with_reads<I, S>(
         mut self,
         label: impl Into<String>,
         program: impl Into<String>,
         args: I,
-        env: BTreeMap<String, String>,
+        reads: Option<ReadBinding>,
     ) -> Self
     where
         I: IntoIterator<Item = S>,
@@ -108,7 +108,7 @@ impl CommandRunner {
             task_id,
             program: program.into(),
             args: args.into_iter().map(Into::into).collect(),
-            env,
+            reads,
             timeout_ms: 30_000,
         });
         self
@@ -215,30 +215,6 @@ impl CommandRunner {
             return "cancelled".to_string();
         }
 
-        if let Some(line) = completion
-            .stderr
-            .lines()
-            .rev()
-            .map(str::trim)
-            .find(|line| !line.is_empty())
-        {
-            return line.to_string();
-        }
-
-        if let Some(line) = completion
-            .stdout
-            .lines()
-            .rev()
-            .map(str::trim)
-            .find(|line| !line.is_empty())
-        {
-            return line.to_string();
-        }
-
-        if let Some(code) = completion.status_code {
-            return format!("exit status {code}");
-        }
-
         completion
             .error
             .as_ref()
@@ -246,14 +222,6 @@ impl CommandRunner {
             .filter(|s| !s.is_empty())
             .unwrap_or("failed")
             .to_string()
-    }
-
-    fn completion_value(command_label: &str, completion: &crate::task::TaskCompletion) -> Value {
-        let Value::Object(mut map) = completion.scope_value() else {
-            return Value::None;
-        };
-        map.insert("label".to_string(), Value::Text(command_label.to_string()));
-        Value::Object(map)
     }
 }
 
@@ -355,22 +323,7 @@ impl Interactive for CommandRunner {
                     .command_by_task_id(task_id)
                     .map(|command| command.label.clone())
                 {
-                    self.last_result = Some(Value::Object(
-                        [
-                            ("label".to_string(), Value::Text(command_label.clone())),
-                            (
-                                "task_id".to_string(),
-                                Value::Text(task_id.as_str().to_string()),
-                            ),
-                            ("stdout".to_string(), Value::Text(String::new())),
-                            ("stderr".to_string(), Value::Text(String::new())),
-                            ("exit_code".to_string(), Value::None),
-                            ("error".to_string(), Value::Text(reason.clone())),
-                            ("cancelled".to_string(), Value::Bool(false)),
-                        ]
-                        .into_iter()
-                        .collect(),
-                    ));
+                    self.last_result = None;
                     self.last_error = Some(format!("{command_label}: {reason}"));
                     should_validate_step = true;
                     should_continue_on_error = true;
@@ -381,8 +334,10 @@ impl Interactive for CommandRunner {
                     .command_by_task_id(&completion.task_id)
                     .map(|command| command.label.clone())
                 {
-                    self.last_result =
-                        Some(Self::completion_value(command_label.as_str(), completion));
+                    self.last_result = completion
+                        .error
+                        .is_none()
+                        .then(|| completion.result.clone());
                     if completion.cancelled || completion.error.is_some() {
                         let message = Self::task_failure_message(completion);
                         self.last_error = Some(format!("{command_label}: {message}"));
@@ -420,13 +375,16 @@ impl Interactive for CommandRunner {
         self.commands
             .iter()
             .map(|command| {
-                TaskSpec::exec(
+                let mut spec = TaskSpec::exec(
                     command.task_id.clone(),
                     command.program.clone(),
                     command.args.clone(),
                 )
-                .with_env(command.env.clone())
-                .with_timeout_ms(command.timeout_ms)
+                .with_timeout_ms(command.timeout_ms);
+                if let Some(reads) = command.reads.clone() {
+                    spec = spec.with_reads(reads);
+                }
+                spec
             })
             .collect()
     }

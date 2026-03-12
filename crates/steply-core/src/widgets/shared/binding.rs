@@ -10,8 +10,8 @@ use crate::terminal::{CursorPos, KeyEvent, PointerEvent};
 use crate::widgets::node::{Component, Node};
 use crate::widgets::traits::{
     CompletionState, DrawOutput, Drawable, FocusMode, InteractionResult, Interactive, OutputNode,
-    OverlayMode, OverlayPlacement, PointerRowMap, RenderContext, TextAction, TextEditState,
-    ValidationMode,
+    OverlayMode, OverlayPlacement, PointerRowMap, RenderContext, StoreSyncPolicy, TextAction,
+    TextEditState, ValidationMode,
 };
 use indexmap::IndexMap;
 
@@ -214,6 +214,10 @@ impl BoundInteractiveNode {
     }
 
     fn sync_from_store(&mut self, store: &ValueStore) -> bool {
+        self.sync_from_store_with_focus(store, false)
+    }
+
+    fn sync_from_store_with_focus(&mut self, store: &ValueStore, is_focused: bool) -> bool {
         let options_changed = sync_bound_options(
             store,
             &mut *self.inner,
@@ -226,6 +230,7 @@ impl BoundInteractiveNode {
             &self.binding,
             &mut self.last_resolved_read,
             self.binding.interactive_read_mode(),
+            is_focused,
         );
         let inner_changed = self.inner.sync_from_store(store);
         options_changed || value_changed || inner_changed
@@ -253,6 +258,10 @@ impl BoundComponentNode {
     }
 
     fn sync_from_store(&mut self, store: &ValueStore) -> bool {
+        self.sync_from_store_with_focus(store, false)
+    }
+
+    fn sync_from_store_with_focus(&mut self, store: &ValueStore, is_focused: bool) -> bool {
         let options_changed = sync_bound_options(
             store,
             &mut *self.inner,
@@ -265,6 +274,7 @@ impl BoundComponentNode {
             &self.binding,
             &mut self.last_resolved_read,
             self.binding.interactive_read_mode(),
+            is_focused,
         );
         let inner_changed = self.inner.sync_from_store(store);
         options_changed || value_changed || inner_changed
@@ -645,6 +655,7 @@ fn sync_bound_value(
     binding: &StoreBinding,
     last_resolved_read: &mut Option<Option<Value>>,
     mode: InteractiveReadMode,
+    is_focused: bool,
 ) -> bool {
     let Some(next) = binding.reads.as_ref().map(|reads| reads.resolve(store)) else {
         return false;
@@ -656,6 +667,11 @@ fn sync_bound_value(
                 return false;
             };
             if node.value().as_ref() == Some(&value) {
+                return false;
+            }
+            if is_focused
+                && node.store_sync_policy() == StoreSyncPolicy::PreserveLocalStateWhileFocused
+            {
                 return false;
             }
             node.set_value(value);

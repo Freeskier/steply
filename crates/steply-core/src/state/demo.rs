@@ -32,7 +32,9 @@ use crate::widgets::outputs::task_log::{TaskLog, TaskLogStep};
 use crate::widgets::outputs::text::TextOutput;
 use crate::widgets::outputs::thinking::{ThinkingMode, ThinkingOutput};
 use crate::widgets::outputs::url::UrlOutput;
-use crate::widgets::shared::binding::{StoreBinding, WriteBinding, WriteExpr, bind_node};
+use crate::widgets::shared::binding::{
+    ReadBinding, StoreBinding, WriteBinding, WriteExpr, bind_node,
+};
 use crate::widgets::validators;
 
 fn bind_writes(node: Node, targets: &[&str]) -> Node {
@@ -763,7 +765,7 @@ import sys
 import urllib.parse
 import urllib.request
 
-query = (sys.argv[1] if len(sys.argv) > 1 else "").strip().lower()
+query = str(json.load(sys.stdin) or "").strip().lower()
 if not query:
     print("[]")
     raise SystemExit(0)
@@ -794,9 +796,9 @@ for entry in payload.get("results", []):
 print(json.dumps(out))
 "#
                 .into(),
-                "${poke_query_value}".into(),
             ],
         )
+        .with_reads(ReadBinding::Selector(ValueTarget::node("poke_query_value")))
         .with_timeout_ms(12_000)
         .with_trigger(TaskTrigger::StoreChanged {
             selector: crate::core::value_path::ValueTarget::node("poke_query_value"),
@@ -805,7 +807,7 @@ print(json.dumps(out))
         .with_writes(vec![WriteBinding {
             target: ValueTarget::parse_selector("poke_results")
                 .unwrap_or_else(|_| ValueTarget::node("poke_results")),
-            expr: WriteExpr::ScopeRef("stdout".into()),
+            expr: WriteExpr::ScopeRef("result".into()),
         }]),
 
         TaskSpec::exec(

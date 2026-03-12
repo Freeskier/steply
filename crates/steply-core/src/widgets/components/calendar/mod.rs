@@ -9,7 +9,7 @@ use crate::widgets::node::LeafComponent;
 use crate::widgets::shared::calendar::{self, Date, MonthGrid};
 use crate::widgets::traits::{
     DrawOutput, Drawable, FocusMode, HintContext, HintGroup, HintItem, InteractionResult,
-    Interactive, RenderContext, ValidationMode,
+    Interactive, RenderContext, StoreSyncPolicy, ValidationMode,
 };
 use crate::widgets::validators::{Validator, run_validators};
 
@@ -360,6 +360,10 @@ impl Drawable for Calendar {
 impl Interactive for Calendar {
     fn focus_mode(&self) -> FocusMode {
         FocusMode::Leaf
+    }
+
+    fn store_sync_policy(&self) -> StoreSyncPolicy {
+        StoreSyncPolicy::PreserveLocalStateWhileFocused
     }
 
     fn cursor_pos(&self) -> Option<crate::terminal::CursorPos> {

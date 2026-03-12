@@ -115,7 +115,12 @@ pub(super) fn compile_command_runner(
         .with_on_error(parse_on_error(on_error.as_deref())?)
         .with_advance_on_success(advance_on_success.unwrap_or(false));
     for command in commands {
-        runner = runner.command_with_env(command.label, command.program, command.args, command.env);
+        let reads = command
+            .reads
+            .as_ref()
+            .map(|value| compile_read_binding_value(value, true))
+            .transpose()?;
+        runner = runner.command_with_reads(command.label, command.program, command.args, reads);
     }
     if let Some(timeout_ms) = timeout_ms {
         runner = runner.with_timeout_ms(timeout_ms);
@@ -213,12 +218,12 @@ pub(super) fn compile_tree_view(
 pub(super) fn compile_object_editor(
     id: String,
     label: String,
-    value: Option<serde_yaml::Value>,
+    default: Option<serde_yaml::Value>,
     max_visible: Option<usize>,
 ) -> Result<Node, String> {
     let mut widget = ObjectEditor::new(id, label);
-    if let Some(value) = value {
-        widget = widget.with_value(yaml_value_to_value(&value)?);
+    if let Some(default) = default {
+        widget = widget.with_value(yaml_value_to_value(&default)?);
     }
     if let Some(max_visible) = max_visible {
         widget = widget.with_max_visible(max_visible);

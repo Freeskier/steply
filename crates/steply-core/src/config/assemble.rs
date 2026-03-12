@@ -107,10 +107,14 @@ fn assemble_tasks(tasks: Vec<TaskTemplateSpec>) -> Result<Vec<TaskSpec>, String>
 fn assemble_task(def: TaskTemplateSpec) -> Result<TaskSpec, String> {
     parse::parse_task_kind(def.kind.as_str())?;
     let mut spec = TaskSpec::exec(def.id, def.program, def.args)
-        .with_env(def.env)
         .with_triggers(def.triggers)
         .with_enabled(def.enabled)
         .with_writes(widgets::compile_task_writes(def.writes)?);
+    if let Some(reads) = def.reads {
+        spec = spec.with_reads(super::binding_compile::compile_read_binding_value(
+            &reads, true,
+        )?);
+    }
     if let Some(timeout_ms) = def.timeout_ms {
         spec = spec.with_timeout_ms(timeout_ms);
     }

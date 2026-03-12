@@ -244,6 +244,10 @@ impl Interactive for Table {
         FocusMode::Group
     }
 
+    fn store_sync_policy(&self) -> crate::widgets::traits::StoreSyncPolicy {
+        crate::widgets::traits::StoreSyncPolicy::PreserveLocalStateWhileFocused
+    }
+
     fn on_key(&mut self, key: KeyEvent) -> InteractionResult {
         if let Some(outcome) = self.filter.handle_toggle_shortcut(key) {
             return outcome.refresh_if_changed(|| self.apply_filter(self.active_row_id()));

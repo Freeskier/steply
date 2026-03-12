@@ -1,140 +1,152 @@
 version: 1
 
 tasks:
-  - id: welcome_banner
+  - id: string_trimmed
     kind: exec
     program: python3
     args:
       - -c
       - |
-        print("This flow uses task-owned triggers. Edit the title, enter review, and open the live status step.")
-    triggers:
-      - type: flow_start
-    writes: session.welcome
-
-  - id: slugify_title
-    kind: exec
-    program: python3
-    args:
-      - -c
-      - |
-        import re
+        import json
         import sys
 
-        title = (sys.argv[1] if len(sys.argv) > 1 else "").strip().lower()
-        slug = re.sub(r"[^a-z0-9]+", "-", title).strip("-")
-        print(slug or "untitled-note")
-      - "{{story.title}}"
+        value = str(json.load(sys.stdin) or "")
+        print(json.dumps(value.strip().title()))
+    reads: "{{demo.name}}"
     triggers:
       - type: store_changed
-        ref: story.title
+        ref: demo.name
         debounce_ms: 250
-    writes: story.slug
+    writes: demo.name_pretty
 
-  - id: review_hint
+  - id: number_double
     kind: exec
     program: python3
     args:
       - -c
       - |
+        import json
         import sys
 
-        title = (sys.argv[1] if len(sys.argv) > 1 else "").strip() or "Untitled note"
-        slug = (sys.argv[2] if len(sys.argv) > 2 else "").strip() or "untitled-note"
-        print(f'Reviewing "{title}" as "{slug}". If it looks good, run the packaging task.')
-      - "{{story.title}}"
-      - "{{story.slug}}"
+        value = json.load(sys.stdin)
+        number = float(value or 0)
+        print(json.dumps(number * 2))
+    reads: "{{demo.count}}"
     triggers:
-      - type: step_enter
-        step_id: review
-    writes: review.hint
+      - type: store_changed
+        ref: demo.count
+        debounce_ms: 250
+    writes: demo.count_doubled
 
-  - id: live_clock
+  - id: build_summary
     kind: exec
     program: python3
     args:
       - -c
       - |
-        from datetime import datetime
+        import json
+        import sys
 
-        print(datetime.now().strftime("%H:%M:%S"))
+        payload = json.load(sys.stdin)
+        name = str(payload.get("name") or "").strip() or "Unknown"
+        count = int(float(payload.get("count") or 0))
+        tags = payload.get("tags") or []
+
+        result = {
+          "headline": f"{name} x{count}",
+          "tag_count": len(tags),
+          "tags": tags,
+          "card": {
+            "name": name,
+            "count": count,
+            "tags": tags,
+          },
+        }
+        print(json.dumps(result))
+    reads:
+      name: "{{demo.name}}"
+      count: "{{demo.count}}"
+      tags: "{{demo.tags}}"
     triggers:
-      - type: interval
-        every_ms: 1000
-        only_when_step_active: true
-    writes: live.clock
-
-  - id: package_story
-    kind: exec
-    program: bash
-    args:
-      - -lc
-      - |
-        slug="${1:-untitled-note}"
-        echo "[1/4] Collecting notes for ${slug}"
-        sleep 0.2
-        echo "[2/4] Building manifest"
-        sleep 0.2
-        echo "[3/4] Packing archive"
-        sleep 0.2
-        echo "[4/4] Done: dist/${slug}.zip"
-      - package-story
-      - "{{story.slug}}"
+      - type: step_enter
+        step_id: structured
+      - type: store_changed
+        ref: demo.name
+        debounce_ms: 250
+      - type: store_changed
+        ref: demo.count
+        debounce_ms: 250
+      - type: store_changed
+        ref: demo.tags
+        debounce_ms: 250
+    writes:
+      demo.summary: result
 
 steps:
-  - id: draft
-    title: Triggered draft
+  - id: string
+    title: String
+    description: Scalar string goes into stdin as JSON and comes back as a JSON string.
     widgets:
       - type: text_output
-        id: intro
-        text: "Task-owned triggers are active in this flow."
-      - type: text_output
-        id: intro_detail
-        text: "Edit the title below. The slug updates from a fast store_changed task."
+        id: string_intro
+        text: 'Task reads "{{demo.name}}" and returns a JSON string.'
       - type: text_input
-        id: title
-        label: Story title
-        default: Moonbase incident report
-        value: story.title
+        id: name
+        label: Raw name
+        default: "  moonbase report  "
+        value: demo.name
       - type: text_output
-        id: slug_preview
-        text: "Live slug: {{story.slug}}"
-      - type: text_output
-        id: draft_hint
-        text: "This slug comes from a top-level task in tasks[].triggers."
+        id: string_result
+        text: "Pretty name: {{demo.name_pretty}}"
 
-  - id: review
-    title: Review step
-    description: Entering this step auto-runs a task that prepares a short review hint.
+  - id: number
+    title: Number
+    description: Scalar number goes into stdin as JSON and comes back as a JSON number.
     widgets:
       - type: text_output
-        id: review_hint_text
-        text: "{{review.hint}}"
+        id: number_intro
+        text: 'Task reads "{{demo.count}}" and returns count * 2.'
+      - type: slider
+        id: count
+        label: Count
+        min: 0
+        max: 20
+        step: 1
+        default: 4
+        value: demo.count
       - type: text_output
-        id: review_hint_detail
-        text: "{{session.welcome}}"
-      - type: button_input
-        id: package_button
-        label: Package story
-        text: Build package now
-        task_id: package_story
-      - type: task_log_output
-        id: package_log
-        visible_lines: 8
-        steps:
-          - label: Package current story
-            task_id: package_story
+        id: number_result
+        text: "Doubled count: {{demo.count_doubled}}"
 
-  - id: live_status
-    title: Live status
-    description: An interval task refreshes the clock while this step is active.
+  - id: structured
+    title: Structured
+    description: Object with nested list goes into stdin as JSON and comes back as a JSON object.
     widgets:
       - type: text_output
-        id: clock_intro
-        text: The value below is updated by a repeating task trigger.
+        id: structured_intro
+        text: 'Task reads { name, count, tags } as one JSON object and writes the whole result to "{{demo.summary}}".'
+      - type: array_input
+        id: tags
+        label: Tags
+        items:
+          - urgent
+          - lunar
+          - archive
+        value: demo.tags
       - type: text_output
-        id: clock_value
-        text: "Active clock: {{live.clock}}"
+        id: summary_headline
+        text: "Headline: {{demo.summary.headline}}"
       - type: text_output
-        id: slug_snapshot
-        text: "Current slug snapshot: {{story.slug}}"
+        id: summary_count
+        text: "Card count: {{demo.summary.card.count}}"
+      - type: text_output
+        id: summary_tags
+        text: "Card tags: {{demo.summary.card.tags}}"
+      - type: object_editor
+        id: summary_card
+        label: Editable card
+        default:
+          name: Unknown
+          count: 0
+          tags: []
+        value: demo.summary.card

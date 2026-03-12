@@ -53,11 +53,12 @@ pub(super) struct TaskDef {
     #[serde(default)]
     pub(super) args: Vec<String>,
     #[serde(default)]
+    #[schemars(schema_with = "super::doc_model::yaml_value_schema")]
+    pub(super) reads: Option<serde_yaml::Value>,
+    #[serde(default)]
     pub(super) timeout_ms: Option<u64>,
     #[serde(default)]
     pub(super) enabled: Option<bool>,
-    #[serde(default)]
-    pub(super) env: BTreeMap<String, String>,
     #[serde(default)]
     pub(super) triggers: Vec<TaskTriggerDef>,
     #[serde(default)]
@@ -731,10 +732,10 @@ pub(super) struct ObjectEditorDef {
     pub(super) id: String,
     /// Visible widget label.
     pub(super) label: String,
-    /// Initial object value.
+    /// Default object value used when the widget is not bound to store state.
     #[serde(default)]
     #[schemars(schema_with = "super::doc_model::yaml_value_schema")]
-    pub(super) value: Option<serde_yaml::Value>,
+    pub(super) default: Option<serde_yaml::Value>,
     /// Maximum number of visible rows.
     #[serde(default)]
     pub(super) max_visible: Option<usize>,
@@ -988,7 +989,7 @@ pub(super) struct CommandRunnerCommandDef {
     /// Program arguments.
     #[serde(default)]
     pub(super) args: Vec<String>,
-    /// Environment variables passed to the command.
     #[serde(default)]
-    pub(super) env: BTreeMap<String, String>,
+    #[schemars(schema_with = "super::doc_model::yaml_value_schema")]
+    pub(super) reads: Option<serde_yaml::Value>,
 }

@@ -1,6 +1,5 @@
 use super::model::{NavigationDef, WhenDef, WidgetDef, WriteBindingDef};
 use crate::task::TaskTrigger;
-use std::collections::BTreeMap;
 
 #[derive(Debug)]
 pub(super) struct ConfigSpec {
@@ -24,9 +23,9 @@ pub(super) struct TaskTemplateSpec {
     pub kind: String,
     pub program: String,
     pub args: Vec<String>,
+    pub reads: Option<serde_yaml::Value>,
     pub timeout_ms: Option<u64>,
     pub enabled: bool,
-    pub env: BTreeMap<String, String>,
     pub triggers: Vec<TaskTrigger>,
     pub writes: Option<WriteBindingDef>,
 }

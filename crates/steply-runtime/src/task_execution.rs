@@ -1,7 +1,8 @@
-use std::io::{BufRead, BufReader, Read};
+use std::io::{BufRead, BufReader, Read, Write};
 use std::process::{Command, Stdio};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
+use steply_core::core::value::Value;
 use steply_core::task::execution::{TaskCompletion, TaskInvocation};
 use steply_core::task::spec::TaskKind;
 
@@ -12,14 +13,14 @@ pub fn execute_invocation(invocation: TaskInvocation) -> TaskCompletion {
     let TaskKind::Exec {
         program,
         args,
-        env,
         timeout_ms,
+        ..
     } = invocation.spec.kind.clone();
 
     let mut command = Command::new(program.as_str());
     command
         .args(args.as_slice())
-        .envs(env.iter())
+        .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
 
@@ -30,19 +31,39 @@ pub fn execute_invocation(invocation: TaskInvocation) -> TaskCompletion {
                 task_id,
                 run_id: invocation.run_id,
                 concurrency_policy,
-                status_code: None,
-                stdout: String::new(),
-                stderr: String::new(),
+                result: Value::None,
                 error: Some(format!("spawn failed: {err}")),
                 cancelled: false,
             };
         }
     };
 
+    if let Some(mut stdin) = child.stdin.take()
+        && let Err(err) = stdin.write_all(invocation.stdin_json.as_bytes())
+    {
+        let _ = child.kill();
+        let _ = child.wait();
+        return TaskCompletion {
+            task_id,
+            run_id: invocation.run_id,
+            concurrency_policy,
+            result: Value::None,
+            error: Some(format!("stdin write failed: {err}")),
+            cancelled: false,
+        };
+    }
+
     let log_tx = invocation.log_tx.clone();
     let mut stdout_handle = child.stdout.take().map(|stdout| {
         std::thread::spawn(move || {
-            let reader = BufReader::new(stdout);
+            let mut buf = String::new();
+            let _ = BufReader::new(stdout).read_to_string(&mut buf);
+            buf
+        })
+    });
+    let mut stderr_handle = child.stderr.take().map(|stderr| {
+        std::thread::spawn(move || {
+            let reader = BufReader::new(stderr);
             let mut lines = Vec::new();
             for line in reader.lines() {
                 let line = line.unwrap_or_default();
@@ -54,13 +75,6 @@ pub fn execute_invocation(invocation: TaskInvocation) -> TaskCompletion {
             lines.join("\n")
         })
     });
-    let mut stderr_handle = child.stderr.take().map(|stderr| {
-        std::thread::spawn(move || {
-            let mut buf = String::new();
-            let _ = BufReader::new(stderr).read_to_string(&mut buf);
-            buf
-        })
-    });
 
     let timeout = Duration::from_millis(timeout_ms.max(1));
     let started_at = Instant::now();
@@ -68,15 +82,13 @@ pub fn execute_invocation(invocation: TaskInvocation) -> TaskCompletion {
         if invocation.cancel_token.is_cancelled() {
             let _ = child.kill();
             let _ = child.wait();
-            let stdout = take_output(&mut stdout_handle);
-            let stderr = take_output(&mut stderr_handle);
+            let _ = take_output(&mut stdout_handle);
+            let _ = take_output(&mut stderr_handle);
             return TaskCompletion {
                 task_id,
                 run_id: invocation.run_id,
                 concurrency_policy,
-                status_code: None,
-                stdout,
-                stderr,
+                result: Value::None,
                 error: Some("cancelled".to_string()),
                 cancelled: true,
             };
@@ -88,15 +100,13 @@ pub fn execute_invocation(invocation: TaskInvocation) -> TaskCompletion {
                 if started_at.elapsed() >= timeout {
                     let _ = child.kill();
                     let _ = child.wait();
-                    let stdout = take_output(&mut stdout_handle);
-                    let stderr = take_output(&mut stderr_handle);
+                    let _ = take_output(&mut stdout_handle);
+                    let _ = take_output(&mut stderr_handle);
                     return TaskCompletion {
                         task_id,
                         run_id: invocation.run_id,
                         concurrency_policy,
-                        status_code: None,
-                        stdout,
-                        stderr,
+                        result: Value::None,
                         error: Some(format!("timeout after {}ms", timeout_ms.max(1))),
                         cancelled: false,
                     };
@@ -106,15 +116,13 @@ pub fn execute_invocation(invocation: TaskInvocation) -> TaskCompletion {
             Err(err) => {
                 let _ = child.kill();
                 let _ = child.wait();
-                let stdout = take_output(&mut stdout_handle);
-                let stderr = take_output(&mut stderr_handle);
+                let _ = take_output(&mut stdout_handle);
+                let _ = take_output(&mut stderr_handle);
                 return TaskCompletion {
                     task_id,
                     run_id: invocation.run_id,
                     concurrency_policy,
-                    status_code: None,
-                    stdout,
-                    stderr,
+                    result: Value::None,
                     error: Some(format!("wait failed: {err}")),
                     cancelled: false,
                 };
@@ -125,25 +133,39 @@ pub fn execute_invocation(invocation: TaskInvocation) -> TaskCompletion {
     let stdout = take_output(&mut stdout_handle);
     let stderr = take_output(&mut stderr_handle);
 
-    let status_code = status.code();
-
     let status_error = if status.success() {
         None
     } else {
         Some(format!(
             "exit status {:?}: {}",
-            status_code,
+            status.code(),
             normalize_text(stderr.as_str())
         ))
+    };
+
+    let result = if status_error.is_none() {
+        match parse_task_result(stdout.as_str()) {
+            Ok(result) => result,
+            Err(err) => {
+                return TaskCompletion {
+                    task_id,
+                    run_id: invocation.run_id,
+                    concurrency_policy,
+                    result: Value::None,
+                    error: Some(err),
+                    cancelled: false,
+                };
+            }
+        }
+    } else {
+        Value::None
     };
 
     TaskCompletion {
         task_id,
         run_id: invocation.run_id,
         concurrency_policy,
-        status_code,
-        stdout,
-        stderr,
+        result,
         error: status_error,
         cancelled: false,
     }
@@ -158,4 +180,12 @@ fn take_output(handle: &mut Option<JoinHandle<String>>) -> String {
 
 fn normalize_text(value: &str) -> &str {
     value.trim_end_matches(['\r', '\n'])
+}
+
+fn parse_task_result(stdout: &str) -> Result<Value, String> {
+    let trimmed = stdout.trim();
+    if trimmed.is_empty() {
+        return Ok(Value::None);
+    }
+    Value::from_json(trimmed).map_err(|err| format!("invalid JSON task result: {err}"))
 }

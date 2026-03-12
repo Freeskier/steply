@@ -7,7 +7,7 @@ use crate::core::value_path::ValueTarget;
 use crate::task::{RerunPolicy, TaskId, TaskRequest, TaskSpec, TaskTrigger};
 use crate::time::Instant;
 
-pub use keys::{fingerprint_value, interval_key, node_change_debounce_key, value_to_task_arg};
+pub use keys::{fingerprint_value, interval_key, node_change_debounce_key};
 pub use lifecycle::{complete_task_run, request_task_run};
 pub use triggering::{
     bootstrap_interval_tasks, cancel_interval_tasks, refresh_active_step_interval_tasks,
@@ -24,6 +24,7 @@ pub enum TaskStartResult {
     Disabled { task_id: TaskId },
     Skipped { task_id: TaskId },
     Dropped { task_id: TaskId },
+    Rejected { task_id: TaskId, reason: String },
 }
 
 pub trait TaskEngineHost {
@@ -60,13 +61,14 @@ pub trait TaskEngineHost {
 
     fn cancel_running_task(&mut self, task_id: &TaskId);
 
-    fn resolve_task_spec_templates(&self, spec: TaskSpec) -> TaskSpec;
+    fn build_task_stdin_json(&self, spec: &TaskSpec) -> Result<String, String>;
 
     fn current_step_id_if_any(&self) -> Option<String>;
 
     fn start_task_invocation(
         &mut self,
         spec: TaskSpec,
+        stdin_json: String,
         fingerprint: Option<u64>,
         now: Instant,
         origin_step_id: Option<String>,

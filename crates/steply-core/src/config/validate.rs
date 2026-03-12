@@ -296,6 +296,10 @@ fn validate_task_references(
                 | TaskTrigger::Interval { .. } => {}
             }
         }
+        if let Some(reads) = &task.reads {
+            let _ = super::binding_compile::compile_read_binding_value(reads, true)
+                .map_err(|err| format!("invalid task reads for '{}': {err}", task.id))?;
+        }
         if let Some(super::model::WriteBindingDef::Selector(target)) = &task.writes {
             crate::core::store_refs::parse_store_selector(target.as_str())
                 .map_err(|err| format!("invalid task write selector '{target}': {err}"))?;

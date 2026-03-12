@@ -64,11 +64,21 @@ pub fn request_task_run(host: &mut impl TaskEngineHost, request: TaskRequest) ->
         ConcurrencyPolicy::Parallel => {}
     }
 
-    let invocation_spec = host.resolve_task_spec_templates(spec);
+    let stdin_json = match host.build_task_stdin_json(&spec) {
+        Ok(stdin_json) => stdin_json,
+        Err(reason) => {
+            let result = TaskStartResult::Rejected {
+                task_id: spec.id.clone(),
+                reason,
+            };
+            host.emit_task_start_feedback(&result);
+            return result;
+        }
+    };
     let origin_step_id = host.current_step_id_if_any();
-    let task_id = invocation_spec.id.clone();
+    let task_id = spec.id.clone();
     let run_id =
-        host.start_task_invocation(invocation_spec, request.fingerprint, now, origin_step_id);
+        host.start_task_invocation(spec, stdin_json, request.fingerprint, now, origin_step_id);
 
     let result = TaskStartResult::Started { task_id, run_id };
     host.emit_task_start_feedback(&result);
@@ -96,11 +106,13 @@ pub fn complete_task_run(host: &mut impl TaskEngineHost, completion: TaskComplet
         return false;
     }
 
-    let scope = completion.scope_value();
-    if let Some(spec) = host.find_task_spec(&completion.task_id) {
-        for binding in spec.writes {
-            let value = binding.expr.resolve_in_scope(&scope);
-            host.apply_value_change_target(binding.target, value);
+    if completion.error.is_none() {
+        let scope = completion.scope_value();
+        if let Some(spec) = host.find_task_spec(&completion.task_id) {
+            for binding in spec.writes {
+                let value = binding.expr.resolve_in_scope(&scope);
+                host.apply_value_change_target(binding.target, value);
+            }
         }
     }
     true

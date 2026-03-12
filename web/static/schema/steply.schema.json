@@ -13,14 +13,6 @@
           },
           "type": "array"
         },
-        "env": {
-          "additionalProperties": {
-            "type": "string"
-          },
-          "default": {},
-          "description": "Environment variables passed to the command.",
-          "type": "object"
-        },
         "label": {
           "description": "Visible command label.",
           "type": "string"
@@ -28,6 +20,9 @@
         "program": {
           "description": "Executed program name.",
           "type": "string"
+        },
+        "reads": {
+          "default": null
         }
       },
       "required": [
@@ -507,13 +502,6 @@
             "null"
           ]
         },
-        "env": {
-          "additionalProperties": {
-            "type": "string"
-          },
-          "default": {},
-          "type": "object"
-        },
         "id": {
           "type": "string"
         },
@@ -522,6 +510,9 @@
         },
         "program": {
           "type": "string"
+        },
+        "reads": {
+          "default": null
         },
         "timeout_ms": {
           "default": null,
@@ -2747,6 +2738,10 @@
         },
         {
           "properties": {
+            "default": {
+              "default": null,
+              "description": "Default object value used when the widget is not bound to store state."
+            },
             "id": {
               "description": "Unique widget identifier within the step.",
               "type": "string"

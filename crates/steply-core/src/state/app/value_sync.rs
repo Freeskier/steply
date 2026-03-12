@@ -1,39 +1,27 @@
 use super::AppState;
 use crate::core::{NodeId, value::Value, value_path::ValueTarget};
-use crate::runtime::event::ValueChange;
-use crate::widgets::node::{NodeWalkScope, walk_nodes, walk_nodes_mut};
-use std::collections::{HashMap, HashSet};
-
-const MAX_BINDING_SETTLE_PASSES: usize = 8;
+use crate::widgets::node::{NodeWalkScope, find_node, walk_nodes_mut};
+use std::collections::HashSet;
 
 impl AppState {
     pub(super) fn sync_current_step_values_to_store(&mut self) {
-        let changed_targets = self.push_current_step_writes_to_store();
+        let changed_targets = self.refresh_current_step_bindings_collect();
         self.emit_store_change_triggers(changed_targets);
     }
 
-    pub(super) fn settle_current_step_bindings(&mut self) {
-        let changed_targets = self.settle_current_step_bindings_collect();
+    pub(super) fn refresh_current_step_bindings(&mut self) {
+        let changed_targets = self.refresh_current_step_bindings_collect();
         self.emit_store_change_triggers(changed_targets);
     }
 
-    fn settle_current_step_bindings_collect(&mut self) -> Vec<ValueTarget> {
-        let mut changed_targets = Vec::new();
-        let mut seen = HashSet::new();
-
-        for _ in 0..MAX_BINDING_SETTLE_PASSES {
-            let pass_changes = self.push_current_step_writes_to_store();
-            let store_changed = !pass_changes.is_empty();
-            for target in pass_changes {
-                push_unique_target(&mut changed_targets, &mut seen, target);
-            }
-            let hydrated = self.hydrate_current_step_from_store();
-            if !store_changed && !hydrated {
-                break;
-            }
-        }
-
-        changed_targets
+    fn refresh_current_step_bindings_collect(&mut self) -> Vec<ValueTarget> {
+        let mut commit = BindingCommit::default();
+        self.bootstrap_missing_current_step_value_bindings(&mut commit);
+        self.commit_focused_current_step_writes(&mut commit);
+        self.hydrate_current_step_from_store();
+        self.propagate_current_step_derived_writes(&mut commit);
+        self.hydrate_current_step_from_store();
+        commit.finish()
     }
 
     pub(super) fn apply_value_change(&mut self, target: impl Into<NodeId>, value: Value) {
@@ -59,90 +47,89 @@ impl AppState {
         self.runtime
             .validation
             .clear_runtime_step_error(store_write_error_key(root.as_str()).as_str());
-        let mut changed_targets = Vec::new();
-        let mut seen = HashSet::new();
+        let mut commit = BindingCommit::default();
         if changed {
-            push_unique_target(&mut changed_targets, &mut seen, direct_target);
+            commit.record_target(direct_target);
         }
         if !self.reconcile_current_step_after_store_change() {
-            for target in self.settle_current_step_bindings_collect() {
-                push_unique_target(&mut changed_targets, &mut seen, target);
-            }
+            commit.extend(self.refresh_current_step_bindings_collect());
         }
-        self.emit_store_change_triggers(changed_targets);
+        self.emit_store_change_triggers(commit.finish());
     }
 
     pub(super) fn hydrate_current_step_from_store(&mut self) -> bool {
         let mut changed = false;
         let store = &self.data.store;
+        let focused_id = self.ui.focus.current_id().map(str::to_string);
         walk_nodes_mut(
             self.flow.current_step_mut().nodes.as_mut_slice(),
             NodeWalkScope::Recursive,
-            &mut |node| changed |= node.sync_from_store(store),
+            &mut |node| {
+                let is_focused = focused_id
+                    .as_deref()
+                    .is_some_and(|focused_id| node.id() == focused_id);
+                changed |= node.sync_from_store_with_focus(store, is_focused);
+            },
         );
         changed
     }
 
-    fn push_current_step_writes_to_store(&mut self) -> Vec<ValueTarget> {
-        let focused_id = self.ui.focus.current_id().map(str::to_string);
-        let changes = {
-            let mut out = Vec::new();
-            walk_nodes(
-                self.flow.current_step().nodes.as_slice(),
-                NodeWalkScope::Recursive,
-                &mut |node| {
-                    let is_focused = focused_id
-                        .as_deref()
-                        .is_some_and(|focused_id| node.id() == focused_id);
-                    let has_reads = node
-                        .store_binding()
-                        .and_then(|binding| binding.reads.as_ref())
-                        .is_some();
-                    let base_order = out.len();
-                    for (idx, change) in node.write_changes().into_iter().enumerate() {
-                        out.push(PendingWrite {
-                            change,
-                            is_focused,
-                            has_reads,
-                            order: base_order + idx,
-                        });
-                    }
-                },
-            );
-            out
+    fn bootstrap_missing_current_step_value_bindings(&mut self, commit: &mut BindingCommit) {
+        let bindings = self
+            .flow
+            .current_step()
+            .binding_plan
+            .direct_value_nodes
+            .clone();
+        for binding in bindings {
+            if self.data.store.get_target(&binding.target).is_some() {
+                continue;
+            }
+            let nodes = self.flow.current_step().nodes.as_slice();
+            let Some(value) =
+                find_node(nodes, binding.node_id.as_str()).and_then(|node| node.value())
+            else {
+                continue;
+            };
+            commit.apply_write(self, binding.target, value);
+        }
+    }
+
+    fn commit_focused_current_step_writes(&mut self, commit: &mut BindingCommit) {
+        let Some(focused_id) = self.ui.focus.current_id().map(str::to_string) else {
+            return;
         };
-        let mut selected = HashMap::<String, PendingWrite>::new();
-        for pending in changes {
-            let key = pending.change.target.to_selector();
-            match selected.get(key.as_str()) {
-                Some(existing) if !pending.should_replace(existing) => {}
-                _ => {
-                    selected.insert(key, pending);
-                }
+        let nodes = self.flow.current_step().nodes.as_slice();
+        let Some(changes) = find_node(nodes, focused_id.as_str()).map(|node| node.write_changes())
+        else {
+            return;
+        };
+        for change in changes {
+            commit.apply_write(self, change.target, change.value);
+        }
+    }
+
+    fn propagate_current_step_derived_writes(&mut self, commit: &mut BindingCommit) {
+        let derived_ids = self
+            .flow
+            .current_step()
+            .binding_plan
+            .derived_write_nodes
+            .clone();
+        for node_id in derived_ids {
+            let nodes = self.flow.current_step().nodes.as_slice();
+            let Some(changes) = find_node(nodes, node_id.as_str()).map(|node| node.write_changes())
+            else {
+                continue;
+            };
+            let mut node_changed = false;
+            for change in changes {
+                node_changed |= commit.apply_write(self, change.target, change.value);
+            }
+            if node_changed {
+                self.hydrate_current_step_from_store();
             }
         }
-        let mut changed_targets = Vec::new();
-        let mut changes = selected.into_values().collect::<Vec<_>>();
-        changes.sort_by_key(|pending| pending.order);
-        for pending in changes {
-            let change = pending.change;
-            let target = change.target;
-            match self.write_store_target(target.clone(), change.value) {
-                Ok(changed) => {
-                    if changed {
-                        changed_targets.push(target);
-                    }
-                }
-                Err(err) => {
-                    let root = err_root_key(&err);
-                    self.runtime.validation.set_runtime_step_error(
-                        store_write_error_key(root.as_str()),
-                        err.to_string(),
-                    );
-                }
-            }
-        }
-        changed_targets
     }
 
     fn write_store_target(
@@ -163,32 +150,53 @@ impl AppState {
     }
 
     fn emit_store_change_triggers(&mut self, targets: Vec<ValueTarget>) {
-        for target in dedupe_targets(targets) {
+        for target in targets {
             crate::task::engine::trigger_store_value_changed_tasks(self, &target);
         }
     }
 }
 
-struct PendingWrite {
-    change: ValueChange,
-    is_focused: bool,
-    has_reads: bool,
-    order: usize,
+#[derive(Default)]
+struct BindingCommit {
+    changed_targets: Vec<ValueTarget>,
+    seen_targets: HashSet<String>,
 }
 
-impl PendingWrite {
-    fn priority(&self) -> u8 {
-        if self.is_focused {
-            2
-        } else if self.has_reads {
-            0
-        } else {
-            1
+impl BindingCommit {
+    fn apply_write(&mut self, state: &mut AppState, target: ValueTarget, value: Value) -> bool {
+        match state.write_store_target(target.clone(), value) {
+            Ok(changed) => {
+                if changed {
+                    self.record_target(target);
+                }
+                changed
+            }
+            Err(err) => {
+                let root = err_root_key(&err);
+                state
+                    .runtime
+                    .validation
+                    .set_runtime_step_error(store_write_error_key(root.as_str()), err.to_string());
+                false
+            }
         }
     }
 
-    fn should_replace(&self, other: &Self) -> bool {
-        self.priority() > other.priority()
+    fn record_target(&mut self, target: ValueTarget) {
+        let selector = target.to_selector();
+        if self.seen_targets.insert(selector) {
+            self.changed_targets.push(target);
+        }
+    }
+
+    fn extend(&mut self, targets: Vec<ValueTarget>) {
+        for target in targets {
+            self.record_target(target);
+        }
+    }
+
+    fn finish(self) -> Vec<ValueTarget> {
+        self.changed_targets
     }
 }
 
@@ -205,24 +213,4 @@ fn err_root_key(err: &crate::state::store::StoreWriteError) -> String {
 
 fn store_write_error_key(root: &str) -> String {
     format!("store:{root}")
-}
-
-fn dedupe_targets(targets: Vec<ValueTarget>) -> Vec<ValueTarget> {
-    let mut unique = Vec::new();
-    let mut seen = HashSet::new();
-    for target in targets {
-        push_unique_target(&mut unique, &mut seen, target);
-    }
-    unique
-}
-
-fn push_unique_target(
-    targets: &mut Vec<ValueTarget>,
-    seen: &mut HashSet<String>,
-    target: ValueTarget,
-) {
-    let selector = target.to_selector();
-    if seen.insert(selector) {
-        targets.push(target);
-    }
 }

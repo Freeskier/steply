@@ -1,6 +1,7 @@
 use crate::task_execution::execute_invocation;
 use std::sync::mpsc::{self, Receiver, Sender, SyncSender, TrySendError};
 use std::sync::{Arc, Mutex};
+use steply_core::core::value::Value;
 use steply_core::task::execution::{TaskCompletion, TaskInvocation};
 use steply_core::task::spec::TaskId;
 
@@ -165,9 +166,7 @@ fn rejected_completion(invocation: TaskInvocation, reason: &str) -> TaskCompleti
         task_id: invocation.spec.id,
         run_id: invocation.run_id,
         concurrency_policy: invocation.spec.concurrency_policy,
-        status_code: None,
-        stdout: String::new(),
-        stderr: String::new(),
+        result: Value::None,
         error: Some(reason.to_string()),
         cancelled: false,
     }

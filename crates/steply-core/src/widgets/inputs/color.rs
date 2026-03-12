@@ -4,7 +4,8 @@ use crate::ui::span::Span;
 use crate::ui::style::{Color, Style};
 use crate::widgets::base::WidgetBase;
 use crate::widgets::traits::{
-    DrawOutput, Drawable, FocusMode, InteractionResult, Interactive, RenderContext, ValidationMode,
+    DrawOutput, Drawable, FocusMode, InteractionResult, Interactive, RenderContext,
+    StoreSyncPolicy, ValidationMode,
 };
 use crate::widgets::validators::{Validator, run_validators};
 use unicode_width::UnicodeWidthStr;
@@ -300,6 +301,10 @@ impl Drawable for ColorInput {
 impl Interactive for ColorInput {
     fn focus_mode(&self) -> FocusMode {
         FocusMode::Leaf
+    }
+
+    fn store_sync_policy(&self) -> StoreSyncPolicy {
+        StoreSyncPolicy::PreserveLocalStateWhileFocused
     }
 
     fn on_key(&mut self, key: KeyEvent) -> InteractionResult {

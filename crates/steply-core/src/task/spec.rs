@@ -1,8 +1,8 @@
 use crate::core::value_path::ValueTarget;
 use crate::task::policy::{ConcurrencyPolicy, RerunPolicy};
+use crate::widgets::shared::binding::ReadBinding;
 use crate::widgets::shared::binding::WriteBinding;
 use std::borrow::Borrow;
-use std::collections::BTreeMap;
 use std::fmt;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -58,12 +58,12 @@ impl From<&String> for TaskId {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 pub enum TaskKind {
     Exec {
         program: String,
         args: Vec<String>,
-        env: BTreeMap<String, String>,
+        reads: Option<ReadBinding>,
         timeout_ms: u64,
     },
 }
@@ -112,7 +112,7 @@ impl TaskSpec {
             kind: TaskKind::Exec {
                 program: program.into(),
                 args,
-                env: BTreeMap::new(),
+                reads: None,
                 timeout_ms: 2_000,
             },
             rerun_policy: RerunPolicy::default(),
@@ -132,9 +132,9 @@ impl TaskSpec {
         self
     }
 
-    pub fn with_env(mut self, env: BTreeMap<String, String>) -> Self {
-        let TaskKind::Exec { env: current, .. } = &mut self.kind;
-        *current = env;
+    pub fn with_reads(mut self, reads: ReadBinding) -> Self {
+        let TaskKind::Exec { reads: current, .. } = &mut self.kind;
+        *current = Some(reads);
         self
     }
 

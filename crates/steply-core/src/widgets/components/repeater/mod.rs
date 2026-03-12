@@ -14,7 +14,7 @@ use crate::widgets::shared::render_ctx::child_context_for;
 use crate::widgets::shared::validation::decorate_component_validation;
 use crate::widgets::traits::{
     CompletionState, DrawOutput, Drawable, FocusMode, HintContext, HintGroup, HintItem,
-    InteractionResult, Interactive, RenderContext, TextAction, ValidationMode,
+    InteractionResult, Interactive, RenderContext, StoreSyncPolicy, TextAction, ValidationMode,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -499,6 +499,10 @@ impl Drawable for Repeater {
 impl Interactive for Repeater {
     fn focus_mode(&self) -> FocusMode {
         FocusMode::Group
+    }
+
+    fn store_sync_policy(&self) -> StoreSyncPolicy {
+        StoreSyncPolicy::PreserveLocalStateWhileFocused
     }
 
     fn on_key(&mut self, key: KeyEvent) -> InteractionResult {

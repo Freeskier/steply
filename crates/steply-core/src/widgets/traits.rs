@@ -392,6 +392,12 @@ pub struct CompletionState<'a> {
     pub prefix_start: Option<usize>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StoreSyncPolicy {
+    Always,
+    PreserveLocalStateWhileFocused,
+}
+
 impl TextAction {
     pub(crate) fn apply(self, state: &mut TextEditState<'_>) -> bool {
         match self {
@@ -407,6 +413,9 @@ pub trait Interactive: Send {
     fn focus_mode(&self) -> FocusMode;
     fn store_binding(&self) -> Option<&StoreBinding> {
         None
+    }
+    fn store_sync_policy(&self) -> StoreSyncPolicy {
+        StoreSyncPolicy::Always
     }
 
     fn overlay_placement(&self) -> Option<OverlayPlacement> {
@@ -480,6 +489,9 @@ pub trait Interactive: Send {
         self.set_value(value);
         true
     }
+    fn sync_from_store_with_focus(&mut self, store: &ValueStore, _is_focused: bool) -> bool {
+        self.sync_from_store(store)
+    }
 
     fn validate(&self, _mode: ValidationMode) -> Result<(), String> {
         Ok(())
@@ -513,6 +525,9 @@ pub trait OutputNode: Drawable {
         }
         self.set_value(value);
         true
+    }
+    fn sync_from_store_with_focus(&mut self, store: &ValueStore, _is_focused: bool) -> bool {
+        self.sync_from_store(store)
     }
     fn on_pointer(&mut self, _event: PointerEvent) -> InteractionResult {
         InteractionResult::ignored()

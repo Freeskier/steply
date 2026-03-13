@@ -1,0 +1,40 @@
+version: 1
+
+steps:
+  - id: shared_profile
+    title: Shared Profile Binding
+    description: Several widgets write into one shared object while the object editor stays bound to the full payload.
+    widgets:
+      - type: text_input
+        id: profile_name
+        label: Name
+        default: Moonbase Report
+        value: demo.profile.name
+
+      - type: array_input
+        id: profile_tags
+        label: Tags
+        items:
+          - urgent
+          - lunar
+          - archive
+        value: demo.profile.tags
+
+      - type: slider
+        id: profile_priority
+        label: Priority
+        min: 0
+        max: 10
+        step: 1
+        default: 6
+        value: demo.profile.priority
+
+      - type: object_editor
+        id: profile_object
+        label: Profile object
+        default:
+          name: Moonbase Report
+          tags:
+            - urgent
+          priority: 6
+        value: demo.profile

@@ -128,3 +128,6 @@ mod state;
 mod transaction;
 mod validation_runtime;
 mod value_sync;
+
+#[cfg(test)]
+mod tests;

@@ -108,6 +108,19 @@ impl RenderContext {
         }
     }
 
+    pub fn with_terminal_width(&self, width: u16) -> Self {
+        Self {
+            focused_id: self.focused_id.clone(),
+            terminal_size: TerminalSize {
+                width,
+                height: self.terminal_size.height,
+            },
+            visible_errors: self.visible_errors.clone(),
+            invalid_hidden: self.invalid_hidden.clone(),
+            completion_menus: self.completion_menus.clone(),
+        }
+    }
+
     pub fn with_completion_owner(
         &self,
         source_owner_id: &str,
@@ -182,7 +195,7 @@ impl DrawOutput {
         Self {
             lines: lines
                 .into_iter()
-                .map(|line| vec![Span::new(line).no_wrap()])
+                .map(|line| vec![Span::new(line)])
                 .collect(),
             sticky: Vec::new(),
         }
@@ -468,6 +481,9 @@ pub trait Interactive: Send {
     }
     fn cursor_pos(&self) -> Option<CursorPos> {
         None
+    }
+    fn cursor_pos_with_width(&self, _available_width: u16) -> Option<CursorPos> {
+        self.cursor_pos()
     }
     fn cursor_visible(&self) -> bool {
         self.cursor_pos().is_some()

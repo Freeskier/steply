@@ -94,6 +94,14 @@ pub enum ValueTarget {
     Path { root: NodeId, path: ValuePath },
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ValueTargetRelation {
+    Equal,
+    Contains,
+    ContainedBy,
+    Disjoint,
+}
+
 impl ValueTarget {
     pub fn node(target: impl Into<NodeId>) -> Self {
         Self::Node(target.into())
@@ -144,6 +152,42 @@ impl ValueTarget {
             Self::Node(root) => root.to_string(),
             Self::Path { root, path } => format!("{}::{}", root, path),
         }
+    }
+
+    pub fn relation_to(&self, other: &Self) -> ValueTargetRelation {
+        if self.root() != other.root() {
+            return ValueTargetRelation::Disjoint;
+        }
+
+        let self_path = self
+            .nested_path()
+            .map(|path| path.segments())
+            .unwrap_or(&[]);
+        let other_path = other
+            .nested_path()
+            .map(|path| path.segments())
+            .unwrap_or(&[]);
+
+        if self_path == other_path {
+            ValueTargetRelation::Equal
+        } else if path_is_prefix(self_path, other_path) {
+            ValueTargetRelation::Contains
+        } else if path_is_prefix(other_path, self_path) {
+            ValueTargetRelation::ContainedBy
+        } else {
+            ValueTargetRelation::Disjoint
+        }
+    }
+
+    pub fn overlaps(&self, other: &Self) -> bool {
+        !matches!(self.relation_to(other), ValueTargetRelation::Disjoint)
+    }
+
+    pub fn contains_target(&self, other: &Self) -> bool {
+        matches!(
+            self.relation_to(other),
+            ValueTargetRelation::Equal | ValueTargetRelation::Contains
+        )
     }
 }
 
@@ -303,3 +347,11 @@ fn is_identifier(input: &str) -> bool {
     }
     chars.all(|ch| ch.is_ascii_alphanumeric() || ch == '_')
 }
+
+fn path_is_prefix(prefix: &[PathSegment], full: &[PathSegment]) -> bool {
+    prefix.len() <= full.len() && prefix.iter().zip(full.iter()).all(|(a, b)| a == b)
+}
+
+#[cfg(test)]
+#[path = "tests/value_path.rs"]
+mod tests;

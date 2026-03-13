@@ -6,10 +6,7 @@ write to file
 
 
 - select list może dostać obj ale też str[]
-- jaki jest najlepszy tryb outputu ze skryptów + jak można czytać store w skrypcie
-- może opcjonalnie każdy input, component MOŻE produkować/podpinać się pod wartości w store 
 - commands runners bez outputu/only command  
-- file browser multi select
 - confirm z customowymi yes/no + poprawa podświetlenia + default opcja
 - table movement do refactoru
 - zastanowić się kiedy enter może być toggle a kiedy zmienia focus/step

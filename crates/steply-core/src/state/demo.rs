@@ -6,7 +6,7 @@ use crate::task::{TaskSpec, TaskTrigger};
 use crate::widgets::components::calendar::{Calendar, CalendarMode};
 use crate::widgets::components::file_browser::FileBrowserInput;
 use crate::widgets::components::object_editor::{InsertType, ObjectEditor};
-use crate::widgets::components::repeater::{Repeater, RepeaterLayout};
+use crate::widgets::components::repeater::{Repeater, RepeaterEntryMode};
 use crate::widgets::components::select_list::SelectList;
 use crate::widgets::components::select_list::{SelectItem, SelectMode};
 use crate::widgets::components::snippet::Snippet;
@@ -53,6 +53,7 @@ fn bind_writes(node: Node, targets: &[&str]) -> Node {
             options: None,
             reads: None,
             writes,
+            commit_policy: crate::state::change::StoreCommitPolicy::Immediate,
         },
     )
 }
@@ -95,8 +96,10 @@ fn step_repeater() -> Step {
             bind_writes(
                 Node::Component(Box::new(
                     Repeater::new("rep_accounts", "Accounts setup")
-                        .with_layout(RepeaterLayout::Stacked)
-                        .with_header_template("configuring [{index} of {count}] for {item}:")
+                        .with_entry_mode(RepeaterEntryMode::Full)
+                        .with_header_template(
+                            "configuring [{{_position}} of {{_count}}] for {{_item}}:",
+                        )
                         .with_items(vec![
                             Value::Text("Kasia".into()),
                             Value::Text("Jas".into()),

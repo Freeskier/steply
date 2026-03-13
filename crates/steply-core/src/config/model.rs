@@ -14,7 +14,7 @@ pub(super) struct ConfigDoc {
     pub(super) tasks: Vec<TaskDef>,
 }
 
-#[derive(Debug, Deserialize, JsonSchema)]
+#[derive(Debug, Deserialize, Clone, JsonSchema)]
 pub(super) struct StepDef {
     pub(super) id: String,
     #[serde(alias = "prompt")]
@@ -38,7 +38,7 @@ pub(super) enum NavigationDef {
     Destructive { warning: String },
 }
 
-#[derive(Debug, Deserialize, JsonSchema)]
+#[derive(Debug, Deserialize, Clone, JsonSchema)]
 pub(super) struct FlowItemDef {
     pub(super) step: String,
     #[serde(default)]
@@ -100,17 +100,14 @@ pub(super) struct WhenDef {
     /// Store selector used by the condition.
     #[serde(default, rename = "ref")]
     pub(super) field_ref: Option<String>,
-    /// Value that must be equal to the referenced value.
+    /// Condition operator. Omit to use a truthy check.
+    #[serde(default)]
+    #[serde(rename = "is")]
+    pub(super) operator: Option<ConditionOperatorDef>,
+    /// Comparison value used by operators such as equals or greater_than.
     #[serde(default)]
     #[schemars(schema_with = "super::doc_model::yaml_value_schema")]
-    pub(super) equal: Option<serde_yaml::Value>,
-    /// Value that must differ from the referenced value.
-    #[serde(default)]
-    #[schemars(schema_with = "super::doc_model::yaml_value_schema")]
-    pub(super) not_equal: Option<serde_yaml::Value>,
-    /// Whether the referenced value must be non-empty.
-    #[serde(default)]
-    pub(super) not_empty: Option<bool>,
+    pub(super) value: Option<serde_yaml::Value>,
     /// All nested conditions that must match.
     #[serde(default)]
     pub(super) all: Vec<WhenDef>,
@@ -122,15 +119,44 @@ pub(super) struct WhenDef {
     pub(super) not: Option<Box<WhenDef>>,
 }
 
+#[derive(Debug, Clone, Copy, Deserialize, JsonSchema, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub(super) enum ConditionOperatorDef {
+    Exists,
+    Empty,
+    NotEmpty,
+    Equals,
+    NotEquals,
+    GreaterThan,
+    GreaterOrEqual,
+    LessThan,
+    LessOrEqual,
+    Contains,
+}
+
 #[derive(Debug, Clone, Deserialize, JsonSchema, Default)]
 pub(super) struct WidgetBindingDef {
+    /// Direct store binding target for the widget's main value.
     #[serde(default)]
     pub(super) value: Option<String>,
+    /// Read-only store inputs used to seed or drive the widget.
     #[serde(default)]
     #[schemars(schema_with = "super::doc_model::yaml_value_schema")]
     pub(super) reads: Option<serde_yaml::Value>,
+    /// Store writes produced from the widget value or read scope.
     #[serde(default)]
     pub(super) writes: Option<WriteBindingDef>,
+    /// When the widget value should be committed to the store.
+    #[serde(default)]
+    pub(super) commit_policy: BindingCommitPolicyDef,
+}
+
+#[derive(Debug, Clone, Copy, Deserialize, JsonSchema, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub(super) enum BindingCommitPolicyDef {
+    #[default]
+    Immediate,
+    OnSubmit,
 }
 
 #[derive(Debug, Clone, Deserialize, JsonSchema)]
@@ -204,6 +230,10 @@ pub(super) struct TextOutputDef {
     pub(super) id: String,
     /// Rendered text content.
     pub(super) text: String,
+    #[serde(default)]
+    pub(super) when: Option<WhenDef>,
+    #[serde(default, flatten)]
+    pub(super) binding: WidgetBindingDef,
 }
 
 #[derive(Debug, Clone, Deserialize, JsonSchema)]
@@ -215,6 +245,10 @@ pub(super) struct UrlOutputDef {
     /// Optional display label.
     #[serde(default)]
     pub(super) name: Option<String>,
+    #[serde(default)]
+    pub(super) when: Option<WhenDef>,
+    #[serde(default, flatten)]
+    pub(super) binding: WidgetBindingDef,
 }
 
 #[derive(Debug, Clone, Deserialize, JsonSchema)]
@@ -240,6 +274,8 @@ pub(super) struct ThinkingOutputDef {
     /// Peak RGB color for the animation gradient.
     #[serde(default)]
     pub(super) peak_rgb: Option<[u8; 3]>,
+    #[serde(default)]
+    pub(super) when: Option<WhenDef>,
 }
 
 #[derive(Debug, Clone, Deserialize, JsonSchema)]
@@ -266,6 +302,10 @@ pub(super) struct ProgressOutputDef {
     /// Transition configuration for value changes.
     #[serde(default)]
     pub(super) transition: Option<ProgressTransitionDef>,
+    #[serde(default)]
+    pub(super) when: Option<WhenDef>,
+    #[serde(default, flatten)]
+    pub(super) binding: WidgetBindingDef,
 }
 
 #[derive(Debug, Clone, Deserialize, JsonSchema)]
@@ -292,6 +332,10 @@ pub(super) struct ChartOutputDef {
     /// Enables gradient coloring.
     #[serde(default)]
     pub(super) gradient: Option<bool>,
+    #[serde(default)]
+    pub(super) when: Option<WhenDef>,
+    #[serde(default, flatten)]
+    pub(super) binding: WidgetBindingDef,
 }
 
 #[derive(Debug, Clone, Deserialize, JsonSchema)]
@@ -309,6 +353,10 @@ pub(super) struct TableOutputDef {
     /// Table rows.
     #[serde(default)]
     pub(super) rows: Vec<Vec<String>>,
+    #[serde(default)]
+    pub(super) when: Option<WhenDef>,
+    #[serde(default, flatten)]
+    pub(super) binding: WidgetBindingDef,
 }
 
 #[derive(Debug, Clone, Deserialize, JsonSchema)]
@@ -324,6 +372,8 @@ pub(super) struct DiffOutputDef {
     /// Maximum number of visible diff lines.
     #[serde(default)]
     pub(super) max_visible: Option<usize>,
+    #[serde(default)]
+    pub(super) when: Option<WhenDef>,
 }
 
 #[derive(Debug, Clone, Deserialize, JsonSchema)]
@@ -338,6 +388,8 @@ pub(super) struct TaskLogOutputDef {
     pub(super) spinner_style: Option<String>,
     /// Task log steps with label and task id.
     pub(super) steps: Vec<TaskLogStepDef>,
+    #[serde(default)]
+    pub(super) when: Option<WhenDef>,
 }
 
 #[derive(Debug, Clone, Deserialize, JsonSchema)]
@@ -364,6 +416,8 @@ pub(super) struct TextInputDef {
     /// Static completion candidates.
     #[serde(default)]
     pub(super) completion_items: Vec<String>,
+    #[serde(default)]
+    pub(super) when: Option<WhenDef>,
     #[serde(default, flatten)]
     pub(super) binding: WidgetBindingDef,
 }
@@ -383,6 +437,8 @@ pub(super) struct ArrayInputDef {
     /// Validation rules applied to the value.
     #[serde(default)]
     pub(super) validators: Vec<ValidatorDef>,
+    #[serde(default)]
+    pub(super) when: Option<WhenDef>,
     #[serde(default, flatten)]
     pub(super) binding: WidgetBindingDef,
 }
@@ -399,6 +455,8 @@ pub(super) struct ButtonInputDef {
     /// Optional task executed when activated.
     #[serde(default)]
     pub(super) task_id: Option<String>,
+    #[serde(default)]
+    pub(super) when: Option<WhenDef>,
 }
 
 #[derive(Debug, Clone, Deserialize, JsonSchema)]
@@ -421,6 +479,8 @@ pub(super) struct SelectDef {
     /// Validation rules applied to the value.
     #[serde(default)]
     pub(super) validators: Vec<ValidatorDef>,
+    #[serde(default)]
+    pub(super) when: Option<WhenDef>,
     #[serde(default, flatten)]
     pub(super) binding: WidgetBindingDef,
 }
@@ -445,6 +505,8 @@ pub(super) struct ChoiceInputDef {
     /// Validation rules applied to the value.
     #[serde(default)]
     pub(super) validators: Vec<ValidatorDef>,
+    #[serde(default)]
+    pub(super) when: Option<WhenDef>,
     #[serde(default, flatten)]
     pub(super) binding: WidgetBindingDef,
 }
@@ -470,6 +532,8 @@ pub(super) struct SelectListDef {
     /// Whether to render the label.
     #[serde(default)]
     pub(super) show_label: Option<bool>,
+    #[serde(default)]
+    pub(super) when: Option<WhenDef>,
     #[serde(default, flatten)]
     pub(super) binding: WidgetBindingDef,
 }
@@ -491,6 +555,8 @@ pub(super) struct MaskedInputDef {
     /// Validation rules applied to the value.
     #[serde(default)]
     pub(super) validators: Vec<ValidatorDef>,
+    #[serde(default)]
+    pub(super) when: Option<WhenDef>,
     #[serde(default, flatten)]
     pub(super) binding: WidgetBindingDef,
 }
@@ -523,6 +589,8 @@ pub(super) struct SliderDef {
     /// Validation rules applied to the value.
     #[serde(default)]
     pub(super) validators: Vec<ValidatorDef>,
+    #[serde(default)]
+    pub(super) when: Option<WhenDef>,
     #[serde(default, flatten)]
     pub(super) binding: WidgetBindingDef,
 }
@@ -542,6 +610,8 @@ pub(super) struct ColorInputDef {
     /// Validation rules applied to the value.
     #[serde(default)]
     pub(super) validators: Vec<ValidatorDef>,
+    #[serde(default)]
+    pub(super) when: Option<WhenDef>,
     #[serde(default, flatten)]
     pub(super) binding: WidgetBindingDef,
 }
@@ -564,6 +634,8 @@ pub(super) struct ConfirmInputDef {
     /// Initial boolean value.
     #[serde(default)]
     pub(super) default: Option<bool>,
+    #[serde(default)]
+    pub(super) when: Option<WhenDef>,
     #[serde(default, flatten)]
     pub(super) binding: WidgetBindingDef,
 }
@@ -583,6 +655,8 @@ pub(super) struct CheckboxDef {
     /// Validation rules applied to the value.
     #[serde(default)]
     pub(super) validators: Vec<ValidatorDef>,
+    #[serde(default)]
+    pub(super) when: Option<WhenDef>,
     #[serde(default, flatten)]
     pub(super) binding: WidgetBindingDef,
 }
@@ -602,6 +676,8 @@ pub(super) struct CalendarDef {
     /// Validation rules applied to the value.
     #[serde(default)]
     pub(super) validators: Vec<ValidatorDef>,
+    #[serde(default)]
+    pub(super) when: Option<WhenDef>,
     #[serde(default, flatten)]
     pub(super) binding: WidgetBindingDef,
 }
@@ -625,6 +701,8 @@ pub(super) struct TextareaDef {
     /// Validation rules applied to the value.
     #[serde(default)]
     pub(super) validators: Vec<ValidatorDef>,
+    #[serde(default)]
+    pub(super) when: Option<WhenDef>,
     #[serde(default, flatten)]
     pub(super) binding: WidgetBindingDef,
 }
@@ -655,6 +733,8 @@ pub(super) struct CommandRunnerDef {
     pub(super) timeout_ms: Option<u64>,
     /// Commands executed by the runner.
     pub(super) commands: Vec<CommandRunnerCommandDef>,
+    #[serde(default)]
+    pub(super) when: Option<WhenDef>,
     #[serde(default, flatten)]
     pub(super) binding: WidgetBindingDef,
 }
@@ -701,6 +781,8 @@ pub(super) struct FileBrowserDef {
     /// Validation rules applied to the value.
     #[serde(default)]
     pub(super) validators: Vec<ValidatorDef>,
+    #[serde(default)]
+    pub(super) when: Option<WhenDef>,
     #[serde(default, flatten)]
     pub(super) binding: WidgetBindingDef,
 }
@@ -722,6 +804,8 @@ pub(super) struct TreeViewDef {
     /// Whether to render indentation guides.
     #[serde(default)]
     pub(super) indent_guides: Option<bool>,
+    #[serde(default)]
+    pub(super) when: Option<WhenDef>,
     #[serde(default, flatten)]
     pub(super) binding: WidgetBindingDef,
 }
@@ -739,6 +823,8 @@ pub(super) struct ObjectEditorDef {
     /// Maximum number of visible rows.
     #[serde(default)]
     pub(super) max_visible: Option<usize>,
+    #[serde(default)]
+    pub(super) when: Option<WhenDef>,
     #[serde(default, flatten)]
     pub(super) binding: WidgetBindingDef,
 }
@@ -754,6 +840,8 @@ pub(super) struct SnippetDef {
     /// Nested interactive widget definitions.
     #[serde(default)]
     pub(super) inputs: Vec<WidgetDef>,
+    #[serde(default)]
+    pub(super) when: Option<WhenDef>,
     #[serde(default, flatten)]
     pub(super) binding: WidgetBindingDef,
 }
@@ -775,6 +863,8 @@ pub(super) struct TableDef {
     pub(super) initial_rows: Option<usize>,
     /// Column definitions with embedded widgets.
     pub(super) columns: Vec<TableColumnDef>,
+    #[serde(default)]
+    pub(super) when: Option<WhenDef>,
     #[serde(default, flatten)]
     pub(super) binding: WidgetBindingDef,
 }
@@ -785,12 +875,12 @@ pub(super) struct RepeaterDef {
     pub(super) id: String,
     /// Visible widget label.
     pub(super) label: String,
-    /// Iteration mode.
+    /// Iteration source. Accepts a number, list, or store selector resolving to one.
+    #[schemars(schema_with = "super::doc_model::yaml_value_schema")]
+    pub(super) iterate: serde_yaml::Value,
+    /// Field entry mode for each iteration.
     #[serde(default)]
-    pub(super) mode: Option<String>,
-    /// Repeater layout mode.
-    #[serde(default)]
-    pub(super) layout: Option<String>,
+    pub(super) entry_mode: Option<String>,
     /// Whether to render the label.
     #[serde(default)]
     pub(super) show_label: Option<bool>,
@@ -803,17 +893,11 @@ pub(super) struct RepeaterDef {
     /// Relative path used as item label.
     #[serde(default)]
     pub(super) item_label_path: Option<String>,
-    /// Item source or literal item list.
-    #[serde(default)]
-    #[schemars(schema_with = "super::doc_model::yaml_value_schema")]
-    pub(super) items: Option<serde_yaml::Value>,
-    /// Optional explicit iteration count.
-    #[serde(default)]
-    #[schemars(schema_with = "super::doc_model::yaml_value_schema")]
-    pub(super) count: Option<serde_yaml::Value>,
     /// Widgets rendered for the active iteration.
     #[serde(default)]
     pub(super) widgets: Vec<WidgetDef>,
+    #[serde(default)]
+    pub(super) when: Option<WhenDef>,
     #[serde(default, flatten)]
     pub(super) binding: WidgetBindingDef,
 }

@@ -242,7 +242,7 @@ impl FileBrowserComponent {
                         self.toggle_selected_path(path);
                         self.sync_list_selection();
                         self.sync_tree_selection();
-                        self.sync_multi_input_text(false);
+                        self.sync_multi_input_text(true);
                         self.schedule_scan();
                         return InteractionResult::handled();
                     }

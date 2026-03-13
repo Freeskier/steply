@@ -2,7 +2,6 @@ use crate::core::value::Value;
 use crate::core::value_path::ValueTarget;
 use crate::state::flow::Flow;
 use crate::task::{TaskId, TaskSpec};
-use std::collections::HashMap;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum StoreOwnership {
@@ -12,8 +11,9 @@ pub enum StoreOwnership {
     Shared,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum StoreCommitPolicy {
+    #[default]
     Immediate,
     OnSubmit,
 }
@@ -94,6 +94,17 @@ pub struct StoreTransaction {
     patch: StorePatch,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StoreOwnershipEntry {
+    pub target: ValueTarget,
+    pub ownership: StoreOwnership,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct StoreOwnershipRegistry {
+    entries: Vec<StoreOwnershipEntry>,
+}
+
 impl StoreTransaction {
     pub fn new() -> Self {
         Self::default()
@@ -116,53 +127,65 @@ impl StoreTransaction {
     }
 }
 
+impl StoreOwnershipRegistry {
+    pub fn entries(&self) -> &[StoreOwnershipEntry] {
+        self.entries.as_slice()
+    }
+
+    pub fn register(&mut self, target: ValueTarget, ownership: StoreOwnership) {
+        if let Some(existing) = self.entries.iter_mut().find(|entry| entry.target == target) {
+            existing.ownership = merge_ownership(existing.ownership, ownership);
+            return;
+        }
+
+        self.entries.push(StoreOwnershipEntry { target, ownership });
+    }
+
+    pub fn conflicting_owners_for_write(
+        &self,
+        target: &ValueTarget,
+        origin: StoreOwnership,
+    ) -> Vec<StoreOwnership> {
+        let mut conflicts = Vec::<StoreOwnership>::new();
+        for entry in &self.entries {
+            if !entry.target.overlaps(target) {
+                continue;
+            }
+            if entry.ownership == StoreOwnership::Shared || entry.ownership == origin {
+                continue;
+            }
+            if !conflicts.contains(&entry.ownership) {
+                conflicts.push(entry.ownership);
+            }
+        }
+        conflicts
+    }
+}
+
 pub fn collect_store_ownership(
     flow: &Flow,
     task_specs: impl IntoIterator<Item = TaskSpec>,
-) -> HashMap<String, StoreOwnership> {
-    let mut ownership = HashMap::<String, StoreOwnership>::new();
+) -> StoreOwnershipRegistry {
+    let mut ownership = StoreOwnershipRegistry::default();
 
     for step in flow.steps() {
         for binding in &step.binding_plan.direct_value_nodes {
-            merge_ownership_entry(
-                &mut ownership,
-                binding.target.to_selector(),
-                StoreOwnership::User,
-            );
+            ownership.register(binding.target.clone(), StoreOwnership::User);
         }
         for writer in &step.binding_plan.derived_writers {
             for target in &writer.write_targets {
-                merge_ownership_entry(
-                    &mut ownership,
-                    target.to_selector(),
-                    StoreOwnership::Derived,
-                );
+                ownership.register(target.clone(), StoreOwnership::Derived);
             }
         }
     }
 
     for spec in task_specs {
         for binding in spec.writes {
-            merge_ownership_entry(
-                &mut ownership,
-                binding.target.to_selector(),
-                StoreOwnership::Task,
-            );
+            ownership.register(binding.target, StoreOwnership::Task);
         }
     }
 
     ownership
-}
-
-fn merge_ownership_entry(
-    ownership: &mut HashMap<String, StoreOwnership>,
-    selector: String,
-    next: StoreOwnership,
-) {
-    ownership
-        .entry(selector)
-        .and_modify(|current| *current = merge_ownership(*current, next))
-        .or_insert(next);
 }
 
 fn merge_ownership(current: StoreOwnership, next: StoreOwnership) -> StoreOwnership {
@@ -172,3 +195,7 @@ fn merge_ownership(current: StoreOwnership, next: StoreOwnership) -> StoreOwners
         StoreOwnership::Shared
     }
 }
+
+#[cfg(test)]
+#[path = "tests/change.rs"]
+mod tests;

@@ -1,6 +1,7 @@
 use super::StepVisualStatus;
 use crate::state::app::ExitConfirmChoice;
 use crate::terminal::CursorPos;
+use crate::ui::layout::{Layout, LineContinuation, RenderBlock};
 use crate::ui::span::{Span, SpanLine};
 use crate::ui::style::{Color, Style};
 
@@ -32,6 +33,7 @@ pub(super) enum StepFrameFooter<'a> {
 pub(super) fn apply_step_frame(
     lines: &mut Vec<SpanLine>,
     cursor: &mut Option<CursorPos>,
+    compose_width: u16,
     connect_to_next: bool,
     status: StepVisualStatus,
     include_top_line: bool,
@@ -59,13 +61,13 @@ pub(super) fn apply_step_frame(
 
     if let Some(footer) = footer {
         let (first_prefix, cont_prefix) = footer_prefixes(footer, connect_to_next);
-        let mut footer_lines = footer_plain_lines(footer).into_iter();
-        if let Some(first_line) = footer_lines.next() {
-            decorated.push(with_gutter_prefix(first_prefix, decor_style, first_line));
-            for line in footer_lines {
-                decorated.push(with_gutter_prefix(cont_prefix, decor_style, line));
-            }
-        }
+        decorated.extend(compose_footer_lines(
+            footer_plain_lines(footer),
+            compose_width,
+            first_prefix,
+            cont_prefix,
+            decor_style,
+        ));
     } else {
         decorated.push(vec![
             Span::styled(bottom_prefix(connect_to_next), decor_style).no_wrap(),
@@ -115,18 +117,49 @@ fn frame_style_and_marker(
 
 pub(super) fn append_step_frame_footer_plain(
     lines: &mut Vec<SpanLine>,
+    compose_width: u16,
     footer: Option<StepFrameFooter<'_>>,
 ) {
     if let Some(footer) = footer {
-        lines.extend(footer_plain_lines(footer));
+        lines.extend(compose_plain_footer_lines(
+            footer_plain_lines(footer),
+            compose_width,
+        ));
     }
 }
 
-fn with_gutter_prefix(prefix: &str, gutter_style: Style, mut content: SpanLine) -> SpanLine {
-    let mut line = Vec::<Span>::with_capacity(content.len().saturating_add(1));
-    line.push(Span::styled(prefix, gutter_style).no_wrap());
-    line.append(&mut content);
-    line
+fn compose_footer_lines(
+    lines: Vec<SpanLine>,
+    compose_width: u16,
+    first_prefix: &str,
+    cont_prefix: &str,
+    gutter_style: Style,
+) -> Vec<SpanLine> {
+    let continuation = LineContinuation {
+        first_prefix: vec![Span::styled(first_prefix, gutter_style).no_wrap()],
+        next_prefix: vec![Span::styled(cont_prefix, gutter_style).no_wrap()],
+    };
+    Layout::compose_block(
+        &RenderBlock {
+            start_col: 0,
+            end_col: Some(compose_width),
+            lines,
+        },
+        compose_width,
+        Some(&continuation),
+    )
+}
+
+fn compose_plain_footer_lines(lines: Vec<SpanLine>, compose_width: u16) -> Vec<SpanLine> {
+    Layout::compose_block(
+        &RenderBlock {
+            start_col: 0,
+            end_col: Some(compose_width),
+            lines,
+        },
+        compose_width,
+        None,
+    )
 }
 
 pub(super) fn help_toggle_line() -> SpanLine {
@@ -166,13 +199,12 @@ fn footer_plain_lines(footer: StepFrameFooter<'_>) -> Vec<SpanLine> {
             description,
             show_help_toggle,
         } => {
-            lines.push(vec![
-                Span::styled(message, Style::new().color(Color::Red)).no_wrap(),
-            ]);
+            lines.push(vec![Span::styled(message, Style::new().color(Color::Red))]);
             if let Some(desc) = description {
-                lines.push(vec![
-                    Span::styled(desc, Style::new().color(Color::DarkGrey)).no_wrap(),
-                ]);
+                lines.push(vec![Span::styled(
+                    desc,
+                    Style::new().color(Color::DarkGrey),
+                )]);
             }
             if show_help_toggle {
                 lines.push(help_toggle_line());
@@ -183,18 +215,20 @@ fn footer_plain_lines(footer: StepFrameFooter<'_>) -> Vec<SpanLine> {
             description,
             show_help_toggle,
         } => {
-            lines.push(vec![
-                Span::styled(message, Style::new().color(Color::Yellow)).no_wrap(),
-            ]);
+            lines.push(vec![Span::styled(
+                message,
+                Style::new().color(Color::Yellow),
+            )]);
             if let Some(desc) = description {
-                lines.push(vec![
-                    Span::styled(desc, Style::new().color(Color::DarkGrey)).no_wrap(),
-                ]);
+                lines.push(vec![Span::styled(
+                    desc,
+                    Style::new().color(Color::DarkGrey),
+                )]);
             }
             if show_help_toggle {
                 lines.push(help_toggle_line());
             }
-            lines.push(vec![Span::new("").no_wrap()]);
+            lines.push(vec![Span::new("")]);
         }
         StepFrameFooter::ExitConfirm { choice } => {
             lines.push(exit_confirm_line(choice));

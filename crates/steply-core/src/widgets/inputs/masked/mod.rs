@@ -8,6 +8,7 @@ use crate::terminal::{CursorPos, KeyCode, KeyEvent, KeyModifiers};
 use crate::ui::inline::{Inline, InlineGroup};
 use crate::ui::span::Span;
 use crate::widgets::base::WidgetBase;
+use crate::widgets::shared::horizontal_viewport::render_single_line;
 use crate::widgets::shared::text_edit;
 use crate::widgets::traits::{
     DrawOutput, Drawable, FocusMode, InteractionResult, Interactive, RenderContext,
@@ -389,10 +390,27 @@ impl Drawable for MaskedInput {
             let group = Inline::group(InlineGroup::no_break(
                 spans.into_iter().map(Inline::from).collect(),
             ));
-            DrawOutput::with_inline_lines(vec![vec![group]])
+            let flattened = crate::ui::inline::flatten_lines(vec![vec![group]]);
+            DrawOutput::with_lines(vec![
+                render_single_line(
+                    flattened[0].as_slice(),
+                    ctx.terminal_size.width,
+                    Some((self.cursor_col(), self.cursor_col().saturating_add(1))),
+                    Some(self.cursor_col()),
+                )
+                .spans,
+            ])
         } else {
             let plain = format::render_plain_value(self.tokens.as_slice());
-            DrawOutput::with_lines(vec![vec![Span::new(plain).no_wrap()]])
+            DrawOutput::with_lines(vec![
+                render_single_line(
+                    &[Span::new(plain).no_wrap()],
+                    ctx.terminal_size.width,
+                    None,
+                    None,
+                )
+                .spans,
+            ])
         }
     }
 }
@@ -468,5 +486,15 @@ impl Interactive for MaskedInput {
             col: local_offset as u16,
             row: 0,
         })
+    }
+
+    fn cursor_pos_with_width(&self, available_width: u16) -> Option<CursorPos> {
+        render_single_line(
+            self.render_spans_with_active(true).as_slice(),
+            available_width,
+            Some((self.cursor_col(), self.cursor_col().saturating_add(1))),
+            Some(self.cursor_col()),
+        )
+        .cursor
     }
 }

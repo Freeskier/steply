@@ -52,6 +52,24 @@ impl AppState {
         self.rebuild_focus_with_target(None, true);
     }
 
+    pub(in crate::state::app) fn refresh_focus_for_current_visibility(&mut self) {
+        let next_index = NodeIndex::build(self.active_nodes());
+        let current_focus = self.ui.focus.current_id().map(str::to_string);
+        let current_still_visible = current_focus
+            .as_deref()
+            .is_some_and(|id| next_index.has_visible(id));
+
+        if current_still_visible {
+            self.ui.active_node_index = next_index;
+            return;
+        }
+
+        self.reset_completion_for_focus_change();
+        self.ui.active_node_index = next_index;
+        self.ui.focus = FocusState::from_nodes(self.active_nodes());
+        self.broadcast_current_focus_request();
+    }
+
     fn broadcast_current_focus_request(&mut self) {
         let focused_id = self.ui.focus.current_id().map(|id| id.into());
         let result = self.broadcast_system_event(&SystemEvent::RequestFocus { target: focused_id });

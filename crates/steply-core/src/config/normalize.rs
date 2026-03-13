@@ -127,9 +127,8 @@ fn merge_when(step_when: Option<&WhenDef>, flow_when: Option<&WhenDef>) -> Optio
         (None, Some(flow_when)) => Some(flow_when.clone()),
         (Some(step_when), Some(flow_when)) => Some(WhenDef {
             field_ref: None,
-            equal: None,
-            not_equal: None,
-            not_empty: None,
+            operator: None,
+            value: None,
             all: vec![step_when.clone(), flow_when.clone()],
             any: Vec::new(),
             not: None,

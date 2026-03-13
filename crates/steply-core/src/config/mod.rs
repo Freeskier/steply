@@ -73,3 +73,6 @@ pub fn config_schema_json() -> Result<String, String> {
     serde_json::to_string_pretty(&schema)
         .map_err(|err| format!("failed to serialize config schema: {err}"))
 }
+
+#[cfg(test)]
+mod tests;

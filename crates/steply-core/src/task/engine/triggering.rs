@@ -1,7 +1,7 @@
 use super::TaskEngineHost;
 use super::keys::{fingerprint_value, interval_key, node_change_debounce_key};
 use super::lifecycle::request_task_run;
-use crate::core::value_path::{PathSegment, ValuePath, ValueTarget};
+use crate::core::value_path::ValueTarget;
 use crate::task::{TaskRequest, TaskTrigger};
 
 pub fn bootstrap_interval_tasks(host: &mut impl TaskEngineHost) {
@@ -128,7 +128,7 @@ pub fn trigger_store_value_changed_tasks(
             TaskTrigger::StoreChanged {
                 selector,
                 debounce_ms,
-            } if selectors_overlap(selector, changed_target) => {
+            } if selector.overlaps(changed_target) => {
                 let value = host.read_store_target(selector)?;
                 let fingerprint = fingerprint_value(selector.to_selector().as_str(), &value);
                 Some((
@@ -154,27 +154,6 @@ pub fn trigger_store_value_changed_tasks(
             debounce_ms,
         );
     }
-}
-
-fn selectors_overlap(a: &ValueTarget, b: &ValueTarget) -> bool {
-    if a.root() != b.root() {
-        return false;
-    }
-
-    path_prefix_of(a.nested_path(), b.nested_path())
-        || path_prefix_of(b.nested_path(), a.nested_path())
-}
-
-fn path_prefix_of(prefix: Option<&ValuePath>, full: Option<&ValuePath>) -> bool {
-    match (prefix, full) {
-        (None, _) => true,
-        (Some(_), None) => false,
-        (Some(prefix), Some(full)) => path_segments_prefix_of(prefix.segments(), full.segments()),
-    }
-}
-
-fn path_segments_prefix_of(prefix: &[PathSegment], full: &[PathSegment]) -> bool {
-    prefix.len() <= full.len() && prefix.iter().zip(full.iter()).all(|(a, b)| a == b)
 }
 
 fn trigger_for(

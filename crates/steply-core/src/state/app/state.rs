@@ -1,6 +1,6 @@
 use crate::core::NodeId;
 use crate::runtime::scheduler::SchedulerCommand;
-use crate::state::change::StoreOwnership;
+use crate::state::change::StoreOwnershipRegistry;
 use crate::state::focus::FocusState;
 use crate::state::overlay::OverlayState;
 use crate::state::store::ValueStore;
@@ -87,7 +87,7 @@ pub(super) struct RuntimeState {
     pub(super) task_runs: HashMap<TaskId, TaskRunState>,
     pub(super) task_specs: HashMap<TaskId, TaskSpec>,
     pub(super) task_triggers: Vec<(TaskId, TaskTrigger)>,
-    pub(super) store_ownership: HashMap<String, StoreOwnership>,
+    pub(super) store_ownership: StoreOwnershipRegistry,
     pub(super) task_visual_loading: TaskVisualLoadingState,
 }
 

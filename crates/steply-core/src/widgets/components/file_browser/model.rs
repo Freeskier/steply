@@ -106,7 +106,9 @@ pub fn filter_entries(
 ) -> Vec<FileEntry> {
     entries.retain(|e| match entry_filter {
         EntryFilter::All => true,
-        EntryFilter::FilesOnly => !e.kind.is_dir(),
+        // Keep directories visible in files-only mode so the browser can still
+        // navigate deeper; selection rules are enforced separately.
+        EntryFilter::FilesOnly => true,
         EntryFilter::DirsOnly => e.kind.is_dir(),
     });
     if let Some(exts) = ext_filter {
@@ -160,3 +162,7 @@ pub fn classify_entry_kind(entry: &fs::DirEntry) -> EntryKind {
         EntryKind::File
     }
 }
+
+#[cfg(test)]
+#[path = "../tests/file_browser_model.rs"]
+mod tests;

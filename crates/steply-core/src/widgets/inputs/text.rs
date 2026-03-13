@@ -3,6 +3,7 @@ use crate::terminal::{CursorPos, KeyEvent};
 use crate::ui::span::Span;
 use crate::ui::style::{Color, Style};
 use crate::widgets::base::WidgetBase;
+use crate::widgets::shared::horizontal_viewport::render_single_line;
 use crate::widgets::shared::text_edit;
 use crate::widgets::traits::{
     CompletionState, DrawOutput, Drawable, FocusMode, InteractionResult, Interactive,
@@ -133,7 +134,18 @@ impl Drawable for TextInput {
             first_line.push(Span::styled(suffix, Style::new().color(Color::DarkGrey)).no_wrap());
         }
 
-        DrawOutput::with_lines(vec![first_line])
+        DrawOutput::with_lines(vec![
+            render_single_line(
+                first_line.as_slice(),
+                ctx.terminal_size.width,
+                focused.then_some((
+                    text_edit::clamp_cursor(self.cursor, &self.value),
+                    text_edit::clamp_cursor(self.cursor, &self.value).saturating_add(1),
+                )),
+                None,
+            )
+            .spans,
+        ])
     }
 }
 
@@ -219,6 +231,17 @@ impl Interactive for TextInput {
             }
         };
         Some(CursorPos { col, row: 0 })
+    }
+
+    fn cursor_pos_with_width(&self, available_width: u16) -> Option<CursorPos> {
+        let col = self.cursor_pos()?.col as usize;
+        render_single_line(
+            &[Span::styled(self.display_value(), Style::default()).no_wrap()],
+            available_width,
+            Some((col, col.saturating_add(1))),
+            Some(col),
+        )
+        .cursor
     }
 }
 

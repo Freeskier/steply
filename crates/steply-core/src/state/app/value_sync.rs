@@ -37,6 +37,7 @@ impl AppState {
         self.hydrate_current_step_from_store();
         applied.extend(self.apply_current_step_derived_writes());
         self.hydrate_current_step_from_store();
+        self.refresh_focus_for_current_visibility();
 
         applied
     }

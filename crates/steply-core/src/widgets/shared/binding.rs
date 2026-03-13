@@ -4,6 +4,7 @@ use crate::core::store_refs::{
 use crate::core::value::Value;
 use crate::core::value_path::{PathSegment, ValuePath, ValueTarget};
 use crate::runtime::event::{SystemEvent, ValueChange, WidgetAction};
+use crate::state::change::StoreCommitPolicy;
 use crate::state::store::ValueStore;
 use crate::task::TaskSpec;
 use crate::terminal::{CursorPos, KeyEvent, PointerEvent};
@@ -21,6 +22,7 @@ pub struct StoreBinding {
     pub options: Option<ReadBinding>,
     pub reads: Option<ReadBinding>,
     pub writes: Vec<WriteBinding>,
+    pub commit_policy: StoreCommitPolicy,
 }
 
 impl StoreBinding {
@@ -36,7 +38,7 @@ impl StoreBinding {
     }
 
     pub fn interactive_read_mode(&self) -> InteractiveReadMode {
-        if self.value.is_some() {
+        if self.value.is_some() && self.commit_policy == StoreCommitPolicy::Immediate {
             InteractiveReadMode::Controlled
         } else {
             InteractiveReadMode::Seeded
@@ -44,7 +46,9 @@ impl StoreBinding {
     }
 
     pub fn write_changes(&self, value: Option<Value>) -> Vec<ValueChange> {
-        if self.writes.is_empty() {
+        if self.writes.is_empty()
+            || (self.value.is_some() && self.commit_policy == StoreCommitPolicy::OnSubmit)
+        {
             return Vec::new();
         }
 
@@ -320,7 +324,7 @@ impl Interactive for BoundInteractiveNode {
     }
 
     fn commit_policy(&self) -> crate::state::change::StoreCommitPolicy {
-        self.inner.commit_policy()
+        self.binding.commit_policy
     }
 
     fn overlay_open(&mut self, saved_focus_id: Option<String>) -> bool {
@@ -450,7 +454,7 @@ impl Interactive for BoundComponentNode {
     }
 
     fn commit_policy(&self) -> crate::state::change::StoreCommitPolicy {
-        self.inner.commit_policy()
+        self.binding.commit_policy
     }
 
     fn overlay_open(&mut self, saved_focus_id: Option<String>) -> bool {

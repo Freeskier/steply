@@ -1,6 +1,8 @@
 pub mod binding;
 pub mod calendar;
+pub mod condition;
 pub mod filter;
+pub mod horizontal_viewport;
 pub mod keymap;
 pub use filter::list_policy;
 pub mod list_nav;

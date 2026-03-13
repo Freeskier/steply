@@ -109,6 +109,7 @@ pub(super) fn render_step_content(
 
 pub(super) fn apply_step_decoration<'a>(
     content: &mut StepContentRender,
+    compose_width: u16,
     idx: usize,
     render_up_to: usize,
     status: StepVisualStatus,
@@ -121,6 +122,7 @@ pub(super) fn apply_step_decoration<'a>(
         apply_step_frame(
             &mut content.lines,
             &mut content.cursor,
+            compose_width,
             idx < render_up_to,
             status,
             include_top,
@@ -137,7 +139,7 @@ pub(super) fn apply_step_decoration<'a>(
             .hit_map
             .shift_cols(decoration_gutter_width().min(u16::MAX as usize) as u16);
     } else {
-        append_step_frame_footer_plain(&mut content.lines, footer);
+        append_step_frame_footer_plain(&mut content.lines, compose_width, footer);
     }
 }
 
@@ -180,7 +182,7 @@ pub(super) fn step_frame_footer<'a>(
 ) -> Option<StepFrameFooter<'a>> {
     if status == StepVisualStatus::Cancelled {
         return Some(StepFrameFooter::Error {
-            message: "Exiting.",
+            message: "Application terminated.",
             description: None,
             show_help_toggle: false,
         });

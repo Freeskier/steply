@@ -12,8 +12,6 @@ use crate::widgets::traits::ValidationMode;
 impl AppState {
     pub(in crate::state::app) fn handle_step_submit(&mut self) {
         self.clear_completion_session();
-        let submit_step_id = self.current_step_id().to_string();
-        trigger_submit_before_tasks(self, submit_step_id.as_str());
         if !self.validate_current_step(ValidationMode::Submit) {
             self.focus_first_invalid_on_current_step();
             return;
@@ -26,8 +24,10 @@ impl AppState {
             return;
         }
 
-        let previous_step_id = self.leave_current_step();
+        let submit_step_id = self.current_step_id().to_string();
         self.sync_current_step_values_to_store();
+        trigger_submit_before_tasks(self, submit_step_id.as_str());
+        let previous_step_id = self.leave_current_step();
         trigger_submit_after_tasks(self, previous_step_id.as_str());
         self.transition_forward_after_submit();
     }

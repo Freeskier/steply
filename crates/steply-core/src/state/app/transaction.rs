@@ -36,6 +36,11 @@ impl AppliedStorePatch {
 }
 
 impl AppState {
+    pub(super) fn apply_runtime_store_patch(&mut self, patch: StorePatch) {
+        let applied = self.apply_runtime_store_patch_collect(patch);
+        self.emit_store_change_triggers(applied.into_targets());
+    }
+
     pub(super) fn apply_store_transaction(
         &mut self,
         transaction: StoreTransaction,
@@ -63,10 +68,7 @@ impl AppState {
             value,
             StoreWriteOrigin::UserInput { node_id: source },
         );
-        let mut applied = self.apply_store_transaction(transaction);
-        if !self.reconcile_current_step_after_store_change() {
-            applied.extend(self.refresh_current_step_bindings_collect_for_live());
-        }
+        let applied = self.apply_runtime_store_transaction_collect(transaction);
         self.emit_store_change_triggers(applied.into_targets());
     }
 
@@ -78,11 +80,31 @@ impl AppState {
     ) {
         let mut transaction = StoreTransaction::new();
         transaction.push(target, value, origin);
-        let mut applied = self.apply_store_transaction(transaction);
+        let applied = self.apply_runtime_store_transaction_collect(transaction);
+        self.emit_store_change_triggers(applied.into_targets());
+    }
+
+    fn apply_runtime_store_transaction_collect(
+        &mut self,
+        transaction: StoreTransaction,
+    ) -> AppliedStorePatch {
+        let applied = self.apply_store_transaction(transaction);
+        self.finalize_runtime_store_patch(applied)
+    }
+
+    fn apply_runtime_store_patch_collect(&mut self, patch: StorePatch) -> AppliedStorePatch {
+        let applied = self.apply_store_patch(patch);
+        self.finalize_runtime_store_patch(applied)
+    }
+
+    fn finalize_runtime_store_patch(
+        &mut self,
+        mut applied: AppliedStorePatch,
+    ) -> AppliedStorePatch {
         if !self.reconcile_current_step_after_store_change() {
             applied.extend(self.refresh_current_step_bindings_collect_for_live());
         }
-        self.emit_store_change_triggers(applied.into_targets());
+        applied
     }
 
     fn apply_store_patch_entry(
@@ -91,13 +113,14 @@ impl AppState {
         applied: &mut AppliedStorePatch,
     ) -> bool {
         let selector = entry.target.to_selector();
-        if !self.store_ownership_allows(&selector, &entry.origin) {
+        let conflicting_owners = self.conflicting_store_owners(&entry.target, &entry.origin);
+        if !conflicting_owners.is_empty() {
             self.runtime.validation.set_runtime_step_error(
                 store_ownership_error_key(selector.as_str()),
                 format!(
                     "store selector '{}' is owned by {} and cannot be written by {}",
                     selector,
-                    self.describe_registered_ownership(selector.as_str()),
+                    describe_owners(conflicting_owners.as_slice()),
                     describe_origin(&entry.origin)
                 ),
             );
@@ -124,22 +147,17 @@ impl AppState {
         }
     }
 
-    fn store_ownership_allows(&self, selector: &str, origin: &StoreWriteOrigin) -> bool {
-        let Some(registered) = self.runtime.store_ownership.get(selector).copied() else {
-            return true;
-        };
-        registered == StoreOwnership::Shared
-            || origin.ownership() == registered
-            || matches!(origin, StoreWriteOrigin::System)
-    }
-
-    fn describe_registered_ownership(&self, selector: &str) -> &'static str {
-        match self.runtime.store_ownership.get(selector).copied() {
-            Some(StoreOwnership::User) => "user bindings",
-            Some(StoreOwnership::Task) => "task results",
-            Some(StoreOwnership::Derived) => "derived bindings",
-            Some(StoreOwnership::Shared) | None => "shared writers",
+    fn conflicting_store_owners(
+        &self,
+        target: &ValueTarget,
+        origin: &StoreWriteOrigin,
+    ) -> Vec<StoreOwnership> {
+        if matches!(origin, StoreWriteOrigin::System) {
+            return Vec::new();
         }
+        self.runtime
+            .store_ownership
+            .conflicting_owners_for_write(target, origin.ownership())
     }
 
     pub(super) fn write_store_target(
@@ -187,4 +205,19 @@ fn describe_origin(origin: &StoreWriteOrigin) -> &'static str {
         StoreWriteOrigin::DefaultSeed { .. } => "default seed",
         StoreWriteOrigin::System => "system update",
     }
+}
+
+fn describe_owners(owners: &[StoreOwnership]) -> String {
+    let mut labels = owners
+        .iter()
+        .map(|owner| match owner {
+            StoreOwnership::User => "user bindings",
+            StoreOwnership::Task => "task results",
+            StoreOwnership::Derived => "derived bindings",
+            StoreOwnership::Shared => "shared writers",
+        })
+        .collect::<Vec<_>>();
+    labels.sort_unstable();
+    labels.dedup();
+    labels.join(" and ")
 }

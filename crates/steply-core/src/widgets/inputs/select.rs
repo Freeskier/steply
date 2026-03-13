@@ -4,6 +4,7 @@ use crate::ui::inline::{Inline, InlineGroup};
 use crate::ui::span::Span;
 use crate::ui::style::{Color, Style};
 use crate::widgets::base::WidgetBase;
+use crate::widgets::shared::horizontal_viewport::render_single_line;
 use crate::widgets::shared::list_nav;
 use crate::widgets::traits::{
     DrawOutput, Drawable, FocusMode, InteractionResult, Interactive, RenderContext, ValidationMode,
@@ -85,12 +86,28 @@ impl Drawable for SelectInput {
                 Inline::text(Span::new(" ")),
                 Inline::text(Span::styled("›", Style::new().color(Color::Yellow).bold())),
             ]));
-            return DrawOutput::with_inline_lines(vec![vec![control]]);
+            let flattened = crate::ui::inline::flatten_lines(vec![vec![control]]);
+            let selected_width = crate::ui::text::text_display_width(self.selected_text());
+            return DrawOutput::with_lines(vec![
+                render_single_line(
+                    flattened[0].as_slice(),
+                    ctx.terminal_size.width,
+                    Some((2, 2 + selected_width)),
+                    None,
+                )
+                .spans,
+            ]);
         }
 
-        DrawOutput::with_lines(vec![vec![
-            Span::styled(self.selected_text().to_string(), Style::default()).no_wrap(),
-        ]])
+        DrawOutput::with_lines(vec![
+            render_single_line(
+                &[Span::styled(self.selected_text().to_string(), Style::default()).no_wrap()],
+                ctx.terminal_size.width,
+                None,
+                None,
+            )
+            .spans,
+        ])
     }
 }
 

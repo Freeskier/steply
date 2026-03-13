@@ -8,13 +8,16 @@ impl FileBrowserComponent {
         let Some(item) = self.active_item_in_mode(self.browser_mode) else {
             return InteractionResult::handled();
         };
-        let ActiveOverlayItem::Entry { path, .. } = item else {
+        let ActiveOverlayItem::Entry { path, is_dir } = item else {
             return InteractionResult::handled();
         };
+        if is_dir {
+            return InteractionResult::handled();
+        }
         self.toggle_selected_path(path);
         self.sync_list_selection();
         self.sync_tree_selection();
-        self.sync_multi_input_text(false);
+        self.sync_multi_input_text(true);
         self.schedule_scan();
         InteractionResult::handled()
     }
@@ -208,3 +211,7 @@ impl FileBrowserComponent {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "../tests/file_browser_interaction.rs"]
+mod tests;

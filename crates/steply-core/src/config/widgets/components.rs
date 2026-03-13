@@ -5,7 +5,7 @@ use crate::widgets::{
         command_runner::CommandRunner,
         file_browser::FileBrowserInput,
         object_editor::ObjectEditor,
-        repeater::{Repeater, RepeaterIterationMode},
+        repeater::Repeater,
         select_list::{SelectItem, SelectList},
         snippet::Snippet,
         table::Table,
@@ -13,6 +13,7 @@ use crate::widgets::{
         tree_view::{TreeNode, TreeView},
     },
     node::Node,
+    shared::binding::ReadBinding,
 };
 
 use super::super::binding_compile::compile_read_binding_value;
@@ -22,7 +23,7 @@ use super::super::model::{
 };
 use super::super::parse::{
     parse_browser_mode, parse_calendar_mode, parse_display_mode, parse_file_browser_entry_filter,
-    parse_file_browser_selection_mode, parse_on_error, parse_repeater_layout, parse_run_mode,
+    parse_file_browser_selection_mode, parse_on_error, parse_repeater_entry_mode, parse_run_mode,
     parse_select_mode, parse_spinner_style, parse_table_style,
 };
 use super::super::utils::yaml_value_to_value;
@@ -274,19 +275,17 @@ pub(super) fn compile_table(
 pub(super) fn compile_repeater(
     id: String,
     label: String,
-    mode: Option<String>,
-    layout: Option<String>,
+    iterate: serde_yaml::Value,
+    entry_mode: Option<String>,
     show_label: Option<bool>,
     show_progress: Option<bool>,
     header_template: Option<String>,
     item_label_path: Option<String>,
-    items: Option<serde_yaml::Value>,
-    count: Option<serde_yaml::Value>,
     widgets: Vec<WidgetDef>,
 ) -> Result<Node, String> {
     let mut widget = Repeater::new(id, label)
-        .with_layout(parse_repeater_layout(layout.as_deref())?)
-        .with_mode(parse_repeater_mode(mode.as_deref())?);
+        .with_entry_mode(parse_repeater_entry_mode(entry_mode.as_deref())?)
+        .with_iterate_binding(compile_repeater_iterate_binding(&iterate)?);
     if let Some(show_label) = show_label {
         widget = widget.with_show_label(show_label);
     }
@@ -294,18 +293,14 @@ pub(super) fn compile_repeater(
         widget = widget.with_show_progress(show_progress);
     }
     if let Some(header_template) = header_template {
-        widget = widget.with_header_template(header_template);
+        let binding =
+            compile_read_binding_value(&serde_yaml::Value::String(header_template), true)?;
+        widget = widget.with_header_binding(binding);
     }
     if let Some(item_label_path) = item_label_path {
         let path = crate::core::value_path::ValuePath::parse_relative(item_label_path.as_str())
             .map_err(|err| format!("invalid repeater item_label_path: {err}"))?;
         widget = widget.with_item_label_path(path);
-    }
-    if let Some(items) = items {
-        widget = widget.with_items_binding(compile_read_binding_value(&items, true)?);
-    }
-    if let Some(count) = count {
-        widget = widget.with_count_binding(compile_read_binding_value(&count, true)?);
     }
     for child in widgets {
         widget = widget.with_widget(compile_widget(child)?);
@@ -313,12 +308,22 @@ pub(super) fn compile_repeater(
     Ok(Node::Component(Box::new(widget)))
 }
 
-fn parse_repeater_mode(raw: Option<&str>) -> Result<RepeaterIterationMode, String> {
-    match raw.unwrap_or("fixed").trim() {
-        "fixed" => Ok(RepeaterIterationMode::Fixed),
-        "append" => Ok(RepeaterIterationMode::Append),
-        other => Err(format!(
-            "invalid repeater mode '{other}', expected 'fixed' or 'append'"
+fn compile_repeater_iterate_binding(value: &serde_yaml::Value) -> Result<ReadBinding, String> {
+    let binding = compile_read_binding_value(value, true)?;
+    match &binding {
+        ReadBinding::Selector(_) | ReadBinding::Template(_) => Ok(binding),
+        ReadBinding::Literal(crate::core::value::Value::Number(_))
+        | ReadBinding::Literal(crate::core::value::Value::None)
+        | ReadBinding::List(_) => Ok(binding),
+        ReadBinding::Literal(crate::core::value::Value::Text(_)) => {
+            Err("repeater iterate must be a number, list, or store selector".to_string())
+        }
+        ReadBinding::Literal(other) => Err(format!(
+            "repeater iterate must be a number, list, or store selector, got {}",
+            other.kind_name()
         )),
+        ReadBinding::Object(_) => {
+            Err("repeater iterate must be a number, list, or store selector".to_string())
+        }
     }
 }

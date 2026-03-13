@@ -1,5 +1,6 @@
 use crate::core::{
     NodeId,
+    store_refs::parse_store_selector,
     value::Value,
     value_path::{PathSegment, ValuePath, ValueTarget},
 };
@@ -108,7 +109,7 @@ impl ValueStore {
     }
 
     pub fn get_selector(&self, selector: &str) -> Option<&Value> {
-        let target = ValueTarget::parse_selector(selector).ok()?;
+        let target = parse_store_selector(selector).ok()?;
         self.get_target(&target)
     }
 

@@ -1,7 +1,7 @@
 version: 1
 
 tasks:
-  - id: string_trimmed
+  - id: normalize_customer_name
     kind: exec
     program: python3
     args:
@@ -12,14 +12,14 @@ tasks:
 
         value = str(json.load(sys.stdin) or "")
         print(json.dumps(value.strip().title()))
-    reads: "{{demo.name}}"
+    reads: "{{demo.customer_name}}"
     triggers:
       - type: store_changed
-        ref: demo.name
+        ref: demo.customer_name
         debounce_ms: 250
-    writes: demo.name_pretty
+    writes: demo.customer_name_pretty
 
-  - id: number_double
+  - id: estimate_monthly_cost
     kind: exec
     program: python3
     args:
@@ -28,17 +28,16 @@ tasks:
         import json
         import sys
 
-        value = json.load(sys.stdin)
-        number = float(value or 0)
-        print(json.dumps(number * 2))
-    reads: "{{demo.count}}"
+        seats = int(float(json.load(sys.stdin) or 0))
+        print(json.dumps(seats * 49))
+    reads: "{{demo.seats}}"
     triggers:
       - type: store_changed
-        ref: demo.count
+        ref: demo.seats
         debounce_ms: 250
-    writes: demo.count_doubled
+    writes: demo.monthly_cost
 
-  - id: build_summary
+  - id: build_handoff
     kind: exec
     program: python3
     args:
@@ -48,105 +47,106 @@ tasks:
         import sys
 
         payload = json.load(sys.stdin)
-        name = str(payload.get("name") or "").strip() or "Unknown"
-        count = int(float(payload.get("count") or 0))
+        customer = str(payload.get("customer") or "").strip() or "Unknown"
+        seats = int(float(payload.get("seats") or 0))
+        monthly_cost = int(float(payload.get("monthly_cost") or 0))
         tags = payload.get("tags") or []
 
         result = {
-          "headline": f"{name} x{count}",
-          "tag_count": len(tags),
-          "tags": tags,
-          "card": {
-            "name": name,
-            "count": count,
+          "title": f"{customer} onboarding",
+          "monthly_cost": monthly_cost,
+          "brief": {
+            "customer": customer,
+            "seats": seats,
             "tags": tags,
           },
         }
         print(json.dumps(result))
     reads:
-      name: "{{demo.name}}"
-      count: "{{demo.count}}"
+      customer: "{{demo.customer_name_pretty}}"
+      seats: "{{demo.seats}}"
+      monthly_cost: "{{demo.monthly_cost}}"
       tags: "{{demo.tags}}"
     triggers:
       - type: step_enter
-        step_id: structured
+        step_id: handoff
       - type: store_changed
-        ref: demo.name
+        ref: demo.customer_name_pretty
         debounce_ms: 250
       - type: store_changed
-        ref: demo.count
+        ref: demo.seats
         debounce_ms: 250
       - type: store_changed
         ref: demo.tags
         debounce_ms: 250
     writes:
-      demo.summary: result
+      demo.generated_handoff: result
 
 steps:
-  - id: string
-    title: String
-    description: Scalar string goes into stdin as JSON and comes back as a JSON string.
+  - id: customer_name
+    title: Customer Name
+    description: Clean up a raw customer name before showing it in the UI.
     widgets:
       - type: text_output
-        id: string_intro
-        text: 'Task reads "{{demo.name}}" and returns a JSON string.'
+        id: customer_name_intro
+        text: 'Normalize "{{demo.customer_name}}" into a display name.'
       - type: text_input
-        id: name
-        label: Raw name
-        default: "  moonbase report  "
-        value: demo.name
+        id: customer_name
+        label: Raw customer name
+        default: "  moonbase logistics  "
+        value: demo.customer_name
       - type: text_output
-        id: string_result
-        text: "Pretty name: {{demo.name_pretty}}"
+        id: customer_name_result
+        text: "Display name: {{demo.customer_name_pretty}}"
 
-  - id: number
-    title: Number
-    description: Scalar number goes into stdin as JSON and comes back as a JSON number.
+  - id: pricing
+    title: Pricing
+    description: Turn a seat count into a simple monthly estimate.
     widgets:
       - type: text_output
-        id: number_intro
-        text: 'Task reads "{{demo.count}}" and returns count * 2.'
+        id: pricing_intro
+        text: 'Estimate cost from "{{demo.seats}}" seats.'
       - type: slider
-        id: count
-        label: Count
-        min: 0
-        max: 20
+        id: seats
+        label: Seats
+        min: 1
+        max: 50
         step: 1
-        default: 4
-        value: demo.count
+        default: 6
+        value: demo.seats
       - type: text_output
-        id: number_result
-        text: "Doubled count: {{demo.count_doubled}}"
+        id: pricing_result
+        text: "Monthly estimate: ${{demo.monthly_cost}}"
 
-  - id: structured
-    title: Structured
-    description: Object with nested list goes into stdin as JSON and comes back as a JSON object.
+  - id: handoff
+    title: Handoff
+    description: Build a structured payload from prior task outputs and current tags.
     widgets:
       - type: text_output
-        id: structured_intro
-        text: 'Task reads { name, count, tags } as one JSON object and writes the whole result to "{{demo.summary}}".'
+        id: handoff_intro
+        text: 'Task writes a generated payload to "{{demo.generated_handoff}}" while your notes stay separate.'
       - type: array_input
         id: tags
         label: Tags
         items:
-          - urgent
-          - lunar
-          - archive
+          - priority
+          - finance
+          - onboarding
         value: demo.tags
       - type: text_output
-        id: summary_headline
-        text: "Headline: {{demo.summary.headline}}"
+        id: handoff_title
+        text: "Title: {{demo.generated_handoff.title}}"
       - type: text_output
-        id: summary_count
-        text: "Card count: {{demo.summary.card.count}}"
+        id: handoff_cost
+        text: "Cost: ${{demo.generated_handoff.monthly_cost}}"
       - type: text_output
-        id: summary_tags
-        text: "Card tags: {{demo.summary.card.tags}}"
+        id: handoff_brief
+        text: "Brief: {{demo.generated_handoff.brief.customer}} / {{demo.generated_handoff.brief.seats}} seats / {{demo.generated_handoff.brief.tags}}"
       - type: object_editor
-        id: summary_card
-        label: Editable card
+        id: handoff_review
+        label: Internal review notes
         default:
-          name: Unknown
-          count: 0
-          tags: []
-        value: demo.summary.card
+          owner: ops
+          status: draft
+          note: ""
+        value: demo.handoff_review

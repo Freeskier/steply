@@ -138,14 +138,14 @@ pub(super) fn parse_table_style(
     }
 }
 
-pub(super) fn parse_repeater_layout(
+pub(super) fn parse_repeater_entry_mode(
     raw: Option<&str>,
-) -> Result<crate::widgets::components::repeater::RepeaterLayout, String> {
-    match raw.unwrap_or("single_field") {
-        "single_field" => Ok(crate::widgets::components::repeater::RepeaterLayout::SingleField),
-        "stacked" => Ok(crate::widgets::components::repeater::RepeaterLayout::Stacked),
+) -> Result<crate::widgets::components::repeater::RepeaterEntryMode, String> {
+    match raw.unwrap_or("progressive") {
+        "progressive" => Ok(crate::widgets::components::repeater::RepeaterEntryMode::Progressive),
+        "full" => Ok(crate::widgets::components::repeater::RepeaterEntryMode::Full),
         other => Err(format!(
-            "unsupported repeater layout: {other} (expected single_field|stacked)"
+            "unsupported repeater entry_mode: {other} (expected progressive|full)"
         )),
     }
 }

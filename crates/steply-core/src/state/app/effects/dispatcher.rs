@@ -49,6 +49,7 @@ impl<'a> EffectDispatcher<'a> {
             }
             WidgetAction::ValidateCurrentStepSubmitAndTaskRequest { request } => {
                 if self.state.validate_current_step(ValidationMode::Submit) {
+                    self.state.sync_current_step_values_to_store();
                     request_task_run(self.state, request);
                 }
                 InteractionResult::handled()

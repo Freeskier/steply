@@ -1,12 +1,13 @@
 use crate::core::store_refs::{parse_store_selector, template_expressions};
 use crate::core::value::Value;
-use crate::core::value_path::{PathSegment, ValueTarget};
+use crate::core::value_path::ValueTarget;
 use crate::state::change::StoreCommitPolicy;
 use crate::state::store::ValueStore;
 use crate::state::validation::{StepContext, StepIssue, StepValidator};
 use crate::widgets::node::{Component, Node, NodeWalkScope, walk_nodes};
 use crate::widgets::shared::binding::{ReadBinding, StoreBinding};
 use crate::widgets::traits::{InteractiveNode, OutputNode};
+use std::cmp::Ordering;
 use std::collections::{HashSet, VecDeque};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -47,6 +48,7 @@ pub struct Step {
 pub struct StepBindingPlan {
     pub direct_value_nodes: Vec<StepDirectValueBinding>,
     pub derived_writers: Vec<StepDerivedBindingWriter>,
+    pub derived_writer_stages: Vec<Vec<StepDerivedBindingWriter>>,
 }
 
 #[derive(Debug, Clone)]
@@ -64,9 +66,17 @@ pub struct StepDerivedBindingWriter {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum StepCondition {
-    Equal { field: String, value: Value },
-    NotEqual { field: String, value: Value },
+    Truthy { field: String },
+    Exists { field: String },
+    Empty { field: String },
     NotEmpty { field: String },
+    Equals { field: String, value: Value },
+    NotEquals { field: String, value: Value },
+    GreaterThan { field: String, value: Value },
+    GreaterOrEqual { field: String, value: Value },
+    LessThan { field: String, value: Value },
+    LessOrEqual { field: String, value: Value },
+    Contains { field: String, value: Value },
     All(Vec<StepCondition>),
     Any(Vec<StepCondition>),
     Not(Box<StepCondition>),
@@ -75,17 +85,74 @@ pub enum StepCondition {
 impl StepCondition {
     pub fn evaluate(&self, store: &ValueStore) -> bool {
         match self {
-            Self::Equal { field, value } => store
+            Self::Truthy { field } => store.get_selector(field.as_str()).is_some_and(is_truthy),
+            Self::Exists { field } => store.get_selector(field.as_str()).is_some(),
+            Self::Empty { field } => store
                 .get_selector(field.as_str())
-                .is_some_and(|v| v == value),
-            Self::NotEqual { field, value } => store.get_selector(field.as_str()) != Some(value),
+                .is_none_or(Value::is_empty),
             Self::NotEmpty { field } => store
                 .get_selector(field.as_str())
                 .is_some_and(|v| !v.is_empty()),
+            Self::Equals { field, value } => store
+                .get_selector(field.as_str())
+                .is_some_and(|v| v == value),
+            Self::NotEquals { field, value } => store.get_selector(field.as_str()) != Some(value),
+            Self::GreaterThan { field, value } => compare_store_value(store, field, value)
+                .is_some_and(|ordering| ordering == Ordering::Greater),
+            Self::GreaterOrEqual { field, value } => compare_store_value(store, field, value)
+                .is_some_and(|ordering| matches!(ordering, Ordering::Greater | Ordering::Equal)),
+            Self::LessThan { field, value } => compare_store_value(store, field, value)
+                .is_some_and(|ordering| ordering == Ordering::Less),
+            Self::LessOrEqual { field, value } => compare_store_value(store, field, value)
+                .is_some_and(|ordering| matches!(ordering, Ordering::Less | Ordering::Equal)),
+            Self::Contains { field, value } => store
+                .get_selector(field.as_str())
+                .is_some_and(|actual| value_contains(actual, value)),
             Self::All(conditions) => conditions.iter().all(|condition| condition.evaluate(store)),
             Self::Any(conditions) => conditions.iter().any(|condition| condition.evaluate(store)),
             Self::Not(condition) => !condition.evaluate(store),
         }
+    }
+}
+
+fn is_truthy(value: &Value) -> bool {
+    match value {
+        Value::None => false,
+        Value::Bool(value) => *value,
+        Value::Number(value) => *value != 0.0,
+        Value::Text(value) => !value.is_empty(),
+        Value::List(values) => !values.is_empty(),
+        Value::Object(values) => !values.is_empty(),
+    }
+}
+
+fn compare_store_value(store: &ValueStore, field: &str, expected: &Value) -> Option<Ordering> {
+    let actual = store.get_selector(field)?;
+    compare_values(actual, expected)
+}
+
+fn compare_values(actual: &Value, expected: &Value) -> Option<Ordering> {
+    if let (Some(actual), Some(expected)) = (actual.to_number(), expected.to_number()) {
+        return actual.partial_cmp(&expected);
+    }
+
+    if let (Some(actual), Some(expected)) = (actual.to_text_scalar(), expected.to_text_scalar()) {
+        return Some(actual.cmp(&expected));
+    }
+
+    None
+}
+
+fn value_contains(actual: &Value, expected: &Value) -> bool {
+    match actual {
+        Value::Text(text) => expected
+            .to_text_scalar()
+            .is_some_and(|needle| text.contains(needle.as_str())),
+        Value::List(values) => values.iter().any(|item| item == expected),
+        Value::Object(entries) => expected
+            .to_text_scalar()
+            .is_some_and(|key| entries.contains_key(key.as_str())),
+        Value::None | Value::Bool(_) | Value::Number(_) => false,
     }
 }
 
@@ -289,10 +356,12 @@ impl StepBindingPlan {
                 })
             })
             .collect();
-        let derived_writers = topological_derived_writers(infos.as_slice());
+        let (derived_writers, derived_writer_stages) =
+            topological_derived_writers(infos.as_slice());
         Self {
             direct_value_nodes,
             derived_writers,
+            derived_writer_stages,
         }
     }
 }
@@ -356,14 +425,19 @@ fn collect_read_binding_selectors(binding: &ReadBinding, out: &mut Vec<ValueTarg
     }
 }
 
-fn topological_derived_writers(infos: &[BindingNodeInfo]) -> Vec<StepDerivedBindingWriter> {
+fn topological_derived_writers(
+    infos: &[BindingNodeInfo],
+) -> (
+    Vec<StepDerivedBindingWriter>,
+    Vec<Vec<StepDerivedBindingWriter>>,
+) {
     let derived = infos
         .iter()
         .enumerate()
         .filter(|(_, info)| info.derived_writer)
         .collect::<Vec<_>>();
     if derived.is_empty() {
-        return Vec::new();
+        return (Vec::new(), Vec::new());
     }
 
     let mut indegree = vec![0usize; derived.len()];
@@ -394,57 +468,64 @@ fn topological_derived_writers(infos: &[BindingNodeInfo]) -> Vec<StepDerivedBind
     }
 
     let mut ordered = Vec::with_capacity(derived.len());
-    while let Some(index) = ready.pop_front() {
-        ordered.push(StepDerivedBindingWriter {
-            node_id: derived[index].1.node_id.clone(),
-            write_targets: derived[index].1.write_targets.clone(),
-        });
-        let mut next = edges[index].clone();
-        next.sort_unstable();
-        next.dedup();
-        for target in next {
-            indegree[target] = indegree[target].saturating_sub(1);
-            if indegree[target] == 0 {
-                ready.push_back(target);
+    let mut stages = Vec::new();
+    while !ready.is_empty() {
+        let mut stage_indices = ready.drain(..).collect::<Vec<_>>();
+        stage_indices.sort_unstable();
+
+        let mut stage = Vec::with_capacity(stage_indices.len());
+        let mut next_ready = Vec::new();
+
+        for index in stage_indices {
+            let writer = StepDerivedBindingWriter {
+                node_id: derived[index].1.node_id.clone(),
+                write_targets: derived[index].1.write_targets.clone(),
+            };
+            ordered.push(writer.clone());
+            stage.push(writer);
+
+            let mut next = edges[index].clone();
+            next.sort_unstable();
+            next.dedup();
+            for target in next {
+                indegree[target] = indegree[target].saturating_sub(1);
+                if indegree[target] == 0 {
+                    next_ready.push(target);
+                }
             }
         }
+
+        if !stage.is_empty() {
+            stages.push(stage);
+        }
+
+        next_ready.sort_unstable();
+        next_ready.dedup();
+        ready.extend(next_ready);
     }
 
     if ordered.len() == derived.len() {
-        return ordered;
+        return (ordered, stages);
     }
 
     let mut fallback = Vec::with_capacity(derived.len());
+    let mut fallback_stages = Vec::new();
     let mut seen = HashSet::<String>::new();
     for (_, info) in derived {
         if seen.insert(info.node_id.clone()) {
-            fallback.push(StepDerivedBindingWriter {
+            let writer = StepDerivedBindingWriter {
                 node_id: info.node_id.clone(),
                 write_targets: info.write_targets.clone(),
-            });
+            };
+            fallback.push(writer.clone());
+            fallback_stages.push(vec![writer]);
         }
     }
-    fallback
+    (fallback, fallback_stages)
 }
 
 fn target_affects_selector(write: &ValueTarget, read: &ValueTarget) -> bool {
-    if write.root() != read.root() {
-        return false;
-    }
-    let write_path = write
-        .nested_path()
-        .map(|path| path.segments())
-        .unwrap_or(&[]);
-    let read_path = read
-        .nested_path()
-        .map(|path| path.segments())
-        .unwrap_or(&[]);
-
-    path_is_prefix(write_path, read_path) || path_is_prefix(read_path, write_path)
-}
-
-fn path_is_prefix(prefix: &[PathSegment], full: &[PathSegment]) -> bool {
-    prefix.len() <= full.len() && prefix.iter().zip(full.iter()).all(|(a, b)| a == b)
+    write.overlaps(read)
 }
 
 fn required_validator(field_id: String, message: String) -> StepValidator {
@@ -466,3 +547,7 @@ fn warning_if_empty_validator(field_id: String, message: String) -> StepValidato
         }
     })
 }
+
+#[cfg(test)]
+#[path = "tests/step.rs"]
+mod tests;

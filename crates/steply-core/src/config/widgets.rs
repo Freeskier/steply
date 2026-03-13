@@ -11,6 +11,7 @@ use crate::widgets::node::Node;
 use crate::widgets::shared::binding::{
     ReadBinding, StoreBinding, WriteBinding, WriteExpr, bind_node,
 };
+use crate::widgets::shared::condition::wrap_node_when;
 use crate::widgets::static_hints;
 
 use super::binding_compile::{compile_read_binding_value, compile_write_bindings, parse_selector};
@@ -21,6 +22,14 @@ pub(super) struct WidgetRegistryEntry {
     pub(super) doc: WidgetDocDescriptor,
     pub(super) build_doc: fn(WidgetDocDescriptor) -> Result<WidgetDoc, String>,
     pub(super) compile: fn(WidgetDef) -> Result<Node, String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum WidgetBindingSupport {
+    None,
+    Full,
+    ReadOnly,
+    WritesOnly,
 }
 
 const fn widget_doc(
@@ -47,6 +56,33 @@ macro_rules! widget_binding_value {
     };
     (yes, $def:ident) => {
         Some(&$def.binding)
+    };
+    (read_only, $def:ident) => {
+        Some(&$def.binding)
+    };
+    (writes_only, $def:ident) => {
+        Some(&$def.binding)
+    };
+}
+
+macro_rules! widget_binding_support_value {
+    (no) => {
+        WidgetBindingSupport::None
+    };
+    (yes) => {
+        WidgetBindingSupport::Full
+    };
+    (read_only) => {
+        WidgetBindingSupport::ReadOnly
+    };
+    (writes_only) => {
+        WidgetBindingSupport::WritesOnly
+    };
+}
+
+macro_rules! widget_when_value {
+    ($def:ident) => {
+        $def.when.as_ref()
     };
 }
 
@@ -116,6 +152,18 @@ macro_rules! define_widget_registry {
                 }
             }
 
+            fn registry_when(&self) -> Option<&model::WhenDef> {
+                match self {
+                    $(Self::$variant(def) => widget_when_value!(def),)+
+                }
+            }
+
+            fn registry_binding_support(&self) -> WidgetBindingSupport {
+                match self {
+                    $(Self::$variant(_) => widget_binding_support_value!($binding),)+
+                }
+            }
+
             fn registry_children(&self) -> Option<&[WidgetDef]> {
                 match self {
                     $(Self::$variant(_def) => widget_children_value!($children, _def),)+
@@ -138,7 +186,7 @@ id: intro
 text: Welcome to Steply"#,
         hints: &[],
         compile: compile_text_output_widget,
-        binding: no,
+        binding: read_only,
         children: none
     },
     {
@@ -154,7 +202,7 @@ url: https://example.com
 name: Open docs"#,
         hints: &[],
         compile: compile_url_output_widget,
-        binding: no,
+        binding: read_only,
         children: none
     },
     {
@@ -187,7 +235,7 @@ min: 0
 max: 100"#,
         hints: &[],
         compile: compile_progress_output_widget,
-        binding: no,
+        binding: read_only,
         children: none
     },
     {
@@ -202,7 +250,7 @@ id: cpu
 label: CPU load"#,
         hints: &[],
         compile: compile_chart_output_widget,
-        binding: no,
+        binding: read_only,
         children: none
     },
     {
@@ -218,7 +266,7 @@ label: Summary
 headers: [Name, Value]"#,
         hints: &[],
         compile: compile_table_output_widget,
-        binding: no,
+        binding: read_only,
         children: none
     },
     {
@@ -264,7 +312,7 @@ steps:
         long: "Collects one line of text with optional validation and completion.",
         example: r#"type: text_input
 id: project_name
-label: Project name"#,
+        label: Project name"#,
         hints: &[],
         compile: compile_text_input_widget,
         binding: yes,
@@ -472,7 +520,7 @@ commands:
     args: [fetch]"#,
         hints: static_hints::COMMAND_RUNNER_HINTS,
         compile: compile_command_runner_widget,
-        binding: yes,
+        binding: writes_only,
         children: none
     },
     {
@@ -537,7 +585,7 @@ label: Export command
 template: \"export NAME={{name}}\""#,
         hints: static_hints::SNIPPET_HINTS,
         compile: compile_snippet_widget,
-        binding: yes,
+        binding: writes_only,
         children: inputs
     },
     {
@@ -569,11 +617,12 @@ columns:
         example: r#"type: repeater
 id: services
 label: Services
-fields:
-  - key: name
-    label: Name
-    widget:
-      type: text_input"#,
+iterate: profile.services
+entry_mode: full
+widgets:
+  - type: text_input
+    id: name
+    label: Name"#,
         hints: static_hints::REPEATER_HINTS,
         compile: compile_repeater_widget,
         binding: yes,
@@ -604,6 +653,14 @@ pub(super) fn walk_widgets(
 
 pub(super) fn widget_id(widget: &WidgetDef) -> &str {
     widget.registry_id()
+}
+
+pub(super) fn widget_when(widget: &WidgetDef) -> Option<&model::WhenDef> {
+    widget.registry_when()
+}
+
+pub(super) fn widget_children(widget: &WidgetDef) -> Option<&[WidgetDef]> {
+    widget.registry_children()
 }
 
 pub(super) fn visit_widget_inline_task_ids(
@@ -644,14 +701,16 @@ pub(super) fn visit_widget_binding_read_selectors(
     widget: &WidgetDef,
     visitor: &mut impl FnMut(&str) -> Result<(), String>,
 ) -> Result<(), String> {
+    visit_widget_special_read_selectors(widget, visitor)?;
     visit_widget_option_selectors(widget, visitor)?;
     let Some(binding) = widget.registry_binding() else {
         return Ok(());
     };
     let Some(reads) = &binding.reads else {
-        return Ok(());
+        return visit_widget_implicit_read_selectors(widget, visitor);
     };
-    visit_read_binding_selectors(reads, true, visitor)
+    visit_read_binding_selectors(reads, true, visitor)?;
+    visit_widget_implicit_read_selectors(widget, visitor)
 }
 
 pub(super) fn visit_widget_binding_write_targets(
@@ -712,7 +771,27 @@ pub(super) fn visit_widget_binding_direct_value_targets(
     }
 }
 
+pub(super) fn widget_binding_commit_policy(
+    widget: &WidgetDef,
+) -> crate::state::change::StoreCommitPolicy {
+    match widget
+        .registry_binding()
+        .map(|binding| binding.commit_policy)
+    {
+        Some(model::BindingCommitPolicyDef::OnSubmit) => {
+            crate::state::change::StoreCommitPolicy::OnSubmit
+        }
+        Some(model::BindingCommitPolicyDef::Immediate) | None => {
+            crate::state::change::StoreCommitPolicy::Immediate
+        }
+    }
+}
+
 pub(super) fn compile_widget(def: WidgetDef) -> Result<Node, String> {
+    let condition = def
+        .registry_when()
+        .map(super::assemble::assemble_when)
+        .transpose()?;
     let binding = compile_store_binding(&def)?;
     let widget_type = def.registry_type_name();
     let Some(entry) = widget_entry(widget_type) else {
@@ -720,7 +799,11 @@ pub(super) fn compile_widget(def: WidgetDef) -> Result<Node, String> {
             "internal widget registry is missing entry for '{widget_type}'"
         ));
     };
-    Ok(bind_node((entry.compile)(def)?, binding))
+    let node = bind_node((entry.compile)(def)?, binding);
+    Ok(match condition {
+        Some(condition) => wrap_node_when(node, condition),
+        None => node,
+    })
 }
 
 fn widget_entry(widget_type: &str) -> Option<&'static WidgetRegistryEntry> {
@@ -752,6 +835,30 @@ fn visit_widget_option_selectors(
             options: model::SelectListOptionsDef::Selector(selector),
             ..
         }) => visitor(normalize_binding_selector(selector)?.as_str()),
+        _ => Ok(()),
+    }
+}
+
+fn visit_widget_special_read_selectors(
+    widget: &WidgetDef,
+    visitor: &mut impl FnMut(&str) -> Result<(), String>,
+) -> Result<(), String> {
+    match widget {
+        WidgetDef::Repeater(model::RepeaterDef {
+            iterate,
+            header_template,
+            ..
+        }) => {
+            visit_read_binding_selectors(iterate, true, visitor)?;
+            if let Some(header_template) = header_template {
+                visit_read_binding_selectors(
+                    &serde_yaml::Value::String(header_template.clone()),
+                    true,
+                    visitor,
+                )?;
+            }
+            Ok(())
+        }
         _ => Ok(()),
     }
 }
@@ -798,7 +905,14 @@ fn visit_read_binding_selectors(
 }
 
 fn compile_store_binding(def: &WidgetDef) -> Result<StoreBinding, String> {
-    let mut binding = compile_widget_binding(def, def.registry_binding().cloned())?;
+    let mut binding = compile_widget_binding(
+        def,
+        def.registry_binding_support(),
+        def.registry_binding().cloned(),
+    )?;
+    if binding.is_empty() {
+        binding = compile_implicit_store_binding(def)?;
+    }
     binding.options = compile_option_binding(def)?;
     Ok(binding)
 }
@@ -831,14 +945,101 @@ fn compile_option_binding(def: &WidgetDef) -> Result<Option<ReadBinding>, String
 
 fn compile_widget_binding(
     def: &WidgetDef,
+    support: WidgetBindingSupport,
     binding: Option<model::WidgetBindingDef>,
 ) -> Result<StoreBinding, String> {
     let Some(binding) = binding else {
         return Ok(StoreBinding::default());
     };
+    if widget_binding_is_empty(&binding) {
+        return Ok(StoreBinding::default());
+    }
+
+    let widget_type = def.registry_type_name();
+    let commit_policy = match binding.commit_policy {
+        model::BindingCommitPolicyDef::Immediate => {
+            crate::state::change::StoreCommitPolicy::Immediate
+        }
+        model::BindingCommitPolicyDef::OnSubmit => {
+            crate::state::change::StoreCommitPolicy::OnSubmit
+        }
+    };
+
+    match support {
+        WidgetBindingSupport::None => {
+            return Err(format!(
+                "widget '{widget_type}' does not support store bindings"
+            ));
+        }
+        WidgetBindingSupport::ReadOnly => {
+            if binding.value.is_some() {
+                return Err(format!(
+                    "widget '{widget_type}' supports binding.reads only; binding.value is not allowed"
+                ));
+            }
+            if binding.writes.is_some() {
+                return Err(format!(
+                    "widget '{widget_type}' supports binding.reads only; binding.writes is not allowed"
+                ));
+            }
+            if commit_policy != crate::state::change::StoreCommitPolicy::Immediate {
+                return Err(format!(
+                    "widget '{widget_type}' does not support binding.commit_policy"
+                ));
+            }
+
+            let reads = binding
+                .reads
+                .map(|value| compile_read_binding_value(&value, true))
+                .transpose()?;
+
+            return Ok(StoreBinding {
+                value: None,
+                options: None,
+                reads,
+                writes: Vec::new(),
+                commit_policy,
+            });
+        }
+        WidgetBindingSupport::WritesOnly => {
+            if binding.value.is_some() {
+                return Err(format!(
+                    "widget '{widget_type}' supports binding.writes only; binding.value is not allowed"
+                ));
+            }
+            if binding.reads.is_some() {
+                return Err(format!(
+                    "widget '{widget_type}' supports binding.writes only; binding.reads is not allowed"
+                ));
+            }
+            if commit_policy != crate::state::change::StoreCommitPolicy::Immediate {
+                return Err(format!(
+                    "widget '{widget_type}' does not support binding.commit_policy"
+                ));
+            }
+
+            let writes = compile_write_bindings(binding.writes, "value", widget_scope_ref(def))?;
+            return Ok(StoreBinding {
+                value: None,
+                options: None,
+                reads: None,
+                writes,
+                commit_policy,
+            });
+        }
+        WidgetBindingSupport::Full => {}
+    }
 
     if binding.value.is_some() && (binding.reads.is_some() || binding.writes.is_some()) {
         return Err("binding 'value' cannot be combined with 'reads' or 'writes'".to_string());
+    }
+
+    if commit_policy == crate::state::change::StoreCommitPolicy::OnSubmit && binding.value.is_none()
+    {
+        return Err(
+            "binding 'commit_policy: on_submit' requires a direct 'binding.value' selector"
+                .to_string(),
+        );
     }
 
     if let Some(selector) = binding.value {
@@ -851,6 +1052,7 @@ fn compile_widget_binding(
                 target,
                 expr: WriteExpr::ScopeRef("value".to_string()),
             }],
+            commit_policy,
         });
     }
 
@@ -866,7 +1068,22 @@ fn compile_widget_binding(
         options: None,
         reads,
         writes,
+        commit_policy,
     })
+}
+
+fn compile_implicit_store_binding(def: &WidgetDef) -> Result<StoreBinding, String> {
+    match def {
+        WidgetDef::TextOutput(model::TextOutputDef { text, .. })
+            if text.contains("{{") && text.contains("}}") =>
+        {
+            Ok(StoreBinding {
+                reads: Some(ReadBinding::Template(text.clone())),
+                ..StoreBinding::default()
+            })
+        }
+        _ => Ok(StoreBinding::default()),
+    }
 }
 
 fn widget_scope_ref(def: &WidgetDef) -> fn(&str) -> bool {
@@ -915,6 +1132,34 @@ fn binding_top_level_read_selector(binding: &model::WidgetBindingDef) -> Option<
     normalize_binding_selector(text).ok()
 }
 
+fn visit_widget_implicit_read_selectors(
+    widget: &WidgetDef,
+    visitor: &mut impl FnMut(&str) -> Result<(), String>,
+) -> Result<(), String> {
+    let Some(binding) = widget.registry_binding() else {
+        return Ok(());
+    };
+    if !widget_binding_is_empty(binding) {
+        return Ok(());
+    }
+
+    match widget {
+        WidgetDef::TextOutput(model::TextOutputDef { text, .. })
+            if text.contains("{{") && text.contains("}}") =>
+        {
+            visit_read_binding_selectors(&serde_yaml::Value::String(text.clone()), true, visitor)
+        }
+        _ => Ok(()),
+    }
+}
+
+fn widget_binding_is_empty(binding: &model::WidgetBindingDef) -> bool {
+    binding.value.is_none()
+        && binding.reads.is_none()
+        && binding.writes.is_none()
+        && binding.commit_policy == model::BindingCommitPolicyDef::Immediate
+}
+
 fn write_expr_is_identity(value: &serde_yaml::Value) -> bool {
     match value {
         serde_yaml::Value::String(text) => {
@@ -927,19 +1172,8 @@ fn write_expr_is_identity(value: &serde_yaml::Value) -> bool {
 
 fn compile_text_output_widget(def: WidgetDef) -> Result<Node, String> {
     match def {
-        WidgetDef::TextOutput(model::TextOutputDef { id, text }) => {
-            let node = outputs::compile_text_output(id, text.clone());
-            if text.contains("{{") && text.contains("}}") {
-                Ok(bind_node(
-                    node,
-                    StoreBinding {
-                        reads: Some(ReadBinding::Template(text)),
-                        ..StoreBinding::default()
-                    },
-                ))
-            } else {
-                Ok(node)
-            }
+        WidgetDef::TextOutput(model::TextOutputDef { id, text, .. }) => {
+            Ok(outputs::compile_text_output(id, text.clone()))
         }
         _ => registry_dispatch_mismatch("text_output"),
     }
@@ -947,7 +1181,7 @@ fn compile_text_output_widget(def: WidgetDef) -> Result<Node, String> {
 
 fn compile_url_output_widget(def: WidgetDef) -> Result<Node, String> {
     match def {
-        WidgetDef::UrlOutput(model::UrlOutputDef { id, url, name }) => {
+        WidgetDef::UrlOutput(model::UrlOutputDef { id, url, name, .. }) => {
             outputs::compile_url_output(id, url, name)
         }
         _ => registry_dispatch_mismatch("url_output"),
@@ -965,6 +1199,7 @@ fn compile_thinking_output_widget(def: WidgetDef) -> Result<Node, String> {
             tick_ms,
             base_rgb,
             peak_rgb,
+            ..
         }) => outputs::compile_thinking_output(
             id, label, text, mode, tail_len, tick_ms, base_rgb, peak_rgb,
         ),
@@ -983,6 +1218,7 @@ fn compile_progress_output_widget(def: WidgetDef) -> Result<Node, String> {
             bar_width,
             style,
             transition,
+            ..
         }) => outputs::compile_progress_output(
             id, label, min, max, unit, bar_width, style, transition,
         ),
@@ -1001,6 +1237,7 @@ fn compile_chart_output_widget(def: WidgetDef) -> Result<Node, String> {
             max,
             unit,
             gradient,
+            ..
         }) => outputs::compile_chart_output(id, label, mode, capacity, min, max, unit, gradient),
         _ => registry_dispatch_mismatch("chart_output"),
     }
@@ -1014,6 +1251,7 @@ fn compile_table_output_widget(def: WidgetDef) -> Result<Node, String> {
             style,
             headers,
             rows,
+            ..
         }) => outputs::compile_table_output(id, label, style, headers, rows),
         _ => registry_dispatch_mismatch("table_output"),
     }
@@ -1027,6 +1265,7 @@ fn compile_diff_output_widget(def: WidgetDef) -> Result<Node, String> {
             old,
             new,
             max_visible,
+            ..
         }) => outputs::compile_diff_output(id, label, old, new, max_visible),
         _ => registry_dispatch_mismatch("diff_output"),
     }
@@ -1039,6 +1278,7 @@ fn compile_task_log_output_widget(def: WidgetDef) -> Result<Node, String> {
             visible_lines,
             spinner_style,
             steps,
+            ..
         }) => outputs::compile_task_log_output(id, visible_lines, spinner_style, steps),
         _ => registry_dispatch_mismatch("task_log_output"),
     }
@@ -1091,6 +1331,7 @@ fn compile_button_input_widget(def: WidgetDef) -> Result<Node, String> {
             label,
             text,
             task_id,
+            ..
         }) => inputs::compile_button_input(id, label, text, task_id),
         _ => registry_dispatch_mismatch("button_input"),
     }
@@ -1407,27 +1648,23 @@ fn compile_repeater_widget(def: WidgetDef) -> Result<Node, String> {
         WidgetDef::Repeater(model::RepeaterDef {
             id,
             label,
-            mode,
-            layout,
+            iterate,
+            entry_mode,
             show_label,
             show_progress,
             header_template,
             item_label_path,
-            items,
-            count,
             widgets,
             ..
         }) => components::compile_repeater(
             id,
             label,
-            mode,
-            layout,
+            iterate,
+            entry_mode,
             show_label,
             show_progress,
             header_template,
             item_label_path,
-            items,
-            count,
             widgets,
         ),
         _ => registry_dispatch_mismatch("repeater"),

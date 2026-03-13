@@ -16,8 +16,13 @@ pub(crate) fn draw_nodes(
     options: DrawNodesOptions,
 ) {
     for node in nodes {
-        let mut out = node.draw(ctx);
         let (label_prefix, label_offset) = input_label_prefix(node, ctx.focused_id.as_deref());
+        let draw_ctx = if label_offset > 0 {
+            ctx.with_terminal_width(ctx.terminal_size.width.saturating_sub(label_offset))
+        } else {
+            ctx.with_focus(ctx.focused_id.clone())
+        };
+        let mut out = node.draw(&draw_ctx);
 
         apply_input_validation_overlay(node, ctx, &mut out);
         if options.strikethrough_inputs && matches!(node, Node::Input(_)) {
@@ -126,7 +131,8 @@ fn capture_node_focus_cursor(
         return;
     }
 
-    let Some(local_cursor) = node.cursor_pos() else {
+    let available_width = ctx.terminal_size.width.saturating_sub(label_offset);
+    let Some(local_cursor) = node.cursor_pos_with_width(available_width) else {
         return;
     };
     *state.cursor = Some(CursorPos {

@@ -7,6 +7,7 @@ use crate::state::store::ValueStore;
 use crate::terminal::{CursorPos, KeyCode, KeyEvent, PointerEvent};
 use crate::ui::span::{Span, SpanLine};
 use crate::ui::style::{Color, Style};
+use crate::ui::text::text_display_width;
 use crate::widgets::base::WidgetBase;
 use crate::widgets::node::{LeafComponent, Node};
 use crate::widgets::shared::binding::ReadBinding;
@@ -17,40 +18,30 @@ use crate::widgets::traits::{
     InteractionResult, Interactive, RenderContext, StoreSyncPolicy, TextAction, ValidationMode,
 };
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum RepeaterIterationMode {
-    #[default]
-    Fixed,
-    Append,
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum RepeaterLayout {
-    SingleField,
-    Stacked,
+pub enum RepeaterEntryMode {
+    Progressive,
+    Full,
 }
 
 pub struct Repeater {
     base: WidgetBase,
     widgets: Vec<Node>,
     active_widget: usize,
-    items_binding: Option<ReadBinding>,
-    count_binding: Option<ReadBinding>,
+    iterate_binding: Option<ReadBinding>,
     items: Vec<Value>,
-    explicit_count: Option<usize>,
+    explicit_count: usize,
     rows: Vec<Value>,
     current_row: Value,
     active_index: usize,
-    layout: RepeaterLayout,
-    mode: RepeaterIterationMode,
+    entry_mode: RepeaterEntryMode,
     show_label: bool,
     show_progress: bool,
-    header_template: String,
+    header_binding: Option<ReadBinding>,
     item_label_path: Option<ValuePath>,
     finished: bool,
     store_snapshot: ValueStore,
-    last_items_value: Option<Option<Value>>,
-    last_count_value: Option<Option<Value>>,
+    last_iterate_value: Option<Option<Value>>,
 }
 
 impl Repeater {
@@ -59,33 +50,27 @@ impl Repeater {
             base: WidgetBase::new(id, label),
             widgets: Vec::new(),
             active_widget: 0,
-            items_binding: None,
-            count_binding: None,
+            iterate_binding: None,
             items: Vec::new(),
-            explicit_count: None,
+            explicit_count: 0,
             rows: Vec::new(),
             current_row: empty_row(),
             active_index: 0,
-            layout: RepeaterLayout::SingleField,
-            mode: RepeaterIterationMode::Fixed,
+            entry_mode: RepeaterEntryMode::Progressive,
             show_label: true,
             show_progress: true,
-            header_template: "configuring [{index} of {count}]".to_string(),
+            header_binding: Some(ReadBinding::Template(
+                "configuring [{{_position}} of {{_count}}]".to_string(),
+            )),
             item_label_path: None,
             finished: false,
             store_snapshot: ValueStore::new(),
-            last_items_value: None,
-            last_count_value: None,
+            last_iterate_value: None,
         }
     }
 
-    pub fn with_layout(mut self, layout: RepeaterLayout) -> Self {
-        self.layout = layout;
-        self
-    }
-
-    pub fn with_mode(mut self, mode: RepeaterIterationMode) -> Self {
-        self.mode = mode;
+    pub fn with_entry_mode(mut self, entry_mode: RepeaterEntryMode) -> Self {
+        self.entry_mode = entry_mode;
         self
     }
 
@@ -99,8 +84,13 @@ impl Repeater {
         self
     }
 
+    pub fn with_header_binding(mut self, binding: ReadBinding) -> Self {
+        self.header_binding = Some(binding);
+        self
+    }
+
     pub fn with_header_template(mut self, template: impl Into<String>) -> Self {
-        self.header_template = template.into();
+        self.header_binding = Some(ReadBinding::Template(template.into()));
         self
     }
 
@@ -109,18 +99,20 @@ impl Repeater {
         self
     }
 
-    pub fn with_items_binding(mut self, binding: ReadBinding) -> Self {
-        self.items_binding = Some(binding);
+    pub fn with_iterate_binding(mut self, binding: ReadBinding) -> Self {
+        self.iterate_binding = Some(binding);
         self
     }
 
     pub fn with_items(mut self, items: Vec<Value>) -> Self {
+        self.explicit_count = items.len();
         self.items = items;
         self
     }
 
-    pub fn with_count_binding(mut self, binding: ReadBinding) -> Self {
-        self.count_binding = Some(binding);
+    pub fn with_count(mut self, count: usize) -> Self {
+        self.items.clear();
+        self.explicit_count = count;
         self
     }
 
@@ -134,8 +126,57 @@ impl Repeater {
         &self,
         ctx: &RenderContext,
         focused_child_id: Option<String>,
+        label_offset: u16,
     ) -> RenderContext {
-        child_context_for(self.base.id(), ctx, focused_child_id)
+        child_context_for(self.base.id(), ctx, focused_child_id).with_terminal_width(
+            ctx.terminal_size
+                .width
+                .saturating_sub(2)
+                .saturating_sub(label_offset),
+        )
+    }
+
+    fn child_label_prefix(&self, widget: &Node, focused: bool) -> (Option<SpanLine>, u16) {
+        let Node::Input(widget) = widget else {
+            return (None, 0);
+        };
+
+        let label = widget.label();
+        if label.is_empty() {
+            return (None, 0);
+        }
+
+        let style = if focused {
+            Style::new().color(Color::White)
+        } else {
+            Style::default()
+        };
+        (
+            Some(vec![Span::styled(format!("{label}: "), style).no_wrap()]),
+            text_display_width(label)
+                .saturating_add(2)
+                .min(u16::MAX as usize) as u16,
+        )
+    }
+
+    fn draw_child_widget(
+        &self,
+        widget: &Node,
+        ctx: &RenderContext,
+        focused_id: Option<String>,
+    ) -> (Vec<SpanLine>, u16) {
+        let is_focused = focused_id.as_deref().is_some_and(|id| id == widget.id());
+        let (label_prefix, label_offset) = self.child_label_prefix(widget, is_focused);
+        let child_ctx = self.child_context(ctx, focused_id, label_offset);
+        let mut out = widget.draw(&child_ctx).lines;
+        if let Some(prefix) = label_prefix
+            && let Some(first) = out.first_mut()
+        {
+            let mut new_first = prefix;
+            new_first.append(first);
+            *first = new_first;
+        }
+        (out, label_offset)
     }
 
     fn active_widget_ref(&self) -> Option<&Node> {
@@ -147,46 +188,69 @@ impl Repeater {
     }
 
     fn clamp_cursor(&mut self) {
-        if self.widgets.is_empty() {
-            self.active_widget = 0;
-        } else {
-            self.active_widget = self.active_widget.min(self.widgets.len().saturating_sub(1));
-        }
+        self.active_widget = self
+            .focusable_widget_index_from(self.active_widget, true)
+            .or_else(|| self.first_focusable_widget_index())
+            .unwrap_or(0);
+    }
+
+    fn is_focusable_widget(widget: &Node) -> bool {
+        matches!(widget.focus_mode(), FocusMode::Leaf | FocusMode::Group)
+    }
+
+    fn first_focusable_widget_index(&self) -> Option<usize> {
+        self.widgets.iter().position(Self::is_focusable_widget)
+    }
+
+    fn last_focusable_widget_index(&self) -> Option<usize> {
+        self.widgets.iter().rposition(Self::is_focusable_widget)
+    }
+
+    fn next_focusable_widget_index(&self, current: usize) -> Option<usize> {
+        self.widgets
+            .iter()
+            .enumerate()
+            .skip(current.saturating_add(1))
+            .find_map(|(index, widget)| Self::is_focusable_widget(widget).then_some(index))
+    }
+
+    fn previous_focusable_widget_index(&self, current: usize) -> Option<usize> {
+        self.widgets
+            .iter()
+            .enumerate()
+            .take(current)
+            .rev()
+            .find_map(|(index, widget)| Self::is_focusable_widget(widget).then_some(index))
+    }
+
+    fn focusable_widget_index_from(&self, start: usize, include_start: bool) -> Option<usize> {
+        self.widgets
+            .iter()
+            .enumerate()
+            .skip(start)
+            .find_map(|(index, widget)| {
+                if (!include_start && index == start) || !Self::is_focusable_widget(widget) {
+                    None
+                } else {
+                    Some(index)
+                }
+            })
     }
 
     fn total_count(&self) -> usize {
-        match self.mode {
-            RepeaterIterationMode::Fixed => self.explicit_count.unwrap_or(self.items.len()),
-            RepeaterIterationMode::Append => {
-                self.explicit_count.unwrap_or_else(|| self.rows.len() + 1)
-            }
-        }
+        self.explicit_count
     }
 
     fn current_item(&self) -> Option<&Value> {
         self.items.get(self.active_index)
     }
 
-    fn header_line(&self) -> String {
-        let index = self.active_index.saturating_add(1);
-        let count = self.total_count();
-        let item = self
-            .current_item()
-            .map(|value| self.item_label(value))
-            .unwrap_or_default();
-        self.header_template
-            .replace("{index}", index.to_string().as_str())
-            .replace("{count}", count.to_string().as_str())
-            .replace("{item}", item.as_str())
-    }
-
-    fn item_label(&self, value: &Value) -> String {
-        if let Some(path) = &self.item_label_path
-            && let Some(nested) = value.get_path(path)
-        {
-            return display_scalar_or_json(nested);
-        }
-        display_scalar_or_json(value)
+    fn header_line(&self) -> Option<String> {
+        let binding = self.header_binding.as_ref()?;
+        let scoped = self.scoped_store();
+        let value = binding.resolve(&scoped)?;
+        let text = display_scalar_or_json(&value);
+        (!text.trim().is_empty()).then_some(text)
     }
 
     fn progress_line(&self) -> Option<String> {
@@ -206,12 +270,27 @@ impl Repeater {
         let _ = scoped.set("_row", self.current_row.clone());
         if let Some(item) = self.current_item() {
             let _ = scoped.set("_item", item.clone());
+            let _ = scoped.set("_item_label", Value::Text(self.current_item_label(item)));
         } else {
             let _ = scoped.set("_item", Value::None);
+            let _ = scoped.set("_item_label", Value::Text(String::new()));
         }
         let _ = scoped.set("_index", Value::Number(self.active_index as f64));
+        let _ = scoped.set(
+            "_position",
+            Value::Number(self.active_index.saturating_add(1) as f64),
+        );
         let _ = scoped.set("_count", Value::Number(self.total_count() as f64));
         scoped
+    }
+
+    fn current_item_label(&self, value: &Value) -> String {
+        if let Some(path) = &self.item_label_path
+            && let Some(nested) = value.get_path(path)
+        {
+            return display_scalar_or_json(nested);
+        }
+        display_scalar_or_json(value)
     }
 
     fn sync_widgets_from_scope(&mut self) -> bool {
@@ -225,38 +304,22 @@ impl Repeater {
 
     fn refresh_sources(&mut self, store: &ValueStore) -> bool {
         self.store_snapshot = clone_store(store);
-        let mut changed = false;
-
-        let next_items = self
-            .items_binding
+        let next_iterate = self
+            .iterate_binding
             .as_ref()
             .and_then(|binding| binding.resolve(store));
-        if self.last_items_value.as_ref() != Some(&next_items) {
-            self.last_items_value = Some(next_items.clone());
-            self.items = match next_items {
-                Some(Value::List(items)) => items,
-                Some(Value::None) | None => Vec::new(),
-                Some(value) => vec![value],
-            };
-            changed = true;
+        if self.last_iterate_value.as_ref() == Some(&next_iterate) {
+            return false;
         }
 
-        let next_count = self
-            .count_binding
-            .as_ref()
-            .and_then(|binding| binding.resolve(store));
-        if self.last_count_value.as_ref() != Some(&next_count) {
-            self.last_count_value = Some(next_count.clone());
-            self.explicit_count = next_count.as_ref().and_then(read_count_value);
-            changed = true;
-        }
-
-        if changed {
-            self.active_index = self.active_index.min(self.max_active_index());
-            self.load_current_row();
-        }
-
-        changed
+        self.last_iterate_value = Some(next_iterate.clone());
+        let (items, explicit_count) = resolved_iterate_state(next_iterate.as_ref());
+        self.items = items;
+        self.explicit_count = explicit_count;
+        self.active_index = self.active_index.min(self.max_active_index());
+        self.finished = false;
+        self.load_current_row();
+        true
     }
 
     fn max_active_index(&self) -> usize {
@@ -264,6 +327,10 @@ impl Repeater {
     }
 
     fn load_current_row(&mut self) {
+        if self.total_count() == 0 {
+            self.current_row = empty_row();
+            return;
+        }
         self.current_row = self
             .rows
             .get(self.active_index)
@@ -280,24 +347,17 @@ impl Repeater {
     }
 
     fn next_iteration(&mut self) -> bool {
-        self.commit_current_row();
-        self.active_widget = 0;
-        match self.mode {
-            RepeaterIterationMode::Fixed => {
-                if self.active_index + 1 >= self.total_count() {
-                    self.finished = true;
-                    return false;
-                }
-                self.active_index += 1;
-            }
-            RepeaterIterationMode::Append => {
-                if self.active_index + 1 >= self.total_count() {
-                    self.finished = true;
-                    return false;
-                }
-                self.active_index += 1;
-            }
+        if self.widgets.is_empty() || self.total_count() == 0 {
+            self.finished = true;
+            return false;
         }
+        self.commit_current_row();
+        self.active_widget = self.first_focusable_widget_index().unwrap_or(0);
+        if self.active_index + 1 >= self.total_count() {
+            self.finished = true;
+            return false;
+        }
+        self.active_index += 1;
         self.current_row = self
             .rows
             .get(self.active_index)
@@ -312,7 +372,9 @@ impl Repeater {
             return false;
         }
         self.active_index -= 1;
-        self.active_widget = self.widgets.len().saturating_sub(1);
+        self.active_widget = self
+            .last_focusable_widget_index()
+            .unwrap_or_else(|| self.widgets.len().saturating_sub(1));
         self.finished = false;
         self.load_current_row();
         let _ = self.sync_widgets_from_scope();
@@ -324,8 +386,7 @@ impl Repeater {
             return vec![empty_line("No repeater widgets configured.")];
         };
         let focused_id = focused.then(|| widget.id().to_string());
-        let child_ctx = self.child_context(ctx, focused_id);
-        let mut out = widget.draw(&child_ctx).lines;
+        let (mut out, _) = self.draw_child_widget(widget, ctx, focused_id);
         if out.is_empty() {
             out.push(vec![Span::new(String::new()).no_wrap()]);
         }
@@ -342,11 +403,14 @@ impl Repeater {
                 )
                 .no_wrap(),
             );
+            if let Some(next) = first.get_mut(1) {
+                next.no_wrap_join_prev = true;
+            }
         }
         out
     }
 
-    fn draw_stacked_widgets(&self, ctx: &RenderContext, focused: bool) -> Vec<SpanLine> {
+    fn draw_full_widgets(&self, ctx: &RenderContext, focused: bool) -> Vec<SpanLine> {
         if self.widgets.is_empty() {
             return vec![empty_line("No repeater widgets configured.")];
         }
@@ -355,10 +419,9 @@ impl Repeater {
         for (index, widget) in self.widgets.iter().enumerate() {
             let is_active = index == self.active_widget;
             let focused_id = (focused && is_active).then(|| widget.id().to_string());
-            let child_ctx = self.child_context(ctx, focused_id);
-            let mut out = widget.draw(&child_ctx).lines;
+            let (mut out, _) = self.draw_child_widget(widget, ctx, focused_id);
             if out.is_empty() {
-                out.push(vec![Span::new(String::new()).no_wrap()]);
+                continue;
             }
             if let Some(first) = out.first_mut() {
                 first.insert(
@@ -373,6 +436,9 @@ impl Repeater {
                     )
                     .no_wrap(),
                 );
+                if let Some(next) = first.get_mut(1) {
+                    next.no_wrap_join_prev = true;
+                }
             }
             lines.extend(out);
         }
@@ -384,7 +450,9 @@ impl Repeater {
         if self.show_label && !self.base.label().is_empty() {
             rows += 1;
         }
-        rows += 1;
+        if self.header_line().is_some() {
+            rows += 1;
+        }
         if self.progress_line().is_some() {
             rows += 1;
         }
@@ -402,6 +470,18 @@ impl Repeater {
         }
         self.current_row = store.get("_row").cloned().unwrap_or_else(empty_row);
         true
+    }
+
+    fn capture_active_widget_value(&mut self) -> bool {
+        let changes = self
+            .active_widget_ref()
+            .map(Node::write_changes)
+            .unwrap_or_default();
+        let mut changed = false;
+        for change in changes {
+            changed |= self.apply_local_change(change);
+        }
+        changed
     }
 
     fn process_child_result(&mut self, mut result: InteractionResult) -> InteractionResult {
@@ -430,8 +510,12 @@ impl Repeater {
         }
 
         if should_advance {
-            if self.active_widget + 1 < self.widgets.len() {
-                self.active_widget += 1;
+            if self.capture_active_widget_value() {
+                result.handled = true;
+                result.request_render = true;
+            }
+            if let Some(next_index) = self.next_focusable_widget_index(self.active_widget) {
+                self.active_widget = next_index;
                 result.handled = true;
                 result.request_render = true;
             } else if self.next_iteration() {
@@ -464,9 +548,11 @@ impl Drawable for Repeater {
         if self.show_label && !self.base.label().is_empty() {
             lines.push(vec![Span::new(self.base.label()).no_wrap()]);
         }
-        lines.push(vec![
-            Span::styled(self.header_line(), Style::new().color(Color::Yellow).bold()).no_wrap(),
-        ]);
+        if let Some(header) = self.header_line() {
+            lines.push(vec![
+                Span::styled(header, Style::new().color(Color::Yellow).bold()).no_wrap(),
+            ]);
+        }
 
         if let Some(progress) = self.progress_line() {
             lines.push(vec![
@@ -474,9 +560,9 @@ impl Drawable for Repeater {
             ]);
         }
 
-        let body = match self.layout {
-            RepeaterLayout::SingleField => self.draw_single_widget(ctx, focused),
-            RepeaterLayout::Stacked => self.draw_stacked_widgets(ctx, focused),
+        let body = match self.entry_mode {
+            RepeaterEntryMode::Progressive => self.draw_single_widget(ctx, focused),
+            RepeaterEntryMode::Full => self.draw_full_widgets(ctx, focused),
         };
         lines.extend(body);
 
@@ -525,8 +611,10 @@ impl Interactive for Repeater {
                 self.process_child_result(InteractionResult::input_done())
             }
             KeyCode::BackTab => {
-                if self.active_widget > 0 {
-                    self.active_widget -= 1;
+                if let Some(previous_index) =
+                    self.previous_focusable_widget_index(self.active_widget)
+                {
+                    self.active_widget = previous_index;
                     InteractionResult::handled()
                 } else if self.previous_iteration() {
                     InteractionResult::handled()
@@ -559,11 +647,20 @@ impl Interactive for Repeater {
     }
 
     fn cursor_pos(&self) -> Option<CursorPos> {
+        self.cursor_pos_with_width(u16::MAX)
+    }
+
+    fn cursor_pos_with_width(&self, available_width: u16) -> Option<CursorPos> {
         let widget = self.active_widget_ref()?;
-        let local = widget.cursor_pos()?;
+        let (_, label_offset) = self.child_label_prefix(widget, true);
+        let local = widget.cursor_pos_with_width(
+            available_width
+                .saturating_sub(2)
+                .saturating_sub(label_offset),
+        )?;
         let row_offset = self.line_prefix_rows() as u16;
         Some(CursorPos {
-            col: local.col.saturating_add(2),
+            col: local.col.saturating_add(2).saturating_add(label_offset),
             row: local.row.saturating_add(row_offset),
         })
     }
@@ -622,6 +719,14 @@ fn read_count_value(value: &Value) -> Option<usize> {
     }
 }
 
+fn resolved_iterate_state(value: Option<&Value>) -> (Vec<Value>, usize) {
+    match value {
+        Some(Value::List(items)) => (items.clone(), items.len()),
+        Some(value) => (Vec::new(), read_count_value(value).unwrap_or(0)),
+        None => (Vec::new(), 0),
+    }
+}
+
 fn empty_row() -> Value {
     Value::Object(IndexMap::new())
 }
@@ -646,3 +751,7 @@ fn localize_row_target(target: &ValueTarget) -> Option<ValueTarget> {
         _ => None,
     }
 }
+
+#[cfg(test)]
+#[path = "../tests/repeater.rs"]
+mod tests;

@@ -3,6 +3,7 @@ use crate::terminal::{CursorPos, KeyCode, KeyEvent};
 use crate::ui::span::Span;
 use crate::ui::style::{Color, Style};
 use crate::widgets::base::WidgetBase;
+use crate::widgets::shared::horizontal_viewport::render_single_line;
 use crate::widgets::shared::text_edit;
 use crate::widgets::traits::{
     DrawOutput, Drawable, FocusMode, InteractionResult, Interactive, RenderContext,
@@ -262,8 +263,23 @@ impl Drawable for ArrayInput {
     fn draw(&self, ctx: &RenderContext) -> DrawOutput {
         let focused = self.base.is_focused(ctx);
         let (content, _) = self.build_content(focused);
-        let spans = content;
-        DrawOutput::with_lines(vec![spans])
+        DrawOutput::with_lines(vec![
+            render_single_line(
+                content.as_slice(),
+                ctx.terminal_size.width,
+                focused.then_some((
+                    self.cursor_pos()
+                        .map(|cursor| cursor.col as usize)
+                        .unwrap_or(0),
+                    self.cursor_pos()
+                        .map(|cursor| cursor.col as usize)
+                        .unwrap_or(0)
+                        .saturating_add(1),
+                )),
+                None,
+            )
+            .spans,
+        ])
     }
 }
 
@@ -382,6 +398,17 @@ impl Interactive for ArrayInput {
             row: 0,
         })
     }
+
+    fn cursor_pos_with_width(&self, available_width: u16) -> Option<CursorPos> {
+        let (content, cursor_offset) = self.build_content(true);
+        render_single_line(
+            content.as_slice(),
+            available_width,
+            Some((cursor_offset, cursor_offset.saturating_add(1))),
+            Some(cursor_offset),
+        )
+        .cursor
+    }
 }
 
 fn width_of_char_prefix(value: &str, chars: usize) -> usize {
@@ -393,114 +420,5 @@ fn width_of_char_prefix(value: &str, chars: usize) -> usize {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::ArrayInput;
-    use crate::config::load_from_yaml_str;
-    use crate::terminal::{KeyCode, KeyEvent, KeyModifiers};
-    use crate::ui::render_view::RenderView;
-    use crate::ui::renderer::{Renderer, RendererConfig};
-    use crate::widgets::traits::Interactive;
-
-    #[test]
-    fn cursor_stays_after_inserted_char_in_first_item() {
-        let mut input =
-            ArrayInput::new("tags", "Tags").with_items(vec!["rust".into(), "tui".into()]);
-
-        input.on_key(KeyEvent {
-            code: KeyCode::End,
-            modifiers: KeyModifiers::NONE,
-        });
-        input.on_key(KeyEvent {
-            code: KeyCode::Char('a'),
-            modifiers: KeyModifiers::NONE,
-        });
-
-        let cursor = input.cursor_pos().expect("cursor");
-        assert_eq!(cursor.col, 6);
-    }
-
-    #[test]
-    fn rendered_frame_cursor_matches_array_input_offset() {
-        let yaml = r#"
-version: 1
-steps:
-  - id: demo
-    title: Demo
-    widgets:
-      - type: array_input
-        id: tags
-        label: Tags
-        items: [rust, tui]
-"#;
-
-        let loaded = load_from_yaml_str(yaml).expect("load config");
-        let mut state = loaded.into_app_state().expect("app state");
-        assert_eq!(state.focused_id(), Some("tags"));
-
-        state.dispatch_key_to_focused(KeyEvent {
-            code: KeyCode::End,
-            modifiers: KeyModifiers::NONE,
-        });
-        state.dispatch_key_to_focused(KeyEvent {
-            code: KeyCode::Char('a'),
-            modifiers: KeyModifiers::NONE,
-        });
-
-        let view = RenderView::from_state(&state);
-        let mut renderer = Renderer::new(RendererConfig {
-            chrome_enabled: false,
-        });
-        let frame = renderer.render(
-            &view,
-            crate::terminal::TerminalSize {
-                width: 80,
-                height: 20,
-            },
-        );
-
-        assert_eq!(frame.cursor.expect("frame cursor").col, 12);
-    }
-
-    #[test]
-    fn bound_array_input_keeps_cursor_after_store_sync() {
-        let yaml = r#"
-version: 1
-steps:
-  - id: demo
-    title: Demo
-    widgets:
-      - type: array_input
-        id: tags
-        label: Tags
-        items: [rust, tui]
-        value: profile.tags
-"#;
-
-        let loaded = load_from_yaml_str(yaml).expect("load config");
-        let mut state = loaded.into_app_state().expect("app state");
-        assert_eq!(state.focused_id(), Some("tags"));
-
-        state.dispatch_key_to_focused(KeyEvent {
-            code: KeyCode::End,
-            modifiers: KeyModifiers::NONE,
-        });
-        state.dispatch_key_to_focused(KeyEvent {
-            code: KeyCode::Char('a'),
-            modifiers: KeyModifiers::NONE,
-        });
-
-        let view = RenderView::from_state(&state);
-        let mut renderer = Renderer::new(RendererConfig {
-            chrome_enabled: false,
-        });
-        let frame = renderer.render(
-            &view,
-            crate::terminal::TerminalSize {
-                width: 80,
-                height: 20,
-            },
-        );
-
-        assert_eq!(frame.cursor.expect("frame cursor").col, 12);
-    }
-}
+#[path = "tests/array.rs"]
+mod tests;

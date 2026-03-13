@@ -508,10 +508,6 @@ impl TaskEngineHost for AppState {
     }
 
     fn apply_store_patch(&mut self, patch: StorePatch) {
-        let mut applied = self.apply_store_patch(patch);
-        if !self.reconcile_current_step_after_store_change() {
-            applied.extend(self.refresh_current_step_bindings_collect_for_live());
-        }
-        self.emit_store_change_triggers(applied.into_targets());
+        self.apply_runtime_store_patch(patch);
     }
 }

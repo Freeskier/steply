@@ -1,5 +1,6 @@
 use super::spec::{ConfigSpec, StepSpec, TaskTemplateSpec};
 use super::{LoadedConfig, parse, utils, widgets};
+use crate::config::model::ConditionOperatorDef;
 use crate::state::flow::Flow;
 use crate::state::step::{Step, StepCondition, StepNavigation};
 use crate::task::TaskSpec;
@@ -48,7 +49,7 @@ fn assemble_navigation(def: super::model::NavigationDef) -> StepNavigation {
     }
 }
 
-fn assemble_when(def: &super::model::WhenDef) -> Result<StepCondition, String> {
+pub(super) fn assemble_when(def: &super::model::WhenDef) -> Result<StepCondition, String> {
     if !def.all.is_empty() {
         let mut items = Vec::with_capacity(def.all.len());
         for cond in &def.all {
@@ -72,23 +73,52 @@ fn assemble_when(def: &super::model::WhenDef) -> Result<StepCondition, String> {
         .clone()
         .ok_or_else(|| "condition is missing 'ref'".to_string())?;
 
-    if let Some(value) = &def.equal {
-        return Ok(StepCondition::Equal {
+    let condition = match def.operator {
+        None => StepCondition::Truthy { field },
+        Some(ConditionOperatorDef::Exists) => StepCondition::Exists { field },
+        Some(ConditionOperatorDef::Empty) => StepCondition::Empty { field },
+        Some(ConditionOperatorDef::NotEmpty) => StepCondition::NotEmpty { field },
+        Some(ConditionOperatorDef::Equals) => StepCondition::Equals {
             field,
-            value: utils::yaml_value_to_value(value)?,
-        });
-    }
-    if let Some(value) = &def.not_equal {
-        return Ok(StepCondition::NotEqual {
+            value: assemble_condition_value(def)?,
+        },
+        Some(ConditionOperatorDef::NotEquals) => StepCondition::NotEquals {
             field,
-            value: utils::yaml_value_to_value(value)?,
-        });
-    }
-    if def.not_empty.unwrap_or(false) {
-        return Ok(StepCondition::NotEmpty { field });
-    }
+            value: assemble_condition_value(def)?,
+        },
+        Some(ConditionOperatorDef::GreaterThan) => StepCondition::GreaterThan {
+            field,
+            value: assemble_condition_value(def)?,
+        },
+        Some(ConditionOperatorDef::GreaterOrEqual) => StepCondition::GreaterOrEqual {
+            field,
+            value: assemble_condition_value(def)?,
+        },
+        Some(ConditionOperatorDef::LessThan) => StepCondition::LessThan {
+            field,
+            value: assemble_condition_value(def)?,
+        },
+        Some(ConditionOperatorDef::LessOrEqual) => StepCondition::LessOrEqual {
+            field,
+            value: assemble_condition_value(def)?,
+        },
+        Some(ConditionOperatorDef::Contains) => StepCondition::Contains {
+            field,
+            value: assemble_condition_value(def)?,
+        },
+    };
 
-    Err("unsupported condition: use equal/not_equal/not_empty/all/any/not".to_string())
+    Ok(condition)
+}
+
+fn assemble_condition_value(
+    def: &super::model::WhenDef,
+) -> Result<crate::core::value::Value, String> {
+    let value = def
+        .value
+        .as_ref()
+        .ok_or_else(|| "condition is missing 'value'".to_string())?;
+    utils::yaml_value_to_value(value)
 }
 
 fn assemble_tasks(tasks: Vec<TaskTemplateSpec>) -> Result<Vec<TaskSpec>, String> {

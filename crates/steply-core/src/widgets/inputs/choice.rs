@@ -3,6 +3,7 @@ use crate::terminal::{KeyCode, KeyEvent};
 use crate::ui::span::Span;
 use crate::ui::style::{Color, Style};
 use crate::widgets::base::WidgetBase;
+use crate::widgets::shared::horizontal_viewport::render_single_line;
 use crate::widgets::shared::list_nav;
 use crate::widgets::traits::{
     DrawOutput, Drawable, FocusMode, HintContext, HintItem, InteractionResult, Interactive,
@@ -91,13 +92,16 @@ impl Drawable for ChoiceInput {
     fn draw(&self, ctx: &RenderContext) -> DrawOutput {
         let focused = self.base.is_focused(ctx);
 
-        let spans = if focused {
+        let (spans, active_range) = if focused {
             let active_style = Style::new().color(Color::Cyan).bold();
             let inactive_style = Style::new().color(Color::DarkGrey);
             let mut s = vec![];
+            let mut active_range = (0usize, 0usize);
+            let mut width = 0usize;
             for (index, option) in self.options.iter().enumerate() {
                 if index > 0 {
                     s.push(Span::new(" / ").no_wrap());
+                    width += 3;
                 }
                 if self.show_bullets {
                     if index == self.selected {
@@ -108,6 +112,11 @@ impl Drawable for ChoiceInput {
                         s.push(Span::styled("○", inactive_style).no_wrap());
                     }
                     s.push(Span::new(" ").no_wrap());
+                    width += 2;
+                }
+                let option_width = crate::ui::text::text_display_width(option);
+                if index == self.selected {
+                    active_range = (width, width + option_width);
                 }
                 s.push(
                     Span::styled(
@@ -120,13 +129,25 @@ impl Drawable for ChoiceInput {
                     )
                     .no_wrap(),
                 );
+                width += option_width;
             }
-            s
+            (s, Some(active_range))
         } else {
-            vec![Span::new(self.selected_text().to_string()).no_wrap()]
+            (
+                vec![Span::new(self.selected_text().to_string()).no_wrap()],
+                None,
+            )
         };
 
-        DrawOutput::with_lines(vec![spans])
+        DrawOutput::with_lines(vec![
+            render_single_line(
+                spans.as_slice(),
+                ctx.terminal_size.width,
+                active_range,
+                None,
+            )
+            .spans,
+        ])
     }
 
     fn hints(&self, ctx: HintContext) -> Vec<HintItem> {

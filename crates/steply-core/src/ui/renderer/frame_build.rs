@@ -74,6 +74,7 @@ pub(super) fn build_base_frame(
         let footer = step_frame_footer(status, view, hints.has_hints);
         apply_step_decoration(
             &mut content,
+            compose_width,
             idx,
             render_up_to,
             status,

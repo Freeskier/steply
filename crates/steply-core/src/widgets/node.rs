@@ -257,6 +257,11 @@ impl Node {
             .and_then(|widget| widget.cursor_pos())
     }
 
+    pub fn cursor_pos_with_width(&self, available_width: u16) -> Option<CursorPos> {
+        self.interactive_ref()
+            .and_then(|widget| widget.cursor_pos_with_width(available_width))
+    }
+
     pub fn cursor_visible(&self) -> bool {
         self.interactive_ref()
             .map(|widget| widget.cursor_visible())

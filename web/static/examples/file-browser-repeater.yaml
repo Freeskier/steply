@@ -28,8 +28,8 @@ steps:
       - type: repeater
         id: groups
         label: File groups
-        mode: append
-        layout: stacked
+        iterate: profile.files
+        entry_mode: full
         value: plan.rows
         widgets:
           - type: text_input

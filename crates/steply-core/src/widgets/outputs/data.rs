@@ -402,7 +402,10 @@ fn styled_key_json(key: &str) -> Span {
 }
 
 fn styled_key_yaml(key: &str) -> Span {
-    Span::styled(key.to_string(), Style::new().color(Color::Yellow).bold())
+    Span::styled(
+        quote_yaml_key(key),
+        Style::new().color(Color::Yellow).bold(),
+    )
 }
 
 fn render_scalar_json(value: &Value) -> Span {
@@ -460,4 +463,62 @@ fn quote_yaml_string(text: &str) -> String {
         .ok()
         .map(|yaml| yaml.trim().to_string())
         .unwrap_or_else(|| format!("{text:?}"))
+}
+
+fn quote_yaml_key(text: &str) -> String {
+    if is_plain_yaml_key(text) {
+        text.to_string()
+    } else {
+        serde_json::to_string(text).unwrap_or_else(|_| format!("{text:?}"))
+    }
+}
+
+fn is_plain_yaml_key(text: &str) -> bool {
+    let mut chars = text.chars();
+    let Some(first) = chars.next() else {
+        return false;
+    };
+    if !matches!(first, 'a'..='z' | 'A'..='Z' | '_') {
+        return false;
+    }
+    if !chars.all(|ch| matches!(ch, 'a'..='z' | 'A'..='Z' | '0'..='9' | '_' | '-')) {
+        return false;
+    }
+
+    !matches!(
+        text.to_ascii_lowercase().as_str(),
+        "null" | "~" | "true" | "false" | "yes" | "no" | "on" | "off"
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{quote_yaml_key, render_yaml_lines};
+    use crate::core::value::Value;
+    use indexmap::IndexMap;
+
+    #[test]
+    fn yaml_keys_are_serialized_like_yaml_scalars() {
+        assert_eq!(quote_yaml_key("plain"), "plain");
+        assert_eq!(quote_yaml_key("a:b"), "\"a:b\"");
+        assert_eq!(quote_yaml_key("yes"), "\"yes\"");
+        assert_eq!(quote_yaml_key("foo bar"), "\"foo bar\"");
+    }
+
+    #[test]
+    fn yaml_renderer_quotes_special_keys() {
+        let mut map = IndexMap::new();
+        map.insert("a:b".into(), Value::Bool(true));
+        map.insert("yes".into(), Value::Number(1.0));
+
+        let lines = render_yaml_lines(&Value::Object(map));
+        let rendered = lines
+            .into_iter()
+            .map(|line| line.into_iter().map(|span| span.text).collect::<String>())
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        assert!(rendered.contains("\"a:b\": true"), "{rendered}");
+        assert!(rendered.contains("\"yes\": 1"), "{rendered}");
+    }
 }

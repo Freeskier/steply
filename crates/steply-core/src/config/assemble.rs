@@ -16,6 +16,7 @@ pub(super) fn assemble(spec: ConfigSpec) -> Result<LoadedConfig, String> {
     Ok(LoadedConfig {
         flow: Flow::new(steps),
         task_specs,
+        confirm_finish: spec.confirm_finish,
     })
 }
 

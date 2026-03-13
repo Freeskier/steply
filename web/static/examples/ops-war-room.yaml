@@ -1,0 +1,212 @@
+version: 1
+
+tasks:
+  - id: refresh_metrics
+    kind: exec
+    program: python3
+    args:
+      - -c
+      - |
+        import json
+        import sys
+
+        target = int(float(json.load(sys.stdin) or 0))
+        base = max(5, min(95, target))
+        series = [max(0, min(100, base - 18)), max(0, min(100, base - 11)), max(0, min(100, base - 6)), base, min(100, base + 4), min(100, base + 8)]
+        result = {
+          "progress": base,
+          "series": series,
+          "headline": f"rollout {base}% / drift +{max(0, 100 - base)}",
+        }
+        print(json.dumps(result))
+    reads: "{{ops.target_percent}}"
+    triggers:
+      - type: step_enter
+        step_id: dashboard
+      - type: store_changed
+        ref: ops.target_percent
+        debounce_ms: 100
+      - type: interval
+        every_ms: 1500
+        only_when_step_active: true
+    writes: ops.metrics
+
+  - id: snapshot_cluster
+    kind: exec
+    program: python3
+    args:
+      - -c
+      - |
+        import json
+        import sys
+        import time
+
+        payload = json.load(sys.stdin) or {}
+        service = str(payload.get("service") or "gateway")
+        region = str(payload.get("region") or "eu-west")
+
+        print(f"[scan] connecting to {service} in {region}", file=sys.stderr)
+        time.sleep(0.2)
+        print("[scan] reading live deployment state", file=sys.stderr)
+        time.sleep(0.2)
+        print("[scan] collecting last five rollout events", file=sys.stderr)
+        time.sleep(0.2)
+
+        print(json.dumps({
+          "service": service,
+          "region": region,
+          "pods_ready": 17,
+          "pods_total": 18,
+          "latest_event": "canary batch stable",
+        }))
+    reads:
+      service: "{{ops.service}}"
+      region: "{{ops.region}}"
+    writes: ops.snapshot
+
+steps:
+  - id: dashboard
+    title: Ops war room
+    description: A compact release dashboard with live metrics, static references and an on-demand cluster snapshot.
+    widgets:
+      - type: text_output
+        id: intro
+        text: |
+          This one leans into outputs and operational widgets.
+          Adjust the rollout slider, inspect the patch, then capture a cluster snapshot.
+      - type: url_output
+        id: playbook
+        url: https://steply.sh
+        name: Open rollout playbook
+      - type: text_input
+        id: service
+        label: Service
+        default: edge-gateway
+        value: ops.service
+      - type: select
+        id: region
+        label: Region
+        options: [eu-west, us-east, ap-south]
+        default: eu-west
+        value: ops.region
+      - type: slider
+        id: rollout
+        label: Target rollout
+        min: 0
+        max: 100
+        step: 5
+        unit: "%"
+        default: 35
+        value: ops.target_percent
+      - type: thinking_output
+        id: watcher
+        label: Watcher
+        text: Watching pods, events and replica drift...
+      - type: progress_output
+        id: rollout_progress
+        label: Live rollout
+        min: 0
+        max: 100
+        unit: "%"
+        reads: "{{ops.metrics.progress}}"
+      - type: chart_output
+        id: rollout_chart
+        label: Replica stability
+        min: 0
+        max: 100
+        unit: "%"
+        reads: "{{ops.metrics.series}}"
+      - type: text_output
+        id: headline
+        text: "Signal: {{ops.metrics.headline}}"
+      - type: table_output
+        id: static_checks
+        label: Release gates
+        headers: [Gate, Owner, Status]
+        rows:
+          - [Canary health, SRE, Green]
+          - [Error budget, Platform, Green]
+          - [Support notice, Ops, Pending]
+      - type: diff_output
+        id: patch_preview
+        label: Manifest patch
+        old: |
+          strategy:
+            maxUnavailable: 0
+            maxSurge: 1
+          canaryPercent: 10
+        new: |
+          strategy:
+            maxUnavailable: 0
+            maxSurge: 2
+          canaryPercent: 35
+      - type: button_input
+        id: snapshot_button
+        label: Snapshot cluster
+        text: Capture cluster snapshot
+        task_id: snapshot_cluster
+      - type: task_log_output
+        id: snapshot_log
+        visible_lines: 7
+        steps:
+          - label: Capture cluster snapshot
+            task_id: snapshot_cluster
+      - type: data_output
+        id: snapshot_preview
+        label: Snapshot payload
+        format: yaml
+        reads: "{{ops.snapshot}}"
+
+  - id: rollout_runner
+    title: Staged rollout runner
+    description: A command runner can behave like a miniature multi-step operator workflow.
+    widgets:
+      - type: command_runner
+        id: staged_rollout
+        label: Run staged rollout
+        visible_lines: 8
+        commands:
+          - label: Preflight checks
+            program: python3
+            args:
+              - -c
+              - |
+                import json
+                import time
+
+                time.sleep(1)
+                print(json.dumps({"phase": "preflight_ok"}))
+          - label: Warm canary batch
+            program: python3
+            args:
+              - -c
+              - |
+                import json
+                import time
+
+                time.sleep(2)
+                print(json.dumps({"phase": "warming_canary"}))
+          - label: Encode rollout brief
+            program: python3
+            args:
+              - -c
+              - |
+                import base64
+                import json
+                import sys
+
+                payload = json.load(sys.stdin) or {}
+                raw = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
+                encoded = base64.b64encode(raw).decode()
+                print(json.dumps({
+                  "phase": "encoded",
+                  "brief_b64": encoded,
+                  "bytes": len(raw),
+                }))
+            reads: "{{ops.snapshot}}"
+        writes: ops.rollout_result
+      - type: data_output
+        id: rollout_result
+        label: Runner result
+        format: json
+        reads: "{{ops.rollout_result}}"

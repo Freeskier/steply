@@ -3803,6 +3803,13 @@
     }
   },
   "properties": {
+    "confirm_finish": {
+      "default": null,
+      "type": [
+        "boolean",
+        "null"
+      ]
+    },
     "flow": {
       "items": {
         "$ref": "#/definitions/FlowItemDef"

@@ -150,6 +150,15 @@ impl AppState {
 
     fn finish_flow_after_last_submit(&mut self) {
         self.ui.overlays.clear();
+        if self.confirm_finish {
+            self.begin_completion_confirm();
+        } else {
+            self.finalize_flow_exit();
+        }
+    }
+
+    pub(in crate::state::app) fn finalize_flow_exit(&mut self) {
+        self.ui.overlays.clear();
         trigger_flow_end_tasks(self);
         self.flow.complete_current();
         self.request_exit();

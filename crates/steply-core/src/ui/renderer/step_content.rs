@@ -193,7 +193,10 @@ pub(super) fn step_frame_footer<'a>(
     }
 
     if let Some(choice) = view.exit_confirm {
-        return Some(StepFrameFooter::ExitConfirm { choice });
+        return Some(StepFrameFooter::ExitConfirm {
+            mode: choice.mode,
+            choice: choice.choice,
+        });
     }
 
     if let Some(msg) = view.back_confirm {

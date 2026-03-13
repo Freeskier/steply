@@ -2,7 +2,7 @@ use indexmap::IndexMap;
 
 use crate::core::value::Value;
 use crate::core::value_path::{PathSegment, ValuePath, ValueTarget};
-use crate::runtime::event::{ValueChange, WidgetAction};
+use crate::runtime::event::{SystemEvent, ValueChange, WidgetAction};
 use crate::state::step::StepCondition;
 use crate::state::store::ValueStore;
 use crate::terminal::{CursorPos, KeyCode, KeyEvent, PointerEvent};
@@ -579,9 +579,11 @@ impl Repeater {
                 .as_ref()
                 .expect("checked finish_condition above");
             let fields = condition.referenced_fields();
-            let immediate_should_finish = (fields.is_empty()
+            let should_finish_now = condition.evaluate(&scoped);
+            let immediate_should_finish = (should_finish_now
+                || fields.is_empty()
                 || fields.iter().all(|field| field.starts_with('_')))
-            .then(|| condition.evaluate(&scoped));
+            .then_some(should_finish_now);
             (fields, immediate_should_finish)
         };
 
@@ -603,7 +605,7 @@ impl Repeater {
         true
     }
 
-    fn maybe_resolve_finish_resolution(&mut self) -> bool {
+    fn maybe_resolve_finish_resolution(&mut self, force: bool) -> bool {
         if !self.awaiting_finish_resolution {
             return false;
         }
@@ -618,7 +620,7 @@ impl Repeater {
             .finish_condition_snapshot
             .iter()
             .any(|(field, previous)| scoped.get_selector(field.as_str()).cloned() != *previous);
-        if !observed_changed {
+        if !observed_changed && !force {
             return false;
         }
 
@@ -639,6 +641,14 @@ impl Repeater {
         self.finished = true;
         self.pending_finish_done = true;
         true
+    }
+
+    fn finish_resolution_result(&mut self, force: bool) -> InteractionResult {
+        if self.maybe_resolve_finish_resolution(force) {
+            InteractionResult::handled()
+        } else {
+            InteractionResult::ignored()
+        }
     }
 }
 
@@ -705,7 +715,10 @@ impl Interactive for Repeater {
 
     fn on_key(&mut self, key: KeyEvent) -> InteractionResult {
         if self.awaiting_finish_resolution {
-            return InteractionResult::ignored();
+            return match key.code {
+                KeyCode::Enter | KeyCode::Tab => self.finish_resolution_result(true),
+                _ => InteractionResult::ignored(),
+            };
         }
 
         if self.finished {
@@ -744,6 +757,22 @@ impl Interactive for Repeater {
 
     fn on_pointer(&mut self, _event: PointerEvent) -> InteractionResult {
         InteractionResult::ignored()
+    }
+
+    fn on_system_event(&mut self, event: &SystemEvent) -> InteractionResult {
+        if !self.awaiting_finish_resolution {
+            return InteractionResult::ignored();
+        }
+
+        match event {
+            SystemEvent::TaskStartRejected { .. } => self.finish_resolution_result(true),
+            SystemEvent::TaskCompleted { completion }
+                if completion.error.is_some() || completion.cancelled =>
+            {
+                self.finish_resolution_result(true)
+            }
+            _ => InteractionResult::ignored(),
+        }
     }
 
     fn on_tick(&mut self) -> InteractionResult {
@@ -811,7 +840,7 @@ impl Interactive for Repeater {
     fn sync_from_store(&mut self, store: &ValueStore) -> bool {
         let changed = self.refresh_sources(store);
         let child_changed = self.sync_widgets_from_scope();
-        let finish_changed = self.maybe_resolve_finish_resolution();
+        let finish_changed = self.maybe_resolve_finish_resolution(false);
         changed || child_changed || finish_changed
     }
 

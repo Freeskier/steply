@@ -1,0 +1,154 @@
+version: 1
+
+steps:
+  - id: source_pool
+    title: Workspace audit lab
+    description: Pick files, inspect a static system tree and then build editable audit structures with table and repeater.
+    widgets:
+      - type: text_output
+        id: intro
+        text: |
+          This one is all about structural widgets.
+          Start by choosing a source pool, then move into editable audit artifacts.
+      - type: file_browser
+        id: files
+        label: Candidate files
+        browser_mode: tree
+        selection_mode: multi
+        entry_filter: files
+        display_mode: relative
+        value_mode: relative
+        value: audit.files
+      - type: select_list
+        id: selected_files
+        label: Selected files
+        mode: multi
+        options: audit.files
+      - type: data_output
+        id: file_preview
+        label: File pool
+        format: yaml
+        reads: "{{audit.files}}"
+
+  - id: architecture_map
+    title: Architecture map
+    description: Tree view is useful for static or semi-static hierarchies that you want to browse or pick from.
+    widgets:
+      - type: tree_view
+        id: modules
+        label: System modules
+        nodes:
+          - item: app
+            depth: 0
+            has_children: true
+            expanded: true
+          - item: auth
+            depth: 1
+            has_children: false
+          - item: billing
+            depth: 1
+            has_children: false
+          - item: runtime
+            depth: 0
+            has_children: true
+            expanded: true
+          - item: tasks
+            depth: 1
+            has_children: false
+          - item: rendering
+            depth: 1
+            has_children: false
+          - item: web
+            depth: 0
+            has_children: true
+            expanded: true
+          - item: docs
+            depth: 1
+            has_children: false
+          - item: examples
+            depth: 1
+            has_children: false
+
+  - id: targets
+    title: Audit targets
+    description: Table is a compact way to maintain many structured rows with embedded widgets per column.
+    widgets:
+      - type: table
+        id: targets
+        label: Deployment targets
+        style: grid
+        row_numbers: true
+        initial_rows: 2
+        value: audit.targets
+        columns:
+          - header: Name
+            widget:
+              type: text_input
+              placeholder: edge-gateway
+          - header: Region
+            widget:
+              type: select
+              options: [eu-west, us-east, ap-south]
+          - header: Port
+            widget:
+              type: masked_input
+              mask: "#{1,5:1-65535}"
+          - header: Weight
+            widget:
+              type: slider
+              min: 0
+              max: 100
+              step: 5
+              unit: "%"
+          - header: Canary
+            widget:
+              type: checkbox
+              checked: true
+          - header: Tags
+            widget:
+              type: array_input
+              items: [critical, api]
+
+  - id: review_cards
+    title: Review cards
+    description: Repeater is nice when you want a guided sequence of structured cards rather than a dense grid.
+    widgets:
+      - type: repeater
+        id: reviews
+        label: Review cards
+        iterate: 3
+        entry_mode: full
+        show_progress: true
+        header_template: "Card {{_position}} / {{_count}}"
+        value: audit.reviews
+        widgets:
+          - type: text_input
+            id: owner
+            label: Owner
+            reads: "Owner {{_position}}"
+            writes: owner
+          - type: select
+            id: severity
+            label: Severity
+            options: [low, medium, high, critical]
+            writes: severity
+          - type: select_list
+            id: files
+            label: Files to review
+            mode: multi
+            options: audit.files
+            writes: selected_files
+          - type: textarea
+            id: notes
+            min_height: 4
+            default: ""
+            writes: notes
+          - type: confirm_input
+            id: ready
+            label: Ready to sign off?
+            writes: ready
+      - type: data_output
+        id: audit_preview
+        label: Audit package
+        format: yaml
+        reads: "{{audit}}"

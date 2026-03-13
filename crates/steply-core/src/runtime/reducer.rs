@@ -1,7 +1,7 @@
 use crate::runtime::effect::Effect;
 use crate::runtime::event::SystemEvent;
 use crate::runtime::intent::Intent;
-use crate::state::app::{AppState, ExitConfirmChoice};
+use crate::state::app::{AppState, ExitConfirmChoice, ExitConfirmMode};
 use crate::terminal::{KeyCode, KeyEvent, KeyModifiers};
 use crate::widgets::traits::InteractionResult;
 
@@ -127,7 +127,11 @@ impl Reducer {
 fn reduce_with_exit_confirm(state: &mut AppState, intent: Intent) -> Vec<Effect> {
     match intent {
         Intent::Exit => {
-            state.request_exit();
+            if state.exit_confirm_mode() == Some(ExitConfirmMode::ExitApplication) {
+                state.request_exit();
+            } else {
+                state.set_exit_confirm_choice(ExitConfirmChoice::Exit);
+            }
             vec![Effect::RequestRender]
         }
         Intent::Cancel => {

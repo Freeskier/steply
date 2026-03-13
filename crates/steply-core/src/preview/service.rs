@@ -97,7 +97,11 @@ impl PreviewService {
         task_specs: Vec<TaskSpec>,
         options: PreviewServiceOptions,
     ) -> Result<Self, AppStateInitError> {
-        let loaded = LoadedConfig { flow, task_specs };
+        let loaded = LoadedConfig {
+            flow,
+            task_specs,
+            confirm_finish: true,
+        };
         Self::from_loaded_config_with_options(loaded, options)
     }
 

@@ -24,6 +24,7 @@ pub use error::ConfigLoadError;
 pub struct LoadedConfig {
     pub flow: Flow,
     pub task_specs: Vec<TaskSpec>,
+    pub confirm_finish: bool,
 }
 
 pub use doc_model::{
@@ -32,7 +33,9 @@ pub use doc_model::{
 
 impl LoadedConfig {
     pub fn into_app_state(self) -> Result<AppState, AppStateInitError> {
-        AppState::with_tasks(self.flow, self.task_specs)
+        let mut state = AppState::with_tasks(self.flow, self.task_specs)?;
+        state.set_confirm_finish(self.confirm_finish);
+        Ok(state)
     }
 }
 

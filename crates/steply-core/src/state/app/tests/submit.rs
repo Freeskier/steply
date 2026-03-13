@@ -2,6 +2,7 @@ use super::{AppState, bound_on_submit_text_input, char_key};
 use crate::core::value::Value;
 use crate::core::value_path::ValueTarget;
 use crate::runtime::event::{SystemEvent, WidgetAction};
+use crate::state::app::{ExitConfirmChoice, ExitConfirmMode};
 use crate::state::flow::Flow;
 use crate::state::step::Step;
 use crate::task::{TaskRequest, TaskSpec, TaskTrigger};
@@ -86,4 +87,34 @@ fn step_exit_and_submit_after_tasks_see_submitted_values() {
     for invocation in invocations {
         assert_eq!(invocation.stdin_json, "\"A\"");
     }
+}
+
+#[test]
+fn final_submit_opens_completion_confirm_by_default() {
+    let step = Step::builder("step_1", "Step")
+        .node(bound_on_submit_text_input("name", "Name", "draft_name"))
+        .build();
+    let mut state = AppState::with_tasks(Flow::new(vec![step]), Vec::new()).expect("app state");
+
+    state.dispatch_key_to_focused(char_key('A'));
+    state.handle_system_event(SystemEvent::RequestSubmit);
+
+    assert!(!state.should_exit());
+    assert_eq!(state.exit_confirm_mode(), Some(ExitConfirmMode::FinishFlow));
+    assert_eq!(state.exit_confirm_choice(), Some(ExitConfirmChoice::Stay));
+}
+
+#[test]
+fn final_submit_can_still_exit_immediately_when_disabled() {
+    let step = Step::builder("step_1", "Step")
+        .node(bound_on_submit_text_input("name", "Name", "draft_name"))
+        .build();
+    let mut state = AppState::with_tasks(Flow::new(vec![step]), Vec::new()).expect("app state");
+    state.set_confirm_finish(false);
+
+    state.dispatch_key_to_focused(char_key('A'));
+    state.handle_system_event(SystemEvent::RequestSubmit);
+
+    assert!(state.should_exit());
+    assert!(state.exit_confirm_mode().is_none());
 }

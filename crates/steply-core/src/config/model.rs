@@ -7,6 +7,8 @@ pub(super) struct ConfigDoc {
     #[serde(default)]
     pub(super) version: Option<u32>,
     #[serde(default)]
+    pub(super) confirm_finish: Option<bool>,
+    #[serde(default)]
     pub(super) steps: Vec<StepDef>,
     #[serde(default)]
     pub(super) flow: Vec<FlowItemDef>,

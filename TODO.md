@@ -4,7 +4,8 @@ timer
 split view
 write to file
 
-
+- naprawa SCOLL na kursor + dodanie że komponenty np. select list mają kursto tam gdzie potrzeba
+- 
 - select list może dostać obj ale też str[]
 - commands runners bez outputu/only command  
 - confirm z customowymi yes/no + poprawa podświetlenia + default opcja

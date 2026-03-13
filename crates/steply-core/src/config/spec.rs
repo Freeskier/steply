@@ -3,6 +3,7 @@ use crate::task::TaskTrigger;
 
 #[derive(Debug)]
 pub(super) struct ConfigSpec {
+    pub confirm_finish: bool,
     pub steps: Vec<StepSpec>,
     pub tasks: Vec<TaskTemplateSpec>,
 }

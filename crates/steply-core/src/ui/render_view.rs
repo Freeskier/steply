@@ -1,4 +1,4 @@
-use crate::state::app::{AppState, ExitConfirmChoice};
+use crate::state::app::{AppState, ExitConfirmChoice, ExitConfirmMode};
 use crate::state::step::{Step, StepStatus};
 use crate::state::validation::ValidationState;
 use crate::widgets::node::Node;
@@ -16,8 +16,14 @@ pub struct RenderView<'a> {
     pub completion: Option<CompletionSnapshot>,
     pub overlays: Vec<OverlayView<'a>>,
     pub back_confirm: Option<&'a str>,
-    pub exit_confirm: Option<ExitConfirmChoice>,
+    pub exit_confirm: Option<ExitConfirmView>,
     pub hints_visible: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ExitConfirmView {
+    pub mode: ExitConfirmMode,
+    pub choice: ExitConfirmChoice,
 }
 
 pub struct CompletionSnapshot {
@@ -103,7 +109,10 @@ impl<'a> RenderView<'a> {
             completion,
             overlays,
             back_confirm: state.back_confirm(),
-            exit_confirm: state.exit_confirm_choice(),
+            exit_confirm: state
+                .exit_confirm_choice()
+                .zip(state.exit_confirm_mode())
+                .map(|(choice, mode)| ExitConfirmView { mode, choice }),
             hints_visible: state.hints_visible(),
         }
     }

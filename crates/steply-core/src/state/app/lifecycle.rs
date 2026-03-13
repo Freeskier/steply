@@ -25,6 +25,7 @@ impl AppState {
             should_exit: false,
             pending_back_confirm: None,
             pending_exit_confirm: None,
+            confirm_finish: true,
         };
         state.runtime.store_ownership =
             collect_store_ownership(&state.flow, state.runtime.task_specs.values().cloned());
@@ -47,5 +48,9 @@ impl AppState {
         self.ui.overlays.clear();
         self.refresh_current_step_bindings();
         self.rebuild_focus();
+    }
+
+    pub fn set_confirm_finish(&mut self, enabled: bool) {
+        self.confirm_finish = enabled;
     }
 }

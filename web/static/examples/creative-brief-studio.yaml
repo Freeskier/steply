@@ -1,0 +1,230 @@
+version: 1
+
+tasks:
+  - id: build_brand_brief
+    kind: exec
+    program: python3
+    args:
+      - -c
+      - |
+        import json
+        import sys
+
+        payload = json.load(sys.stdin) or {}
+        name = str(payload.get("name") or "").strip() or "Untitled campaign"
+        tone = str(payload.get("tone") or "neutral").strip() or "neutral"
+        region = str(payload.get("region") or "global").strip() or "global"
+        kickoff = str(payload.get("kickoff") or "").strip() or "TBD"
+        hotline = str(payload.get("hotline") or "").strip() or "n/a"
+        urgency = int(float(payload.get("urgency") or 0))
+        notes = str(payload.get("notes") or "").strip()
+        banned = payload.get("banned") or []
+        audience = payload.get("audience") or []
+        legal = bool(payload.get("legal"))
+        approved = bool(payload.get("approved"))
+
+        result = {
+          "headline": f"{name} / {tone} / {region}",
+          "summary": {
+            "kickoff": kickoff,
+            "hotline": hotline,
+            "urgency": urgency,
+            "legal_checked": legal,
+            "approved": approved,
+          },
+          "copy_notes": {
+            "notes": notes,
+            "banned_words": banned,
+            "audience": audience,
+          },
+          "next_move": "Build asset pack" if approved and legal else "Keep refining",
+        }
+        print(json.dumps(result))
+    reads:
+      name: "{{brief.name}}"
+      tone: "{{brief.tone}}"
+      region: "{{brief.region}}"
+      kickoff: "{{brief.kickoff}}"
+      hotline: "{{brief.hotline}}"
+      urgency: "{{brief.urgency}}"
+      notes: "{{brief.notes}}"
+      banned: "{{brief.banned_words}}"
+      audience: "{{brief.audience}}"
+      legal: "{{brief.legal_checked}}"
+      approved: "{{brief.approved}}"
+    triggers:
+      - type: step_enter
+        step_id: assembly
+      - type: store_changed
+        ref: brief.name
+        debounce_ms: 250
+      - type: store_changed
+        ref: brief.tone
+        debounce_ms: 250
+      - type: store_changed
+        ref: brief.region
+        debounce_ms: 250
+      - type: store_changed
+        ref: brief.notes
+        debounce_ms: 250
+      - type: store_changed
+        ref: brief.audience
+        debounce_ms: 250
+      - type: store_changed
+        ref: brief.approved
+        debounce_ms: 250
+    writes: demo.brand_brief
+
+steps:
+  - id: intake
+    title: Creative brief studio
+    description: Assemble a campaign brief with a mix of short fields, choice widgets, dates, urgency and approvals.
+    widgets:
+      - type: text_output
+        id: intro
+        text: |
+          This flow feels like a tiny creative ops studio.
+          Fill the brief, shape the copy lab, then review the generated handoff package.
+      - type: url_output
+        id: style_guide
+        url: https://steply.sh
+        name: Open style guide
+      - type: text_input
+        id: campaign_name
+        label: Campaign name
+        default: Neon Nights launch
+        value: brief.name
+      - type: choice_input
+        id: tone
+        label: Tone
+        options: [bold, playful, cinematic, technical]
+        default: cinematic
+        value: brief.tone
+      - type: select
+        id: region
+        label: Launch region
+        options: [global, eu, us, apac]
+        default: global
+        value: brief.region
+      - type: masked_input
+        id: hotline
+        label: Hotline
+        mask: "+## (###) ###-###"
+        default: "+48 (555) 123-456"
+        value: brief.hotline
+      - type: calendar
+        id: kickoff
+        label: Kickoff
+        mode: date_time
+        value: brief.kickoff
+      - type: slider
+        id: urgency
+        label: Urgency
+        min: 0
+        max: 100
+        step: 5
+        unit: "%"
+        default: 65
+        value: brief.urgency
+      - type: color_input
+        id: accent
+        label: Accent color
+        rgb: [255, 96, 64]
+        value: brief.accent
+      - type: checkbox
+        id: legal_checked
+        label: Legal copy reviewed
+        checked: true
+        value: brief.legal_checked
+      - type: confirm_input
+        id: approved
+        label: Ship this concept?
+        mode:
+          type: strict
+          word: SEND
+        yes_label: SEND
+        no_label: HOLD
+        value: brief.approved
+
+  - id: copy_lab
+    title: Copy lab
+    description: Use richer inputs to shape audience, banned words and the main narrative.
+    widgets:
+      - type: textarea
+        id: campaign_notes
+        min_height: 6
+        default: A moody, cinematic launch with sharp copy and no generic startup clichés.
+        value: brief.notes
+      - type: array_input
+        id: banned_words
+        label: Banned words
+        items: [synergy, disruptive, revolutionary]
+        value: brief.banned_words
+      - type: select_list
+        id: audience
+        label: Primary audience
+        mode: multi
+        value: brief.audience
+        options:
+          - value: founders
+            title: Founders
+            description: Early-stage teams shipping fast and buying tools directly.
+          - value: agencies
+            title: Agencies
+            description: Creative and performance teams pitching polished campaigns.
+          - value: enterprise
+            title: Enterprise
+            description: Internal brand teams coordinating many stakeholders.
+          - value: devrels
+            title: DevRel
+            description: Technical storytelling for launch events and demos.
+
+  - id: assembly
+    title: Assembly
+    description: Review the generated brief, tune a structured asset pack and build a handoff snippet.
+    widgets:
+      - type: text_output
+        id: next_move
+        text: "Suggested next move: {{demo.brand_brief.next_move}}"
+      - type: object_editor
+        id: asset_pack
+        label: Asset pack
+        value: brief.asset_pack
+        default:
+          hero_image: key_visual_v1.png
+          video_cut: teaser_15s.mp4
+          caption_style: stark
+          channels:
+            - launch_page
+            - paid_social
+            - keynote
+      - type: snippet
+        id: handoff_snippet
+        label: Handoff command
+        template: brief --name <name> --tone <tone> --region <region> --kickoff <kickoff>
+        writes: demo.handoff_snippet
+        inputs:
+          - type: text_input
+            id: name
+            label: Name
+            reads: "{{brief.name}}"
+          - type: text_input
+            id: tone
+            label: Tone
+            reads: "{{brief.tone}}"
+          - type: text_input
+            id: region
+            label: Region
+            reads: "{{brief.region}}"
+          - type: text_input
+            id: kickoff
+            label: Kickoff
+            reads: "{{brief.kickoff}}"
+      - type: text_output
+        id: snippet_preview
+        text: "Snippet: {{demo.handoff_snippet}}"
+      - type: data_output
+        id: brief_preview
+        label: Generated brief
+        format: yaml
+        reads: "{{demo.brand_brief}}"

@@ -1,4 +1,4 @@
-use super::{AppState, ExitConfirmChoice};
+use super::{AppState, ExitConfirmChoice, ExitConfirmMode, ExitConfirmState};
 
 impl AppState {
     pub fn should_exit(&self) -> bool {
@@ -10,7 +10,11 @@ impl AppState {
     }
 
     pub fn exit_confirm_choice(&self) -> Option<ExitConfirmChoice> {
-        self.pending_exit_confirm
+        self.pending_exit_confirm.map(|state| state.choice)
+    }
+
+    pub fn exit_confirm_mode(&self) -> Option<ExitConfirmMode> {
+        self.pending_exit_confirm.map(|state| state.mode)
     }
 
     pub fn exit_confirm_active(&self) -> bool {
@@ -18,7 +22,17 @@ impl AppState {
     }
 
     pub fn begin_exit_confirm(&mut self) {
-        self.pending_exit_confirm = Some(ExitConfirmChoice::Stay);
+        self.pending_exit_confirm = Some(ExitConfirmState {
+            mode: ExitConfirmMode::ExitApplication,
+            choice: ExitConfirmChoice::Stay,
+        });
+    }
+
+    pub fn begin_completion_confirm(&mut self) {
+        self.pending_exit_confirm = Some(ExitConfirmState {
+            mode: ExitConfirmMode::FinishFlow,
+            choice: ExitConfirmChoice::Stay,
+        });
     }
 
     pub fn cancel_exit_confirm(&mut self) {
@@ -26,12 +40,15 @@ impl AppState {
     }
 
     pub fn toggle_exit_confirm_choice(&mut self) -> bool {
-        let Some(choice) = self.pending_exit_confirm else {
+        let Some(state) = self.pending_exit_confirm else {
             return false;
         };
-        self.pending_exit_confirm = Some(match choice {
-            ExitConfirmChoice::Stay => ExitConfirmChoice::Exit,
-            ExitConfirmChoice::Exit => ExitConfirmChoice::Stay,
+        self.pending_exit_confirm = Some(ExitConfirmState {
+            mode: state.mode,
+            choice: match state.choice {
+                ExitConfirmChoice::Stay => ExitConfirmChoice::Exit,
+                ExitConfirmChoice::Exit => ExitConfirmChoice::Stay,
+            },
         });
         true
     }
@@ -40,19 +57,25 @@ impl AppState {
         let Some(current) = self.pending_exit_confirm else {
             return false;
         };
-        if current == choice {
+        if current.choice == choice {
             return false;
         }
-        self.pending_exit_confirm = Some(choice);
+        self.pending_exit_confirm = Some(ExitConfirmState {
+            mode: current.mode,
+            choice,
+        });
         true
     }
 
     pub fn resolve_exit_confirm(&mut self) -> bool {
-        let Some(choice) = self.pending_exit_confirm.take() else {
+        let Some(state) = self.pending_exit_confirm.take() else {
             return false;
         };
-        if choice == ExitConfirmChoice::Exit {
-            self.request_exit();
+        if state.choice == ExitConfirmChoice::Exit {
+            match state.mode {
+                ExitConfirmMode::ExitApplication => self.request_exit(),
+                ExitConfirmMode::FinishFlow => self.finalize_flow_exit(),
+            }
         }
         true
     }

@@ -1,5 +1,5 @@
 use super::StepVisualStatus;
-use crate::state::app::ExitConfirmChoice;
+use crate::state::app::{ExitConfirmChoice, ExitConfirmMode};
 use crate::terminal::CursorPos;
 use crate::ui::layout::{Layout, LineContinuation, RenderBlock};
 use crate::ui::span::{Span, SpanLine};
@@ -25,6 +25,7 @@ pub(super) enum StepFrameFooter<'a> {
         show_help_toggle: bool,
     },
     ExitConfirm {
+        mode: ExitConfirmMode,
         choice: ExitConfirmChoice,
     },
     HelpToggle,
@@ -230,8 +231,8 @@ fn footer_plain_lines(footer: StepFrameFooter<'_>) -> Vec<SpanLine> {
             }
             lines.push(vec![Span::new("")]);
         }
-        StepFrameFooter::ExitConfirm { choice } => {
-            lines.push(exit_confirm_line(choice));
+        StepFrameFooter::ExitConfirm { mode, choice } => {
+            lines.push(exit_confirm_line(mode, choice));
         }
         StepFrameFooter::HelpToggle => {
             lines.push(help_toggle_line());
@@ -240,16 +241,20 @@ fn footer_plain_lines(footer: StepFrameFooter<'_>) -> Vec<SpanLine> {
     lines
 }
 
-fn exit_confirm_line(choice: ExitConfirmChoice) -> SpanLine {
+fn exit_confirm_line(mode: ExitConfirmMode, choice: ExitConfirmChoice) -> SpanLine {
     let inactive = Style::new().color(Color::DarkGrey);
     let active = Style::new().color(Color::White).bold();
     let (no_style, yes_style) = match choice {
         ExitConfirmChoice::Stay => (active, inactive),
         ExitConfirmChoice::Exit => (inactive, active),
     };
+    let prompt = match mode {
+        ExitConfirmMode::ExitApplication => "Exit application? ",
+        ExitConfirmMode::FinishFlow => "Are we done? ",
+    };
 
     vec![
-        Span::styled("Exit application? ", Style::new().color(Color::Yellow)).no_wrap(),
+        Span::styled(prompt, Style::new().color(Color::Yellow)).no_wrap(),
         Span::styled("No", no_style).no_wrap(),
         Span::styled(" / ", inactive).no_wrap(),
         Span::styled("Yes", yes_style).no_wrap(),

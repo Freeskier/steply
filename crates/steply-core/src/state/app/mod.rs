@@ -15,6 +15,18 @@ pub enum ExitConfirmChoice {
     Exit,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ExitConfirmMode {
+    ExitApplication,
+    FinishFlow,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ExitConfirmState {
+    pub mode: ExitConfirmMode,
+    pub choice: ExitConfirmChoice,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AppStateInitError {
     InvalidTaskSetup(TaskSetupError),
@@ -50,7 +62,8 @@ pub struct AppState {
     scratch_nodes: Vec<Node>,
     should_exit: bool,
     pending_back_confirm: Option<String>,
-    pending_exit_confirm: Option<ExitConfirmChoice>,
+    pending_exit_confirm: Option<ExitConfirmState>,
+    confirm_finish: bool,
 }
 
 impl AppState {

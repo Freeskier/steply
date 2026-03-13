@@ -200,7 +200,7 @@ text: Welcome to Steply"#,
 id: payload
 label: Payload
 format: yaml
-value: demo.payload"#,
+reads: "{{demo.payload}}"#,
         hints: &[],
         compile: compile_data_output_widget,
         binding: read_only,

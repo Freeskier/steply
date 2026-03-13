@@ -1,8 +1,10 @@
 use super::{Repeater, RepeaterEntryMode, resolved_iterate_state};
 use crate::core::value::Value;
 use crate::core::value_path::ValueTarget;
+use crate::runtime::event::SystemEvent;
 use crate::state::step::StepCondition;
 use crate::state::store::ValueStore;
+use crate::task::TaskId;
 use crate::terminal::{KeyCode, KeyEvent, KeyModifiers, TerminalSize};
 use crate::ui::layout::Layout;
 use crate::ui::span::SpanLine;
@@ -242,6 +244,49 @@ fn long_nowrap_output_after_prefixed_row_does_not_create_blank_line() {
         rendered.iter().any(|line| line.contains("Current draft:")),
         "rendered lines: {rendered:#?}"
     );
+}
+
+#[test]
+fn finish_condition_rejection_advances_without_store_change() {
+    let mut store = ValueStore::new();
+    store
+        .set("demo.done", Value::Bool(false))
+        .expect("set done");
+
+    let mut repeater = Repeater::new("groups", "Groups")
+        .with_iterate_binding(ReadBinding::Literal(Value::Number(2.0)))
+        .with_finish_condition(StepCondition::Truthy {
+            field: "demo.done".into(),
+        })
+        .with_widget(bind_node(
+            Node::Input(Box::new(TextInput::new("name", "Name"))),
+            StoreBinding {
+                reads: Some(ReadBinding::Literal(Value::Text("Group 1".into()))),
+                writes: vec![WriteBinding {
+                    target: ValueTarget::node("name"),
+                    expr: WriteExpr::ScopeRef("value".into()),
+                }],
+                ..StoreBinding::default()
+            },
+        ));
+
+    assert!(repeater.sync_from_store(&store));
+
+    let result = repeater.on_key(KeyEvent {
+        code: KeyCode::Enter,
+        modifiers: KeyModifiers::NONE,
+    });
+    assert!(result.handled);
+    assert!(repeater.awaiting_finish_resolution);
+    assert_eq!(repeater.active_index, 0);
+
+    let rejected = repeater.on_system_event(&SystemEvent::TaskStartRejected {
+        task_id: TaskId::new("remaining_files"),
+        reason: "skipped".into(),
+    });
+    assert!(rejected.handled);
+    assert!(!repeater.awaiting_finish_resolution);
+    assert_eq!(repeater.active_index, 1);
 }
 
 fn rendered_text(output: crate::widgets::traits::DrawOutput) -> String {

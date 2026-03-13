@@ -12,7 +12,11 @@ pub(super) fn normalize(doc: ConfigDoc) -> Result<ConfigSpec, String> {
     let steps = resolve_steps(doc.steps, doc.flow)?;
     let tasks = resolve_tasks(doc.tasks)?;
 
-    Ok(ConfigSpec { steps, tasks })
+    Ok(ConfigSpec {
+        confirm_finish: doc.confirm_finish.unwrap_or(true),
+        steps,
+        tasks,
+    })
 }
 
 fn resolve_steps(steps: Vec<StepDef>, flow: Vec<FlowItemDef>) -> Result<Vec<StepSpec>, String> {

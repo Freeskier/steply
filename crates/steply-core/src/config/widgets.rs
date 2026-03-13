@@ -190,6 +190,23 @@ text: Welcome to Steply"#,
         children: none
     },
     {
+        variant: DataOutput,
+        def: model::DataOutputDef,
+        type_name: "data_output",
+        category: Output,
+        short: "Structured data output.",
+        long: "Renders bound values as pretty text, JSON, or YAML with lightweight syntax coloring.",
+        example: r#"type: data_output
+id: payload
+label: Payload
+format: yaml
+value: demo.payload"#,
+        hints: &[],
+        compile: compile_data_output_widget,
+        binding: read_only,
+        children: none
+    },
+    {
         variant: UrlOutput,
         def: model::UrlOutputDef,
         type_name: "url_output",
@@ -1179,6 +1196,15 @@ fn compile_text_output_widget(def: WidgetDef) -> Result<Node, String> {
     }
 }
 
+fn compile_data_output_widget(def: WidgetDef) -> Result<Node, String> {
+    match def {
+        WidgetDef::DataOutput(model::DataOutputDef {
+            id, label, format, ..
+        }) => Ok(outputs::compile_data_output(id, label, format)),
+        _ => registry_dispatch_mismatch("data_output"),
+    }
+}
+
 fn compile_url_output_widget(def: WidgetDef) -> Result<Node, String> {
     match def {
         WidgetDef::UrlOutput(model::UrlOutputDef { id, url, name, .. }) => {
@@ -1654,6 +1680,7 @@ fn compile_repeater_widget(def: WidgetDef) -> Result<Node, String> {
             show_progress,
             header_template,
             item_label_path,
+            finish_when,
             widgets,
             ..
         }) => components::compile_repeater(
@@ -1665,6 +1692,7 @@ fn compile_repeater_widget(def: WidgetDef) -> Result<Node, String> {
             show_progress,
             header_template,
             item_label_path,
+            finish_when,
             widgets,
         ),
         _ => registry_dispatch_mismatch("repeater"),

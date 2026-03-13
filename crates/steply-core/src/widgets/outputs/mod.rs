@@ -1,4 +1,5 @@
 pub mod chart;
+pub mod data;
 pub mod diff;
 pub mod progress;
 pub mod table;

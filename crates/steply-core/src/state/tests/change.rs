@@ -40,3 +40,23 @@ fn registry_allows_same_owner_overlaps() {
 
     assert!(conflicts.is_empty());
 }
+
+#[test]
+fn registry_allows_parent_child_user_bindings() {
+    let mut registry = StoreOwnershipRegistry::default();
+    registry.register(
+        ValueTarget::parse_selector("payload::profile").expect("parent target"),
+        StoreOwnership::User,
+    );
+    registry.register(
+        ValueTarget::parse_selector("payload::profile.name").expect("child target"),
+        StoreOwnership::User,
+    );
+
+    let conflicts = registry.conflicting_owners_for_write(
+        &ValueTarget::parse_selector("payload::profile.name").expect("write target"),
+        StoreOwnership::User,
+    );
+
+    assert!(conflicts.is_empty());
+}

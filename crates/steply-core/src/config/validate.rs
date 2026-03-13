@@ -5,7 +5,9 @@ use super::spec::{ConfigSpec, StepSpec};
 use super::{utils, widgets};
 use crate::core::store_refs::parse_store_selector;
 use crate::core::value_path::ValueTarget;
-use crate::state::change::{StoreCommitPolicy, StoreOwnership};
+use crate::state::change::{
+    StoreCommitPolicy, StoreOwnership, StoreOwnershipConflict, store_ownership_conflict,
+};
 use crate::task::TaskTrigger;
 
 pub(super) fn validate(spec: &ConfigSpec) -> Result<(), String> {
@@ -111,6 +113,17 @@ fn validate_widget_bindings(steps: &[StepSpec]) -> Result<(), String> {
             }
 
             let mut seen_writer_targets = HashSet::<String>::new();
+            for target in &direct_value_targets {
+                if !seen_writer_targets.insert(target.clone()) {
+                    continue;
+                }
+                writer_records.push(WriterRecord {
+                    label: format!("widget '{}'", widget_id),
+                    target: parse_store_selector(target.as_str())?,
+                    ownership: StoreOwnership::User,
+                });
+            }
+
             for target in &write_targets {
                 if !seen_writer_targets.insert(target.clone()) {
                     continue;
@@ -141,10 +154,13 @@ fn validate_widget_bindings(steps: &[StepSpec]) -> Result<(), String> {
             Ok(())
         })?;
 
-        if let Some((left, right)) = find_overlapping_writer_pair(writer_records.as_slice()) {
+        if let Some((left, right, conflict)) =
+            find_conflicting_writer_pair(writer_records.as_slice())
+        {
             return Err(format!(
-                "step '{}' has overlapping widget writes: {} writes '{}' and {} writes '{}'",
+                "step '{}' has {}: {} writes '{}' and {} writes '{}'",
                 step.id,
+                describe_conflict(conflict),
                 left.label,
                 left.target.to_selector(),
                 right.label,
@@ -168,35 +184,38 @@ fn validate_cross_owner_store_writers(spec: &ConfigSpec) -> Result<(), String> {
     let widget_writers = collect_widget_writer_records(spec.steps.as_slice())?;
     let task_writers = collect_task_writer_records(spec)?;
 
-    if let Some((left, right)) = find_cross_owner_overlap(widget_writers.as_slice()) {
+    if let Some((left, right, conflict)) = find_conflicting_writer_pair(widget_writers.as_slice()) {
         return Err(format!(
-            "{} writes '{}' and {} writes '{}'; overlapping selectors cannot be owned by different writer kinds",
+            "{} writes '{}' and {} writes '{}'; {}",
             left.label,
             left.target.to_selector(),
             right.label,
-            right.target.to_selector()
+            right.target.to_selector(),
+            describe_conflict(conflict)
         ));
     }
 
-    if let Some((task, widget)) =
-        find_task_widget_overlap(task_writers.as_slice(), widget_writers.as_slice())
+    if let Some((task, widget, conflict)) =
+        find_conflicting_pairs(task_writers.as_slice(), widget_writers.as_slice())
     {
         return Err(format!(
-            "{} writes '{}' which overlaps with {} writing '{}'",
+            "{} writes '{}' which overlaps with {} writing '{}'; {}",
             task.label,
             task.target.to_selector(),
             widget.label,
-            widget.target.to_selector()
+            widget.target.to_selector(),
+            describe_conflict(conflict)
         ));
     }
 
-    if let Some((left, right)) = find_overlapping_writer_pair(task_writers.as_slice()) {
+    if let Some((left, right, conflict)) = find_conflicting_writer_pair(task_writers.as_slice()) {
         return Err(format!(
-            "{} writes '{}' and {} writes '{}'; overlapping task writes are not allowed",
+            "{} writes '{}' and {} writes '{}'; {}",
             left.label,
             left.target.to_selector(),
             right.label,
-            right.target.to_selector()
+            right.target.to_selector(),
+            describe_conflict(conflict)
         ));
     }
 
@@ -216,6 +235,16 @@ fn collect_widget_writer_records(steps: &[StepSpec]) -> Result<Vec<WriterRecord>
             })?;
 
             let mut seen_targets = HashSet::<String>::new();
+            for target in &direct_targets {
+                if !seen_targets.insert(target.clone()) {
+                    continue;
+                }
+                writers.push(WriterRecord {
+                    label: format!("step '{}' widget '{}'", step.id, widget_id),
+                    target: parse_store_selector(target.as_str())?,
+                    ownership: StoreOwnership::User,
+                });
+            }
             widgets::visit_widget_binding_write_targets(widget, &mut |target| {
                 if !seen_targets.insert(target.to_string()) {
                     return Ok(());
@@ -271,42 +300,61 @@ fn task_write_targets(writes: Option<&WriteBindingDef>) -> Result<Vec<ValueTarge
     Ok(out)
 }
 
-fn find_overlapping_writer_pair(
+fn find_conflicting_writer_pair(
     records: &[WriterRecord],
-) -> Option<(&WriterRecord, &WriterRecord)> {
+) -> Option<(&WriterRecord, &WriterRecord, StoreOwnershipConflict)> {
     for (index, left) in records.iter().enumerate() {
         for right in &records[index + 1..] {
-            if left.target.overlaps(&right.target) {
-                return Some((left, right));
+            if let Some(conflict) = store_ownership_conflict(
+                &left.target,
+                left.ownership,
+                &right.target,
+                right.ownership,
+            ) {
+                return Some((left, right, conflict));
             }
         }
     }
     None
 }
 
-fn find_cross_owner_overlap(records: &[WriterRecord]) -> Option<(&WriterRecord, &WriterRecord)> {
-    for (index, left) in records.iter().enumerate() {
-        for right in &records[index + 1..] {
-            if left.ownership != right.ownership && left.target.overlaps(&right.target) {
-                return Some((left, right));
+fn find_conflicting_pairs<'a>(
+    left_records: &'a [WriterRecord],
+    right_records: &'a [WriterRecord],
+) -> Option<(&'a WriterRecord, &'a WriterRecord, StoreOwnershipConflict)> {
+    for left in left_records {
+        for right in right_records {
+            if let Some(conflict) = store_ownership_conflict(
+                &left.target,
+                left.ownership,
+                &right.target,
+                right.ownership,
+            ) {
+                return Some((left, right, conflict));
             }
         }
     }
     None
 }
 
-fn find_task_widget_overlap<'a>(
-    tasks: &'a [WriterRecord],
-    widgets: &'a [WriterRecord],
-) -> Option<(&'a WriterRecord, &'a WriterRecord)> {
-    for task in tasks {
-        for widget in widgets {
-            if task.target.overlaps(&widget.target) {
-                return Some((task, widget));
-            }
+fn describe_conflict(conflict: StoreOwnershipConflict) -> &'static str {
+    match conflict {
+        StoreOwnershipConflict::CrossOwner { .. } => {
+            "overlapping selectors cannot be owned by different writer kinds"
         }
+        StoreOwnershipConflict::SameOwnerOverlap {
+            owner: StoreOwnership::Task,
+        } => "overlapping task writes are not allowed",
+        StoreOwnershipConflict::SameOwnerOverlap {
+            owner: StoreOwnership::Derived,
+        } => "overlapping widget writes are not allowed",
+        StoreOwnershipConflict::SameOwnerOverlap {
+            owner: StoreOwnership::Shared,
+        } => "overlapping shared writes are not allowed",
+        StoreOwnershipConflict::SameOwnerOverlap {
+            owner: StoreOwnership::User,
+        } => "overlapping user bindings are not allowed",
     }
-    None
 }
 
 fn validate_step_conditions(
@@ -343,6 +391,12 @@ fn validate_widget_conditions_in_tree(
                 known_selector_roots,
                 allow_repeater_private_roots,
             )?;
+        }
+
+        if let crate::config::model::WidgetDef::Repeater(def) = widget
+            && let Some(condition) = &def.finish_when
+        {
+            validate_when(condition, known_selector_roots, true)?;
         }
 
         if let Some(children) = widgets::widget_children(widget) {

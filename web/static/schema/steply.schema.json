@@ -2,6 +2,13 @@
   "$id": "https://steply.sh/schema/steply.schema.json",
   "$schema": "http://json-schema.org/draft-07/schema#",
   "definitions": {
+    "BindingCommitPolicyDef": {
+      "enum": [
+        "immediate",
+        "on_submit"
+      ],
+      "type": "string"
+    },
     "BindingYamlValueDef": true,
     "CommandRunnerCommandDef": {
       "properties": {
@@ -30,6 +37,21 @@
         "program"
       ],
       "type": "object"
+    },
+    "ConditionOperatorDef": {
+      "enum": [
+        "exists",
+        "empty",
+        "not_empty",
+        "equals",
+        "not_equals",
+        "greater_than",
+        "greater_or_equal",
+        "less_than",
+        "less_or_equal",
+        "contains"
+      ],
+      "type": "string"
     },
     "ConfirmModeDef": {
       "oneOf": [
@@ -67,6 +89,14 @@
           "type": "object"
         }
       ]
+    },
+    "DataOutputFormatDef": {
+      "enum": [
+        "text",
+        "json",
+        "yaml"
+      ],
+      "type": "string"
     },
     "EmbeddedWidgetDef": {
       "oneOf": [
@@ -931,9 +961,16 @@
           },
           "type": "array"
         },
-        "equal": {
-          "default": null,
-          "description": "Value that must be equal to the referenced value."
+        "is": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/ConditionOperatorDef"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Condition operator. Omit to use a truthy check."
         },
         "not": {
           "anyOf": [
@@ -946,18 +983,6 @@
           ],
           "description": "Nested condition that must not match."
         },
-        "not_empty": {
-          "default": null,
-          "description": "Whether the referenced value must be non-empty.",
-          "type": [
-            "boolean",
-            "null"
-          ]
-        },
-        "not_equal": {
-          "default": null,
-          "description": "Value that must differ from the referenced value."
-        },
         "ref": {
           "default": null,
           "description": "Store selector used by the condition.",
@@ -965,6 +990,10 @@
             "string",
             "null"
           ]
+        },
+        "value": {
+          "default": null,
+          "description": "Comparison value used by operators such as equals or greater_than."
         }
       },
       "type": "object"
@@ -973,9 +1002,21 @@
       "oneOf": [
         {
           "properties": {
+            "commit_policy": {
+              "allOf": [
+                {
+                  "$ref": "#/definitions/BindingCommitPolicyDef"
+                }
+              ],
+              "description": "When the widget value should be committed to the store."
+            },
             "id": {
               "description": "Unique widget identifier within the step.",
               "type": "string"
+            },
+            "reads": {
+              "default": null,
+              "description": "Read-only store inputs used to seed or drive the widget."
             },
             "text": {
               "description": "Rendered text content.",
@@ -986,6 +1027,35 @@
                 "text_output"
               ],
               "type": "string"
+            },
+            "value": {
+              "default": null,
+              "description": "Direct store binding target for the widget's main value.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "when": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/WhenDef"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "writes": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/WriteBindingDef"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Store writes produced from the widget value or read scope."
             }
           },
           "required": [
@@ -997,6 +1067,93 @@
         },
         {
           "properties": {
+            "commit_policy": {
+              "allOf": [
+                {
+                  "$ref": "#/definitions/BindingCommitPolicyDef"
+                }
+              ],
+              "description": "When the widget value should be committed to the store."
+            },
+            "format": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/DataOutputFormatDef"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Render format for structured values."
+            },
+            "id": {
+              "description": "Unique widget identifier within the step.",
+              "type": "string"
+            },
+            "label": {
+              "default": null,
+              "description": "Optional visible label.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "reads": {
+              "default": null,
+              "description": "Read-only store inputs used to seed or drive the widget."
+            },
+            "type": {
+              "enum": [
+                "data_output"
+              ],
+              "type": "string"
+            },
+            "value": {
+              "default": null,
+              "description": "Direct store binding target for the widget's main value.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "when": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/WhenDef"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "writes": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/WriteBindingDef"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Store writes produced from the widget value or read scope."
+            }
+          },
+          "required": [
+            "id",
+            "type"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "commit_policy": {
+              "allOf": [
+                {
+                  "$ref": "#/definitions/BindingCommitPolicyDef"
+                }
+              ],
+              "description": "When the widget value should be committed to the store."
+            },
             "id": {
               "description": "Unique widget identifier within the step.",
               "type": "string"
@@ -1009,6 +1166,10 @@
                 "null"
               ]
             },
+            "reads": {
+              "default": null,
+              "description": "Read-only store inputs used to seed or drive the widget."
+            },
             "type": {
               "enum": [
                 "url_output"
@@ -1018,6 +1179,35 @@
             "url": {
               "description": "Target URL.",
               "type": "string"
+            },
+            "value": {
+              "default": null,
+              "description": "Direct store binding target for the widget's main value.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "when": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/WhenDef"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "writes": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/WriteBindingDef"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Store writes produced from the widget value or read scope."
             }
           },
           "required": [
@@ -1104,6 +1294,16 @@
                 "thinking_output"
               ],
               "type": "string"
+            },
+            "when": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/WhenDef"
+                },
+                {
+                  "type": "null"
+                }
+              ]
             }
           },
           "required": [
@@ -1125,6 +1325,14 @@
                 "integer",
                 "null"
               ]
+            },
+            "commit_policy": {
+              "allOf": [
+                {
+                  "$ref": "#/definitions/BindingCommitPolicyDef"
+                }
+              ],
+              "description": "When the widget value should be committed to the store."
             },
             "id": {
               "description": "Unique widget identifier within the step.",
@@ -1151,6 +1359,10 @@
                 "number",
                 "null"
               ]
+            },
+            "reads": {
+              "default": null,
+              "description": "Read-only store inputs used to seed or drive the widget."
             },
             "style": {
               "default": null,
@@ -1184,6 +1396,35 @@
                 "string",
                 "null"
               ]
+            },
+            "value": {
+              "default": null,
+              "description": "Direct store binding target for the widget's main value.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "when": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/WhenDef"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "writes": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/WriteBindingDef"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Store writes produced from the widget value or read scope."
             }
           },
           "required": [
@@ -1204,6 +1445,14 @@
                 "integer",
                 "null"
               ]
+            },
+            "commit_policy": {
+              "allOf": [
+                {
+                  "$ref": "#/definitions/BindingCommitPolicyDef"
+                }
+              ],
+              "description": "When the widget value should be committed to the store."
             },
             "gradient": {
               "default": null,
@@ -1247,6 +1496,10 @@
                 "null"
               ]
             },
+            "reads": {
+              "default": null,
+              "description": "Read-only store inputs used to seed or drive the widget."
+            },
             "type": {
               "enum": [
                 "chart_output"
@@ -1260,6 +1513,35 @@
                 "string",
                 "null"
               ]
+            },
+            "value": {
+              "default": null,
+              "description": "Direct store binding target for the widget's main value.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "when": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/WhenDef"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "writes": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/WriteBindingDef"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Store writes produced from the widget value or read scope."
             }
           },
           "required": [
@@ -1271,6 +1553,14 @@
         },
         {
           "properties": {
+            "commit_policy": {
+              "allOf": [
+                {
+                  "$ref": "#/definitions/BindingCommitPolicyDef"
+                }
+              ],
+              "description": "When the widget value should be committed to the store."
+            },
             "headers": {
               "default": [],
               "description": "Column headers.",
@@ -1286,6 +1576,10 @@
             "label": {
               "description": "Visible widget label.",
               "type": "string"
+            },
+            "reads": {
+              "default": null,
+              "description": "Read-only store inputs used to seed or drive the widget."
             },
             "rows": {
               "default": [],
@@ -1311,6 +1605,35 @@
                 "table_output"
               ],
               "type": "string"
+            },
+            "value": {
+              "default": null,
+              "description": "Direct store binding target for the widget's main value.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "when": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/WhenDef"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "writes": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/WriteBindingDef"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Store writes produced from the widget value or read scope."
             }
           },
           "required": [
@@ -1353,6 +1676,16 @@
                 "diff_output"
               ],
               "type": "string"
+            },
+            "when": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/WhenDef"
+                },
+                {
+                  "type": "null"
+                }
+              ]
             }
           },
           "required": [
@@ -1400,6 +1733,16 @@
                 "integer",
                 "null"
               ]
+            },
+            "when": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/WhenDef"
+                },
+                {
+                  "type": "null"
+                }
+              ]
             }
           },
           "required": [
@@ -1411,6 +1754,14 @@
         },
         {
           "properties": {
+            "commit_policy": {
+              "allOf": [
+                {
+                  "$ref": "#/definitions/BindingCommitPolicyDef"
+                }
+              ],
+              "description": "When the widget value should be committed to the store."
+            },
             "completion_items": {
               "default": [],
               "description": "Static completion candidates.",
@@ -1452,7 +1803,8 @@
               ]
             },
             "reads": {
-              "default": null
+              "default": null,
+              "description": "Read-only store inputs used to seed or drive the widget."
             },
             "required": {
               "default": null,
@@ -1477,9 +1829,20 @@
             },
             "value": {
               "default": null,
+              "description": "Direct store binding target for the widget's main value.",
               "type": [
                 "string",
                 "null"
+              ]
+            },
+            "when": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/WhenDef"
+                },
+                {
+                  "type": "null"
+                }
               ]
             },
             "writes": {
@@ -1490,7 +1853,8 @@
                 {
                   "type": "null"
                 }
-              ]
+              ],
+              "description": "Store writes produced from the widget value or read scope."
             }
           },
           "required": [
@@ -1502,6 +1866,14 @@
         },
         {
           "properties": {
+            "commit_policy": {
+              "allOf": [
+                {
+                  "$ref": "#/definitions/BindingCommitPolicyDef"
+                }
+              ],
+              "description": "When the widget value should be committed to the store."
+            },
             "id": {
               "description": "Unique widget identifier within the step.",
               "type": "string"
@@ -1519,7 +1891,8 @@
               "type": "string"
             },
             "reads": {
-              "default": null
+              "default": null,
+              "description": "Read-only store inputs used to seed or drive the widget."
             },
             "required": {
               "default": null,
@@ -1544,9 +1917,20 @@
             },
             "value": {
               "default": null,
+              "description": "Direct store binding target for the widget's main value.",
               "type": [
                 "string",
                 "null"
+              ]
+            },
+            "when": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/WhenDef"
+                },
+                {
+                  "type": "null"
+                }
               ]
             },
             "writes": {
@@ -1557,7 +1941,8 @@
                 {
                   "type": "null"
                 }
-              ]
+              ],
+              "description": "Store writes produced from the widget value or read scope."
             }
           },
           "required": [
@@ -1598,6 +1983,16 @@
                 "button_input"
               ],
               "type": "string"
+            },
+            "when": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/WhenDef"
+                },
+                {
+                  "type": "null"
+                }
+              ]
             }
           },
           "required": [
@@ -1609,6 +2004,14 @@
         },
         {
           "properties": {
+            "commit_policy": {
+              "allOf": [
+                {
+                  "$ref": "#/definitions/BindingCommitPolicyDef"
+                }
+              ],
+              "description": "When the widget value should be committed to the store."
+            },
             "default": {
               "default": null,
               "description": "Default option value.",
@@ -1634,7 +2037,8 @@
               "description": "Available option values."
             },
             "reads": {
-              "default": null
+              "default": null,
+              "description": "Read-only store inputs used to seed or drive the widget."
             },
             "required": {
               "default": null,
@@ -1669,9 +2073,20 @@
             },
             "value": {
               "default": null,
+              "description": "Direct store binding target for the widget's main value.",
               "type": [
                 "string",
                 "null"
+              ]
+            },
+            "when": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/WhenDef"
+                },
+                {
+                  "type": "null"
+                }
               ]
             },
             "writes": {
@@ -1682,7 +2097,8 @@
                 {
                   "type": "null"
                 }
-              ]
+              ],
+              "description": "Store writes produced from the widget value or read scope."
             }
           },
           "required": [
@@ -1702,6 +2118,14 @@
                 "boolean",
                 "null"
               ]
+            },
+            "commit_policy": {
+              "allOf": [
+                {
+                  "$ref": "#/definitions/BindingCommitPolicyDef"
+                }
+              ],
+              "description": "When the widget value should be committed to the store."
             },
             "default": {
               "default": null,
@@ -1728,7 +2152,8 @@
               "description": "Available option values."
             },
             "reads": {
-              "default": null
+              "default": null,
+              "description": "Read-only store inputs used to seed or drive the widget."
             },
             "required": {
               "default": null,
@@ -1753,9 +2178,20 @@
             },
             "value": {
               "default": null,
+              "description": "Direct store binding target for the widget's main value.",
               "type": [
                 "string",
                 "null"
+              ]
+            },
+            "when": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/WhenDef"
+                },
+                {
+                  "type": "null"
+                }
               ]
             },
             "writes": {
@@ -1766,7 +2202,8 @@
                 {
                   "type": "null"
                 }
-              ]
+              ],
+              "description": "Store writes produced from the widget value or read scope."
             }
           },
           "required": [
@@ -1779,6 +2216,14 @@
         },
         {
           "properties": {
+            "commit_policy": {
+              "allOf": [
+                {
+                  "$ref": "#/definitions/BindingCommitPolicyDef"
+                }
+              ],
+              "description": "When the widget value should be committed to the store."
+            },
             "id": {
               "description": "Unique widget identifier within the step.",
               "type": "string"
@@ -1814,7 +2259,8 @@
               "description": "List items, plain or detailed."
             },
             "reads": {
-              "default": null
+              "default": null,
+              "description": "Read-only store inputs used to seed or drive the widget."
             },
             "selected": {
               "default": [],
@@ -1842,9 +2288,20 @@
             },
             "value": {
               "default": null,
+              "description": "Direct store binding target for the widget's main value.",
               "type": [
                 "string",
                 "null"
+              ]
+            },
+            "when": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/WhenDef"
+                },
+                {
+                  "type": "null"
+                }
               ]
             },
             "writes": {
@@ -1855,7 +2312,8 @@
                 {
                   "type": "null"
                 }
-              ]
+              ],
+              "description": "Store writes produced from the widget value or read scope."
             }
           },
           "required": [
@@ -1867,6 +2325,14 @@
         },
         {
           "properties": {
+            "commit_policy": {
+              "allOf": [
+                {
+                  "$ref": "#/definitions/BindingCommitPolicyDef"
+                }
+              ],
+              "description": "When the widget value should be committed to the store."
+            },
             "default": {
               "default": null,
               "description": "Initial field value.",
@@ -1888,7 +2354,8 @@
               "type": "string"
             },
             "reads": {
-              "default": null
+              "default": null,
+              "description": "Read-only store inputs used to seed or drive the widget."
             },
             "required": {
               "default": null,
@@ -1913,9 +2380,20 @@
             },
             "value": {
               "default": null,
+              "description": "Direct store binding target for the widget's main value.",
               "type": [
                 "string",
                 "null"
+              ]
+            },
+            "when": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/WhenDef"
+                },
+                {
+                  "type": "null"
+                }
               ]
             },
             "writes": {
@@ -1926,7 +2404,8 @@
                 {
                   "type": "null"
                 }
-              ]
+              ],
+              "description": "Store writes produced from the widget value or read scope."
             }
           },
           "required": [
@@ -1939,6 +2418,14 @@
         },
         {
           "properties": {
+            "commit_policy": {
+              "allOf": [
+                {
+                  "$ref": "#/definitions/BindingCommitPolicyDef"
+                }
+              ],
+              "description": "When the widget value should be committed to the store."
+            },
             "default": {
               "default": null,
               "description": "Initial numeric value.",
@@ -1967,7 +2454,8 @@
               "type": "integer"
             },
             "reads": {
-              "default": null
+              "default": null,
+              "description": "Read-only store inputs used to seed or drive the widget."
             },
             "required": {
               "default": null,
@@ -2019,9 +2507,20 @@
             },
             "value": {
               "default": null,
+              "description": "Direct store binding target for the widget's main value.",
               "type": [
                 "string",
                 "null"
+              ]
+            },
+            "when": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/WhenDef"
+                },
+                {
+                  "type": "null"
+                }
               ]
             },
             "writes": {
@@ -2032,7 +2531,8 @@
                 {
                   "type": "null"
                 }
-              ]
+              ],
+              "description": "Store writes produced from the widget value or read scope."
             }
           },
           "required": [
@@ -2046,6 +2546,14 @@
         },
         {
           "properties": {
+            "commit_policy": {
+              "allOf": [
+                {
+                  "$ref": "#/definitions/BindingCommitPolicyDef"
+                }
+              ],
+              "description": "When the widget value should be committed to the store."
+            },
             "id": {
               "description": "Unique widget identifier within the step.",
               "type": "string"
@@ -2055,7 +2563,8 @@
               "type": "string"
             },
             "reads": {
-              "default": null
+              "default": null,
+              "description": "Read-only store inputs used to seed or drive the widget."
             },
             "required": {
               "default": null,
@@ -2095,9 +2604,20 @@
             },
             "value": {
               "default": null,
+              "description": "Direct store binding target for the widget's main value.",
               "type": [
                 "string",
                 "null"
+              ]
+            },
+            "when": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/WhenDef"
+                },
+                {
+                  "type": "null"
+                }
               ]
             },
             "writes": {
@@ -2108,7 +2628,8 @@
                 {
                   "type": "null"
                 }
-              ]
+              ],
+              "description": "Store writes produced from the widget value or read scope."
             }
           },
           "required": [
@@ -2120,6 +2641,14 @@
         },
         {
           "properties": {
+            "commit_policy": {
+              "allOf": [
+                {
+                  "$ref": "#/definitions/BindingCommitPolicyDef"
+                }
+              ],
+              "description": "When the widget value should be committed to the store."
+            },
             "default": {
               "default": null,
               "description": "Initial boolean value.",
@@ -2156,7 +2685,8 @@
               ]
             },
             "reads": {
-              "default": null
+              "default": null,
+              "description": "Read-only store inputs used to seed or drive the widget."
             },
             "type": {
               "enum": [
@@ -2166,9 +2696,20 @@
             },
             "value": {
               "default": null,
+              "description": "Direct store binding target for the widget's main value.",
               "type": [
                 "string",
                 "null"
+              ]
+            },
+            "when": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/WhenDef"
+                },
+                {
+                  "type": "null"
+                }
               ]
             },
             "writes": {
@@ -2179,7 +2720,8 @@
                 {
                   "type": "null"
                 }
-              ]
+              ],
+              "description": "Store writes produced from the widget value or read scope."
             },
             "yes_label": {
               "default": null,
@@ -2207,6 +2749,14 @@
                 "null"
               ]
             },
+            "commit_policy": {
+              "allOf": [
+                {
+                  "$ref": "#/definitions/BindingCommitPolicyDef"
+                }
+              ],
+              "description": "When the widget value should be committed to the store."
+            },
             "id": {
               "description": "Unique widget identifier within the step.",
               "type": "string"
@@ -2216,7 +2766,8 @@
               "type": "string"
             },
             "reads": {
-              "default": null
+              "default": null,
+              "description": "Read-only store inputs used to seed or drive the widget."
             },
             "required": {
               "default": null,
@@ -2241,9 +2792,20 @@
             },
             "value": {
               "default": null,
+              "description": "Direct store binding target for the widget's main value.",
               "type": [
                 "string",
                 "null"
+              ]
+            },
+            "when": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/WhenDef"
+                },
+                {
+                  "type": "null"
+                }
               ]
             },
             "writes": {
@@ -2254,7 +2816,8 @@
                 {
                   "type": "null"
                 }
-              ]
+              ],
+              "description": "Store writes produced from the widget value or read scope."
             }
           },
           "required": [
@@ -2266,6 +2829,14 @@
         },
         {
           "properties": {
+            "commit_policy": {
+              "allOf": [
+                {
+                  "$ref": "#/definitions/BindingCommitPolicyDef"
+                }
+              ],
+              "description": "When the widget value should be committed to the store."
+            },
             "id": {
               "description": "Unique widget identifier within the step.",
               "type": "string"
@@ -2283,7 +2854,8 @@
               ]
             },
             "reads": {
-              "default": null
+              "default": null,
+              "description": "Read-only store inputs used to seed or drive the widget."
             },
             "required": {
               "default": null,
@@ -2308,9 +2880,20 @@
             },
             "value": {
               "default": null,
+              "description": "Direct store binding target for the widget's main value.",
               "type": [
                 "string",
                 "null"
+              ]
+            },
+            "when": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/WhenDef"
+                },
+                {
+                  "type": "null"
+                }
               ]
             },
             "writes": {
@@ -2321,7 +2904,8 @@
                 {
                   "type": "null"
                 }
-              ]
+              ],
+              "description": "Store writes produced from the widget value or read scope."
             }
           },
           "required": [
@@ -2333,6 +2917,14 @@
         },
         {
           "properties": {
+            "commit_policy": {
+              "allOf": [
+                {
+                  "$ref": "#/definitions/BindingCommitPolicyDef"
+                }
+              ],
+              "description": "When the widget value should be committed to the store."
+            },
             "default": {
               "default": null,
               "description": "Initial text value.",
@@ -2366,7 +2958,8 @@
               ]
             },
             "reads": {
-              "default": null
+              "default": null,
+              "description": "Read-only store inputs used to seed or drive the widget."
             },
             "required": {
               "default": null,
@@ -2391,9 +2984,20 @@
             },
             "value": {
               "default": null,
+              "description": "Direct store binding target for the widget's main value.",
               "type": [
                 "string",
                 "null"
+              ]
+            },
+            "when": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/WhenDef"
+                },
+                {
+                  "type": "null"
+                }
               ]
             },
             "writes": {
@@ -2404,7 +3008,8 @@
                 {
                   "type": "null"
                 }
-              ]
+              ],
+              "description": "Store writes produced from the widget value or read scope."
             }
           },
           "required": [
@@ -2430,6 +3035,14 @@
               },
               "type": "array"
             },
+            "commit_policy": {
+              "allOf": [
+                {
+                  "$ref": "#/definitions/BindingCommitPolicyDef"
+                }
+              ],
+              "description": "When the widget value should be committed to the store."
+            },
             "id": {
               "description": "Unique widget identifier within the step.",
               "type": "string"
@@ -2447,7 +3060,8 @@
               ]
             },
             "reads": {
-              "default": null
+              "default": null,
+              "description": "Read-only store inputs used to seed or drive the widget."
             },
             "run_mode": {
               "default": null,
@@ -2483,6 +3097,7 @@
             },
             "value": {
               "default": null,
+              "description": "Direct store binding target for the widget's main value.",
               "type": [
                 "string",
                 "null"
@@ -2498,6 +3113,16 @@
                 "null"
               ]
             },
+            "when": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/WhenDef"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
             "writes": {
               "anyOf": [
                 {
@@ -2506,7 +3131,8 @@
                 {
                   "type": "null"
                 }
-              ]
+              ],
+              "description": "Store writes produced from the widget value or read scope."
             }
           },
           "required": [
@@ -2526,6 +3152,14 @@
                 "string",
                 "null"
               ]
+            },
+            "commit_policy": {
+              "allOf": [
+                {
+                  "$ref": "#/definitions/BindingCommitPolicyDef"
+                }
+              ],
+              "description": "When the widget value should be committed to the store."
             },
             "cwd": {
               "default": null,
@@ -2586,7 +3220,8 @@
               ]
             },
             "reads": {
-              "default": null
+              "default": null,
+              "description": "Read-only store inputs used to seed or drive the widget."
             },
             "recursive": {
               "default": null,
@@ -2627,6 +3262,7 @@
             },
             "value": {
               "default": null,
+              "description": "Direct store binding target for the widget's main value.",
               "type": [
                 "string",
                 "null"
@@ -2640,6 +3276,16 @@
                 "null"
               ]
             },
+            "when": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/WhenDef"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
             "writes": {
               "anyOf": [
                 {
@@ -2648,7 +3294,8 @@
                 {
                   "type": "null"
                 }
-              ]
+              ],
+              "description": "Store writes produced from the widget value or read scope."
             }
           },
           "required": [
@@ -2660,6 +3307,14 @@
         },
         {
           "properties": {
+            "commit_policy": {
+              "allOf": [
+                {
+                  "$ref": "#/definitions/BindingCommitPolicyDef"
+                }
+              ],
+              "description": "When the widget value should be committed to the store."
+            },
             "id": {
               "description": "Unique widget identifier within the step.",
               "type": "string"
@@ -2694,7 +3349,8 @@
               "type": "array"
             },
             "reads": {
-              "default": null
+              "default": null,
+              "description": "Read-only store inputs used to seed or drive the widget."
             },
             "show_label": {
               "default": null,
@@ -2712,9 +3368,20 @@
             },
             "value": {
               "default": null,
+              "description": "Direct store binding target for the widget's main value.",
               "type": [
                 "string",
                 "null"
+              ]
+            },
+            "when": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/WhenDef"
+                },
+                {
+                  "type": "null"
+                }
               ]
             },
             "writes": {
@@ -2725,7 +3392,8 @@
                 {
                   "type": "null"
                 }
-              ]
+              ],
+              "description": "Store writes produced from the widget value or read scope."
             }
           },
           "required": [
@@ -2738,6 +3406,14 @@
         },
         {
           "properties": {
+            "commit_policy": {
+              "allOf": [
+                {
+                  "$ref": "#/definitions/BindingCommitPolicyDef"
+                }
+              ],
+              "description": "When the widget value should be committed to the store."
+            },
             "default": {
               "default": null,
               "description": "Default object value used when the widget is not bound to store state."
@@ -2761,7 +3437,8 @@
               ]
             },
             "reads": {
-              "default": null
+              "default": null,
+              "description": "Read-only store inputs used to seed or drive the widget."
             },
             "type": {
               "enum": [
@@ -2771,9 +3448,20 @@
             },
             "value": {
               "default": null,
+              "description": "Direct store binding target for the widget's main value.",
               "type": [
                 "string",
                 "null"
+              ]
+            },
+            "when": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/WhenDef"
+                },
+                {
+                  "type": "null"
+                }
               ]
             },
             "writes": {
@@ -2784,7 +3472,8 @@
                 {
                   "type": "null"
                 }
-              ]
+              ],
+              "description": "Store writes produced from the widget value or read scope."
             }
           },
           "required": [
@@ -2796,6 +3485,14 @@
         },
         {
           "properties": {
+            "commit_policy": {
+              "allOf": [
+                {
+                  "$ref": "#/definitions/BindingCommitPolicyDef"
+                }
+              ],
+              "description": "When the widget value should be committed to the store."
+            },
             "id": {
               "description": "Unique widget identifier within the step.",
               "type": "string"
@@ -2812,7 +3509,8 @@
               "type": "string"
             },
             "reads": {
-              "default": null
+              "default": null,
+              "description": "Read-only store inputs used to seed or drive the widget."
             },
             "template": {
               "description": "Snippet template string.",
@@ -2826,9 +3524,20 @@
             },
             "value": {
               "default": null,
+              "description": "Direct store binding target for the widget's main value.",
               "type": [
                 "string",
                 "null"
+              ]
+            },
+            "when": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/WhenDef"
+                },
+                {
+                  "type": "null"
+                }
               ]
             },
             "writes": {
@@ -2839,7 +3548,8 @@
                 {
                   "type": "null"
                 }
-              ]
+              ],
+              "description": "Store writes produced from the widget value or read scope."
             }
           },
           "required": [
@@ -2858,6 +3568,14 @@
                 "$ref": "#/definitions/TableColumnDef"
               },
               "type": "array"
+            },
+            "commit_policy": {
+              "allOf": [
+                {
+                  "$ref": "#/definitions/BindingCommitPolicyDef"
+                }
+              ],
+              "description": "When the widget value should be committed to the store."
             },
             "id": {
               "description": "Unique widget identifier within the step.",
@@ -2878,7 +3596,8 @@
               "type": "string"
             },
             "reads": {
-              "default": null
+              "default": null,
+              "description": "Read-only store inputs used to seed or drive the widget."
             },
             "row_numbers": {
               "default": null,
@@ -2904,9 +3623,20 @@
             },
             "value": {
               "default": null,
+              "description": "Direct store binding target for the widget's main value.",
               "type": [
                 "string",
                 "null"
+              ]
+            },
+            "when": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/WhenDef"
+                },
+                {
+                  "type": "null"
+                }
               ]
             },
             "writes": {
@@ -2917,7 +3647,8 @@
                 {
                   "type": "null"
                 }
-              ]
+              ],
+              "description": "Store writes produced from the widget value or read scope."
             }
           },
           "required": [
@@ -2930,9 +3661,32 @@
         },
         {
           "properties": {
-            "count": {
+            "commit_policy": {
+              "allOf": [
+                {
+                  "$ref": "#/definitions/BindingCommitPolicyDef"
+                }
+              ],
+              "description": "When the widget value should be committed to the store."
+            },
+            "entry_mode": {
               "default": null,
-              "description": "Optional explicit iteration count."
+              "description": "Field entry mode for each iteration.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "finish_when": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/WhenDef"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional condition that finishes the repeater after the current row commits."
             },
             "header_template": {
               "default": null,
@@ -2954,32 +3708,16 @@
                 "null"
               ]
             },
-            "items": {
-              "default": null,
-              "description": "Item source or literal item list."
+            "iterate": {
+              "description": "Iteration source. Accepts a number, list, or store selector resolving to one."
             },
             "label": {
               "description": "Visible widget label.",
               "type": "string"
             },
-            "layout": {
-              "default": null,
-              "description": "Repeater layout mode.",
-              "type": [
-                "string",
-                "null"
-              ]
-            },
-            "mode": {
-              "default": null,
-              "description": "Iteration mode.",
-              "type": [
-                "string",
-                "null"
-              ]
-            },
             "reads": {
-              "default": null
+              "default": null,
+              "description": "Read-only store inputs used to seed or drive the widget."
             },
             "show_label": {
               "default": null,
@@ -3005,9 +3743,20 @@
             },
             "value": {
               "default": null,
+              "description": "Direct store binding target for the widget's main value.",
               "type": [
                 "string",
                 "null"
+              ]
+            },
+            "when": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/WhenDef"
+                },
+                {
+                  "type": "null"
+                }
               ]
             },
             "widgets": {
@@ -3025,11 +3774,13 @@
                 {
                   "type": "null"
                 }
-              ]
+              ],
+              "description": "Store writes produced from the widget value or read scope."
             }
           },
           "required": [
             "id",
+            "iterate",
             "label",
             "type"
           ],

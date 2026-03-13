@@ -1,3 +1,4 @@
+use crate::core::store_refs::{exact_template_expr, normalize_store_selector};
 use crate::core::value::Value;
 use crate::widgets::{
     components::{
@@ -281,11 +282,13 @@ pub(super) fn compile_repeater(
     show_progress: Option<bool>,
     header_template: Option<String>,
     item_label_path: Option<String>,
+    finish_when: Option<super::super::model::WhenDef>,
     widgets: Vec<WidgetDef>,
 ) -> Result<Node, String> {
+    let iterate_binding = compile_repeater_iterate_binding(&iterate)?;
     let mut widget = Repeater::new(id, label)
         .with_entry_mode(parse_repeater_entry_mode(entry_mode.as_deref())?)
-        .with_iterate_binding(compile_repeater_iterate_binding(&iterate)?);
+        .with_iterate_binding(iterate_binding);
     if let Some(show_label) = show_label {
         widget = widget.with_show_label(show_label);
     }
@@ -302,6 +305,9 @@ pub(super) fn compile_repeater(
             .map_err(|err| format!("invalid repeater item_label_path: {err}"))?;
         widget = widget.with_item_label_path(path);
     }
+    if let Some(finish_when) = finish_when {
+        widget = widget.with_finish_condition(super::super::assemble::assemble_when(&finish_when)?);
+    }
     for child in widgets {
         widget = widget.with_widget(compile_widget(child)?);
     }
@@ -309,7 +315,8 @@ pub(super) fn compile_repeater(
 }
 
 fn compile_repeater_iterate_binding(value: &serde_yaml::Value) -> Result<ReadBinding, String> {
-    let binding = compile_read_binding_value(value, true)?;
+    let normalized = normalize_repeater_iterate_value(value)?;
+    let binding = compile_read_binding_value(&normalized, true)?;
     match &binding {
         ReadBinding::Selector(_) | ReadBinding::Template(_) => Ok(binding),
         ReadBinding::Literal(crate::core::value::Value::Number(_))
@@ -326,4 +333,24 @@ fn compile_repeater_iterate_binding(value: &serde_yaml::Value) -> Result<ReadBin
             Err("repeater iterate must be a number, list, or store selector".to_string())
         }
     }
+}
+
+fn normalize_repeater_iterate_value(
+    value: &serde_yaml::Value,
+) -> Result<serde_yaml::Value, String> {
+    let serde_yaml::Value::String(text) = value else {
+        return Ok(value.clone());
+    };
+
+    if let Some(expr) = exact_template_expr(text)
+        && let Ok(selector) = normalize_store_selector(expr)
+    {
+        return Ok(serde_yaml::Value::String(format!("{{{{{selector}}}}}")));
+    }
+
+    if let Ok(selector) = normalize_store_selector(text) {
+        return Ok(serde_yaml::Value::String(selector));
+    }
+
+    Ok(value.clone())
 }

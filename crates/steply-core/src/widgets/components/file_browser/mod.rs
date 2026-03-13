@@ -25,6 +25,7 @@ pub enum SelectionMode {
     Multi,
 }
 
+#[derive(Clone)]
 struct FileTreeItem {
     entry: model::FileEntry,
     highlights: Vec<(usize, usize)>,
@@ -592,6 +593,53 @@ impl FileBrowserComponent {
                     .any(|path| path == node.item.entry.path.as_ref());
             }
         }
+    }
+
+    fn expanded_tree_paths(&self) -> HashSet<PathBuf> {
+        self.tree
+            .as_ref()
+            .map(|tree| {
+                tree.nodes()
+                    .iter()
+                    .filter(|node| {
+                        node.has_children && node.expanded && node.item.entry.name != ".."
+                    })
+                    .map(|node| (*node.item.entry.path).clone())
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
+    fn expanded_tree_subtrees(&self) -> HashMap<PathBuf, Vec<TreeNode<FileTreeItem>>> {
+        let Some(tree) = self.tree.as_ref() else {
+            return HashMap::new();
+        };
+
+        let nodes = tree.nodes();
+        let mut out = HashMap::new();
+        for (index, node) in nodes.iter().enumerate() {
+            if !(node.has_children
+                && node.expanded
+                && node.children_loaded
+                && node.item.entry.name != "..")
+            {
+                continue;
+            }
+
+            let end = nodes[index + 1..]
+                .iter()
+                .position(|child| child.depth <= node.depth)
+                .map(|offset| index + 1 + offset)
+                .unwrap_or(nodes.len());
+
+            if end > index + 1 {
+                out.insert(
+                    (*node.item.entry.path).clone(),
+                    nodes[index + 1..end].to_vec(),
+                );
+            }
+        }
+        out
     }
 
     fn resolve_tokens_against_result(

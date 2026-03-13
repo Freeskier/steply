@@ -72,6 +72,7 @@ impl TreeItemLabel for &'static str {
     }
 }
 
+#[derive(Clone)]
 pub struct TreeNode<T> {
     pub item: T,
     pub depth: usize,

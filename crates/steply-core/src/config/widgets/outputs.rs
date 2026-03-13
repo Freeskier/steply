@@ -2,6 +2,7 @@ use crate::widgets::{
     node::Node,
     outputs::{
         chart::ChartOutput,
+        data::{DataOutput, DataOutputFormat},
         diff::DiffOutput,
         progress::ProgressOutput,
         table::TableOutput,
@@ -12,7 +13,7 @@ use crate::widgets::{
     },
 };
 
-use crate::config::model::{ProgressTransitionDef, TaskLogStepDef};
+use crate::config::model::{DataOutputFormatDef, ProgressTransitionDef, TaskLogStepDef};
 
 use super::super::parse::{
     parse_chart_mode, parse_progress_style, parse_progress_transition, parse_spinner_style,
@@ -21,6 +22,19 @@ use super::super::parse::{
 
 pub(super) fn compile_text_output(id: String, text: String) -> Node {
     Node::Output(Box::new(TextOutput::new(id, text)))
+}
+
+pub(super) fn compile_data_output(
+    id: String,
+    label: Option<String>,
+    format: Option<DataOutputFormatDef>,
+) -> Node {
+    let format = match format.unwrap_or(DataOutputFormatDef::Json) {
+        DataOutputFormatDef::Text => DataOutputFormat::Text,
+        DataOutputFormatDef::Json => DataOutputFormat::Json,
+        DataOutputFormatDef::Yaml => DataOutputFormat::Yaml,
+    };
+    Node::Output(Box::new(DataOutput::new(id, label, format)))
 }
 
 pub(super) fn compile_url_output(

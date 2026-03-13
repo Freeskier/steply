@@ -10,6 +10,8 @@ pub(super) fn build_tree_nodes_for(
     show_parent_option: bool,
     result: &ScanResult,
     selected_paths: &[PathBuf],
+    expanded_paths: &HashSet<PathBuf>,
+    cached_subtrees: &HashMap<PathBuf, Vec<TreeNode<FileTreeItem>>>,
 ) -> Vec<TreeNode<FileTreeItem>> {
     let mut nodes = Vec::<TreeNode<FileTreeItem>>::new();
 
@@ -95,8 +97,10 @@ pub(super) fn build_tree_nodes_for(
                     true,
                 );
 
-                node.expanded = true;
-                node.children_loaded = true;
+                if expanded_paths.contains(&anc_abs) {
+                    node.expanded = true;
+                    node.children_loaded = true;
+                }
                 nodes.push(node);
             }
         }
@@ -112,7 +116,7 @@ pub(super) fn build_tree_nodes_for(
         }
         let idx = nodes.len();
         node_index_by_path.insert((*entry.path).clone(), idx);
-        nodes.push(TreeNode::new(
+        let mut node = TreeNode::new(
             FileTreeItem::new(
                 entry.clone(),
                 highlights,
@@ -122,7 +126,36 @@ pub(super) fn build_tree_nodes_for(
             ),
             depth,
             entry.kind.is_dir(),
-        ));
+        );
+        if entry.kind.is_dir() && expanded_paths.contains(entry.path.as_ref()) {
+            node.expanded = true;
+            node.children_loaded = true;
+        }
+        nodes.push(node);
+    }
+
+    if !cached_subtrees.is_empty() {
+        let restore_indices = nodes
+            .iter()
+            .enumerate()
+            .filter_map(|(index, node)| {
+                (node.has_children
+                    && node.expanded
+                    && node.children_loaded
+                    && cached_subtrees.contains_key(node.item.entry.path.as_ref())
+                    && nodes
+                        .get(index + 1)
+                        .is_none_or(|next| next.depth <= node.depth))
+                .then_some(index)
+            })
+            .collect::<Vec<_>>();
+
+        for index in restore_indices.into_iter().rev() {
+            let path = (*nodes[index].item.entry.path).clone();
+            if let Some(subtree) = cached_subtrees.get(&path) {
+                nodes.splice(index + 1..index + 1, subtree.clone());
+            }
+        }
     }
 
     for i in 0..nodes.len() {

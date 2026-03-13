@@ -113,6 +113,34 @@ impl StepCondition {
             Self::Not(condition) => !condition.evaluate(store),
         }
     }
+
+    pub fn referenced_fields(&self) -> Vec<&str> {
+        let mut fields = Vec::new();
+        self.collect_referenced_fields(&mut fields);
+        fields
+    }
+
+    fn collect_referenced_fields<'a>(&'a self, out: &mut Vec<&'a str>) {
+        match self {
+            Self::Truthy { field }
+            | Self::Exists { field }
+            | Self::Empty { field }
+            | Self::NotEmpty { field }
+            | Self::Equals { field, .. }
+            | Self::NotEquals { field, .. }
+            | Self::GreaterThan { field, .. }
+            | Self::GreaterOrEqual { field, .. }
+            | Self::LessThan { field, .. }
+            | Self::LessOrEqual { field, .. }
+            | Self::Contains { field, .. } => out.push(field.as_str()),
+            Self::All(conditions) | Self::Any(conditions) => {
+                for condition in conditions {
+                    condition.collect_referenced_fields(out);
+                }
+            }
+            Self::Not(condition) => condition.collect_referenced_fields(out),
+        }
+    }
 }
 
 fn is_truthy(value: &Value) -> bool {

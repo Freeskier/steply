@@ -91,12 +91,16 @@ impl FileBrowserComponent {
         self.tree_building = true;
         self.pending_tree_nodes = None;
         self.spinner_last_tick = crate::time::Instant::now();
+        let expanded_paths = self.expanded_tree_paths();
+        let cached_subtrees = self.expanded_tree_subtrees();
         self.tree_scanner
             .submit(super::tree_scanner::TreeBuildRequest {
                 seq: self.tree_build_seq,
                 browse_dir: self.browse_dir.clone(),
                 show_parent_option: self.should_show_parent_option(),
                 selected_paths: self.selected_paths.clone(),
+                expanded_paths,
+                cached_subtrees,
                 result,
             });
     }
@@ -131,6 +135,7 @@ impl FileBrowserComponent {
         if let Some(tree) = self.tree.as_mut() {
             tree.set_nodes(nodes);
         }
+        self.sync_tree_selection();
         self.set_preferred_tree_active();
         self.clear_preferred_entry_state();
         true

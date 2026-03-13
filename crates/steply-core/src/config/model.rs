@@ -195,6 +195,7 @@ impl Default for SelectListOptionsDef {
 #[serde(tag = "type", rename_all = "snake_case")]
 pub(super) enum WidgetDef {
     TextOutput(TextOutputDef),
+    DataOutput(DataOutputDef),
     UrlOutput(UrlOutputDef),
     ThinkingOutput(ThinkingOutputDef),
     ProgressOutput(ProgressOutputDef),
@@ -234,6 +235,30 @@ pub(super) struct TextOutputDef {
     pub(super) when: Option<WhenDef>,
     #[serde(default, flatten)]
     pub(super) binding: WidgetBindingDef,
+}
+
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+pub(super) struct DataOutputDef {
+    /// Unique widget identifier within the step.
+    pub(super) id: String,
+    /// Optional visible label.
+    #[serde(default)]
+    pub(super) label: Option<String>,
+    /// Render format for structured values.
+    #[serde(default)]
+    pub(super) format: Option<DataOutputFormatDef>,
+    #[serde(default)]
+    pub(super) when: Option<WhenDef>,
+    #[serde(default, flatten)]
+    pub(super) binding: WidgetBindingDef,
+}
+
+#[derive(Debug, Clone, Copy, Deserialize, JsonSchema, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub(super) enum DataOutputFormatDef {
+    Text,
+    Json,
+    Yaml,
 }
 
 #[derive(Debug, Clone, Deserialize, JsonSchema)]
@@ -893,6 +918,9 @@ pub(super) struct RepeaterDef {
     /// Relative path used as item label.
     #[serde(default)]
     pub(super) item_label_path: Option<String>,
+    /// Optional condition that finishes the repeater after the current row commits.
+    #[serde(default)]
+    pub(super) finish_when: Option<WhenDef>,
     /// Widgets rendered for the active iteration.
     #[serde(default)]
     pub(super) widgets: Vec<WidgetDef>,

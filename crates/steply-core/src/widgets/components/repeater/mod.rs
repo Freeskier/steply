@@ -3,6 +3,7 @@ use indexmap::IndexMap;
 use crate::core::value::Value;
 use crate::core::value_path::{PathSegment, ValuePath, ValueTarget};
 use crate::runtime::event::{ValueChange, WidgetAction};
+use crate::state::step::StepCondition;
 use crate::state::store::ValueStore;
 use crate::terminal::{CursorPos, KeyCode, KeyEvent, PointerEvent};
 use crate::ui::span::{Span, SpanLine};
@@ -39,9 +40,13 @@ pub struct Repeater {
     show_progress: bool,
     header_binding: Option<ReadBinding>,
     item_label_path: Option<ValuePath>,
+    finish_condition: Option<StepCondition>,
     finished: bool,
+    awaiting_finish_resolution: bool,
+    pending_finish_done: bool,
     store_snapshot: ValueStore,
     last_iterate_value: Option<Option<Value>>,
+    finish_condition_snapshot: Vec<(String, Option<Value>)>,
 }
 
 impl Repeater {
@@ -63,9 +68,13 @@ impl Repeater {
                 "configuring [{{_position}} of {{_count}}]".to_string(),
             )),
             item_label_path: None,
+            finish_condition: None,
             finished: false,
+            awaiting_finish_resolution: false,
+            pending_finish_done: false,
             store_snapshot: ValueStore::new(),
             last_iterate_value: None,
+            finish_condition_snapshot: Vec::new(),
         }
     }
 
@@ -101,6 +110,11 @@ impl Repeater {
 
     pub fn with_iterate_binding(mut self, binding: ReadBinding) -> Self {
         self.iterate_binding = Some(binding);
+        self
+    }
+
+    pub fn with_finish_condition(mut self, condition: StepCondition) -> Self {
+        self.finish_condition = Some(condition);
         self
     }
 
@@ -367,6 +381,27 @@ impl Repeater {
         true
     }
 
+    fn advance_after_committed_row(&mut self) -> bool {
+        if self.widgets.is_empty() || self.total_count() == 0 {
+            self.finished = true;
+            return false;
+        }
+        self.active_widget = self.first_focusable_widget_index().unwrap_or(0);
+        if self.active_index + 1 >= self.total_count() {
+            self.finished = true;
+            return false;
+        }
+        self.active_index += 1;
+        self.finished = false;
+        self.current_row = self
+            .rows
+            .get(self.active_index)
+            .cloned()
+            .unwrap_or_else(empty_row);
+        let _ = self.sync_widgets_from_scope();
+        true
+    }
+
     fn previous_iteration(&mut self) -> bool {
         if self.active_index == 0 {
             return false;
@@ -518,6 +553,9 @@ impl Repeater {
                 self.active_widget = next_index;
                 result.handled = true;
                 result.request_render = true;
+            } else if self.begin_finish_resolution() {
+                result.handled = true;
+                result.request_render = true;
             } else if self.next_iteration() {
                 result.handled = true;
                 result.request_render = true;
@@ -527,6 +565,80 @@ impl Repeater {
         }
 
         result
+    }
+
+    fn begin_finish_resolution(&mut self) -> bool {
+        if self.finish_condition.is_none() {
+            return false;
+        }
+        self.commit_current_row();
+        let scoped = self.scoped_store();
+        let (fields, immediate_should_finish) = {
+            let condition = self
+                .finish_condition
+                .as_ref()
+                .expect("checked finish_condition above");
+            let fields = condition.referenced_fields();
+            let immediate_should_finish = (fields.is_empty()
+                || fields.iter().all(|field| field.starts_with('_')))
+            .then(|| condition.evaluate(&scoped));
+            (fields, immediate_should_finish)
+        };
+
+        if let Some(should_finish) = immediate_should_finish {
+            if should_finish {
+                self.finished = true;
+                self.pending_finish_done = true;
+                return true;
+            }
+            return self.advance_after_committed_row();
+        }
+
+        self.awaiting_finish_resolution = true;
+        self.pending_finish_done = false;
+        self.finish_condition_snapshot = fields
+            .into_iter()
+            .map(|field| (field.to_string(), scoped.get_selector(field).cloned()))
+            .collect();
+        true
+    }
+
+    fn maybe_resolve_finish_resolution(&mut self) -> bool {
+        if !self.awaiting_finish_resolution {
+            return false;
+        }
+
+        let Some(condition) = self.finish_condition.as_ref() else {
+            self.awaiting_finish_resolution = false;
+            return false;
+        };
+
+        let scoped = self.scoped_store();
+        let observed_changed = self
+            .finish_condition_snapshot
+            .iter()
+            .any(|(field, previous)| scoped.get_selector(field.as_str()).cloned() != *previous);
+        if !observed_changed {
+            return false;
+        }
+
+        self.awaiting_finish_resolution = false;
+        self.finish_condition_snapshot.clear();
+
+        let should_finish = condition.evaluate(&scoped);
+        if should_finish {
+            self.finished = true;
+            self.pending_finish_done = true;
+            return true;
+        }
+
+        if self.advance_after_committed_row() {
+            return true;
+        }
+
+        self.finished = true;
+        self.pending_finish_done = true;
+        true
     }
 }
 
@@ -592,6 +704,10 @@ impl Interactive for Repeater {
     }
 
     fn on_key(&mut self, key: KeyEvent) -> InteractionResult {
+        if self.awaiting_finish_resolution {
+            return InteractionResult::ignored();
+        }
+
         if self.finished {
             return match key.code {
                 KeyCode::Enter => InteractionResult::input_done(),
@@ -628,6 +744,14 @@ impl Interactive for Repeater {
 
     fn on_pointer(&mut self, _event: PointerEvent) -> InteractionResult {
         InteractionResult::ignored()
+    }
+
+    fn on_tick(&mut self) -> InteractionResult {
+        if !self.pending_finish_done {
+            return InteractionResult::ignored();
+        }
+        self.pending_finish_done = false;
+        InteractionResult::input_done()
     }
 
     fn on_text_action(&mut self, action: TextAction) -> InteractionResult {
@@ -687,7 +811,8 @@ impl Interactive for Repeater {
     fn sync_from_store(&mut self, store: &ValueStore) -> bool {
         let changed = self.refresh_sources(store);
         let child_changed = self.sync_widgets_from_scope();
-        changed || child_changed
+        let finish_changed = self.maybe_resolve_finish_resolution();
+        changed || child_changed || finish_changed
     }
 
     fn validate(&self, mode: ValidationMode) -> Result<(), String> {

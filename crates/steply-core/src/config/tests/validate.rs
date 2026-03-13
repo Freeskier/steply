@@ -105,6 +105,29 @@ tasks:
 }
 
 #[test]
+fn allows_parent_child_user_bindings_across_widgets() {
+    let yaml = r#"
+version: 1
+steps:
+  - id: demo
+    title: Demo
+    widgets:
+      - type: text_input
+        id: profile_name
+        label: Profile Name
+        value: profile.name
+      - type: object_editor
+        id: profile_object
+        label: Profile Object
+        default:
+          name: Moonbase Report
+        value: profile
+"#;
+
+    crate::config::load_from_yaml_str(yaml).expect("yaml should validate");
+}
+
+#[test]
 fn rejects_overlapping_task_writes() {
     let yaml = r#"
 version: 1

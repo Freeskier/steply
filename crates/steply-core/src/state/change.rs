@@ -1,5 +1,5 @@
 use crate::core::value::Value;
-use crate::core::value_path::ValueTarget;
+use crate::core::value_path::{ValueTarget, ValueTargetRelation};
 use crate::state::flow::Flow;
 use crate::task::{TaskId, TaskSpec};
 
@@ -105,6 +105,12 @@ pub struct StoreOwnershipRegistry {
     entries: Vec<StoreOwnershipEntry>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StoreOwnershipConflict {
+    CrossOwner { other: StoreOwnership },
+    SameOwnerOverlap { owner: StoreOwnership },
+}
+
 impl StoreTransaction {
     pub fn new() -> Self {
         Self::default()
@@ -148,17 +154,56 @@ impl StoreOwnershipRegistry {
     ) -> Vec<StoreOwnership> {
         let mut conflicts = Vec::<StoreOwnership>::new();
         for entry in &self.entries {
-            if !entry.target.overlaps(target) {
+            if entry.target == *target && entry.ownership == origin {
                 continue;
             }
-            if entry.ownership == StoreOwnership::Shared || entry.ownership == origin {
+            let Some(conflict) =
+                store_ownership_conflict(target, origin, &entry.target, entry.ownership)
+            else {
                 continue;
-            }
-            if !conflicts.contains(&entry.ownership) {
-                conflicts.push(entry.ownership);
+            };
+            let owner = match conflict {
+                StoreOwnershipConflict::CrossOwner { other } => other,
+                StoreOwnershipConflict::SameOwnerOverlap { owner } => owner,
+            };
+            if !conflicts.contains(&owner) {
+                conflicts.push(owner);
             }
         }
         conflicts
+    }
+}
+
+pub fn store_ownership_conflict(
+    left_target: &ValueTarget,
+    left_owner: StoreOwnership,
+    right_target: &ValueTarget,
+    right_owner: StoreOwnership,
+) -> Option<StoreOwnershipConflict> {
+    let relation = left_target.relation_to(right_target);
+    if relation == ValueTargetRelation::Disjoint {
+        return None;
+    }
+
+    if left_owner == StoreOwnership::Shared || right_owner == StoreOwnership::Shared {
+        return None;
+    }
+
+    if left_owner != right_owner {
+        return Some(StoreOwnershipConflict::CrossOwner { other: right_owner });
+    }
+
+    if left_owner == StoreOwnership::User {
+        return None;
+    }
+
+    match relation {
+        ValueTargetRelation::Equal
+        | ValueTargetRelation::Contains
+        | ValueTargetRelation::ContainedBy => {
+            Some(StoreOwnershipConflict::SameOwnerOverlap { owner: left_owner })
+        }
+        ValueTargetRelation::Disjoint => None,
     }
 }
 

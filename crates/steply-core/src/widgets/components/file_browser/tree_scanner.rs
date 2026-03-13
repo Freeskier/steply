@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::Arc;
 #[cfg(not(target_arch = "wasm32"))]
@@ -15,6 +16,8 @@ pub(super) struct TreeBuildRequest {
     pub browse_dir: PathBuf,
     pub show_parent_option: bool,
     pub selected_paths: Vec<PathBuf>,
+    pub expanded_paths: HashSet<PathBuf>,
+    pub cached_subtrees: std::collections::HashMap<PathBuf, Vec<TreeNode<FileTreeItem>>>,
     pub result: Arc<ScanResult>,
 }
 
@@ -74,6 +77,8 @@ fn worker(rx: Receiver<TreeBuildRequest>, tx: Sender<TreeBuildResult>) {
             req.show_parent_option,
             req.result.as_ref(),
             req.selected_paths.as_slice(),
+            &req.expanded_paths,
+            &req.cached_subtrees,
         );
 
         let _ = tx.send(TreeBuildResult {
